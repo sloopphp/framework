@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 .php-cs-fixer.cache
+.php-version
+.phpunit.cache/
 .phpunit.result.cache
 /storage/
 *.log

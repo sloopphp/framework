@@ -1,0 +1,132 @@
+<?xml version="1.0"?>
+<ruleset name="Sloop">
+    <description>Sloop Framework Coding Standard</description>
+
+    <file>src</file>
+    <file>tests</file>
+
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <!-- ==================== -->
+    <!-- PHPDoc               -->
+    <!-- ==================== -->
+
+    <!-- メソッドにPHPDoc必須（テストコードは除外） -->
+    <rule ref="Squiz.Commenting.FunctionComment">
+        <exclude-pattern>tests/*</exclude-pattern>
+        <exclude name="Squiz.Commenting.FunctionComment.MissingParamTag"/>
+        <exclude name="Squiz.Commenting.FunctionComment.ParamNotFound"/>
+        <exclude name="Squiz.Commenting.FunctionComment.IncorrectTypeHint"/>
+        <exclude name="Squiz.Commenting.FunctionComment.InvalidTypeHint"/>
+        <exclude name="Squiz.Commenting.FunctionComment.ScalarTypeHintMissing"/>
+        <exclude name="Squiz.Commenting.FunctionComment.TypeHintMissing"/>
+        <exclude name="Squiz.Commenting.FunctionComment.InvalidReturn"/>
+        <exclude name="Squiz.Commenting.FunctionComment.IncorrectParamVarName"/>
+        <exclude name="Squiz.Commenting.FunctionComment.ParamCommentFullStop"/>
+        <exclude name="Squiz.Commenting.FunctionComment.ParamCommentNotCapital"/>
+        <exclude name="Squiz.Commenting.FunctionComment.ThrowsNoFullStop"/>
+        <exclude name="Squiz.Commenting.FunctionComment.EmptyThrows"/>
+        <exclude name="Squiz.Commenting.FunctionComment.SpacingAfterParamType"/>
+        <exclude name="Squiz.Commenting.FunctionComment.SpacingAfterParamName"/>
+    </rule>
+
+    <!-- クラスにPHPDoc必須（テストコードは除外） -->
+    <rule ref="Squiz.Commenting.ClassComment">
+        <exclude-pattern>tests/*</exclude-pattern>
+    </rule>
+
+    <!-- プロパティにPHPDoc必須（テストコードは除外） -->
+    <rule ref="Squiz.Commenting.VariableComment">
+        <exclude-pattern>tests/*</exclude-pattern>
+        <exclude name="Squiz.Commenting.VariableComment.IncorrectVarType"/>
+        <exclude name="Squiz.Commenting.VariableComment.TagNotAllowed"/>
+    </rule>
+
+    <!-- PHPDocアスタリスク整列 -->
+    <rule ref="Squiz.Commenting.DocCommentAlignment"/>
+
+    <!-- ==================== -->
+    <!-- コード品質           -->
+    <!-- ==================== -->
+
+    <!-- 循環的複雑度チェック -->
+    <rule ref="Generic.Metrics.CyclomaticComplexity">
+        <properties>
+            <property name="complexity" value="10"/>
+            <property name="absoluteComplexity" value="20"/>
+        </properties>
+    </rule>
+
+    <!-- ネストレベルチェック -->
+    <rule ref="Generic.Metrics.NestingLevel">
+        <properties>
+            <property name="nestingLevel" value="3"/>
+            <property name="absoluteNestingLevel" value="5"/>
+        </properties>
+    </rule>
+
+    <!-- 到達不能コードの検出 -->
+    <rule ref="Squiz.PHP.NonExecutableCode"/>
+
+    <!-- staticメソッド内の$this使用検出 -->
+    <rule ref="Squiz.Scope.StaticThisUsage"/>
+
+    <!-- ==================== -->
+    <!-- PHP安全性            -->
+    <!-- ==================== -->
+
+    <!-- 非推奨PHP関数の検出 -->
+    <rule ref="Generic.PHP.DeprecatedFunctions"/>
+
+    <!-- エラー制御演算子@の禁止 -->
+    <rule ref="Generic.PHP.NoSilencedErrors"/>
+
+    <!-- PHP構文チェック -->
+    <rule ref="Generic.PHP.Syntax"/>
+
+    <!-- Gitマージ競合の残留検出 -->
+    <rule ref="Generic.VersionControl.GitMergeConflict"/>
+
+    <!-- デバッグ関数・型キャスト関数の禁止 -->
+    <rule ref="Generic.PHP.ForbiddenFunctions">
+        <properties>
+            <property name="forbiddenFunctions" type="array">
+                <element key="print_r" value="null"/>
+                <element key="var_dump" value="null"/>
+                <element key="dump" value="null"/>
+                <element key="dd" value="null"/>
+                <element key="debug_print_backtrace" value="null"/>
+                <element key="debug_backtrace" value="null"/>
+                <element key="strval" value="null"/>
+                <element key="intval" value="null"/>
+                <element key="boolval" value="null"/>
+                <element key="floatval" value="null"/>
+                <element key="settype" value="null"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- ==================== -->
+    <!-- フォーマット         -->
+    <!-- ==================== -->
+
+    <!-- 代入演算子の縦揃え -->
+    <rule ref="Generic.Formatting.MultipleStatementAlignment">
+        <properties>
+            <property name="maxPadding" value="20"/>
+        </properties>
+    </rule>
+
+    <!-- ==================== -->
+    <!-- Slevomat拡張         -->
+    <!-- ==================== -->
+
+    <!-- ダブルクォート変数展開の禁止 -->
+    <rule ref="SlevomatCodingStandard.Strings.DisallowVariableParsing"/>
+
+    <!-- 参照渡しの禁止（メソッド引数。内部の参照代入は配列操作で必要な場合がある） -->
+    <rule ref="SlevomatCodingStandard.PHP.DisallowReference">
+        <exclude name="SlevomatCodingStandard.PHP.DisallowReference.DisallowedAssigningByReference"/>
+    </rule>
+</ruleset>

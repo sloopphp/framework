@@ -8,10 +8,11 @@ on:
 
 jobs:
   tests:
-    name: Tests (PHP ${{ matrix.php }})
-    runs-on: ubuntu-latest
+    name: Tests (PHP ${{ matrix.php }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         php: ['8.4']
 
     steps:
@@ -21,6 +22,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
+          extensions: intl
           coverage: none
 
       - name: Install dependencies
@@ -40,10 +42,34 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          extensions: intl
           coverage: none
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 
-      - name: Check code style
+      - name: Check code style (PHP-CS-Fixer)
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+      - name: Check code style (PHPCS)
+        run: vendor/bin/phpcs
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: intl
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse

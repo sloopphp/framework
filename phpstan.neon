@@ -1,0 +1,8 @@
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    scanFiles:
+        - src/Sloop/Helpers/path.php
+        - src/Sloop/Helpers/env.php
