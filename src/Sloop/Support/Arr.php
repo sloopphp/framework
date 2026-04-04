@@ -199,9 +199,9 @@ final class Arr
             } elseif ($depth === 0) {
                 $result[] = $item;
             } elseif ($depth === 1) {
-                $result = array_merge($result, array_values($item));
+                array_push($result, ...array_values($item));
             } else {
-                $result = array_merge($result, self::flatten($item, $depth - 1));
+                array_push($result, ...self::flatten($item, $depth - 1));
             }
         }
 
