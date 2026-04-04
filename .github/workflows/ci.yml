@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        php: ['8.4']
+        php: ['8.5']
 
     steps:
       - uses: actions/checkout@v6
@@ -48,7 +48,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: intl
           coverage: none
 
@@ -56,8 +56,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vendor
-          key: ${{ runner.os }}-php-8.4-${{ hashFiles('composer.lock') }}
-          restore-keys: ${{ runner.os }}-php-8.4-
+          key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
@@ -78,7 +78,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: intl
           coverage: none
 
@@ -86,8 +86,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vendor
-          key: ${{ runner.os }}-php-8.4-${{ hashFiles('composer.lock') }}
-          restore-keys: ${{ runner.os }}-php-8.4-
+          key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
