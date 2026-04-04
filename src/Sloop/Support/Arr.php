@@ -53,6 +53,7 @@ final class Arr
      * @param mixed                   $value Value to set
      * @return array<array-key, mixed>
      */
+    #[\NoDiscard('Arr::set() returns a new array. The original is not modified.')]
     public static function set(array $array, string $key, mixed $value): array
     {
         $keys    = explode('.', $key);
