@@ -194,9 +194,13 @@ final class Config
             $key   = basename($file, '.php');
             $value = require $file;
 
-            if (\is_array($value)) {
-                $items[$key] = $value;
+            if (!\is_array($value)) {
+                throw new RuntimeException(
+                    'Config file must return an array, got ' . get_debug_type($value) . ': ' . $file
+                );
             }
+
+            $items[$key] = $value;
         }
 
         return $items;

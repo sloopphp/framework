@@ -70,6 +70,14 @@ final class ConfigTest extends TestCase
         Config::load($this->fixturesPath);
     }
 
+    public function testLoadThrowsForNonArrayConfigFile(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Config file must return an array');
+
+        Config::load($this->fixturesPath . '/invalid');
+    }
+
     // ---------------------------------------------------------------
     // get
     // ---------------------------------------------------------------
@@ -199,17 +207,17 @@ final class ConfigTest extends TestCase
     {
         Config::load($this->fixturesPath);
 
-        $thrown = false;
+        $exception = null;
 
         try {
             Config::withConfig(['app.name' => 'Temp'], function () {
                 throw new RuntimeException('error');
             });
-        } catch (RuntimeException) {
-            $thrown = true;
+        } catch (RuntimeException $e) {
+            $exception = $e;
         }
 
-        $this->assertTrue($thrown);
+        $this->assertInstanceOf(RuntimeException::class, $exception);
         $this->assertSame('Sloop', Config::get('app.name'));
     }
 
@@ -217,17 +225,17 @@ final class ConfigTest extends TestCase
     {
         Config::load($this->fixturesPath);
 
-        $thrown = false;
+        $error = null;
 
         try {
             Config::withConfig(['app.name' => 'Temp'], function () {
                 throw new \Error('fatal');
             });
-        } catch (\Error) {
-            $thrown = true;
+        } catch (\Error $e) {
+            $error = $e;
         }
 
-        $this->assertTrue($thrown);
+        $this->assertInstanceOf(\Error::class, $error);
         $this->assertSame('Sloop', Config::get('app.name'));
     }
 
