@@ -145,12 +145,22 @@ final class LogTest extends TestCase
         $this->assertTrue($this->handler->hasWarningRecords());
     }
 
-    public function testLogWithUnknownLevelFallsBackToDebug(): void
+    public function testLogWithUnknownLevelThrowsException(): void
     {
         $log = Log::channel('app');
-        $log->log('unknown', 'Fallback message');
 
-        $this->assertTrue($this->handler->hasDebugRecords());
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid log level: unknown');
+        $log->log('unknown', 'Should fail');
+    }
+
+    public function testLogWithNonStringLevelThrowsException(): void
+    {
+        $log = Log::channel('app');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid log level: int');
+        $log->log(999, 'Should fail');
     }
 
     // ---------------------------------------------------------------
@@ -169,6 +179,14 @@ final class LogTest extends TestCase
     // ---------------------------------------------------------------
     // Channel switching
     // ---------------------------------------------------------------
+
+    public function testChannelWithoutArgumentUsesDefaultChannel(): void
+    {
+        $log = Log::channel();
+        $log->info('Default channel');
+
+        $this->assertTrue($this->handler->hasInfoRecords());
+    }
 
     public function testChannelReturnsNewLogInstance(): void
     {

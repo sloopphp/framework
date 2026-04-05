@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Log;
 
+use InvalidArgumentException;
 use Monolog\Level;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
@@ -52,12 +53,12 @@ final class Log implements LoggerInterface
     }
 
     /**
-     * Get a channel-specific logger instance.
+     * Get a logger instance for the given channel.
      *
-     * @param string $name Channel name
-     * @return self New Log instance bound to the given channel
+     * @param string|null $name Channel name (null = default channel)
+     * @return self Log instance bound to the given channel
      */
-    public static function channel(string $name): self
+    public static function channel(?string $name = null): self
     {
         $log              = new self();
         $log->manager     = self::getInstance()->manager;
@@ -191,6 +192,7 @@ final class Log implements LoggerInterface
      *
      * @param mixed $level PSR-3 log level (string or Level)
      * @return Level
+     * @throws InvalidArgumentException If the level is not a valid PSR-3 level
      */
     private static function toMonologLevel(mixed $level): Level
     {
@@ -207,7 +209,9 @@ final class Log implements LoggerInterface
             'notice'    => Level::Notice,
             'info'      => Level::Info,
             'debug'     => Level::Debug,
-            default     => Level::Debug,
+            default     => throw new InvalidArgumentException(
+                'Invalid log level: ' . (\is_string($level) ? $level : \get_debug_type($level)),
+            ),
         };
     }
 
