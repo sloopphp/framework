@@ -112,6 +112,16 @@ final class ExceptionHandlerTest extends TestCase
         $this->assertSame('Unknown', $this->logger->lastMessage);
     }
 
+    public function testHandlePhpErrorReturns500(): void
+    {
+        $error      = new \TypeError('Argument must be string');
+        $statusCode = $this->handler->handle($error);
+
+        $this->assertSame(HttpStatus::InternalServerError, $statusCode);
+        $this->assertSame(LogLevel::CRITICAL, $this->logger->lastLevel);
+        $this->assertSame($error, $this->logger->lastContext['exception']);
+    }
+
     // ---------------------------------------------------------------
     // handle — context includes exception and status code
     // ---------------------------------------------------------------
@@ -129,6 +139,58 @@ final class ExceptionHandlerTest extends TestCase
         $this->handler->handle(new InfrastructureException('Timeout'));
 
         $this->assertSame(HttpStatus::ServiceUnavailable, $this->logger->lastContext['status_code']);
+    }
+
+    // ---------------------------------------------------------------
+    // handle — non-Sloop exception context
+    // ---------------------------------------------------------------
+
+    public function testHandleNonSloopExceptionPassesExceptionInContext(): void
+    {
+        $exception = new RuntimeException('Boom');
+        $this->handler->handle($exception);
+
+        $this->assertSame($exception, $this->logger->lastContext['exception']);
+        $this->assertSame(HttpStatus::InternalServerError, $this->logger->lastContext['status_code']);
+    }
+
+    // ---------------------------------------------------------------
+    // handle — previous exception chaining
+    // ---------------------------------------------------------------
+
+    public function testHandleUsesOuterExceptionMetadata(): void
+    {
+        $previous   = new FatalException('Root cause');
+        $exception  = new DomainException('Wrapped', 0, '', $previous);
+        $statusCode = $this->handler->handle($exception);
+
+        $this->assertSame(HttpStatus::UnprocessableEntity, $statusCode);
+        $this->assertSame(LogLevel::WARNING, $this->logger->lastLevel);
+    }
+
+    // ---------------------------------------------------------------
+    // handle — both overrides through handler
+    // ---------------------------------------------------------------
+
+    public function testHandleRespectsBothOverrides(): void
+    {
+        $exception  = new InfrastructureException('Rate limited', HttpStatus::TooManyRequests, LogLevel::WARNING);
+        $statusCode = $this->handler->handle($exception);
+
+        $this->assertSame(HttpStatus::TooManyRequests, $statusCode);
+        $this->assertSame(LogLevel::WARNING, $this->logger->lastLevel);
+    }
+
+    // ---------------------------------------------------------------
+    // handle — empty message
+    // ---------------------------------------------------------------
+
+    public function testHandleEmptyMessageException(): void
+    {
+        $this->handler->handle(new DomainException());
+
+        $this->assertSame('', $this->logger->lastMessage);
+        $this->assertSame(LogLevel::WARNING, $this->logger->lastLevel);
     }
 
     // ---------------------------------------------------------------

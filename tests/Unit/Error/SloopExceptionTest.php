@@ -73,11 +73,25 @@ final class SloopExceptionTest extends TestCase
     // Status code override
     // ---------------------------------------------------------------
 
-    public function testStatusCodeCanBeOverridden(): void
+    public function testDomainExceptionStatusCodeCanBeOverridden(): void
     {
         $exception = new DomainException('Not found', HttpStatus::NotFound);
 
         $this->assertSame(HttpStatus::NotFound, $exception->statusCode);
+    }
+
+    public function testInfrastructureExceptionStatusCodeCanBeOverridden(): void
+    {
+        $exception = new InfrastructureException('Rate limited', HttpStatus::TooManyRequests);
+
+        $this->assertSame(HttpStatus::TooManyRequests, $exception->statusCode);
+    }
+
+    public function testFatalExceptionStatusCodeCanBeOverridden(): void
+    {
+        $exception = new FatalException('Unavailable', HttpStatus::ServiceUnavailable);
+
+        $this->assertSame(HttpStatus::ServiceUnavailable, $exception->statusCode);
     }
 
     public function testZeroStatusCodeUsesDefault(): void
@@ -87,15 +101,36 @@ final class SloopExceptionTest extends TestCase
         $this->assertSame(HttpStatus::UnprocessableEntity, $exception->statusCode);
     }
 
+    public function testNegativeStatusCodeUsesDefault(): void
+    {
+        $exception = new DomainException('Validation failed', -1);
+
+        $this->assertSame(HttpStatus::UnprocessableEntity, $exception->statusCode);
+    }
+
     // ---------------------------------------------------------------
     // Log level override
     // ---------------------------------------------------------------
 
-    public function testLogLevelCanBeOverridden(): void
+    public function testDomainExceptionLogLevelCanBeOverridden(): void
     {
         $exception = new DomainException('Critical domain issue', 0, LogLevel::CRITICAL);
 
         $this->assertSame(LogLevel::CRITICAL, $exception->logLevel);
+    }
+
+    public function testInfrastructureExceptionLogLevelCanBeOverridden(): void
+    {
+        $exception = new InfrastructureException('Downgraded', 0, LogLevel::WARNING);
+
+        $this->assertSame(LogLevel::WARNING, $exception->logLevel);
+    }
+
+    public function testFatalExceptionLogLevelCanBeOverridden(): void
+    {
+        $exception = new FatalException('Downgraded', 0, LogLevel::ERROR);
+
+        $this->assertSame(LogLevel::ERROR, $exception->logLevel);
     }
 
     public function testEmptyLogLevelUsesDefault(): void
@@ -121,11 +156,25 @@ final class SloopExceptionTest extends TestCase
     // Message and previous exception
     // ---------------------------------------------------------------
 
-    public function testMessageIsPreserved(): void
+    public function testDomainExceptionMessageIsPreserved(): void
     {
         $exception = new DomainException('User not found');
 
         $this->assertSame('User not found', $exception->getMessage());
+    }
+
+    public function testInfrastructureExceptionMessageIsPreserved(): void
+    {
+        $exception = new InfrastructureException('Connection refused');
+
+        $this->assertSame('Connection refused', $exception->getMessage());
+    }
+
+    public function testFatalExceptionMessageIsPreserved(): void
+    {
+        $exception = new FatalException('Out of memory');
+
+        $this->assertSame('Out of memory', $exception->getMessage());
     }
 
     public function testPreviousExceptionIsChained(): void
@@ -134,6 +183,39 @@ final class SloopExceptionTest extends TestCase
         $exception = new InfrastructureException('Wrapped', 0, '', $previous);
 
         $this->assertSame($previous, $exception->getPrevious());
+    }
+
+    // ---------------------------------------------------------------
+    // Default message
+    // ---------------------------------------------------------------
+
+    public function testDefaultMessageIsEmptyString(): void
+    {
+        $exception = new DomainException();
+
+        $this->assertSame('', $exception->getMessage());
+    }
+
+    // ---------------------------------------------------------------
+    // Previous exception independence
+    // ---------------------------------------------------------------
+
+    public function testPreviousExceptionDoesNotAffectStatusCode(): void
+    {
+        $previous  = new InfrastructureException('DB down');
+        $exception = new DomainException('Wrapped', 0, '', $previous);
+
+        $this->assertSame(HttpStatus::UnprocessableEntity, $exception->statusCode);
+        $this->assertSame(HttpStatus::ServiceUnavailable, $previous->statusCode);
+    }
+
+    public function testPreviousExceptionDoesNotAffectLogLevel(): void
+    {
+        $previous  = new FatalException('Crash');
+        $exception = new DomainException('Wrapped', 0, '', $previous);
+
+        $this->assertSame(LogLevel::WARNING, $exception->logLevel);
+        $this->assertSame(LogLevel::CRITICAL, $previous->logLevel);
     }
 
     // ---------------------------------------------------------------
