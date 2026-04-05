@@ -70,6 +70,7 @@ final class Log implements LoggerInterface
      * Get the underlying Monolog Logger for the current channel.
      *
      * @return Logger
+     * @throws RuntimeException If the logger has not been initialized
      */
     public static function monolog(): Logger
     {
