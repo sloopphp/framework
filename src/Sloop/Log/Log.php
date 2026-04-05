@@ -210,7 +210,7 @@ final class Log implements LoggerInterface
             'info'      => Level::Info,
             'debug'     => Level::Debug,
             default     => throw new InvalidArgumentException(
-                'Invalid log level: ' . (\is_string($level) ? $level : \get_debug_type($level)),
+                'Invalid log level: ' . (\is_string($level) ? $level : get_debug_type($level)),
             ),
         };
     }
