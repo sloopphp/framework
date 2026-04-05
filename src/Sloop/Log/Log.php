@@ -13,8 +13,8 @@ use Stringable;
 /**
  * Application logger with static and instance access.
  *
- * Wraps LogManager to provide convenient static methods (`Log::info()`)
- * and PSR-3 compatible instance access. Supports channel switching.
+ * Wraps LogManager to provide PSR-3 compatible instance access
+ * via channel selection. Use `Log::channel('name')` to obtain a logger.
  */
 final class Log implements LoggerInterface
 {
@@ -205,6 +205,7 @@ final class Log implements LoggerInterface
             'warning'   => Level::Warning,
             'notice'    => Level::Notice,
             'info'      => Level::Info,
+            'debug'     => Level::Debug,
             default     => Level::Debug,
         };
     }
