@@ -133,5 +133,6 @@ final class LogManagerTest extends TestCase
         $handler = $logger->getHandlers()[0];
 
         $this->assertInstanceOf(StreamHandler::class, $handler);
+        $this->assertSame(Level::Warning, $handler->getLevel());
     }
 }

@@ -94,7 +94,6 @@ final class LogManager
         $this->channels[$name] = $logger;
     }
 
-
     /**
      * Create a new Monolog Logger with a default StreamHandler.
      *
