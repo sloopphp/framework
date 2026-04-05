@@ -253,7 +253,7 @@ final class ContainerTest extends TestCase
 
         $this->assertInstanceOf(ClassWithMultipleDependencies::class, $result);
         $this->assertInstanceOf(SimpleClass::class, $result->simple);
-        $this->assertInstanceOf(ClassWithNoConstructor::class, $result->noCtor);
+        $this->assertInstanceOf(ClassWithNoConstructor::class, $result->noConstructor);
         $this->assertSame('fallback', $result->name);
     }
 
@@ -396,7 +396,7 @@ readonly class ClassWithMultipleDependencies
 {
     public function __construct(
         public SimpleClass $simple,
-        public ClassWithNoConstructor $noCtor,
+        public ClassWithNoConstructor $noConstructor,
         public string $name = 'fallback',
     ) {
     }
