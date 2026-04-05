@@ -106,7 +106,9 @@ final class Container implements ContainerInterface
      * Check if the container can resolve the given identifier.
      *
      * Returns true if the identifier has a registered instance, binding,
-     * or is an instantiable class.
+     * or is an instantiable class. Note that a true return does not guarantee
+     * get() will succeed — constructor dependency resolution may still throw
+     * ContainerException at resolve time (per PSR-11 §1.3.1).
      *
      * @param string $id Identifier of the entry to look for
      * @return bool

@@ -44,12 +44,12 @@ final class Config
      * the given environment name.
      *
      * @param string $configPath  Absolute path to the config directory
-     * @param string $environment Environment name (e.g. 'production', 'testing')
+     * @param string|null $environment Environment name (e.g. 'production', 'testing')
      * @return void
      * @throws RuntimeException If the config directory does not exist
      * @throws RuntimeException If already loaded
      */
-    public static function load(string $configPath, string $environment = ''): void
+    public static function load(string $configPath, ?string $environment = null): void
     {
         $instance = self::getInstance();
 
@@ -65,7 +65,7 @@ final class Config
 
         $instance->items = self::loadDirectory($configPath);
 
-        if ($environment !== '') {
+        if ($environment !== null) {
             $envPath = $configPath . \DIRECTORY_SEPARATOR . $environment;
 
             if (is_dir($envPath)) {
@@ -187,7 +187,9 @@ final class Config
         $files = glob($directory . \DIRECTORY_SEPARATOR . '*.php');
 
         if ($files === false) {
-            return $items;
+            throw new RuntimeException(
+                'Failed to scan config directory: ' . $directory
+            );
         }
 
         foreach ($files as $file) {
