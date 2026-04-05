@@ -188,6 +188,22 @@ final class Log implements LoggerInterface
     }
 
     /**
+     * PSR-3 level string to Monolog Level mapping.
+     *
+     * @var array<string, Level>
+     */
+    private const array LEVEL_MAP = [
+        'emergency' => Level::Emergency,
+        'alert'     => Level::Alert,
+        'critical'  => Level::Critical,
+        'error'     => Level::Error,
+        'warning'   => Level::Warning,
+        'notice'    => Level::Notice,
+        'info'      => Level::Info,
+        'debug'     => Level::Debug,
+    ];
+
+    /**
      * Convert a PSR-3 log level to a Monolog Level.
      *
      * @param mixed $level PSR-3 log level (string or Level)
@@ -200,19 +216,13 @@ final class Log implements LoggerInterface
             return $level;
         }
 
-        return match ($level) {
-            'emergency' => Level::Emergency,
-            'alert'     => Level::Alert,
-            'critical'  => Level::Critical,
-            'error'     => Level::Error,
-            'warning'   => Level::Warning,
-            'notice'    => Level::Notice,
-            'info'      => Level::Info,
-            'debug'     => Level::Debug,
-            default     => throw new InvalidArgumentException(
-                'Invalid log level: ' . (\is_string($level) ? $level : get_debug_type($level)),
-            ),
-        };
+        if (\is_string($level) && isset(self::LEVEL_MAP[$level])) {
+            return self::LEVEL_MAP[$level];
+        }
+
+        throw new InvalidArgumentException(
+            'Invalid log level: ' . (\is_string($level) ? $level : get_debug_type($level)),
+        );
     }
 
     /**
