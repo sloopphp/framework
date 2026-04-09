@@ -48,10 +48,12 @@ final class Arr
      *
      * Returns a new array with the value set. The original array is not modified.
      *
-     * @param array<array-key, mixed> $array Source array
-     * @param string                  $key   Dot-notated key
-     * @param mixed                   $value Value to set
+     * @param  array<array-key, mixed> $array Source array
+     * @param  string                  $key   Dot-notated key
+     * @param  mixed                   $value Value to set
      * @return array<array-key, mixed>
+     *
+     * @noinspection PhpMultipleClassDeclarationsInspection — symfony/polyfill-php85 stub is PHP <8.5 guarded
      */
     #[\NoDiscard('Arr::set() returns a new array. The original is not modified.')]
     public static function set(array $array, string $key, mixed $value): array
@@ -266,6 +268,32 @@ final class Arr
         }
 
         return $array;
+    }
+
+    /**
+     * Get a list of strings from an array by key, with a default fallback.
+     *
+     * Returns the default if the key is missing or the value is not an array.
+     * Non-string elements are filtered out from array values, and the result
+     * is re-indexed as a list.
+     *
+     * Useful for reading typed config sections like allowed origins, methods,
+     * or tags where non-string entries should be silently discarded rather
+     * than causing type errors downstream.
+     *
+     * @param  array<array-key, mixed> $array   Source array
+     * @param  string|int              $key     Dot-notated key
+     * @param  list<string>            $default Default value if not set or invalid
+     * @return list<string>
+     */
+    public static function stringList(array $array, string|int $key, array $default = []): array
+    {
+        $value = self::get($array, $key);
+        if (!\is_array($value)) {
+            return $default;
+        }
+
+        return array_values(array_filter($value, 'is_string'));
     }
 
     /**

@@ -297,11 +297,120 @@ final class ArrTest extends TestCase
     }
 
     // -------------------------------------------------------
+    // stringList
+    // -------------------------------------------------------
+
+    public function testStringListReturnsStringsFromTopLevelKey(): void
+    {
+        $result = Arr::stringList(['tags' => ['php', 'api', 'sloop']], 'tags');
+
+        $this->assertSame(['php', 'api', 'sloop'], $result);
+    }
+
+    public function testStringListFiltersOutNonStringElements(): void
+    {
+        $result = Arr::stringList(['mixed' => ['a', 1, 'b', null, 'c', true]], 'mixed');
+
+        $this->assertSame(['a', 'b', 'c'], $result);
+    }
+
+    public function testStringListReturnsListWithSequentialKeys(): void
+    {
+        $result = Arr::stringList(['items' => [10 => 'a', 20 => 'b', 30 => 'c']], 'items');
+
+        $this->assertSame(['a', 'b', 'c'], $result);
+    }
+
+    public function testStringListReturnsDefaultForMissingKey(): void
+    {
+        $result = Arr::stringList([], 'missing', ['fallback']);
+
+        $this->assertSame(['fallback'], $result);
+    }
+
+    /**
+     * @param mixed $value Invalid (non-array) value stored at the config key
+     */
+    #[DataProvider('nonArrayValueProvider')]
+    public function testStringListReturnsDefaultForNonArrayValue(mixed $value): void
+    {
+        $result = Arr::stringList(['key' => $value], 'key', ['fallback']);
+
+        $this->assertSame(['fallback'], $result);
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function nonArrayValueProvider(): array
+    {
+        return [
+            'string'  => ['not an array'],
+            'integer' => [42],
+            'float'   => [3.14],
+            'true'    => [true],
+            'false'   => [false],
+            'null'    => [null],
+            'object'  => [new \stdClass()],
+        ];
+    }
+
+    public function testStringListAcceptsIntegerKey(): void
+    {
+        $result = Arr::stringList([0 => ['a', 'b', 'c']], 0);
+
+        $this->assertSame(['a', 'b', 'c'], $result);
+    }
+
+    public function testStringListConvertsStringKeyedArrayToList(): void
+    {
+        $result = Arr::stringList([
+            'tags' => ['first' => 'php', 'second' => 'api', 'third' => 'sloop'],
+        ], 'tags');
+
+        $this->assertSame(['php', 'api', 'sloop'], $result);
+    }
+
+    public function testStringListReturnsEmptyListWhenAllElementsAreNonString(): void
+    {
+        $result = Arr::stringList(['items' => [1, 2, 3, true, null]], 'items', ['default']);
+
+        $this->assertSame([], $result);
+    }
+
+    public function testStringListReturnsDefaultForMissingNestedDotNotationKey(): void
+    {
+        $result = Arr::stringList(['a' => []], 'a.b.c', ['default']);
+
+        $this->assertSame(['default'], $result);
+    }
+
+    public function testStringListReturnsEmptyDefaultWhenNoDefaultGiven(): void
+    {
+        $this->assertSame([], Arr::stringList([], 'missing'));
+    }
+
+    public function testStringListSupportsDotNotation(): void
+    {
+        $config = ['cors' => ['allowed_origins' => ['https://example.com', 'https://api.example.com']]];
+        $result = Arr::stringList($config, 'cors.allowed_origins');
+
+        $this->assertSame(['https://example.com', 'https://api.example.com'], $result);
+    }
+
+    public function testStringListReturnsEmptyListForEmptyArray(): void
+    {
+        $result = Arr::stringList(['items' => []], 'items', ['default']);
+
+        $this->assertSame([], $result);
+    }
+
+    // -------------------------------------------------------
     // wrap
     // -------------------------------------------------------
 
     /**
-     * @param array<mixed> $expected
+     * @param array<array-key, mixed> $expected
      */
     #[DataProvider('wrapProvider')]
     public function testWrap(mixed $input, array $expected): void
@@ -310,7 +419,7 @@ final class ArrTest extends TestCase
     }
 
     /**
-     * @return array<string, array{mixed, array<mixed>}>
+     * @return array<string, array{mixed, array<array-key, mixed>}>
      */
     public static function wrapProvider(): array
     {
