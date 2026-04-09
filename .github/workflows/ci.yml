@@ -94,3 +94,30 @@ jobs:
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse
+
+  mutation-testing:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: intl
+          coverage: pcov
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run Infection (mutation testing)
+        run: vendor/bin/infection --threads=4 --no-progress

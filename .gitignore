@@ -7,4 +7,6 @@
 .phpunit.cache/
 .phpunit.result.cache
 /storage/
+/build/
+.infection.cache/
 *.log

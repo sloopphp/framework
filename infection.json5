@@ -1,0 +1,23 @@
+{
+    "$schema": "./vendor/infection/infection/resources/schema.json",
+    "source": {
+        "directories": [
+            "src"
+        ]
+    },
+    "timeout": 30,
+    "logs": {
+        "text": "build/infection/infection.log",
+        "html": "build/infection/infection.html",
+        "summary": "build/infection/summary.log",
+        "json": "build/infection/infection.json"
+    },
+    "tmpDir": "build/infection/tmp",
+    "minMsi": 85,
+    "minCoveredMsi": 85,
+    "mutators": {
+        "@default": true
+    },
+    "testFramework": "phpunit",
+    "testFrameworkOptions": "--testdox"
+}
