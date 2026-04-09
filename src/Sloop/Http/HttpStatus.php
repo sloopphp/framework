@@ -7,8 +7,33 @@ namespace Sloop\Http;
 /**
  * HTTP status code constants.
  *
- * Covers all standard status codes defined in RFC 9110 (HTTP Semantics),
+ * Covers standard status codes defined in RFC 9110 (HTTP Semantics),
  * RFC 6585, RFC 7725, RFC 8297, and RFC 8470.
+ *
+ * Framework APIs accept `int` status codes so any integer value —
+ * standard or custom — can be passed.
+ *
+ * ## Using standard codes
+ *
+ * ```php
+ * return $this->response($data)->status(HttpStatus::Ok)->json();
+ * throw new DomainException('Validation failed', HttpStatus::UnprocessableEntity);
+ * ```
+ *
+ * ## Using non-standard / custom codes
+ *
+ * Pass custom codes as raw integers:
+ *
+ * ```php
+ * // Cloudflare 520 (Web Server Returned an Unknown Error)
+ * return $this->response()->error('Upstream down', 520);
+ *
+ * // nginx 499 (Client Closed Request)
+ * throw new InfrastructureException('Client disconnected', 499);
+ * ```
+ *
+ * For frequently used custom codes, define your own constants class in
+ * application code.
  */
 final class HttpStatus
 {
