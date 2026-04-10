@@ -297,6 +297,262 @@ final class ArrTest extends TestCase
     }
 
     // -------------------------------------------------------
+    // getString
+    // -------------------------------------------------------
+
+    public function testGetStringReturnsStringValue(): void
+    {
+        $this->assertSame('hello', Arr::getString(['key' => 'hello'], 'key'));
+    }
+
+    public function testGetStringReturnsDefaultForMissingKey(): void
+    {
+        $this->assertSame('fallback', Arr::getString([], 'missing', 'fallback'));
+    }
+
+    public function testGetStringReturnsEmptyStringDefault(): void
+    {
+        $this->assertSame('', Arr::getString([], 'missing'));
+    }
+
+    public function testGetStringReturnsDefaultForNonStringValue(): void
+    {
+        $this->assertSame('fallback', Arr::getString(['key' => 42], 'key', 'fallback'));
+        $this->assertSame('fallback', Arr::getString(['key' => null], 'key', 'fallback'));
+        $this->assertSame('fallback', Arr::getString(['key' => true], 'key', 'fallback'));
+        $this->assertSame('fallback', Arr::getString(['key' => ['nested']], 'key', 'fallback'));
+    }
+
+    public function testGetStringSupportsDotNotation(): void
+    {
+        $this->assertSame('TestApp', Arr::getString(['app' => ['name' => 'TestApp']], 'app.name'));
+    }
+
+    public function testGetStringPreservesEmptyStringValue(): void
+    {
+        $this->assertSame('', Arr::getString(['key' => ''], 'key', 'fallback'));
+    }
+
+    public function testGetStringReturnsDefaultForFloatValue(): void
+    {
+        $this->assertSame('fallback', Arr::getString(['key' => 3.14], 'key', 'fallback'));
+    }
+
+    public function testGetStringReturnsDefaultForMissingNestedKey(): void
+    {
+        $this->assertSame('fallback', Arr::getString(['app' => []], 'app.name', 'fallback'));
+    }
+
+    public function testGetStringAcceptsIntegerKey(): void
+    {
+        $this->assertSame('value', Arr::getString([0 => 'value'], 0));
+    }
+
+    // -------------------------------------------------------
+    // getInt
+    // -------------------------------------------------------
+
+    public function testGetIntReturnsIntValue(): void
+    {
+        $this->assertSame(42, Arr::getInt(['key' => 42], 'key'));
+    }
+
+    public function testGetIntReturnsDefaultForMissingKey(): void
+    {
+        $this->assertSame(99, Arr::getInt([], 'missing', 99));
+    }
+
+    public function testGetIntReturnsZeroDefault(): void
+    {
+        $this->assertSame(0, Arr::getInt([], 'missing'));
+    }
+
+    public function testGetIntReturnsDefaultForNonIntValue(): void
+    {
+        $this->assertSame(99, Arr::getInt(['key' => '42'], 'key', 99));
+        $this->assertSame(99, Arr::getInt(['key' => 3.14], 'key', 99));
+        $this->assertSame(99, Arr::getInt(['key' => true], 'key', 99));
+        $this->assertSame(99, Arr::getInt(['key' => null], 'key', 99));
+    }
+
+    public function testGetIntPreservesZero(): void
+    {
+        $this->assertSame(0, Arr::getInt(['key' => 0], 'key', 99));
+    }
+
+    public function testGetIntPreservesNegativeValue(): void
+    {
+        $this->assertSame(-1, Arr::getInt(['key' => -1], 'key', 99));
+    }
+
+    public function testGetIntReturnsDefaultForArrayValue(): void
+    {
+        $this->assertSame(99, Arr::getInt(['key' => [1, 2, 3]], 'key', 99));
+    }
+
+    public function testGetIntSupportsDotNotation(): void
+    {
+        $this->assertSame(86400, Arr::getInt(['cors' => ['max_age' => 86400]], 'cors.max_age'));
+    }
+
+    public function testGetIntAcceptsIntegerKey(): void
+    {
+        $this->assertSame(42, Arr::getInt([0 => 42], 0));
+    }
+
+    // -------------------------------------------------------
+    // getFloat
+    // -------------------------------------------------------
+
+    public function testGetFloatReturnsFloatValue(): void
+    {
+        $this->assertSame(3.14, Arr::getFloat(['key' => 3.14], 'key'));
+    }
+
+    public function testGetFloatPromotesIntToFloat(): void
+    {
+        $this->assertSame(42.0, Arr::getFloat(['key' => 42], 'key'));
+    }
+
+    public function testGetFloatReturnsDefaultForMissingKey(): void
+    {
+        $this->assertSame(1.5, Arr::getFloat([], 'missing', 1.5));
+    }
+
+    public function testGetFloatReturnsZeroDefault(): void
+    {
+        $this->assertSame(0.0, Arr::getFloat([], 'missing'));
+    }
+
+    public function testGetFloatReturnsDefaultForNonNumericValue(): void
+    {
+        $this->assertSame(1.5, Arr::getFloat(['key' => '3.14'], 'key', 1.5));
+        $this->assertSame(1.5, Arr::getFloat(['key' => true], 'key', 1.5));
+        $this->assertSame(1.5, Arr::getFloat(['key' => null], 'key', 1.5));
+    }
+
+    public function testGetFloatPreservesZero(): void
+    {
+        $this->assertSame(0.0, Arr::getFloat(['key' => 0.0], 'key', 1.5));
+    }
+
+    public function testGetFloatPreservesNegativeValue(): void
+    {
+        $this->assertSame(-2.5, Arr::getFloat(['key' => -2.5], 'key', 1.5));
+    }
+
+    public function testGetFloatReturnsDefaultForArrayValue(): void
+    {
+        $this->assertSame(1.5, Arr::getFloat(['key' => [1.0, 2.0]], 'key', 1.5));
+    }
+
+    public function testGetFloatSupportsDotNotation(): void
+    {
+        $this->assertSame(0.95, Arr::getFloat(['stats' => ['rate' => 0.95]], 'stats.rate'));
+    }
+
+    public function testGetFloatAcceptsIntegerKey(): void
+    {
+        $this->assertSame(3.14, Arr::getFloat([0 => 3.14], 0));
+    }
+
+    // -------------------------------------------------------
+    // getBool
+    // -------------------------------------------------------
+
+    public function testGetBoolReturnsTrueValue(): void
+    {
+        $this->assertTrue(Arr::getBool(['key' => true], 'key'));
+    }
+
+    public function testGetBoolReturnsFalseValue(): void
+    {
+        $this->assertFalse(Arr::getBool(['key' => false], 'key', true));
+    }
+
+    public function testGetBoolReturnsDefaultForMissingKey(): void
+    {
+        $this->assertTrue(Arr::getBool([], 'missing', true));
+    }
+
+    public function testGetBoolReturnsFalseDefault(): void
+    {
+        $this->assertFalse(Arr::getBool([], 'missing'));
+    }
+
+    public function testGetBoolReturnsDefaultForNonBoolValue(): void
+    {
+        $this->assertTrue(Arr::getBool(['key' => 1], 'key', true));
+        $this->assertTrue(Arr::getBool(['key' => 'true'], 'key', true));
+        $this->assertTrue(Arr::getBool(['key' => 'yes'], 'key', true));
+        $this->assertTrue(Arr::getBool(['key' => null], 'key', true));
+    }
+
+    public function testGetBoolReturnsDefaultForIntZero(): void
+    {
+        // Strict semantic: int 0 is not bool false, returns default (true here proves strictness)
+        $this->assertTrue(Arr::getBool(['key' => 0], 'key', true));
+    }
+
+    public function testGetBoolReturnsDefaultForFloatValue(): void
+    {
+        $this->assertTrue(Arr::getBool(['key' => 1.0], 'key', true));
+    }
+
+    public function testGetBoolReturnsDefaultForArrayValue(): void
+    {
+        $this->assertTrue(Arr::getBool(['key' => []], 'key', true));
+    }
+
+    public function testGetBoolSupportsDotNotation(): void
+    {
+        $this->assertTrue(Arr::getBool(['cors' => ['allow_credentials' => true]], 'cors.allow_credentials'));
+    }
+
+    public function testGetBoolAcceptsIntegerKey(): void
+    {
+        $this->assertTrue(Arr::getBool([0 => true], 0));
+    }
+
+    // -------------------------------------------------------
+    // toStringList
+    // -------------------------------------------------------
+
+    public function testToStringListReturnsListFromArrayOfStrings(): void
+    {
+        $this->assertSame(['php', 'api', 'sloop'], Arr::toStringList(['php', 'api', 'sloop']));
+    }
+
+    public function testToStringListFiltersOutNonStringElements(): void
+    {
+        $this->assertSame(['a', 'b'], Arr::toStringList(['a', 1, 'b', null, true]));
+    }
+
+    public function testToStringListReturnsListWithSequentialKeys(): void
+    {
+        $this->assertSame(['a', 'b', 'c'], Arr::toStringList([10 => 'a', 20 => 'b', 30 => 'c']));
+    }
+
+    public function testToStringListReturnsEmptyListForEmptyArray(): void
+    {
+        $this->assertSame([], Arr::toStringList([], ['default']));
+    }
+
+    /**
+     * @param mixed $value Invalid (non-array) value
+     */
+    #[DataProvider('nonArrayValueProvider')]
+    public function testToStringListReturnsDefaultForNonArrayValue(mixed $value): void
+    {
+        $this->assertSame(['fallback'], Arr::toStringList($value, ['fallback']));
+    }
+
+    public function testToStringListReturnsEmptyDefaultWhenNoDefaultGiven(): void
+    {
+        $this->assertSame([], Arr::toStringList(null));
+    }
+
+    // -------------------------------------------------------
     // stringList
     // -------------------------------------------------------
 

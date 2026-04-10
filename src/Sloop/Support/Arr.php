@@ -271,6 +271,112 @@ final class Arr
     }
 
     /**
+     * Get a string value from an array by key, with a default fallback.
+     *
+     * Returns the default if the key is missing or the value is not a string.
+     * Strict: only actual string values are accepted (no implicit casting).
+     *
+     * @param  array<array-key, mixed> $array   Source array
+     * @param  string|int              $key     Dot-notated key
+     * @param  string                  $default Default value
+     * @return string
+     */
+    public static function getString(array $array, string|int $key, string $default = ''): string
+    {
+        $value = self::get($array, $key);
+
+        return \is_string($value) ? $value : $default;
+    }
+
+    /**
+     * Get an int value from an array by key, with a default fallback.
+     *
+     * Returns the default if the key is missing or the value is not an int.
+     * Strict: only actual int values are accepted (no implicit casting from
+     * numeric strings or floats).
+     *
+     * @param  array<array-key, mixed> $array   Source array
+     * @param  string|int              $key     Dot-notated key
+     * @param  int                     $default Default value
+     * @return int
+     */
+    public static function getInt(array $array, string|int $key, int $default = 0): int
+    {
+        $value = self::get($array, $key);
+
+        return \is_int($value) ? $value : $default;
+    }
+
+    /**
+     * Get a float value from an array by key, with a default fallback.
+     *
+     * Returns the default if the key is missing or the value is neither
+     * float nor int. Int values are implicitly promoted to float to match
+     * PHP's native type promotion behavior.
+     *
+     * @param  array<array-key, mixed> $array   Source array
+     * @param  string|int              $key     Dot-notated key
+     * @param  float                   $default Default value
+     * @return float
+     */
+    public static function getFloat(array $array, string|int $key, float $default = 0.0): float
+    {
+        $value = self::get($array, $key);
+
+        if (\is_float($value)) {
+            return $value;
+        }
+
+        if (\is_int($value)) {
+            return (float) $value;
+        }
+
+        return $default;
+    }
+
+    /**
+     * Get a bool value from an array by key, with a default fallback.
+     *
+     * Returns the default if the key is missing or the value is not a bool.
+     * Strict: only actual bool values are accepted (no truthy casting from
+     * int, string, etc.). Use `(bool) Arr::get(...)` if you need lenient
+     * casting.
+     *
+     * @param  array<array-key, mixed> $array   Source array
+     * @param  string|int              $key     Dot-notated key
+     * @param  bool                    $default Default value
+     * @return bool
+     */
+    public static function getBool(array $array, string|int $key, bool $default = false): bool
+    {
+        $value = self::get($array, $key);
+
+        return \is_bool($value) ? $value : $default;
+    }
+
+    /**
+     * Convert a mixed value to a list of strings.
+     *
+     * Returns the default if the value is not an array. Non-string elements
+     * are filtered out, and the result is re-indexed as a list.
+     *
+     * Useful when normalizing values from sources that return `mixed`, such
+     * as `require`-ed config files or untyped function returns.
+     *
+     * @param  mixed        $value   Value to normalize
+     * @param  list<string> $default Default value if the input is not an array
+     * @return list<string>
+     */
+    public static function toStringList(mixed $value, array $default = []): array
+    {
+        if (!\is_array($value)) {
+            return $default;
+        }
+
+        return array_values(array_filter($value, 'is_string'));
+    }
+
+    /**
      * Get a list of strings from an array by key, with a default fallback.
      *
      * Returns the default if the key is missing or the value is not an array.
@@ -288,12 +394,7 @@ final class Arr
      */
     public static function stringList(array $array, string|int $key, array $default = []): array
     {
-        $value = self::get($array, $key);
-        if (!\is_array($value)) {
-            return $default;
-        }
-
-        return array_values(array_filter($value, 'is_string'));
+        return self::toStringList(self::get($array, $key), $default);
     }
 
     /**
