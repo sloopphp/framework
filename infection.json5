@@ -13,8 +13,8 @@
         "json": "build/infection/infection.json"
     },
     "tmpDir": "build/infection/tmp",
-    "minMsi": 85,
-    "minCoveredMsi": 85,
+    "minMsi": 95,
+    "minCoveredMsi": 95,
     "mutators": {
         "@default": true
     },

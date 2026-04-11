@@ -55,7 +55,7 @@ final class ConfigTest extends TestCase
     public function testLoadThrowsForNonexistentDirectory(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Config directory does not exist');
+        $this->expectExceptionMessage('Config directory does not exist: /nonexistent/path');
 
         Config::load('/nonexistent/path');
     }
@@ -72,10 +72,14 @@ final class ConfigTest extends TestCase
 
     public function testLoadThrowsForNonArrayConfigFile(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Config file must return an array');
+        $invalidPath = $this->fixturesPath . '/invalid';
 
-        Config::load($this->fixturesPath . '/invalid');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Config file must return an array, got string: ' . $invalidPath . DIRECTORY_SEPARATOR . 'broken.php'
+        );
+
+        Config::load($invalidPath);
     }
 
     // ---------------------------------------------------------------
@@ -207,36 +211,32 @@ final class ConfigTest extends TestCase
     {
         Config::load($this->fixturesPath);
 
-        $exception = null;
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('error');
 
         try {
-            Config::withConfig(['app.name' => 'Temp'], function () {
+            Config::withConfig(['app.name' => 'Temp'], static function (): never {
                 throw new RuntimeException('error');
             });
-        } catch (RuntimeException $e) {
-            $exception = $e;
+        } finally {
+            $this->assertSame('Sloop', Config::get('app.name'));
         }
-
-        $this->assertInstanceOf(RuntimeException::class, $exception);
-        $this->assertSame('Sloop', Config::get('app.name'));
     }
 
     public function testWithConfigRestoresOnError(): void
     {
         Config::load($this->fixturesPath);
 
-        $error = null;
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessage('fatal');
 
         try {
-            Config::withConfig(['app.name' => 'Temp'], function () {
+            Config::withConfig(['app.name' => 'Temp'], static function (): never {
                 throw new \Error('fatal');
             });
-        } catch (\Error $e) {
-            $error = $e;
+        } finally {
+            $this->assertSame('Sloop', Config::get('app.name'));
         }
-
-        $this->assertInstanceOf(\Error::class, $error);
-        $this->assertSame('Sloop', Config::get('app.name'));
     }
 
     public function testWithConfigReturnsCallbackResult(): void

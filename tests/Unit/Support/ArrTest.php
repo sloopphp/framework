@@ -49,6 +49,16 @@ final class ArrTest extends TestCase
         $this->assertSame('literal', Arr::get($array, 'user.name'));
     }
 
+    public function testGetReturnsValueByIntegerKeyIgnoringDefault(): void
+    {
+        $this->assertSame('b', Arr::get(['a', 'b', 'c'], 1, 'fallback'));
+    }
+
+    public function testGetReturnsDefaultForMissingIntegerKey(): void
+    {
+        $this->assertSame('fallback', Arr::get(['a', 'b'], 99, 'fallback'));
+    }
+
     // -------------------------------------------------------
     // set
     // -------------------------------------------------------
@@ -99,12 +109,26 @@ final class ArrTest extends TestCase
         $this->assertTrue(Arr::has(['foo' => 'bar'], 'foo'));
     }
 
+    public function testHasPrioritizesLiteralDotKey(): void
+    {
+        $array = ['a.b' => 'literal'];
+
+        $this->assertTrue(Arr::has($array, 'a.b'));
+    }
+
     public function testHasChecksNestedKeys(): void
     {
         $array = ['a' => ['b' => ['c' => 1]]];
 
         $this->assertTrue(Arr::has($array, 'a.b.c'));
         $this->assertFalse(Arr::has($array, 'a.b.d'));
+    }
+
+    public function testHasReturnsTrueForDeepNestedKey(): void
+    {
+        $array = ['a' => ['b' => 'value']];
+
+        $this->assertTrue(Arr::has($array, 'a.b'));
     }
 
     public function testHasWorksWithIntegerKeys(): void
@@ -205,6 +229,11 @@ final class ArrTest extends TestCase
         $this->assertSame('none', Arr::last([], default: 'none'));
     }
 
+    public function testLastReturnsLastElementWithStringKeys(): void
+    {
+        $this->assertSame('c', Arr::last(['x' => 'a', 'y' => 'b', 'z' => 'c']));
+    }
+
     // -------------------------------------------------------
     // flatten
     // -------------------------------------------------------
@@ -222,6 +251,40 @@ final class ArrTest extends TestCase
     public function testFlattenReturnsFlatArrayAsIs(): void
     {
         $this->assertSame([1, 2, 3], Arr::flatten([1, 2, 3]));
+    }
+
+    public function testFlattenDepthOneDiffersFromDepthTwo(): void
+    {
+        $nested = [[[1, 2], [3]], [[4]]];
+
+        $depth1 = Arr::flatten($nested, 1);
+        $depth2 = Arr::flatten($nested, 2);
+
+        $this->assertSame([[1, 2], [3], [4]], $depth1);
+        $this->assertSame([1, 2, 3, 4], $depth2);
+    }
+
+    public function testFlattenDepthTwoPreservesThirdLevel(): void
+    {
+        $nested = [[[[1, 2]], [3]], [4]];
+
+        $result = Arr::flatten($nested, 2);
+
+        $this->assertSame([[1, 2], 3, 4], $result);
+    }
+
+    public function testFlattenDepthOnePreservesValuesOrder(): void
+    {
+        $array = [['a', 'b'], ['c']];
+
+        $this->assertSame(['a', 'b', 'c'], Arr::flatten($array, 1));
+    }
+
+    public function testFlattenDepthOneDropsStringKeys(): void
+    {
+        $array = [['x' => 1, 'y' => 2], ['z' => 3]];
+
+        $this->assertSame([1, 2, 3], Arr::flatten($array, 1));
     }
 
     // -------------------------------------------------------
@@ -261,12 +324,28 @@ final class ArrTest extends TestCase
     public function testPluckThrowsExceptionWhenKeyIsMissing(): void
     {
         $this->expectException(\UnexpectedValueException::class);
-        $this->expectExceptionMessage('Pluck key \'id\' must resolve to a string or integer');
+        $this->expectExceptionMessage(
+            'Pluck key \'id\' must resolve to a string or integer, got null.'
+        );
 
         Arr::pluck(
             [['id' => 1, 'name' => 'Alice'], ['name' => 'Bob']],
             'name',
             'id',
+        );
+    }
+
+    public function testPluckThrowsExceptionWhenKeyIsArray(): void
+    {
+        $this->expectException(\UnexpectedValueException::class);
+        $this->expectExceptionMessage(
+            'Pluck key \'meta\' must resolve to a string or integer, got array.'
+        );
+
+        Arr::pluck(
+            [['meta' => ['nested'], 'name' => 'Alice']],
+            'name',
+            'meta',
         );
     }
 
@@ -294,6 +373,27 @@ final class ArrTest extends TestCase
         $result = Arr::merge(['a' => 1], ['b' => 2], ['c' => 3]);
 
         $this->assertSame(['a' => 1, 'b' => 2, 'c' => 3], $result);
+    }
+
+    public function testMergeOverwritesWhenValueIsNotArray(): void
+    {
+        $result = Arr::merge(['key' => ['a' => 1]], ['key' => 'scalar']);
+
+        $this->assertSame(['key' => 'scalar'], $result);
+    }
+
+    public function testMergeOverwritesWhenBaseKeyIsNotArray(): void
+    {
+        $result = Arr::merge(['key' => 'scalar'], ['key' => ['a' => 1]]);
+
+        $this->assertSame(['key' => ['a' => 1]], $result);
+    }
+
+    public function testMergeOverwritesWhenBaseKeyDoesNotExist(): void
+    {
+        $result = Arr::merge([], ['key' => ['a' => 1]]);
+
+        $this->assertSame(['key' => ['a' => 1]], $result);
     }
 
     // -------------------------------------------------------
@@ -751,9 +851,17 @@ final class ArrTest extends TestCase
     public function testFlattenThrowsExceptionForNegativeDepth(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Depth must not be negative');
+        $this->expectExceptionMessage('Depth must not be negative, got -1.');
 
         Arr::flatten([[1, 2]], -1);
+    }
+
+    public function testFlattenThrowsExceptionForNegativeDepthIncludesValue(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Depth must not be negative, got -5.');
+
+        Arr::flatten([[1, 2]], -5);
     }
 
     public function testFirstReturnsNullForEmptyArrayWithoutDefault(): void

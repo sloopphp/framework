@@ -219,6 +219,32 @@ final class SloopExceptionTest extends TestCase
     }
 
     // ---------------------------------------------------------------
+    // Exception code is always zero
+    // ---------------------------------------------------------------
+
+    public function testExceptionCodeIsZeroByDefault(): void
+    {
+        $exception = new DomainException('test');
+
+        $this->assertSame(0, $exception->getCode());
+    }
+
+    public function testExceptionCodeIsZeroRegardlessOfStatusCode(): void
+    {
+        $exception = new DomainException('test', HttpStatus::NotFound);
+
+        $this->assertSame(0, $exception->getCode());
+    }
+
+    public function testExceptionCodeIsZeroWithPreviousException(): void
+    {
+        $previous  = new RuntimeException('original', 42);
+        $exception = new InfrastructureException('wrapped', 0, '', $previous);
+
+        $this->assertSame(0, $exception->getCode());
+    }
+
+    // ---------------------------------------------------------------
     // Inheritance
     // ---------------------------------------------------------------
 

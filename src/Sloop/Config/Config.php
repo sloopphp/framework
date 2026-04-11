@@ -120,7 +120,6 @@ final class Config
      * @param array<string, mixed> $overrides Key-value pairs to override (dot notation supported)
      * @param callable(): T        $callback  Code to execute with overrides
      * @return T
-     * @throws \Throwable If the callback throws an exception
      */
     public static function withConfig(array $overrides, callable $callback): mixed
     {

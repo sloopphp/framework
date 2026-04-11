@@ -39,7 +39,7 @@ final class PathTest extends TestCase
     public function testInitThrowsExceptionForNonExistentDirectory(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Base path does not exist');
+        $this->expectExceptionMessage('Base path does not exist: /nonexistent/path/that/does/not/exist');
 
         Path::init('/nonexistent/path/that/does/not/exist');
     }
@@ -105,6 +105,22 @@ final class PathTest extends TestCase
 
         $expected = $this->fixturePath . DIRECTORY_SEPARATOR . 'config';
         $this->assertSame($expected, Path::config());
+    }
+
+    public function testConfigAppendsRelativePath(): void
+    {
+        Path::init($this->fixturePath);
+
+        $expected = $this->fixturePath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'middleware.php';
+        $this->assertSame($expected, Path::config('middleware.php'));
+    }
+
+    public function testConfigStripsLeadingSeparatorFromRelativePath(): void
+    {
+        Path::init($this->fixturePath);
+
+        $expected = $this->fixturePath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'middleware.php';
+        $this->assertSame($expected, Path::config('/middleware.php'));
     }
 
     public function testStorageReturnsStoragePath(): void

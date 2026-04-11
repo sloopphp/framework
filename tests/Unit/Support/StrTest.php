@@ -123,6 +123,16 @@ final class StrTest extends TestCase
         $this->assertSame('hello_world', Str::slug('Hello World', '_'));
     }
 
+    public function testSlugTrimsLeadingAndTrailingSeparator(): void
+    {
+        $this->assertSame('hello-world', Str::slug('-Hello World-'));
+    }
+
+    public function testSlugTrimsLeadingAndTrailingSeparatorCustom(): void
+    {
+        $this->assertSame('hello_world', Str::slug(' Hello World ', '_'));
+    }
+
     // -------------------------------------------------------
     // random
     // -------------------------------------------------------
@@ -137,12 +147,45 @@ final class StrTest extends TestCase
 
     public function testRandomDefaultLengthIsSixteen(): void
     {
-        $this->assertSame(16, \strlen(Str::random()));
+        $result = Str::random();
+
+        $this->assertSame(16, \strlen($result));
     }
 
     public function testRandomGeneratesUniqueValues(): void
     {
         $this->assertNotSame(Str::random(), Str::random());
+    }
+
+    public function testRandomGeneratesOnlyAlphanumericChars(): void
+    {
+        $result = Str::random(100);
+
+        $this->assertSame(100, \strlen($result));
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9]{100}$/', $result);
+    }
+
+    public function testRandomLengthOneGeneratesSingleChar(): void
+    {
+        $result = Str::random(1);
+
+        $this->assertSame(1, \strlen($result));
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9]$/', $result);
+    }
+
+    public function testRandomCoversFullCharset(): void
+    {
+        $chars  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        $seen   = [];
+        $result = Str::random(10000);
+
+        for ($i = 0; $i < \strlen($result); $i++) {
+            $seen[$result[$i]] = true;
+        }
+
+        for ($i = 0; $i < \strlen($chars); $i++) {
+            $this->assertArrayHasKey($chars[$i], $seen, 'Character "' . $chars[$i] . '" was never generated');
+        }
     }
 
     // -------------------------------------------------------
@@ -254,12 +297,31 @@ final class StrTest extends TestCase
     // Cache behavior
     // -------------------------------------------------------
 
-    public function testCacheReturnsSameResultForSameInput(): void
+    public function testCamelCacheReturnsSameResultOnSecondCall(): void
     {
-        $first  = Str::camel('foo_bar');
-        $second = Str::camel('foo_bar');
+        $first  = Str::camel('cache_test_camel');
+        $second = Str::camel('cache_test_camel');
 
+        $this->assertSame('cacheTestCamel', $first);
         $this->assertSame($first, $second);
+    }
+
+    public function testStudlyCacheReturnsSameResultOnSecondCall(): void
+    {
+        $first  = Str::studly('cache_test_studly');
+        $second = Str::studly('cache_test_studly');
+
+        $this->assertSame('CacheTestStudly', $first);
+        $this->assertSame($first, $second);
+    }
+
+    public function testSnakeCacheKeyIncludesDelimiter(): void
+    {
+        $underscore = Str::snake('FooBar');
+        $hyphen     = Str::snake('FooBar', '-');
+
+        $this->assertSame('foo_bar', $underscore);
+        $this->assertSame('foo-bar', $hyphen);
     }
 
     // -------------------------------------------------------
@@ -284,6 +346,11 @@ final class StrTest extends TestCase
     public function testStudlyReturnsEmptyForEmptyString(): void
     {
         $this->assertSame('', Str::studly(''));
+    }
+
+    public function testStudlySingleWordWithNoDelimiters(): void
+    {
+        $this->assertSame('Hello', Str::studly('hello'));
     }
 
     public function testRandomReturnsEmptyForZeroLength(): void
@@ -319,16 +386,32 @@ final class StrTest extends TestCase
     public function testRandomThrowsExceptionForNegativeLength(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Length must not be negative');
+        $this->expectExceptionMessage('Length must not be negative, got -1.');
 
         Str::random(-1);
+    }
+
+    public function testRandomThrowsExceptionIncludesActualValue(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Length must not be negative, got -10.');
+
+        Str::random(-10);
     }
 
     public function testTruncateThrowsExceptionForNegativeLimit(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Limit must not be negative');
+        $this->expectExceptionMessage('Limit must not be negative, got -1.');
 
         Str::truncate('hello', -1);
+    }
+
+    public function testTruncateThrowsExceptionIncludesActualValue(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Limit must not be negative, got -5.');
+
+        Str::truncate('hello', -5);
     }
 }

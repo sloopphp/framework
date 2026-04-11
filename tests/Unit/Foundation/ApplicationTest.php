@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Foundation;
 
+use Monolog\Logger;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
 use Sloop\Config\Config;
+use Sloop\Container\Container;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
+use Sloop\Routing\Router;
 use Sloop\Tests\Support\JsonBodyAssertions;
+use Sloop\Tests\Unit\Foundation\Stub\HealthController;
 
 /**
  * Integration tests for Application boot sequence and request dispatch.
@@ -271,6 +275,38 @@ final class ApplicationTest extends TestCase
         $this->assertSame('custom', $manager->defaultChannel);
     }
 
+    public function testContainerRegistersItself(): void
+    {
+        $app       = new Application($this->tmpDir);
+        $container = $app->container->get(Container::class);
+
+        $this->assertSame($app->container, $container);
+    }
+
+    public function testContainerRegistersRouter(): void
+    {
+        $app    = new Application($this->tmpDir);
+        $router = $app->container->get(Router::class);
+
+        $this->assertSame($app->router, $router);
+    }
+
+    public function testContainerRegistersApplication(): void
+    {
+        $app      = new Application($this->tmpDir);
+        $resolved = $app->container->get(Application::class);
+
+        $this->assertSame($app, $resolved);
+    }
+
+    public function testBootLogInitializesLogger(): void
+    {
+        new Application($this->tmpDir);
+
+        // Log::monolog() throws RuntimeException if init() was not called
+        $this->assertInstanceOf(Logger::class, Log::monolog());
+    }
+
     public function testDispatchRouteThrowsForNonObjectController(): void
     {
         $this->writeRoutes('<?php
@@ -281,7 +317,7 @@ final class ApplicationTest extends TestCase
         $app->container->instance('NonObjectController', 'not an object');
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Controller must be an object');
+        $this->expectExceptionMessage('Controller must be an object: NonObjectController');
 
         $app->run($this->createRequest('GET', '/test'));
     }
@@ -297,7 +333,10 @@ final class ApplicationTest extends TestCase
         $app = new Application($this->tmpDir);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Middleware must implement MiddlewareInterface');
+        $this->expectExceptionMessage(
+            'Middleware must implement MiddlewareInterface: '
+            . HealthController::class,
+        );
 
         $app->run($this->createRequest('GET', '/anything'));
     }

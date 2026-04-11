@@ -234,4 +234,14 @@ final class ResponseTest extends TestCase
 
         $this->assertSame('second', $psr->getHeaderLine('X-Request-Id'));
     }
+
+    public function testRawThrowsJsonExceptionForInvalidData(): void
+    {
+        $formatterWithoutThrow = new ApiResponseFormatter(JSON_UNESCAPED_UNICODE);
+        $response              = new Response(\NAN, $formatterWithoutThrow);
+
+        $this->expectException(\JsonException::class);
+
+        $response->raw();
+    }
 }

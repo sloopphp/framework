@@ -105,7 +105,6 @@ final class Env
      * @param array<string, string|null> $variables Variables to set (null to unset)
      * @param callable(): T              $callback  Code to execute with overrides
      * @return T
-     * @throws \Throwable If the callback throws an exception
      */
     public static function withEnv(array $variables, callable $callback): mixed
     {

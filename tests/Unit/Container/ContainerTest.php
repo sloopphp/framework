@@ -27,7 +27,7 @@ final class ContainerTest extends TestCase
 
     public function testImplementsContainerInterface(): void
     {
-        $this->assertInstanceOf(ContainerInterface::class, $this->container);
+        $this->assertInstanceOf(ContainerInterface::class, new Container());
     }
 
     // ---------------------------------------------------------------
@@ -99,6 +99,23 @@ final class ContainerTest extends TestCase
         $b = $this->container->get(SimpleInterface::class);
 
         $this->assertSame($a, $b);
+    }
+
+    public function testSingletonClosureIsCalledOnlyOnce(): void
+    {
+        $counter        = new \stdClass();
+        $counter->value = 0;
+        $this->container->singleton(SimpleInterface::class, function () use ($counter) {
+            $counter->value++;
+
+            return new SimpleClass();
+        });
+
+        $this->container->get(SimpleInterface::class);
+        $this->container->get(SimpleInterface::class);
+        $this->container->get(SimpleInterface::class);
+
+        $this->assertSame(1, $counter->value);
     }
 
     // ---------------------------------------------------------------
@@ -293,7 +310,7 @@ final class ContainerTest extends TestCase
     public function testAutowireUnionTypeWithoutDefaultThrows(): void
     {
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage('Cannot resolve parameter');
+        $this->expectExceptionMessage('Cannot resolve parameter $value in ' . ClassWithUnionType::class . '::__construct().');
 
         $this->container->get(ClassWithUnionType::class);
     }
@@ -301,7 +318,7 @@ final class ContainerTest extends TestCase
     public function testAutowireThrowsForUnboundInterfaceDependency(): void
     {
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessage('Entry not found');
+        $this->expectExceptionMessage('Entry not found: ' . SimpleInterface::class);
 
         $this->container->get(ClassWithInterfaceDependency::class);
     }
@@ -320,7 +337,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForNonexistentEntry(): void
     {
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessage('Entry not found');
+        $this->expectExceptionMessage('Entry not found: Nonexistent\Class');
 
         $this->container->get('Nonexistent\\Class');
     }
@@ -328,7 +345,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForAbstractClass(): void
     {
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessage('Entry is not instantiable');
+        $this->expectExceptionMessage('Entry is not instantiable: ' . AbstractService::class);
 
         $this->container->get(AbstractService::class);
     }
@@ -336,7 +353,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForCircularDependency(): void
     {
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage('Circular dependency detected');
+        $this->expectExceptionMessage('Circular dependency detected while resolving: ' . CircularA::class);
 
         $this->container->get(CircularA::class);
     }
@@ -344,7 +361,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForUnresolvableParameter(): void
     {
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage('Cannot resolve parameter');
+        $this->expectExceptionMessage('Cannot resolve parameter $required in ' . ClassWithUnresolvableParam::class . '::__construct().');
 
         $this->container->get(ClassWithUnresolvableParam::class);
     }

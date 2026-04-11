@@ -64,17 +64,41 @@ final class EnvTest extends TestCase
     public function testGetRequiredThrowsExceptionWhenNotSet(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage("Required environment variable 'SLOOP_NONEXISTENT_VAR' is not set.");
+        $this->expectExceptionMessage(
+            'Required environment variable \'SLOOP_NONEXISTENT_VAR\' is not set.'
+        );
 
         Env::get('SLOOP_NONEXISTENT_VAR', required: true);
+    }
+
+    public function testGetRequiredThrowsExceptionIncludesKeyName(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Required environment variable \'ANOTHER_MISSING_KEY\' is not set.'
+        );
+
+        Env::get('ANOTHER_MISSING_KEY', required: true);
     }
 
     public function testGetThrowsExceptionWhenRequiredAndDefaultBothSpecified(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("Cannot specify both 'required: true' and 'default'");
+        $this->expectExceptionMessage(
+            'Cannot specify both \'required: true\' and \'default\' for env var \'SLOOP_TEST_VAR\'.'
+        );
 
         Env::get('SLOOP_TEST_VAR', default: 'value', required: true);
+    }
+
+    public function testGetThrowsExceptionIncludesKeyInMessage(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(
+            'Cannot specify both \'required: true\' and \'default\' for env var \'MY_CUSTOM_KEY\'.'
+        );
+
+        Env::get('MY_CUSTOM_KEY', default: 'val', required: true);
     }
 
     // -------------------------------------------------------
@@ -127,6 +151,15 @@ final class EnvTest extends TestCase
 
         $this->assertSame('temporary', $result);
         $this->assertSame('original', Env::get('SLOOP_TEST_VAR'));
+    }
+
+    public function testWithEnvSetsVariableRetrievableByGetenv(): void
+    {
+        Env::withEnv(['SLOOP_PUTENV_TEST' => 'direct_check'], function (): void {
+            $this->assertSame('direct_check', getenv('SLOOP_PUTENV_TEST'));
+        });
+
+        $this->assertFalse(getenv('SLOOP_PUTENV_TEST'));
     }
 
     public function testWithEnvTemporarilyRemovesVariableWithNull(): void

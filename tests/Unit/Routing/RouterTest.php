@@ -127,9 +127,22 @@ final class RouterTest extends TestCase
         $routes = $this->router->routes;
 
         $this->assertCount(2, $routes);
+        $this->assertSame('index', $routes[0]->action);
+        $this->assertSame('find', $routes[1]->action);
         $this->assertNotNull($this->router->resolve('GET', '/users'));
         $this->assertNotNull($this->router->resolve('GET', '/users/1'));
         $this->assertNull($this->router->resolve('POST', '/users'));
+        $this->assertNull($this->router->resolve('PUT', '/users/1'));
+        $this->assertNull($this->router->resolve('DELETE', '/users/1'));
+    }
+
+    public function testResourceWithOnlyIgnoresInvalidMethodNames(): void
+    {
+        $this->router->resource('/items', 'ItemController', only: ['index', 'nonexistent']);
+        $routes = $this->router->routes;
+
+        $this->assertCount(1, $routes);
+        $this->assertSame('index', $routes[0]->action);
     }
 
     public function testResourceWithExcept(): void
@@ -304,6 +317,14 @@ final class RouterTest extends TestCase
 
         $this->assertNotNull($this->router->resolve('GET', '/test'));
         $this->assertNull($this->router->resolve('GET', '/42/test'));
+    }
+
+    public function testParameterizedRouteDoesNotMatchPartialPath(): void
+    {
+        $this->router->get('/users/{id}', 'UserController', 'find');
+
+        $this->assertNull($this->router->resolve('GET', '/users/42/extra'));
+        $this->assertNull($this->router->resolve('GET', '/prefix/users/42'));
     }
 
     public function testResourceWithOnlyAndExceptCombined(): void
