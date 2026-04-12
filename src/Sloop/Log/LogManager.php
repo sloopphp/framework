@@ -4,9 +4,15 @@ declare(strict_types=1);
 
 namespace Sloop\Log;
 
+use Monolog\Formatter\JsonFormatter;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Handler\HandlerInterface;
+use Monolog\Handler\RotatingFileHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
 use Monolog\Logger;
+use RuntimeException;
+use Sloop\Support\Arr;
 
 /**
  * Channel factory for Monolog logger instances.
@@ -31,44 +37,67 @@ final class LogManager
     private array $channels = [];
 
     /**
-     * Default log level for auto-created channels.
+     * Channel configurations keyed by channel name.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private array $channelConfigs;
+
+    /**
+     * Default log level for auto-created channels without configuration.
      *
      * @var Level
      */
     private Level $defaultLevel;
 
     /**
-     * Default stream for auto-created channels.
+     * Default stream for auto-created channels without configuration.
      *
      * @var string
      */
     private string $defaultStream;
 
     /**
+     * Custom channel factory resolver.
+     *
+     * Invoked when a channel uses the `custom` driver. Receives the factory
+     * class name and returns an instance implementing ChannelFactoryInterface.
+     *
+     * @var (callable(string): ChannelFactoryInterface)|null
+     */
+    private $customFactoryResolver;
+
+    /**
      * Create a new log manager.
      *
-     * @param string $defaultChannel Default channel name
-     * @param Level  $defaultLevel   Default log level for auto-created channels
-     * @param string $defaultStream  Default output stream for auto-created channels
+     * @param string                                        $defaultChannel        Default channel name
+     * @param array<string, array<string, mixed>>           $channels              Channel configurations from config/log.php
+     * @param Level                                         $defaultLevel          Default log level for unconfigured channels
+     * @param string                                        $defaultStream         Default output stream for unconfigured channels
+     * @param (callable(string): ChannelFactoryInterface)|null $customFactoryResolver Resolver for custom driver factories
      * @return void
      */
     public function __construct(
         string $defaultChannel = 'app',
+        array $channels = [],
         Level $defaultLevel = Level::Debug,
         string $defaultStream = 'php://stderr',
+        ?callable $customFactoryResolver = null,
     ) {
-        $this->defaultChannel = $defaultChannel;
-        $this->defaultLevel   = $defaultLevel;
-        $this->defaultStream  = $defaultStream;
+        $this->defaultChannel        = $defaultChannel;
+        $this->channelConfigs        = $channels;
+        $this->defaultLevel          = $defaultLevel;
+        $this->defaultStream         = $defaultStream;
+        $this->customFactoryResolver = $customFactoryResolver;
     }
 
     /**
      * Get the logger for the given channel.
      *
-     * Creates a new Monolog Logger with a StreamHandler if the channel
-     * has not been resolved before.
+     * Creates a new Monolog Logger based on the channel configuration,
+     * or falls back to a default StreamHandler if the channel is not configured.
      *
-     * @param string|null $name Channel name (null = default channel)
+     * @param  string|null $name Channel name (null = default channel)
      * @return Logger
      */
     public function channel(?string $name = null): Logger
@@ -85,8 +114,8 @@ final class LogManager
     /**
      * Register a pre-configured Monolog Logger for a channel.
      *
-     * @param string $name   Channel name
-     * @param Logger $logger Pre-configured Monolog Logger instance
+     * @param  string $name   Channel name
+     * @param  Logger $logger Pre-configured Monolog Logger instance
      * @return void
      */
     public function addChannel(string $name, Logger $logger): void
@@ -95,15 +124,146 @@ final class LogManager
     }
 
     /**
-     * Create a new Monolog Logger with a default StreamHandler.
+     * Create a new Monolog Logger based on channel configuration.
      *
-     * @param string $name Channel name
+     * @param  string $name Channel name
      * @return Logger
+     * @throws RuntimeException If the configuration is invalid
      */
     private function createLogger(string $name): Logger
     {
-        return new Logger($name, [
-            new StreamHandler($this->defaultStream, $this->defaultLevel),
-        ]);
+        $config = $this->channelConfigs[$name] ?? null;
+
+        if ($config === null) {
+            return new Logger($name, [
+                new StreamHandler($this->defaultStream, $this->defaultLevel),
+            ]);
+        }
+
+        $driver = Arr::getString($config, 'driver', 'stream');
+
+        if ($driver === 'custom') {
+            return $this->createCustomLogger($name, $config);
+        }
+
+        $handler = $this->createHandler($driver, $config);
+        $this->applyFormatter($handler, $config);
+
+        return new Logger($name, [$handler]);
+    }
+
+    /**
+     * Create a handler for a built-in driver.
+     *
+     * @param  string               $driver Driver name (`stream`, `daily`)
+     * @param  array<string, mixed> $config Channel configuration
+     * @return HandlerInterface
+     * @throws RuntimeException If the driver is unknown or required config is missing
+     */
+    private function createHandler(string $driver, array $config): HandlerInterface
+    {
+        $level = $this->resolveLevel(Arr::getString($config, 'level', 'debug'));
+
+        return match ($driver) {
+            'stream' => new StreamHandler(
+                Arr::getString($config, 'stream', $this->defaultStream),
+                $level,
+            ),
+            'daily' => new RotatingFileHandler(
+                $this->requireString($config, 'path', 'daily'),
+                Arr::getInt($config, 'days'),
+                $level,
+            ),
+            default => throw new RuntimeException('Unknown log driver: ' . $driver),
+        };
+    }
+
+    /**
+     * Apply a formatter to the handler based on channel configuration.
+     *
+     * @param  HandlerInterface     $handler Handler to apply the formatter to
+     * @param  array<string, mixed> $config  Channel configuration
+     * @return void
+     */
+    private function applyFormatter(HandlerInterface $handler, array $config): void
+    {
+        $formatter = Arr::getString($config, 'formatter');
+        if ($formatter === '') {
+            return;
+        }
+
+        $instance = match ($formatter) {
+            'json'  => new JsonFormatter(),
+            'line'  => new LineFormatter(),
+            default => throw new RuntimeException('Unknown log formatter: ' . $formatter),
+        };
+
+        if (method_exists($handler, 'setFormatter')) {
+            $handler->setFormatter($instance);
+        }
+    }
+
+    /**
+     * Create a logger using a custom channel factory.
+     *
+     * @param  string               $name   Channel name
+     * @param  array<string, mixed> $config Channel configuration
+     * @return Logger
+     * @throws RuntimeException If the factory is missing or invalid
+     */
+    private function createCustomLogger(string $name, array $config): Logger
+    {
+        $factoryClass = $this->requireString($config, 'factory', 'custom');
+
+        if ($this->customFactoryResolver === null) {
+            throw new RuntimeException(
+                'Custom log driver requires a factory resolver. Channel: ' . $name,
+            );
+        }
+
+        $factory = ($this->customFactoryResolver)($factoryClass);
+
+        return $factory->create($name, $config);
+    }
+
+    /**
+     * Resolve a PSR-3 level string to a Monolog Level.
+     *
+     * @param  string $level Level name (`debug`, `info`, `warning`, etc.)
+     * @return Level
+     * @throws RuntimeException If the level name is not recognized
+     */
+    private function resolveLevel(string $level): Level
+    {
+        return match (strtolower($level)) {
+            'debug'     => Level::Debug,
+            'info'      => Level::Info,
+            'notice'    => Level::Notice,
+            'warning'   => Level::Warning,
+            'error'     => Level::Error,
+            'critical'  => Level::Critical,
+            'alert'     => Level::Alert,
+            'emergency' => Level::Emergency,
+            default     => throw new RuntimeException('Unknown log level: ' . $level),
+        };
+    }
+
+    /**
+     * Require a string value from channel configuration.
+     *
+     * @param  array<string, mixed> $config Channel configuration
+     * @param  string               $key    Configuration key
+     * @param  string               $driver Driver name for error context
+     * @return string
+     * @throws RuntimeException If the key is missing or empty
+     */
+    private function requireString(array $config, string $key, string $driver): string
+    {
+        $value = Arr::getString($config, $key);
+        if ($value === '') {
+            throw new RuntimeException('Log driver "' . $driver . '" requires "' . $key . '" configuration.');
+        }
+
+        return $value;
     }
 }

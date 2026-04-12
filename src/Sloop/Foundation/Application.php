@@ -17,6 +17,7 @@ use Sloop\Http\Request\Request;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
+use Sloop\Log\ChannelFactoryInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Routing\Route;
@@ -167,17 +168,95 @@ final class Application implements RequestHandlerInterface
             },
         );
 
-        $this->container->singleton(LogManager::class, function (): LogManager {
-            $channel = 'app';
-            if (Config::isLoaded()) {
-                $configured = Config::get('log.channel');
-                if (\is_string($configured)) {
-                    $channel = $configured;
-                }
+        $this->container->singleton(
+            LogManager::class,
+            fn (Container $container): LogManager => $this->createLogManager($container),
+        );
+    }
+
+    /**
+     * Create the LogManager from configuration.
+     *
+     * @param  Container $container DI container for custom factory resolution
+     * @return LogManager
+     */
+    private function createLogManager(Container $container): LogManager
+    {
+        $channel  = 'app';
+        $channels = [];
+
+        if (Config::isLoaded()) {
+            $default = Config::get('log.default');
+            if (\is_string($default)) {
+                $channel = $default;
             }
 
-            return new LogManager($channel);
-        });
+            $channels = $this->normalizeLogChannelsFromConfig();
+        }
+
+        return new LogManager(
+            defaultChannel: $channel,
+            channels: $channels,
+            customFactoryResolver: fn (string $factoryClass): ChannelFactoryInterface => $this->resolveChannelFactory($container, $factoryClass),
+        );
+    }
+
+    /**
+     * Normalize the log.channels config entry into a typed array.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function normalizeLogChannelsFromConfig(): array
+    {
+        $configured = Config::get('log.channels');
+        if (!\is_array($configured)) {
+            return [];
+        }
+
+        $channels = [];
+        foreach ($configured as $name => $channelConfig) {
+            if (!\is_string($name) || !\is_array($channelConfig)) {
+                continue;
+            }
+            $channels[$name] = $this->filterStringKeys($channelConfig);
+        }
+
+        return $channels;
+    }
+
+    /**
+     * Filter an array to keep only entries with string keys.
+     *
+     * @param  array<array-key, mixed> $array Array to filter
+     * @return array<string, mixed>
+     */
+    private function filterStringKeys(array $array): array
+    {
+        return array_filter(
+            $array,
+            static fn (mixed $_value, int|string $key): bool => \is_string($key),
+            ARRAY_FILTER_USE_BOTH,
+        );
+    }
+
+    /**
+     * Resolve a ChannelFactoryInterface implementation from the container.
+     *
+     * @param  Container $container    DI container
+     * @param  string    $factoryClass Factory class name
+     * @return ChannelFactoryInterface
+     * @throws \RuntimeException If the resolved instance does not implement the interface
+     */
+    private function resolveChannelFactory(Container $container, string $factoryClass): ChannelFactoryInterface
+    {
+        $factory = $container->get($factoryClass);
+        if (!$factory instanceof ChannelFactoryInterface) {
+            throw new \RuntimeException(
+                'Custom log factory must implement ChannelFactoryInterface: ' . $factoryClass,
+            );
+        }
+
+        return $factory;
     }
 
     /**

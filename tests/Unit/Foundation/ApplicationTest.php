@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Foundation;
 
+use Monolog\Handler\StreamHandler;
+use Monolog\Handler\TestHandler;
+use Monolog\Level;
 use Monolog\Logger;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
@@ -18,6 +21,8 @@ use Sloop\Log\LogManager;
 use Sloop\Routing\Router;
 use Sloop\Tests\Support\JsonBodyAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\HealthController;
+use Sloop\Tests\Unit\Foundation\Stub\InvalidChannelFactory;
+use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
 
 /**
  * Integration tests for Application boot sequence and request dispatch.
@@ -386,15 +391,162 @@ final class ApplicationTest extends TestCase
         $this->assertStringContainsString('    ', $body);
     }
 
-    public function testConfigLogChannelIsInjected(): void
+    public function testConfigLogDefaultChannelIsInjected(): void
     {
-        $this->writeConfig('log.php', '<?php return ["channel" => "custom"];');
+        $this->writeConfig('log.php', '<?php return ["default" => "custom"];');
 
         $app     = new Application($this->tmpDir);
         $manager = $app->container->get(LogManager::class);
 
         $this->assertInstanceOf(LogManager::class, $manager);
         $this->assertSame('custom', $manager->defaultChannel);
+    }
+
+    public function testConfigLogChannelsAreInjected(): void
+    {
+        $this->writeConfig('log.php', '<?php return [
+            "default" => "app",
+            "channels" => [
+                "app" => [
+                    "driver" => "stream",
+                    "stream" => "php://stderr",
+                    "level" => "warning",
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        $handler = $manager->channel('app')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $handler);
+        $this->assertSame(Level::Warning, $handler->getLevel());
+    }
+
+    public function testConfigLogChannelsSkipsInvalidEntries(): void
+    {
+        // Invalid entries are in the middle to verify `continue` (not `break`):
+        // audit must still be registered after the invalid entries are skipped.
+        $this->writeConfig('log.php', '<?php return [
+            "default" => "app",
+            "channels" => [
+                "app" => ["driver" => "stream", "level" => "debug"],
+                0 => ["driver" => "stream"],
+                "invalid_scalar" => "not_an_array",
+                "audit" => ["driver" => "stream", "level" => "warning"],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        // Both valid channels must be registered independently
+        $appHandler = $manager->channel('app')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $appHandler);
+        $this->assertSame(Level::Debug, $appHandler->getLevel());
+
+        $auditHandler = $manager->channel('audit')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $auditHandler);
+        $this->assertSame(Level::Warning, $auditHandler->getLevel());
+    }
+
+    public function testConfigLogChannelsFiltersNumericKeysInsideChannel(): void
+    {
+        $this->writeConfig('log.php', '<?php return [
+            "default" => "app",
+            "channels" => [
+                "app" => [
+                    "driver" => "stream",
+                    "level" => "error",
+                    0 => "ignored_numeric_key",
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        // Numeric keys inside channel config must not corrupt string-keyed config
+        $handler = $manager->channel('app')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $handler);
+        $this->assertSame(Level::Error, $handler->getLevel());
+    }
+
+    public function testConfigLogDefaultFallsBackWhenNotString(): void
+    {
+        $this->writeConfig('log.php', '<?php return ["default" => 42];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+
+        $this->assertInstanceOf(LogManager::class, $manager);
+        $this->assertSame('app', $manager->defaultChannel);
+    }
+
+    public function testConfigLogChannelsIgnoredWhenNotArray(): void
+    {
+        $this->writeConfig('log.php', '<?php return ["channels" => "not_an_array"];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+
+        // Falls back to default auto-created StreamHandler (unconfigured path)
+        $this->assertInstanceOf(LogManager::class, $manager);
+        $handler = $manager->channel('app')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $handler);
+    }
+
+    public function testConfigLogCustomDriverResolvesFactoryFromContainer(): void
+    {
+        $this->writeConfig(
+            'log.php',
+            '<?php return [
+                "default" => "custom_channel",
+                "channels" => [
+                    "custom_channel" => [
+                        "driver" => "custom",
+                        "factory" => \\' . TestChannelFactory::class . '::class,
+                    ],
+                ],
+            ];',
+        );
+
+        $app    = new Application($this->tmpDir);
+        $logger = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $logger);
+
+        $channel = $logger->channel('custom_channel');
+        $this->assertSame('custom_channel', $channel->getName());
+        $this->assertInstanceOf(TestHandler::class, $channel->getHandlers()[0]);
+    }
+
+    public function testConfigLogCustomDriverThrowsWhenFactoryDoesNotImplementInterface(): void
+    {
+        $this->writeConfig(
+            'log.php',
+            '<?php return [
+                "channels" => [
+                    "bad" => [
+                        "driver" => "custom",
+                        "factory" => \\' . InvalidChannelFactory::class . '::class,
+                    ],
+                ],
+            ];',
+        );
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Custom log factory must implement ChannelFactoryInterface: ' . InvalidChannelFactory::class);
+
+        $manager->channel('bad');
     }
 
     public function testContainerRegistersItself(): void
