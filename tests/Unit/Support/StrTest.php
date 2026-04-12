@@ -189,6 +189,65 @@ final class StrTest extends TestCase
     }
 
     // -------------------------------------------------------
+    // randomHex
+    // -------------------------------------------------------
+
+    public function testRandomHexGeneratesOnlyHexChars(): void
+    {
+        $result = Str::randomHex(32);
+
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $result);
+    }
+
+    public function testRandomHexReturnsSpecifiedLength(): void
+    {
+        $this->assertSame(32, \strlen(Str::randomHex(32)));
+        $this->assertSame(16, \strlen(Str::randomHex(16)));
+        $this->assertSame(1, \strlen(Str::randomHex(1)));
+    }
+
+    public function testRandomHexSupportsOddLength(): void
+    {
+        $result = Str::randomHex(7);
+
+        $this->assertSame(7, \strlen($result));
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{7}$/', $result);
+    }
+
+    public function testRandomHexReturnsEmptyForZeroLength(): void
+    {
+        $this->assertSame('', Str::randomHex(0));
+    }
+
+    public function testRandomHexThrowsExceptionForNegativeLength(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Length must not be negative, got -1.');
+
+        Str::randomHex(-1);
+    }
+
+    public function testRandomHexGeneratesUniqueValues(): void
+    {
+        $this->assertNotSame(Str::randomHex(32), Str::randomHex(32));
+    }
+
+    public function testRandomHexCoversFullCharset(): void
+    {
+        $chars  = '0123456789abcdef';
+        $seen   = [];
+        $result = Str::randomHex(10000);
+
+        for ($i = 0; $i < \strlen($result); $i++) {
+            $seen[$result[$i]] = true;
+        }
+
+        for ($i = 0; $i < \strlen($chars); $i++) {
+            $this->assertArrayHasKey($chars[$i], $seen, 'Character "' . $chars[$i] . '" was never generated');
+        }
+    }
+
+    // -------------------------------------------------------
     // truncate
     // -------------------------------------------------------
 

@@ -12,6 +12,13 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Handler\TestHandler;
 use Monolog\Level;
 use Monolog\Logger;
+use Monolog\LogRecord;
+use Monolog\Processor\HostnameProcessor;
+use Monolog\Processor\IntrospectionProcessor;
+use Monolog\Processor\MemoryPeakUsageProcessor;
+use Monolog\Processor\MemoryUsageProcessor;
+use Monolog\Processor\ProcessIdProcessor;
+use Monolog\Processor\WebProcessor;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
@@ -398,5 +405,253 @@ final class LogManagerTest extends TestCase
         $this->expectExceptionMessage('Custom log driver requires a factory resolver. Channel: syslog');
 
         $manager->channel('syslog');
+    }
+
+    // ---------------------------------------------------------------
+    // pushProcessor
+    // ---------------------------------------------------------------
+
+    public function testPushProcessorAppliesToChannelAddedAfterPush(): void
+    {
+        $manager = new LogManager();
+        $manager->pushProcessor(static function (LogRecord $record): LogRecord {
+            $record->extra['injected'] = 'yes';
+
+            return $record;
+        });
+
+        $handler = new TestHandler();
+        $logger  = new Logger('test', [$handler]);
+        $manager->addChannel('test', $logger);
+
+        $logger->info('hello');
+
+        $this->assertSame('yes', $handler->getRecords()[0]->extra['injected']);
+    }
+
+    public function testPushProcessorAppliesToExistingChannelImmediately(): void
+    {
+        $manager = new LogManager();
+
+        // Channel created before pushProcessor
+        $handler = new TestHandler();
+        $logger  = new Logger('test', [$handler]);
+        $manager->addChannel('test', $logger);
+
+        $manager->pushProcessor(static function (LogRecord $record): LogRecord {
+            $record->extra['injected'] = 'yes';
+
+            return $record;
+        });
+
+        $logger->info('hello');
+
+        $this->assertSame('yes', $handler->getRecords()[0]->extra['injected']);
+    }
+
+    public function testPushProcessorAppliesToChannelCreatedFromConfig(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => ['driver' => 'stream', 'stream' => 'php://memory'],
+        ]);
+
+        $manager->pushProcessor(static function (LogRecord $record): LogRecord {
+            $record->extra['injected'] = 'yes';
+
+            return $record;
+        });
+
+        $logger = $manager->channel('app');
+
+        $this->assertCount(1, $logger->getProcessors());
+    }
+
+    public function testMultiplePushProcessorsApplyInOrder(): void
+    {
+        $manager = new LogManager();
+        $manager->pushProcessor(static function (LogRecord $record): LogRecord {
+            $previous               = \is_string($record->extra['order'] ?? null) ? $record->extra['order'] : '';
+            $record->extra['order'] = $previous . 'A';
+
+            return $record;
+        });
+        $manager->pushProcessor(static function (LogRecord $record): LogRecord {
+            $previous               = \is_string($record->extra['order'] ?? null) ? $record->extra['order'] : '';
+            $record->extra['order'] = $previous . 'B';
+
+            return $record;
+        });
+
+        $handler = new TestHandler();
+        $logger  = new Logger('test', [$handler]);
+        $manager->addChannel('test', $logger);
+        $logger->info('hello');
+
+        // Monolog executes processors in LIFO order (last pushed runs first)
+        $this->assertSame('BA', $handler->getRecords()[0]->extra['order']);
+    }
+
+    // ---------------------------------------------------------------
+    // Config-driven Monolog processors
+    // ---------------------------------------------------------------
+
+    public function testConfigProcessorsAreAppliedToChannel(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver'     => 'stream',
+                'stream'     => 'php://memory',
+                'processors' => ['memory_usage', 'memory_peak'],
+            ],
+        ]);
+
+        $logger = $manager->channel('app');
+
+        $this->assertCount(2, $logger->getProcessors());
+    }
+
+    public function testUnknownConfigProcessorThrowsException(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver'     => 'stream',
+                'processors' => ['no_such_processor'],
+            ],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unknown log processor: no_such_processor');
+
+        $manager->channel('app');
+    }
+
+    public function testAllBuiltInProcessorNamesResolveToExpectedClasses(): void
+    {
+        $expected = [
+            'web'           => WebProcessor::class,
+            'introspection' => IntrospectionProcessor::class,
+            'memory_usage'  => MemoryUsageProcessor::class,
+            'memory_peak'   => MemoryPeakUsageProcessor::class,
+            'hostname'      => HostnameProcessor::class,
+            'process_id'    => ProcessIdProcessor::class,
+        ];
+
+        foreach ($expected as $name => $class) {
+            $manager = new LogManager(channels: [
+                'app' => [
+                    'driver'     => 'stream',
+                    'stream'     => 'php://memory',
+                    'processors' => [$name],
+                ],
+            ]);
+
+            $processors = $manager->channel('app')->getProcessors();
+
+            $this->assertCount(1, $processors, 'processor count for ' . $name);
+            $this->assertInstanceOf($class, $processors[0], 'processor class for ' . $name);
+        }
+    }
+
+    public function testChannelWithoutProcessorsKeyHasEmptyProcessorList(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => ['driver' => 'stream', 'stream' => 'php://memory'],
+        ]);
+
+        $this->assertSame([], $manager->channel('app')->getProcessors());
+    }
+
+    public function testChannelWithEmptyProcessorsArrayHasEmptyProcessorList(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver'     => 'stream',
+                'stream'     => 'php://memory',
+                'processors' => [],
+            ],
+        ]);
+
+        $this->assertSame([], $manager->channel('app')->getProcessors());
+    }
+
+    public function testGlobalAndConfigProcessorsCoexistOnSameChannel(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver'     => 'stream',
+                'stream'     => 'php://memory',
+                'processors' => ['memory_usage'],
+            ],
+        ]);
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $processors = $manager->channel('app')->getProcessors();
+
+        $this->assertCount(2, $processors);
+    }
+
+    public function testGlobalProcessorAppliesToCustomDriverChannel(): void
+    {
+        $factory = new class () implements ChannelFactoryInterface {
+            public function create(string $name, array $config): Logger
+            {
+                return new Logger($name, [new TestHandler()]);
+            }
+        };
+
+        $manager = new LogManager(
+            channels: [
+                'syslog' => ['driver' => 'custom', 'factory' => 'MyFactory'],
+            ],
+            customFactoryResolver: static fn (string $class): ChannelFactoryInterface => $factory,
+        );
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $processors = $manager->channel('syslog')->getProcessors();
+
+        $this->assertCount(1, $processors);
+    }
+
+    public function testStreamDriverFallsBackToDefaultStreamWhenStreamKeyOmitted(): void
+    {
+        $manager = new LogManager(
+            channels: ['app' => ['driver' => 'stream']],
+            defaultStream: 'php://stdout',
+        );
+
+        $handler = $manager->channel('app')->getHandlers()[0];
+
+        $this->assertInstanceOf(StreamHandler::class, $handler);
+        // The default stream from LogManager is used when `stream` is omitted
+        $this->assertSame('php://stdout', $handler->getUrl());
+    }
+
+    public function testDailyDriverDefaultsToDebugLevelWhenLevelKeyOmitted(): void
+    {
+        $path    = sys_get_temp_dir() . '/sloop_test_' . uniqid() . '.log';
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver' => 'daily',
+                'path'   => $path,
+            ],
+        ]);
+
+        $handler = $manager->channel('app')->getHandlers()[0];
+
+        $this->assertInstanceOf(RotatingFileHandler::class, $handler);
+        $this->assertSame(Level::Debug, $handler->getLevel());
+    }
+
+    public function testFormatterKeyOmittedLeavesHandlerDefaultFormatter(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => ['driver' => 'stream', 'stream' => 'php://memory'],
+        ]);
+
+        $handler = $manager->channel('app')->getHandlers()[0];
+
+        $this->assertInstanceOf(StreamHandler::class, $handler);
+        // Handler's default formatter is LineFormatter (Monolog default)
+        $this->assertInstanceOf(LineFormatter::class, $handler->getFormatter());
     }
 }

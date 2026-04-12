@@ -20,6 +20,11 @@ use Sloop\Http\RouteRequestHandler;
 use Sloop\Log\ChannelFactoryInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
+use Sloop\Log\Processor\ElapsedTimeProcessor;
+use Sloop\Log\Processor\ExtraContextProcessor;
+use Sloop\Log\Processor\SpanIdProcessor;
+use Sloop\Log\Processor\TraceIdProcessor;
+use Sloop\Log\TraceContext;
 use Sloop\Routing\Route;
 use Sloop\Routing\Router;
 use Sloop\Support\Arr;
@@ -168,6 +173,8 @@ final class Application implements RequestHandlerInterface
             },
         );
 
+        $this->container->singleton(TraceContext::class, fn (): TraceContext => new TraceContext());
+
         $this->container->singleton(
             LogManager::class,
             fn (Container $container): LogManager => $this->createLogManager($container),
@@ -276,7 +283,7 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
-     * Initialize the logger.
+     * Initialize the logger and register the framework processors.
      *
      * @return void
      */
@@ -286,6 +293,16 @@ final class Application implements RequestHandlerInterface
         if (!$manager instanceof LogManager) {
             throw new \RuntimeException('Failed to resolve LogManager from container.');
         }
+
+        $context = $this->container->get(TraceContext::class);
+        if (!$context instanceof TraceContext) {
+            throw new \RuntimeException('Failed to resolve TraceContext from container.');
+        }
+
+        $manager->pushProcessor(new TraceIdProcessor($context));
+        $manager->pushProcessor(new SpanIdProcessor($context));
+        $manager->pushProcessor(new ElapsedTimeProcessor($context));
+        $manager->pushProcessor(new ExtraContextProcessor($context));
 
         Log::init($manager);
     }

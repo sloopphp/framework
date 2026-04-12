@@ -18,6 +18,7 @@ use Sloop\Foundation\Path;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
+use Sloop\Log\TraceContext;
 use Sloop\Routing\Router;
 use Sloop\Tests\Support\JsonBodyAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\HealthController;
@@ -579,6 +580,99 @@ final class ApplicationTest extends TestCase
 
         // Log::monolog() throws RuntimeException if init() was not called
         $this->assertInstanceOf(Logger::class, Log::monolog());
+    }
+
+    public function testContainerRegistersTraceContext(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $a = $app->container->get(TraceContext::class);
+        $b = $app->container->get(TraceContext::class);
+
+        $this->assertInstanceOf(TraceContext::class, $a);
+        $this->assertSame($a, $b);
+    }
+
+    public function testFrameworkProcessorsAreRegisteredOnBoot(): void
+    {
+        new Application($this->tmpDir);
+
+        $processors = Log::monolog()->getProcessors();
+
+        // The 4 framework processors: Trace / Span / ElapsedTime / ExtraContext
+        $this->assertCount(4, $processors);
+    }
+
+    public function testFrameworkProcessorsInjectTraceInfoIntoLogRecords(): void
+    {
+        $app     = new Application($this->tmpDir);
+        $context = $app->container->get(TraceContext::class);
+        $this->assertInstanceOf(TraceContext::class, $context);
+
+        $context->traceId = '0af7651916cd43dd8448eb211c80319c';
+        $context->spanId  = 'b7ad6b7169203331';
+        $context->set('user_id', 42);
+
+        $handler = new TestHandler();
+        Log::monolog()->pushHandler($handler);
+        Log::monolog()->info('test');
+
+        $record = $handler->getRecords()[0];
+        $this->assertSame('0af7651916cd43dd8448eb211c80319c', $record->extra['trace_id']);
+        $this->assertSame('b7ad6b7169203331', $record->extra['span_id']);
+        $this->assertSame(42, $record->extra['user_id']);
+        $this->assertArrayHasKey('elapsed_ms', $record->extra);
+    }
+
+    public function testFrameworkProcessorsApplyToConfigDefinedChannels(): void
+    {
+        $this->writeConfig('log.php', '<?php return [
+            "default" => "app",
+            "channels" => [
+                "app" => ["driver" => "stream", "stream" => "php://memory"],
+                "audit" => ["driver" => "stream", "stream" => "php://memory"],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        // Each config-defined channel must carry the 4 framework processors
+        $this->assertCount(4, $manager->channel('app')->getProcessors());
+        $this->assertCount(4, $manager->channel('audit')->getProcessors());
+    }
+
+    public function testConfigProcessorsAndFrameworkProcessorsCoexist(): void
+    {
+        $this->writeConfig('log.php', '<?php return [
+            "channels" => [
+                "app" => [
+                    "driver" => "stream",
+                    "stream" => "php://memory",
+                    "processors" => ["memory_usage", "memory_peak"],
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        // 4 framework processors + 2 config-declared Monolog processors
+        $this->assertCount(6, $manager->channel('app')->getProcessors());
+    }
+
+    public function testEmptyTraceContextExtraDoesNotCorruptRecord(): void
+    {
+        new Application($this->tmpDir);
+
+        $handler = new TestHandler();
+        Log::monolog()->pushHandler($handler);
+        Log::monolog()->info('test', ['ctx' => 'value']);
+
+        $record = $handler->getRecords()[0];
+        $this->assertSame(['ctx' => 'value'], $record->context);
     }
 
     public function testDispatchRouteThrowsForNonObjectController(): void

@@ -130,6 +130,32 @@ final class Str
     }
 
     /**
+     * Generate a cryptographically secure random hexadecimal string.
+     *
+     * Useful for generating trace ids, request ids, opaque tokens, and
+     * other values that need to be unique and hex-encoded.
+     *
+     * @param  int $length Number of hex characters to generate
+     * @return string
+     * @throws \InvalidArgumentException If length is negative
+     */
+    public static function randomHex(int $length): string
+    {
+        if ($length < 0) {
+            throw new \InvalidArgumentException('Length must not be negative, got ' . $length . '.');
+        }
+
+        if ($length === 0) {
+            return '';
+        }
+
+        $randomizer = new Randomizer();
+        $bytes      = $randomizer->getBytes(intdiv($length + 1, 2));
+
+        return substr(bin2hex($bytes), 0, $length);
+    }
+
+    /**
      * Truncate a string to the given length, appending a suffix if truncated.
      *
      * @param string $value String to truncate

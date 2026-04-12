@@ -11,6 +11,13 @@ use Monolog\Handler\RotatingFileHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
 use Monolog\Logger;
+use Monolog\LogRecord;
+use Monolog\Processor\HostnameProcessor;
+use Monolog\Processor\IntrospectionProcessor;
+use Monolog\Processor\MemoryPeakUsageProcessor;
+use Monolog\Processor\MemoryUsageProcessor;
+use Monolog\Processor\ProcessIdProcessor;
+use Monolog\Processor\WebProcessor;
 use RuntimeException;
 use Sloop\Support\Arr;
 
@@ -35,6 +42,13 @@ final class LogManager
      * @var array<string, Logger>
      */
     private array $channels = [];
+
+    /**
+     * Global processors applied to every channel.
+     *
+     * @var list<callable(LogRecord): LogRecord>
+     */
+    private array $globalProcessors = [];
 
     /**
      * Channel configurations keyed by channel name.
@@ -114,13 +128,38 @@ final class LogManager
     /**
      * Register a pre-configured Monolog Logger for a channel.
      *
+     * Any processors already registered via pushProcessor() are applied
+     * to the logger before it is cached.
+     *
      * @param  string $name   Channel name
      * @param  Logger $logger Pre-configured Monolog Logger instance
      * @return void
      */
     public function addChannel(string $name, Logger $logger): void
     {
+        foreach ($this->globalProcessors as $processor) {
+            $logger->pushProcessor($processor);
+        }
+
         $this->channels[$name] = $logger;
+    }
+
+    /**
+     * Register a processor to apply to every current and future channel.
+     *
+     * Existing cached channels have the processor pushed immediately so it
+     * applies to all subsequent log records.
+     *
+     * @param  callable(LogRecord): LogRecord $processor Processor callable
+     * @return void
+     */
+    public function pushProcessor(callable $processor): void
+    {
+        $this->globalProcessors[] = $processor;
+
+        foreach ($this->channels as $logger) {
+            $logger->pushProcessor($processor);
+        }
     }
 
     /**
@@ -131,6 +170,28 @@ final class LogManager
      * @throws RuntimeException If the configuration is invalid
      */
     private function createLogger(string $name): Logger
+    {
+        $logger = $this->buildLogger($name);
+
+        foreach ($this->resolveChannelProcessors($name) as $processor) {
+            $logger->pushProcessor($processor);
+        }
+
+        foreach ($this->globalProcessors as $processor) {
+            $logger->pushProcessor($processor);
+        }
+
+        return $logger;
+    }
+
+    /**
+     * Build the Monolog Logger from channel configuration without processors.
+     *
+     * @param  string $name Channel name
+     * @return Logger
+     * @throws RuntimeException If the configuration is invalid
+     */
+    private function buildLogger(string $name): Logger
     {
         $config = $this->channelConfigs[$name] ?? null;
 
@@ -150,6 +211,55 @@ final class LogManager
         $this->applyFormatter($handler, $config);
 
         return new Logger($name, [$handler]);
+    }
+
+    /**
+     * Resolve per-channel processors from channel configuration.
+     *
+     * Supports the built-in Monolog processors by name (`web`, `introspection`,
+     * `memory_usage`, `memory_peak`, `hostname`, `process_id`).
+     *
+     * @param  string $name Channel name
+     * @return list<callable(LogRecord): LogRecord>
+     */
+    private function resolveChannelProcessors(string $name): array
+    {
+        $config = $this->channelConfigs[$name] ?? null;
+        if ($config === null) {
+            return [];
+        }
+
+        $names = Arr::stringList($config, 'processors');
+        if ($names === []) {
+            return [];
+        }
+
+        $processors = [];
+        foreach ($names as $processorName) {
+            $processors[] = $this->resolveNamedProcessor($processorName);
+        }
+
+        return $processors;
+    }
+
+    /**
+     * Instantiate a Monolog built-in processor by name.
+     *
+     * @param  string $name Processor name
+     * @return callable(LogRecord): LogRecord
+     * @throws RuntimeException If the name is not recognized
+     */
+    private function resolveNamedProcessor(string $name): callable
+    {
+        return match ($name) {
+            'web'           => new WebProcessor(),
+            'introspection' => new IntrospectionProcessor(),
+            'memory_usage'  => new MemoryUsageProcessor(),
+            'memory_peak'   => new MemoryPeakUsageProcessor(),
+            'hostname'      => new HostnameProcessor(),
+            'process_id'    => new ProcessIdProcessor(),
+            default         => throw new RuntimeException('Unknown log processor: ' . $name),
+        };
     }
 
     /**
