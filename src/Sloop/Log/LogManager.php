@@ -177,11 +177,34 @@ final class LogManager
             $logger->pushProcessor($processor);
         }
 
-        foreach ($this->globalProcessors as $processor) {
-            $logger->pushProcessor($processor);
+        if ($this->isAutoContextEnabled($name)) {
+            foreach ($this->globalProcessors as $processor) {
+                $logger->pushProcessor($processor);
+            }
         }
 
         return $logger;
+    }
+
+    /**
+     * Determine whether the framework context processors (pushed via
+     * pushProcessor) should be applied to the given channel.
+     *
+     * Controlled by the `auto_context` boolean in channel configuration.
+     * Defaults to true; set to false to opt out per channel (e.g. pure audit
+     * logs that should not carry trace metadata).
+     *
+     * @param  string $name Channel name
+     * @return bool
+     */
+    private function isAutoContextEnabled(string $name): bool
+    {
+        $config = $this->channelConfigs[$name] ?? null;
+        if ($config === null) {
+            return true;
+        }
+
+        return Arr::getBool($config, 'auto_context', true);
     }
 
     /**

@@ -590,6 +590,79 @@ final class LogManagerTest extends TestCase
         $this->assertCount(2, $processors);
     }
 
+    public function testAutoContextFalseSkipsGlobalProcessorsOnChannel(): void
+    {
+        $manager = new LogManager(channels: [
+            'audit' => [
+                'driver'       => 'stream',
+                'stream'       => 'php://memory',
+                'auto_context' => false,
+            ],
+        ]);
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $this->assertCount(0, $manager->channel('audit')->getProcessors());
+    }
+
+    public function testAutoContextFalseStillAppliesConfigProcessors(): void
+    {
+        $manager = new LogManager(channels: [
+            'audit' => [
+                'driver'       => 'stream',
+                'stream'       => 'php://memory',
+                'auto_context' => false,
+                'processors'   => ['memory_usage'],
+            ],
+        ]);
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $processors = $manager->channel('audit')->getProcessors();
+
+        // Config processor is applied, global processor is skipped
+        $this->assertCount(1, $processors);
+        $this->assertInstanceOf(MemoryUsageProcessor::class, $processors[0]);
+    }
+
+    public function testAutoContextTrueExplicitlyAppliesGlobalProcessors(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver'       => 'stream',
+                'stream'       => 'php://memory',
+                'auto_context' => true,
+            ],
+        ]);
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $this->assertCount(1, $manager->channel('app')->getProcessors());
+    }
+
+    public function testAutoContextDefaultsToTrueWhenKeyOmitted(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => ['driver' => 'stream', 'stream' => 'php://memory'],
+        ]);
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $this->assertCount(1, $manager->channel('app')->getProcessors());
+    }
+
+    public function testMixedChannelsRespectPerChannelAutoContext(): void
+    {
+        $manager = new LogManager(channels: [
+            'app'   => ['driver' => 'stream', 'stream' => 'php://memory'],
+            'audit' => [
+                'driver'       => 'stream',
+                'stream'       => 'php://memory',
+                'auto_context' => false,
+            ],
+        ]);
+        $manager->pushProcessor(static fn (LogRecord $record): LogRecord => $record);
+
+        $this->assertCount(1, $manager->channel('app')->getProcessors());
+        $this->assertCount(0, $manager->channel('audit')->getProcessors());
+    }
+
     public function testGlobalProcessorAppliesToCustomDriverChannel(): void
     {
         $factory = new class () implements ChannelFactoryInterface {
