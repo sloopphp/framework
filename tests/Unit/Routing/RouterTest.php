@@ -243,6 +243,27 @@ final class RouterTest extends TestCase
         $this->assertNotNull($this->router->resolve('GET', '/health'));
     }
 
+    public function testGroupRestoresStateWhenCallbackThrows(): void
+    {
+        $this->router->get('/before', 'BeforeController', 'index');
+
+        try {
+            $this->router->group(['middleware' => ['AuthMiddleware'], 'prefix' => '/admin'], function (Router $router): void {
+                throw new \RuntimeException('boom');
+            });
+            $this->fail('Expected RuntimeException was not thrown');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->router->get('/after', 'AfterController', 'index');
+        $routes = $this->router->routes;
+
+        $this->assertSame([], $routes[1]->middleware);
+        $this->assertNotNull($this->router->resolve('GET', '/after'));
+        $this->assertNull($this->router->resolve('GET', '/admin/after'));
+    }
+
     public function testResourceWithGroupMiddleware(): void
     {
         $this->router->resource('/users', 'UserController');

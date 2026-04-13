@@ -176,10 +176,12 @@ final class Router
             $this->groupPrefix .= $attributes['prefix'];
         }
 
-        $callback($this);
-
-        $this->groupMiddleware = $previousMiddleware;
-        $this->groupPrefix     = $previousPrefix;
+        try {
+            $callback($this);
+        } finally {
+            $this->groupMiddleware = $previousMiddleware;
+            $this->groupPrefix     = $previousPrefix;
+        }
     }
 
     /**
