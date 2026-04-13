@@ -12,6 +12,15 @@ use Sloop\Http\HttpStatus;
  *
  * Implement this interface to define custom response formats
  * for success and error responses across the application.
+ *
+ * Scope: this interface covers only the JSON success/error envelope
+ * produced by `Response::success()` / `Response::error()`. Other response
+ * shapes on `Response` — `raw()`, `redirect()`, `noContent()`, `created()`
+ * — intentionally bypass the formatter, because they do not carry the
+ * application-level success/error semantics that an envelope would wrap.
+ * Swapping the formatter therefore changes JSON API structure only; it
+ * does not affect how plain bodies, redirects, or empty responses are
+ * built.
  */
 interface ResponseFormatterInterface
 {

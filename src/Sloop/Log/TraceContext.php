@@ -17,6 +17,16 @@ use Sloop\Support\Str;
  * The framework never sets service-specific values (user id, session id,
  * etc.). Applications set those through the `set()` method from their own
  * middleware or controllers.
+ *
+ * Lifecycle: this object is scoped to a single HTTP request. In the
+ * standard PHP-FPM / one-process-per-request model this is automatic —
+ * the process exits after the response is sent, so no cross-request state
+ * can leak. In long-lived workers (queue consumers, RoadRunner, Swoole,
+ * etc.) the container binding is reused across jobs, and it is the
+ * caller's responsibility to obtain a fresh `TraceContext` for each unit
+ * of work — typically by rebinding the container entry at the start of
+ * every job. Not doing so will cause the previous job's trace-id and
+ * `$extra` bag to be injected into subsequent log records.
  */
 final class TraceContext
 {
