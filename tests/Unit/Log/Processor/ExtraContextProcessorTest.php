@@ -13,6 +13,20 @@ use Sloop\Log\TraceContext;
 
 final class ExtraContextProcessorTest extends TestCase
 {
+    /**
+     * @param array<string, mixed> $extra
+     */
+    private function createRecord(array $extra = []): LogRecord
+    {
+        return new LogRecord(
+            datetime: new DateTimeImmutable(),
+            channel: 'test',
+            level: Level::Info,
+            message: 'test message',
+            extra: $extra,
+        );
+    }
+
     public function testInjectsContextExtraIntoRecord(): void
     {
         $context = new TraceContext();
@@ -78,19 +92,5 @@ final class ExtraContextProcessorTest extends TestCase
 
         $this->assertArrayHasKey('maybe_user_id', $processed->extra);
         $this->assertNull($processed->extra['maybe_user_id']);
-    }
-
-    /**
-     * @param array<string, mixed> $extra
-     */
-    private function createRecord(array $extra = []): LogRecord
-    {
-        return new LogRecord(
-            datetime: new DateTimeImmutable(),
-            channel: 'test',
-            level: Level::Info,
-            message: 'test message',
-            extra: $extra,
-        );
     }
 }

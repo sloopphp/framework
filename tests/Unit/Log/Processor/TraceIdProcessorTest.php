@@ -13,6 +13,20 @@ use Sloop\Log\TraceContext;
 
 final class TraceIdProcessorTest extends TestCase
 {
+    /**
+     * @param array<string, mixed> $extra
+     */
+    private function createRecord(array $extra = []): LogRecord
+    {
+        return new LogRecord(
+            datetime: new DateTimeImmutable(),
+            channel: 'test',
+            level: Level::Info,
+            message: 'test message',
+            extra: $extra,
+        );
+    }
+
     public function testInjectsTraceIdIntoExtra(): void
     {
         $context          = new TraceContext();
@@ -51,19 +65,5 @@ final class TraceIdProcessorTest extends TestCase
 
         $this->assertSame('11111111111111111111111111111111', $first->extra['trace_id']);
         $this->assertSame('22222222222222222222222222222222', $second->extra['trace_id']);
-    }
-
-    /**
-     * @param array<string, mixed> $extra
-     */
-    private function createRecord(array $extra = []): LogRecord
-    {
-        return new LogRecord(
-            datetime: new DateTimeImmutable(),
-            channel: 'test',
-            level: Level::Info,
-            message: 'test message',
-            extra: $extra,
-        );
     }
 }

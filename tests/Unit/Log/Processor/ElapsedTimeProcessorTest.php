@@ -13,6 +13,20 @@ use Sloop\Log\TraceContext;
 
 final class ElapsedTimeProcessorTest extends TestCase
 {
+    /**
+     * @param array<string, mixed> $extra
+     */
+    private function createRecord(array $extra = []): LogRecord
+    {
+        return new LogRecord(
+            datetime: new DateTimeImmutable(),
+            channel: 'test',
+            level: Level::Info,
+            message: 'test message',
+            extra: $extra,
+        );
+    }
+
     public function testInjectsElapsedMsIntoExtra(): void
     {
         $context   = new TraceContext();
@@ -47,19 +61,5 @@ final class ElapsedTimeProcessorTest extends TestCase
 
         $this->assertSame('value', $processed->extra['existing']);
         $this->assertArrayHasKey('elapsed_ms', $processed->extra);
-    }
-
-    /**
-     * @param array<string, mixed> $extra
-     */
-    private function createRecord(array $extra = []): LogRecord
-    {
-        return new LogRecord(
-            datetime: new DateTimeImmutable(),
-            channel: 'test',
-            level: Level::Info,
-            message: 'test message',
-            extra: $extra,
-        );
     }
 }
