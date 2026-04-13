@@ -399,8 +399,11 @@ final class ApplicationTest extends TestCase
         $request = $this->createRequest('GET', '/health')
             ->withHeader('traceparent', '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01');
 
+        // Replace all handlers so the captured log does not leak to stderr
+        // (the default channel writes to php://stderr, which PHPUnit's strict
+        // output mode flags as risky under the Infection test runner).
         $handler = new TestHandler();
-        Log::monolog()->pushHandler($handler);
+        Log::monolog()->setHandlers([$handler]);
 
         $app->run($request);
 
@@ -421,10 +424,10 @@ final class ApplicationTest extends TestCase
             $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check");
         ');
 
-        $app             = new Application($this->tmpDir);
-        $context         = $app->container->get(TraceContext::class);
+        $app     = new Application($this->tmpDir);
+        $context = $app->container->get(TraceContext::class);
         $this->assertInstanceOf(TraceContext::class, $context);
-        $originalSpanId  = $context->spanId;
+        $originalSpanId = $context->spanId;
 
         $app->run($this->createRequest('GET', '/health'));
 
@@ -712,7 +715,7 @@ final class ApplicationTest extends TestCase
         $context->set('user_id', 42);
 
         $handler = new TestHandler();
-        Log::monolog()->pushHandler($handler);
+        Log::monolog()->setHandlers([$handler]);
         Log::monolog()->info('test');
 
         $record = $handler->getRecords()[0];
@@ -766,7 +769,7 @@ final class ApplicationTest extends TestCase
         new Application($this->tmpDir);
 
         $handler = new TestHandler();
-        Log::monolog()->pushHandler($handler);
+        Log::monolog()->setHandlers([$handler]);
         Log::monolog()->info('test', ['ctx' => 'value']);
 
         $record = $handler->getRecords()[0];

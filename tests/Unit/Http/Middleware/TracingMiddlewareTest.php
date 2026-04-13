@@ -52,10 +52,10 @@ final class TracingMiddlewareTest extends TestCase
 
     public function testNewSpanIdIsAlwaysGenerated(): void
     {
-        $context             = new TraceContext();
-        $originalSpanId      = $context->spanId;
-        $middleware          = new TracingMiddleware($context);
-        $request             = $this->createRequest([
+        $context        = new TraceContext();
+        $originalSpanId = $context->spanId;
+        $middleware     = new TracingMiddleware($context);
+        $request        = $this->createRequest([
             'traceparent' => '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
         ]);
 
