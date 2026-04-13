@@ -61,6 +61,56 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertSame('https://example.com', $response->getHeaderLine('Access-Control-Allow-Origin'));
         $this->assertSame('GET, POST, PUT, DELETE', $response->getHeaderLine('Access-Control-Allow-Methods'));
         $this->assertSame('Content-Type, Authorization', $response->getHeaderLine('Access-Control-Allow-Headers'));
+        $this->assertSame('Origin', $response->getHeaderLine('Vary'));
+    }
+
+    public function testPreflightIncludesVaryOrigin(): void
+    {
+        $cors     = $this->createCors();
+        $request  = $this->createRequest(method: 'OPTIONS', origin: 'https://example.com');
+        $response = $cors->process($request, $this->createHandler());
+
+        $this->assertSame(204, $response->getStatusCode());
+        $this->assertSame('Origin', $response->getHeaderLine('Vary'));
+    }
+
+    public function testVaryOriginIsAppendedToExistingVaryHeader(): void
+    {
+        $cors    = $this->createCors();
+        $request = $this->createRequest(origin: 'https://example.com');
+
+        // Downstream handler that already sets a Vary header
+        $handler = new class () implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return (new Response(200))->withHeader('Vary', 'Accept-Encoding');
+            }
+        };
+
+        $response = $cors->process($request, $handler);
+        $values   = $response->getHeader('Vary');
+
+        $this->assertContains('Accept-Encoding', $values);
+        $this->assertContains('Origin', $values);
+    }
+
+    public function testNoVaryForDisallowedOrigin(): void
+    {
+        $cors     = $this->createCors();
+        $request  = $this->createRequest(origin: 'https://evil.example');
+        $response = $cors->process($request, $this->createHandler());
+
+        // Disallowed origins pass through without any CORS processing
+        $this->assertFalse($response->hasHeader('Vary'));
+    }
+
+    public function testNoVaryWhenNoOriginHeader(): void
+    {
+        $cors     = $this->createCors();
+        $request  = $this->createRequest();
+        $response = $cors->process($request, $this->createHandler());
+
+        $this->assertFalse($response->hasHeader('Vary'));
     }
 
     public function testNoHeadersForDisallowedOrigin(): void

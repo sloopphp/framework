@@ -327,6 +327,29 @@ final class RouterTest extends TestCase
         $this->assertNull($this->router->resolve('GET', '/prefix/users/42'));
     }
 
+    public function testDotInRoutePatternMatchesLiterally(): void
+    {
+        // Regex metacharacter `.` in the static segment must be escaped
+        // so that `/users.json/1` matches only a literal dot.
+        $this->router->get('/users.json/{id}', 'UserController', 'findJson');
+
+        $this->assertNotNull($this->router->resolve('GET', '/users.json/1'));
+        $this->assertNull($this->router->resolve('GET', '/usersXjson/1'));
+        $this->assertNull($this->router->resolve('GET', '/users_json/1'));
+    }
+
+    public function testRouteParameterAcceptsDotInValue(): void
+    {
+        // Parameter values are captured as `[^/]+`, which includes dots
+        // (e.g. semantic versioning, email addresses).
+        $this->router->get('/packages/{name}', 'PackageController', 'find');
+
+        $result = $this->router->resolve('GET', '/packages/1.2.3');
+
+        $this->assertNotNull($result);
+        $this->assertSame(['name' => '1.2.3'], $result[1]);
+    }
+
     public function testResourceWithOnlyAndExceptCombined(): void
     {
         // `only` narrows first, then `except` removes from the narrowed set.

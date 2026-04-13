@@ -227,6 +227,128 @@ final class ApplicationTest extends TestCase
         $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
     }
 
+    public function testRouteLevelMiddlewareIsExecuted(): void
+    {
+        $this->writeRoutes('<?php
+            $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check")
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class);
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/health'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testRouteGroupMiddlewareIsExecuted(): void
+    {
+        $this->writeRoutes('<?php
+            $router->group(
+                ["middleware" => [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class]],
+                function ($router) {
+                    $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check");
+                }
+            );
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/health'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testRouteWithoutMiddlewareIsNotAffected(): void
+    {
+        // Routes with no middleware should bypass the route dispatcher entirely
+        $this->writeRoutes('<?php
+            $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check");
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/health'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testRouteMiddlewareThrowsForInvalidMiddleware(): void
+    {
+        // HealthController does not implement MiddlewareInterface.
+        $this->writeRoutes('<?php
+            $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check")
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\HealthController::class);
+        ');
+
+        $app = new Application($this->tmpDir);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Middleware must implement MiddlewareInterface: ' . HealthController::class,
+        );
+
+        $app->run($this->createRequest('GET', '/health'));
+    }
+
+    public function testMultipleRouteMiddlewaresExecuteInRegisteredOrder(): void
+    {
+        // Route middlewares A and B are registered in that order.
+        // MiddlewareDispatcher processes them in FIFO order, so A runs before B.
+        // Since each middleware appends its marker after handler->handle() returns,
+        // B appears first in the header (inner), then A (outer).
+        $this->writeRoutes('<?php
+            $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check")
+                ->middleware(
+                    \Sloop\Tests\Unit\Foundation\Stub\XOrderMiddleware::class,
+                    \Sloop\Tests\Unit\Foundation\Stub\XOrderMiddlewareB::class,
+                );
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/health'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('B,A', $response->getHeaderLine('X-Order'));
+    }
+
+    public function testGlobalAndRouteMiddlewaresCoexistAndExecute(): void
+    {
+        // Global middleware runs outermost, route middleware runs inside it.
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
+        );
+        $this->writeRoutes('<?php
+            $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check")
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\XOrderMiddleware::class);
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/health'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        // Both middlewares ran
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+        $this->assertSame('A', $response->getHeaderLine('X-Order'));
+    }
+
+    public function testResourceRouteMiddlewareIsExecuted(): void
+    {
+        // resource() registers multiple routes; middleware() on the returned
+        // RouteGroup should apply to every route in the group.
+        $this->writeRoutes('<?php
+            $router->resource("/users", \Sloop\Tests\Unit\Foundation\Stub\UserController::class)
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class);
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/users/42'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
     public function testLoadMiddlewareFiltersNonStringEntries(): void
     {
         // When middleware.php contains mixed types, Arr::toStringList filters non-strings

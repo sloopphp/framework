@@ -146,6 +146,10 @@ final class Route
     /**
      * Compile the URI pattern into a regex and extract parameter names.
      *
+     * Static segments are quoted with preg_quote so that regex metacharacters
+     * such as `.` match literally. Parameter placeholders (`{name}`) are
+     * replaced with a non-slash capture group.
+     *
      * @return void
      */
     private function compilePattern(): void
@@ -154,11 +158,20 @@ final class Route
             return;
         }
 
-        $regex = preg_replace_callback('/\{(\w+)}/', function (array $matches): string {
-            $this->paramNames[] = $matches[1];
+        $segments = preg_split('/(\{\w+})/', $this->pattern, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($segments === false) {
+            return;
+        }
 
-            return '([^/]+)';
-        }, $this->pattern);
+        $regex = '';
+        foreach ($segments as $segment) {
+            if (preg_match('/^\{(\w+)}$/', $segment, $matches) === 1) {
+                $this->paramNames[] = $matches[1];
+                $regex             .= '([^/]+)';
+            } else {
+                $regex .= preg_quote($segment, '#');
+            }
+        }
 
         $this->regex = '#^' . $regex . '$#';
     }

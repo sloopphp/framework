@@ -16,6 +16,7 @@ use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Request\Request;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
+use Sloop\Http\RouteRequestHandler;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Routing\Route;
@@ -92,7 +93,19 @@ final class Application implements RequestHandlerInterface
         [$route, $params] = $result;
         $sloopRequest     = new Request($request, $params);
 
-        return $this->dispatchRoute($route, $sloopRequest, $params);
+        $finalHandler = new RouteRequestHandler(
+            $this->container,
+            $route,
+            $sloopRequest,
+            $params,
+            $this->resolveFormatter(),
+        );
+
+        if ($route->middleware === []) {
+            return $finalHandler->handle($request);
+        }
+
+        return $this->buildRouteMiddlewareDispatcher($route, $finalHandler)->handle($request);
     }
 
     /**
@@ -252,32 +265,30 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
-     * Dispatch a resolved route to its controller action.
+     * Build a route-level middleware dispatcher.
      *
-     * @param Route                 $route  Matched route
-     * @param Request               $request Sloop request
-     * @param array<string, string> $params Route parameters
-     * @return ResponseInterface
+     * Wraps the given final handler with the middleware stack declared on
+     * the route via `Route::middleware()` or group middleware.
+     *
+     * @param  Route                   $route        Matched route
+     * @param  RouteRequestHandler     $finalHandler Handler that invokes the controller
+     * @return MiddlewareDispatcher
+     * @throws \RuntimeException If a middleware class does not implement MiddlewareInterface
      */
-    private function dispatchRoute(Route $route, Request $request, array $params): ResponseInterface
+    private function buildRouteMiddlewareDispatcher(Route $route, RouteRequestHandler $finalHandler): MiddlewareDispatcher
     {
-        $controller = $this->container->get($route->controller);
-        if (!\is_object($controller)) {
-            throw new \RuntimeException('Controller must be an object: ' . $route->controller);
+        $dispatcher = new MiddlewareDispatcher($finalHandler);
+
+        foreach ($route->middleware as $middlewareClass) {
+            $middleware = $this->container->get($middlewareClass);
+            if (!$middleware instanceof MiddlewareInterface) {
+                throw new \RuntimeException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
+            }
+
+            $dispatcher->pipe($middleware);
         }
 
-        $args = [$request];
-        foreach ($params as $value) {
-            $args[] = $value;
-        }
-
-        $result = $controller->{$route->action}(...$args);
-
-        if ($result instanceof ResponseInterface) {
-            return $result;
-        }
-
-        return $this->resolveFormatter()->success($result);
+        return $dispatcher;
     }
 
     /**
