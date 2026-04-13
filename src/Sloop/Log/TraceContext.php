@@ -28,18 +28,14 @@ final class TraceContext
      *
      * @var string
      */
-    public string $traceId {
-        set => $value;
-    }
+    public string $traceId;
 
     /**
      * W3C span-id (16 hex characters).
      *
      * @var string
      */
-    public string $spanId {
-        set => $value;
-    }
+    public string $spanId;
 
     /**
      * Request start timestamp in seconds (microsecond precision).
