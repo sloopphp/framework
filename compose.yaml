@@ -1,0 +1,38 @@
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sloop_test
+      MYSQL_USER: sloop
+      MYSQL_PASSWORD: secret
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  mariadb:
+    image: mariadb:10.5
+    ports:
+      - "3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: sloop_test
+      MARIADB_USER: sloop
+      MARIADB_PASSWORD: secret
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
+  mariadb-data:
