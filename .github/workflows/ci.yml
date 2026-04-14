@@ -36,7 +36,7 @@ jobs:
         run: composer install --prefer-dist --no-progress
 
       - name: Run tests
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --exclude-testsuite=Integration
 
   code-style:
     name: Code Style
@@ -94,6 +94,67 @@ jobs:
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse
+
+  integration-tests:
+    name: Integration (${{ matrix.db.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        db:
+          - name: 'MySQL 8.0'
+            image: 'mysql:8.0'
+            ping: 'mysqladmin ping -h localhost -uroot -proot'
+          - name: 'MariaDB 10.5'
+            image: 'mariadb:10.5'
+            ping: 'healthcheck.sh --connect --innodb_initialized'
+    services:
+      db:
+        image: ${{ matrix.db.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: sloop_test
+          MYSQL_USER: sloop
+          MYSQL_PASSWORD: secret
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: sloop_test
+          MARIADB_USER: sloop
+          MARIADB_PASSWORD: secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="${{ matrix.db.ping }}"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: intl, pdo_mysql
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run integration tests
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: sloop_test
+          DB_USER: sloop
+          DB_PASS: secret
+        run: vendor/bin/phpunit --testsuite=Integration
 
   mutation-testing:
     name: Mutation Testing
