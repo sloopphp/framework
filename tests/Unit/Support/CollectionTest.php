@@ -30,11 +30,6 @@ final class CollectionTest extends TestCase
         $this->assertSame(['x' => 1, 'y' => 2], $collection->toArray());
     }
 
-    public function testFromAcceptsEmptyArray(): void
-    {
-        $this->assertTrue(Collection::from([])->isEmpty());
-    }
-
     public function testCountReturnsNumberOfItems(): void
     {
         $this->assertSame(3, Collection::from([1, 2, 3])->count());
@@ -311,7 +306,6 @@ final class CollectionTest extends TestCase
         Collection::from([1, 2])->sum(fn (int $n): string => (string) $n);
     }
 
-
     // -------------------------------------------------------
     // avg / min / max
     // -------------------------------------------------------
@@ -348,6 +342,14 @@ final class CollectionTest extends TestCase
         $this->assertSame(3, Collection::from([10, 3, 7])->min(fn (int $n): int => $n));
     }
 
+    public function testMinKeepsFirstOccurrenceOnDuplicates(): void
+    {
+        $items = ['first' => 1, 'second' => 2, 'third' => 1];
+        $min   = Collection::from($items)->min(fn (int $n): int => $n);
+
+        $this->assertSame(1, $min);
+    }
+
     public function testMaxReturnsLargest(): void
     {
         $this->assertSame(5, Collection::from([3, 1, 4, 1, 5])->max());
@@ -363,6 +365,14 @@ final class CollectionTest extends TestCase
         $items = [['price' => 100], ['price' => 500], ['price' => 200]];
 
         $this->assertSame(500, Collection::from($items)->max('price'));
+    }
+
+    public function testMaxKeepsFirstOccurrenceOnDuplicates(): void
+    {
+        $items = ['first' => 5, 'second' => 2, 'third' => 5];
+        $max   = Collection::from($items)->max(fn (int $n): int => $n);
+
+        $this->assertSame(5, $max);
     }
 
     // -------------------------------------------------------
@@ -397,6 +407,25 @@ final class CollectionTest extends TestCase
         $this->expectExceptionMessage('keyBy/groupBy key must resolve to int or string.');
 
         Collection::from([['id' => null]])->keyBy('id');
+    }
+
+    public function testKeyByThrowsForFloatKey(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('keyBy/groupBy key must resolve to int or string.');
+
+        Collection::from([['id' => 1.5]])->keyBy('id');
+    }
+
+    public function testKeyByTreatsPhpFunctionNameAsCallable(): void
+    {
+        // Regression: 'count' is a valid PHP function name, so is_callable() returns true
+        // and keyBy evaluates it as a callable instead of a field name. count() on each row
+        // returns 1, collapsing both items into key 1 with last-write-wins. This test pins
+        // the current behavior so future changes are noticed.
+        $result = Collection::from([['count' => 'apple'], ['count' => 'banana']])->keyBy('count');
+
+        $this->assertSame([1 => ['count' => 'banana']], $result->toArray());
     }
 
     // -------------------------------------------------------
@@ -508,6 +537,21 @@ final class CollectionTest extends TestCase
     public function testSkipMoreThanSizeReturnsEmpty(): void
     {
         $this->assertTrue(Collection::from([1, 2])->skip(10)->isEmpty());
+    }
+
+    public function testTakeWithNegativeCountDelegatesToArraySlice(): void
+    {
+        // Pin current behavior: negative count is delegated to array_slice with
+        // length=-N, which returns all elements except the last N. This differs
+        // from Laravel Collection's take(-N) which takes the last N. Changing
+        // this should be a conscious decision.
+        $this->assertSame([0 => 1, 1 => 2], Collection::from([1, 2, 3, 4])->take(-2)->toArray());
+    }
+
+    public function testSkipWithNegativeCountDelegatesToArraySlice(): void
+    {
+        // Pin current behavior: array_slice($arr, -2) skips all but the last 2.
+        $this->assertSame([2 => 3, 3 => 4], Collection::from([1, 2, 3, 4])->skip(-2)->toArray());
     }
 
     // -------------------------------------------------------

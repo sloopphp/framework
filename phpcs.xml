@@ -34,7 +34,7 @@
     <!-- クラスにPHPDoc必須（テストコードは除外） -->
     <rule ref="Squiz.Commenting.ClassComment">
         <exclude-pattern>tests/*</exclude-pattern>
-        <!-- @template / @implements / @extends はジェネリクス定義に必要なため許可 -->
+        <!-- 本プロジェクトでは @template / @implements / @extends をクラスコメントで許可 -->
         <exclude name="Squiz.Commenting.ClassComment.TagNotAllowed"/>
     </rule>
 

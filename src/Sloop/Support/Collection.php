@@ -185,6 +185,9 @@ final readonly class Collection implements IteratorAggregate, Countable
      * Check whether the collection contains a value.
      *
      * Accepts either a literal value (strict comparison) or a predicate.
+     * Note: `is_callable()` matches PHP function-name strings such as `'count'`
+     * or `'strlen'`, so when items are strings those values are evaluated as
+     * predicates, not compared. Use `filter()` + `first()` if the ambiguity matters.
      *
      * @param  T|(callable(T, array-key): bool) $needle Value or predicate
      * @return bool
@@ -238,6 +241,8 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Return the smallest numeric value. Returns null when the collection is empty.
+     * When $by is a callable or key, the extracted numeric value is returned,
+     * not the original item.
      *
      * @param  string|callable|null $by Key, callable, or null for the items themselves
      * @return int|float|null
@@ -261,6 +266,8 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Return the largest numeric value. Returns null when the collection is empty.
+     * When $by is a callable or key, the extracted numeric value is returned,
+     * not the original item.
      *
      * @param  string|callable|null $by Key, callable, or null for the items themselves
      * @return int|float|null
@@ -284,6 +291,10 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Re-key the collection by a field name or key extractor. Duplicate keys overwrite.
+     * Note: `is_callable()` matches PHP function-name strings such as `'count'`
+     * or `'strlen'`, so passing those as a field name will invoke them as
+     * callables instead of reading a field. Use a closure when the field name
+     * shadows a PHP function.
      *
      * @param  string|(callable(T, array-key): array-key) $key Key name or key extractor
      * @return self<T>
@@ -301,7 +312,8 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Group the items by a field name or key extractor.
-     * Each group is itself a Collection.
+     * Each group is itself a Collection. Same is_callable caveat as keyBy applies:
+     * a field name matching a PHP function name will be invoked as a callable.
      *
      * @param  string|(callable(T, array-key): array-key) $key Key name or key extractor
      * @return self<self<T>>
@@ -391,6 +403,8 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Sort items by a named field or a value extractor, preserving keys.
+     * Same is_callable caveat as keyBy applies: a field name matching a PHP
+     * function name will be invoked as a callable.
      *
      * @param  string|(callable(T): mixed) $by Key name or value extractor
      * @return self<T>
