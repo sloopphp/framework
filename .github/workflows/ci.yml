@@ -104,8 +104,8 @@ jobs:
           - name: 'MySQL 8.0'
             image: 'mysql:8.0'
             ping: 'mysqladmin ping -h localhost -uroot -proot'
-          - name: 'MariaDB 10.5'
-            image: 'mariadb:10.5'
+          - name: 'MariaDB 10.11'
+            image: 'mariadb:10.11'
             ping: 'healthcheck.sh --connect --innodb_initialized'
     services:
       db:
