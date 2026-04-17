@@ -15,7 +15,6 @@
     <!-- メソッドにPHPDoc必須（テストコードは除外） -->
     <rule ref="Squiz.Commenting.FunctionComment">
         <exclude-pattern>tests/*</exclude-pattern>
-        <exclude name="Squiz.Commenting.FunctionComment.MissingParamTag"/>
         <exclude name="Squiz.Commenting.FunctionComment.ParamNotFound"/>
         <exclude name="Squiz.Commenting.FunctionComment.IncorrectTypeHint"/>
         <exclude name="Squiz.Commenting.FunctionComment.InvalidTypeHint"/>
