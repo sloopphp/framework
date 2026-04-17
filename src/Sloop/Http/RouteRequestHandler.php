@@ -148,8 +148,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * @param  ReflectionParameter $parameter Parameter to resolve
      * @param  string              $typeName  Declared builtin type name
-     * @return mixed Cast route parameter value, or the parameter's default
-     * @throws RuntimeException If the route parameter is missing and no default is declared
+     * @return mixed Cast route parameter value, or the parameter's default, or null if nullable and absent
+     * @throws RuntimeException If the route parameter is missing and no default/nullable is declared, or if the value cannot be cast to a numeric type
      */
     private function resolveBuiltinParameter(ReflectionParameter $parameter, string $typeName): mixed
     {
@@ -160,10 +160,22 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
                 return $parameter->getDefaultValue();
             }
 
+            if ($parameter->getType()?->allowsNull() === true) {
+                return null;
+            }
+
             throw new RuntimeException('Route parameter not found: ' . $name);
         }
 
-        return self::castBuiltin($this->params[$name], $typeName);
+        $value = $this->params[$name];
+
+        if (($typeName === 'int' || $typeName === 'float') && !is_numeric($value)) {
+            throw new RuntimeException(
+                'Route parameter "' . $name . '" must be ' . $typeName . ', got: ' . $value,
+            );
+        }
+
+        return self::castBuiltin($value, $typeName);
     }
 
     /**

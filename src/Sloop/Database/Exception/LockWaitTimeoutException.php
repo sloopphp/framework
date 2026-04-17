@@ -10,6 +10,6 @@ namespace Sloop\Database\Exception;
  * MySQL error code 1205 (innodb_lock_wait_timeout exceeded).
  * Retryable — used by Connection::transaction() for automatic retry alongside DeadlockException.
  */
-class LockWaitTimeoutException extends QueryException
+final class LockWaitTimeoutException extends QueryException
 {
 }

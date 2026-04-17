@@ -204,7 +204,7 @@ final class DatabaseExceptionTest extends TestCase
     /** @noinspection SqlResolve, SqlNoDataSourceInspection, PhpConditionAlreadyCheckedInspection, UnnecessaryAssertionInspection */
     public function testSyntaxErrorExtendsQueryException(): void
     {
-        $e = new SyntaxErrorException('syntax error', 'SELCT * FROM users', [], 'main_rw', '42000', 1064);
+        $e = new SyntaxErrorException('syntax error', 'INVALID SQL', [], 'main_rw', '42000', 1064);
 
         $this->assertInstanceOf(QueryException::class, $e);
         $this->assertSame(1064, $e->driverCode);

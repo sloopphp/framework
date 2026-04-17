@@ -36,7 +36,7 @@ final class LikePatternTest extends TestCase
         $this->assertSame('path\\\\to', LikePattern::escape('path\\to'));
     }
 
-    public function testEscapeHandlesBackslashBeforePercentWithoutDoubleEscaping(): void
+    public function testEscapeBackslashAndFollowingPercentAreEscapedIndependently(): void
     {
         $this->assertSame('\\\\\\%', LikePattern::escape('\\%'));
     }

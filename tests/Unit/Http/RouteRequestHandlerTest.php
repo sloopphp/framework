@@ -172,6 +172,29 @@ final class RouteRequestHandlerTest extends TestCase
         $this->dispatch(DiController::class, 'requestAndInt', []);
     }
 
+    public function testReturnsNullForNullableBuiltinWhenRouteParameterAbsent(): void
+    {
+        $this->dispatch(DiController::class, 'nullableInt', []);
+
+        $this->assertNull(DiController::$lastId);
+    }
+
+    public function testThrowsOnNonNumericValueForIntParameter(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Route parameter "id" must be int, got: abc');
+
+        $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']);
+    }
+
+    public function testThrowsOnNonNumericValueForFloatParameter(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Route parameter "price" must be float, got: xyz');
+
+        $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']);
+    }
+
     public function testThrowsOnUnsupportedUnionType(): void
     {
         $this->expectException(RuntimeException::class);

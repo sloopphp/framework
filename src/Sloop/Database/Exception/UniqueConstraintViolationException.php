@@ -9,6 +9,6 @@ namespace Sloop\Database\Exception;
  *
  * MySQL error code 1062 (SQLSTATE 23000).
  */
-class UniqueConstraintViolationException extends ConstraintViolationException
+final class UniqueConstraintViolationException extends ConstraintViolationException
 {
 }

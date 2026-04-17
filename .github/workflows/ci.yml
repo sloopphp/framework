@@ -142,6 +142,7 @@ jobs:
         with:
           path: vendor
           key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
