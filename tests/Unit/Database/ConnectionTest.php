@@ -232,7 +232,10 @@ final class ConnectionTest extends TestCase
             $this->connection->begin();
             $this->fail('Expected LogicException was not thrown');
         } catch (LogicException $e) {
-            $this->assertStringContainsString('nesting is not supported', $e->getMessage());
+            $this->assertSame(
+                'Cannot begin a transaction while another is active (nesting is not supported).',
+                $e->getMessage(),
+            );
         } finally {
             $this->connection->rollback();
         }
@@ -240,16 +243,20 @@ final class ConnectionTest extends TestCase
 
     public function testCommitRequiresActiveTransaction(): void
     {
-        $this->expectException(LogicException::class);
-
-        $this->connection->commit();
+        try {
+            $this->connection->commit();
+        } catch (LogicException $e) {
+            $this->assertSame('Cannot commit: no active transaction.', $e->getMessage());
+        }
     }
 
     public function testRollbackRequiresActiveTransaction(): void
     {
-        $this->expectException(LogicException::class);
-
-        $this->connection->rollback();
+        try {
+            $this->connection->rollback();
+        } catch (LogicException $e) {
+            $this->assertSame('Cannot rollback: no active transaction.', $e->getMessage());
+        }
     }
 
     // -------------------------------------------------------
@@ -414,25 +421,29 @@ final class ConnectionTest extends TestCase
 
     public function testTransactionRejectsNonPositiveMaxAttempts(): void
     {
-        $this->expectException(LogicException::class);
-
-        $this->connection->transaction(
-            static fn (): string => 'ok',
-            IsolationLevel::Default,
-            0,
-        );
+        try {
+            $this->connection->transaction(
+                static fn (): string => 'ok',
+                IsolationLevel::Default,
+                0,
+            );
+        } catch (LogicException $e) {
+            $this->assertSame('maxAttempts must be at least 1, got 0.', $e->getMessage());
+        }
     }
 
     public function testTransactionRejectsNegativeBackoff(): void
     {
-        $this->expectException(LogicException::class);
-
-        $this->connection->transaction(
-            static fn (): string => 'ok',
-            IsolationLevel::Default,
-            1,
-            -1,
-        );
+        try {
+            $this->connection->transaction(
+                static fn (): string => 'ok',
+                IsolationLevel::Default,
+                1,
+                -5,
+            );
+        } catch (LogicException $e) {
+            $this->assertSame('backoffMs must not be negative, got -5.', $e->getMessage());
+        }
     }
 
     public function testTransactionRejectsNestedCall(): void
@@ -443,7 +454,10 @@ final class ConnectionTest extends TestCase
             $this->connection->transaction(static fn (): string => 'ok');
             $this->fail('Expected LogicException was not thrown');
         } catch (LogicException $e) {
-            $this->assertStringContainsString('nested transaction', $e->getMessage());
+            $this->assertSame(
+                'Cannot start a nested transaction (v0.1 does not support savepoints).',
+                $e->getMessage(),
+            );
         } finally {
             $this->connection->rollback();
         }
