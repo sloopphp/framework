@@ -17,6 +17,17 @@ use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\IsolationLevel;
 
+/*
+ * Policy: several tests below omit a trailing $this->fail() inside the try
+ * block. When the code under test always throws on a given path, PHPStan
+ * infers the call as never-return and flags the fail() as
+ * deadCode.unreachable. coding-standards.md bans phpstan-ignore comments,
+ * so we rely on PHPUnit's failOnRisky=true (a catch-less path with zero
+ * assertions fails the test) to guard the "exception was not thrown" case.
+ * Applies to testCommitRequiresActiveTransaction,
+ * testRollbackRequiresActiveTransaction, and all testTransaction*-throws
+ * tests.
+ */
 final class ConnectionTest extends TestCase
 {
     private PDO $pdo;
@@ -288,12 +299,6 @@ final class ConnectionTest extends TestCase
         $this->assertSame($this->connection, $receiver->value);
     }
 
-    // In the transaction()-throws tests below we intentionally omit a trailing
-    // $this->fail() in the try block: when the callback always throws, PHPStan
-    // infers transaction() as never-return and flags the fail() as
-    // deadCode.unreachable. coding-standards.md bans phpstan-ignore comments,
-    // so we rely on PHPUnit's failOnRisky=true (zero assertions in a catch-less
-    // path fails the test) to guard the "exception was not thrown" case.
     public function testTransactionRollsBackOnException(): void
     {
         try {
