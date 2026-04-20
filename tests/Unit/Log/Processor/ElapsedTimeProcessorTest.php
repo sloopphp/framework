@@ -45,7 +45,10 @@ final class ElapsedTimeProcessorTest extends TestCase
         $context   = new TraceContext();
         $processor = new ElapsedTimeProcessor($context);
 
-        usleep(5_000);
+        // Windows' default timer resolution is ~15.6ms, so short usleep calls
+        // can return early. Sleep well past that window to keep the lower
+        // bound reachable on every supported platform.
+        usleep(30_000);
         $processed = $processor($this->createRecord());
 
         $this->assertGreaterThanOrEqual(5, $processed->extra['elapsed_ms']);
