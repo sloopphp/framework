@@ -11,6 +11,8 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
+use Sloop\Container\ContainerException;
+use Sloop\Container\EntryNotFoundException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Request\Request;
@@ -83,8 +85,15 @@ final class Application implements RequestHandlerInterface
      * This is the final request handler invoked after all middleware.
      * It resolves the route, creates the controller via DI, and invokes the action.
      *
-     * @param  ServerRequestInterface $request PSR-7 server request
+     * PHP's `\ReflectionException` (raised when the action method cannot be
+     * resolved) is normalized into a `\RuntimeException` so callers do not
+     * need to handle Reflection internals.
+     *
+     * @param  ServerRequestInterface  $request PSR-7 server request
      * @return ResponseInterface
+     * @throws \RuntimeException       When the controller cannot be resolved as an object, parameters are invalid, or controller reflection fails
+     * @throws EntryNotFoundException  When the controller or a typed dependency cannot be resolved by the container
+     * @throws ContainerException      When dependency resolution detects a circular dependency
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -107,11 +116,18 @@ final class Application implements RequestHandlerInterface
             $this->resolveFormatter(),
         );
 
-        if ($route->middleware === []) {
-            return $finalHandler->handle($request);
-        }
+        try {
+            if ($route->middleware === []) {
+                return $finalHandler->handle($request);
+            }
 
-        return $this->buildRouteMiddlewareDispatcher($route, $finalHandler)->handle($request);
+            return $this->buildRouteMiddlewareDispatcher($route, $finalHandler)->handle($request);
+        } catch (\ReflectionException $e) {
+            throw new \RuntimeException(
+                'Failed to reflect controller action: ' . $e->getMessage(),
+                previous: $e,
+            );
+        }
     }
 
     /**

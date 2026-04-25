@@ -809,4 +809,39 @@ final class ApplicationTest extends TestCase
 
         $app->run($this->createRequest('GET', '/anything'));
     }
+
+    public function testHandleConvertsReflectionExceptionToRuntimeException(): void
+    {
+        // Route to a non-existent action method; RouteRequestHandler raises
+        // \ReflectionException, which Application::handle wraps into a
+        // \RuntimeException so callers do not handle Reflection internals.
+        $this->writeRoutes('<?php
+            $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "nonExistentMethod");
+        ');
+
+        $app = new Application($this->tmpDir);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Failed to reflect controller action');
+
+        $app->run($this->createRequest('GET', '/test'));
+    }
+
+    public function testHandleConvertsReflectionExceptionThroughMiddlewareDispatcher(): void
+    {
+        // Even when the route is wrapped by a middleware dispatcher, a
+        // \ReflectionException raised inside the final handler must still be
+        // normalized to \RuntimeException at the Application::handle level.
+        $this->writeRoutes('<?php
+            $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "nonExistentMethod")
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class);
+        ');
+
+        $app = new Application($this->tmpDir);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Failed to reflect controller action');
+
+        $app->run($this->createRequest('GET', '/test'));
+    }
 }
