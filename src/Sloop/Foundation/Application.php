@@ -175,32 +175,28 @@ final class Application implements RequestHandlerInterface
         $this->container->instance(Router::class, $this->router);
         $this->container->instance(self::class, $this);
 
-        $this->container->singleton(
-            ResponseFormatterInterface::class,
-            function (): ApiResponseFormatter {
-                $options = ApiResponseFormatter::DEFAULT_JSON_OPTIONS;
-                if (Config::isLoaded()) {
-                    $configured = Config::get('response.json_options');
-                    if (\is_int($configured)) {
-                        $options = $configured;
-                    }
-                }
-
-                return new ApiResponseFormatter($options);
-            },
-        );
-
+        $this->container->singleton(ResponseFormatterInterface::class, fn (): ApiResponseFormatter => $this->createResponseFormatter());
         $this->container->singleton(TraceContext::class, fn (): TraceContext => new TraceContext());
+        $this->container->singleton(LogManager::class, fn (Container $container): LogManager => $this->createLogManager($container));
+        $this->container->singleton(ConnectionManager::class, fn (): ConnectionManager => $this->createConnectionManager());
+    }
 
-        $this->container->singleton(
-            LogManager::class,
-            fn (Container $container): LogManager => $this->createLogManager($container),
-        );
+    /**
+     * Create the ApiResponseFormatter from configuration.
+     *
+     * @return ApiResponseFormatter
+     */
+    private function createResponseFormatter(): ApiResponseFormatter
+    {
+        $options = ApiResponseFormatter::DEFAULT_JSON_OPTIONS;
+        if (Config::isLoaded()) {
+            $configured = Config::get('response.json_options');
+            if (\is_int($configured)) {
+                $options = $configured;
+            }
+        }
 
-        $this->container->singleton(
-            ConnectionManager::class,
-            fn (): ConnectionManager => $this->createConnectionManager(),
-        );
+        return new ApiResponseFormatter($options);
     }
 
     /**
