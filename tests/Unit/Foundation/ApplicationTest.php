@@ -13,6 +13,8 @@ use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
+use Sloop\Database\ConnectionManager;
+use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Response\ResponseFormatterInterface;
@@ -843,5 +845,200 @@ final class ApplicationTest extends TestCase
         $this->expectExceptionMessage('Failed to reflect controller action');
 
         $app->run($this->createRequest('GET', '/test'));
+    }
+
+    public function testConnectionManagerIsRegisteredAsSingleton(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $first  = $app->container->get(ConnectionManager::class);
+        $second = $app->container->get(ConnectionManager::class);
+
+        $this->assertSame($first, $second);
+    }
+
+    public function testConfigDatabaseDefaultIsInjected(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "secondary" => [
+                    "driver"   => "mysql",
+                    "host"     => "localhost",
+                    "database" => "app",
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // If default = "primary" reached the ConnectionManager, the absence of
+        // "primary" in connections must surface as "[primary] is not defined".
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Database connection [primary] is not defined.');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseConnectionsAreInjected(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "primary" => [
+                    "driver" => "mysql",
+                    "host"   => "localhost",
+                    // database is intentionally missing to surface the validation path
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // If connections.primary reached the Resolver, its required-key check fires.
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Connection [primary]: missing required config key "database".');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseConnectionsSkipsInvalidEntries(): void
+    {
+        // Invalid entries are in the middle to verify `continue` (not `break`):
+        // audit must still be registered after the invalid entries are skipped.
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "audit",
+            "connections" => [
+                "primary" => [
+                    "driver"   => "mysql",
+                    "host"     => "localhost",
+                    "database" => "primary_db",
+                ],
+                0 => ["driver" => "mysql"],
+                "invalid_scalar" => "not_an_array",
+                "audit" => [
+                    "driver" => "mysql",
+                    "host"   => "localhost",
+                    // database missing on purpose for assertion
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // audit appears after the invalid entries; reaching it via the validation
+        // error confirms iteration continues (instead of breaking on the first invalid).
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Connection [audit]: missing required config key "database".');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseConnectionsFiltersNumericKeysInsideConnection(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "primary" => [
+                    "driver" => "mysql",
+                    "host"   => "localhost",
+                    0 => "ignored_numeric_key",
+                    // database missing
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // When int keys are stripped by filterStringKeys, the Resolver only
+        // sees string keys and reports "missing required config key" instead
+        // of "unsupported config key 0".
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Connection [primary]: missing required config key "database".');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseDefaultFallsBackWhenNotString(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => 42,
+            "connections" => [
+                "primary" => [
+                    "driver"   => "mysql",
+                    "host"     => "localhost",
+                    "database" => "app",
+                ],
+            ],
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // Non-string default falls back to "" — "[]" is not present in connections.
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Database connection [] is not defined.');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseConnectionsIgnoredWhenNotArray(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => "not_an_array",
+        ];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // Non-array connections fall back to []; "[primary]" is not present.
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Database connection [primary] is not defined.');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseFallsBackWhenConfigNotLoaded(): void
+    {
+        // Remove config directory before Application boot so Config::load() is skipped.
+        rmdir($this->tmpDir . '/config');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // Config::isLoaded() is false → defaultName='' and configs=[].
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Database connection [] is not defined.');
+
+        $manager->connection();
+    }
+
+    public function testConfigDatabaseFallsBackWhenKeysAreMissing(): void
+    {
+        $this->writeConfig('database.php', '<?php return [];');
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // database.default and database.connections are both undefined.
+        // Config::get returns null, and is_string(null) / is_array(null) both
+        // fall through to the same defaults as the explicit non-string/non-array cases.
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage('Database connection [] is not defined.');
+
+        $manager->connection();
     }
 }

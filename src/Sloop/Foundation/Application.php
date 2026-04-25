@@ -13,6 +13,7 @@ use Sloop\Config\Config;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
+use Sloop\Database\ConnectionManager;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Request\Request;
@@ -195,6 +196,11 @@ final class Application implements RequestHandlerInterface
             LogManager::class,
             fn (Container $container): LogManager => $this->createLogManager($container),
         );
+
+        $this->container->singleton(
+            ConnectionManager::class,
+            fn (): ConnectionManager => $this->createConnectionManager(),
+        );
     }
 
     /**
@@ -280,6 +286,54 @@ final class Application implements RequestHandlerInterface
         }
 
         return $factory;
+    }
+
+    /**
+     * Create the ConnectionManager from configuration.
+     *
+     * @return ConnectionManager
+     */
+    private function createConnectionManager(): ConnectionManager
+    {
+        $default     = '';
+        $connections = [];
+
+        if (Config::isLoaded()) {
+            $configuredDefault = Config::get('database.default');
+            if (\is_string($configuredDefault)) {
+                $default = $configuredDefault;
+            }
+
+            $connections = $this->normalizeDatabaseConnectionsFromConfig();
+        }
+
+        return new ConnectionManager(
+            defaultName: $default,
+            configs: $connections,
+        );
+    }
+
+    /**
+     * Normalize the database.connections config entry into a typed array.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function normalizeDatabaseConnectionsFromConfig(): array
+    {
+        $configured = Config::get('database.connections');
+        if (!\is_array($configured)) {
+            return [];
+        }
+
+        $connections = [];
+        foreach ($configured as $name => $connectionConfig) {
+            if (!\is_string($name) || !\is_array($connectionConfig)) {
+                continue;
+            }
+            $connections[$name] = $this->filterStringKeys($connectionConfig);
+        }
+
+        return $connections;
     }
 
     /**
