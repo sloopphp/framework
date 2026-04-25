@@ -823,10 +823,16 @@ final class ApplicationTest extends TestCase
 
         $app = new Application($this->tmpDir);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Failed to reflect controller action');
-
-        $app->run($this->createRequest('GET', '/test'));
+        try {
+            $app->run($this->createRequest('GET', '/test'));
+            $this->fail('Expected \RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertStringStartsWith(
+                'Failed to reflect controller action: ',
+                $e->getMessage(),
+            );
+            $this->assertInstanceOf(\ReflectionException::class, $e->getPrevious());
+        }
     }
 
     public function testHandleConvertsReflectionExceptionThroughMiddlewareDispatcher(): void
@@ -841,10 +847,16 @@ final class ApplicationTest extends TestCase
 
         $app = new Application($this->tmpDir);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Failed to reflect controller action');
-
-        $app->run($this->createRequest('GET', '/test'));
+        try {
+            $app->run($this->createRequest('GET', '/test'));
+            $this->fail('Expected \RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertStringStartsWith(
+                'Failed to reflect controller action: ',
+                $e->getMessage(),
+            );
+            $this->assertInstanceOf(\ReflectionException::class, $e->getPrevious());
+        }
     }
 
     public function testConnectionManagerIsRegisteredAsSingleton(): void
@@ -876,10 +888,15 @@ final class ApplicationTest extends TestCase
 
         // If default = "primary" reached the ConnectionManager, the absence of
         // "primary" in connections must surface as "[primary] is not defined".
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [primary] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [primary] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseConnectionsAreInjected(): void
@@ -900,10 +917,15 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // If connections.primary reached the Resolver, its required-key check fires.
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [primary]: missing required config key "database".');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [primary]: missing required config key "database".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseConnectionsSkipsInvalidEntries(): void
@@ -934,10 +956,15 @@ final class ApplicationTest extends TestCase
 
         // audit appears after the invalid entries; reaching it via the validation
         // error confirms iteration continues (instead of breaking on the first invalid).
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [audit]: missing required config key "database".');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [audit]: missing required config key "database".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseConnectionsFiltersNumericKeysInsideConnection(): void
@@ -961,10 +988,15 @@ final class ApplicationTest extends TestCase
         // When int keys are stripped by filterStringKeys, the Resolver only
         // sees string keys and reports "missing required config key" instead
         // of "unsupported config key 0".
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [primary]: missing required config key "database".');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [primary]: missing required config key "database".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseDefaultFallsBackWhenNotString(): void
@@ -985,10 +1017,15 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Non-string default falls back to "" — "[]" is not present in connections.
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseConnectionsIgnoredWhenNotArray(): void
@@ -1003,10 +1040,15 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Non-array connections fall back to []; "[primary]" is not present.
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [primary] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [primary] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseFallsBackWhenConfigNotLoaded(): void
@@ -1019,10 +1061,15 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Config::isLoaded() is false → defaultName='' and configs=[].
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseFallsBackWhenKeysAreMissing(): void
@@ -1036,9 +1083,14 @@ final class ApplicationTest extends TestCase
         // database.default and database.connections are both undefined.
         // Config::get returns null, and is_string(null) / is_array(null) both
         // fall through to the same defaults as the explicit non-string/non-array cases.
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 }

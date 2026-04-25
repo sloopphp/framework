@@ -17,10 +17,15 @@ final class ConnectionManagerTest extends TestCase
             configs: [],
         );
 
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [master] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [master] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConnectionFailsWhenDefaultNameDiffersFromAvailableConfig(): void
@@ -36,10 +41,15 @@ final class ConnectionManagerTest extends TestCase
             ],
         );
 
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Database connection [analytics] is not defined.');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [analytics] is not defined.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConnectionPropagatesValidationErrorsFromResolver(): void
@@ -54,10 +64,15 @@ final class ConnectionManagerTest extends TestCase
             ],
         );
 
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: missing required config key "host".');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: missing required config key "host".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConnectionRejectsUnsupportedDriver(): void
@@ -73,10 +88,15 @@ final class ConnectionManagerTest extends TestCase
             ],
         );
 
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage("Connection [master]: unsupported driver \"sqlite\". Only 'mysql' is supported.");
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                "Connection [master]: unsupported driver \"sqlite\". Only 'mysql' is supported.",
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConnectionRejectsUnknownConfigKey(): void
@@ -85,17 +105,22 @@ final class ConnectionManagerTest extends TestCase
             defaultName: 'master',
             configs: [
                 'master' => [
-                    'driver'    => 'mysql',
-                    'host'      => 'localhost',
-                    'database'  => 'app',
-                    'read'      => [['host' => 'replica.internal']],
+                    'driver'   => 'mysql',
+                    'host'     => 'localhost',
+                    'database' => 'app',
+                    'read'     => [['host' => 'replica.internal']],
                 ],
             ],
         );
 
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: unsupported config key "read".');
-
-        $manager->connection();
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: unsupported config key "read".',
+                $e->getMessage(),
+            );
+        }
     }
 }

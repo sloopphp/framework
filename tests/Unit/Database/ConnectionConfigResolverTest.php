@@ -60,27 +60,37 @@ final class ConnectionConfigResolverTest extends TestCase
 
     public function testValidateRejectsUnknownKey(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: unsupported config key "query_timeout_ms".');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'           => 'mysql',
-            'host'             => 'localhost',
-            'database'         => 'app',
-            'query_timeout_ms' => 5000,
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'           => 'mysql',
+                'host'             => 'localhost',
+                'database'         => 'app',
+                'query_timeout_ms' => 5000,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: unsupported config key "query_timeout_ms".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsMistypedKey(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: unsupported config key "databse".');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'  => 'mysql',
-            'host'    => 'localhost',
-            'databse' => 'app',
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'  => 'mysql',
+                'host'    => 'localhost',
+                'databse' => 'app',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: unsupported config key "databse".',
+                $e->getMessage(),
+            );
+        }
     }
 
     /**
@@ -105,60 +115,85 @@ final class ConnectionConfigResolverTest extends TestCase
         ];
         unset($config[$missingKey]);
 
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: missing required config key "' . $missingKey . '".');
-
-        ConnectionConfigResolver::validate('master', $config);
+        try {
+            ConnectionConfigResolver::validate('master', $config);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: missing required config key "' . $missingKey . '".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsUnsupportedDriver(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage("Connection [master]: unsupported driver \"pgsql\". Only 'mysql' is supported.");
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'pgsql',
-            'host'     => 'localhost',
-            'database' => 'app',
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'pgsql',
+                'host'     => 'localhost',
+                'database' => 'app',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                "Connection [master]: unsupported driver \"pgsql\". Only 'mysql' is supported.",
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsNonStringDriver(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: config key "driver" must be a string.');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 1,
-            'host'     => 'localhost',
-            'database' => 'app',
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 1,
+                'host'     => 'localhost',
+                'database' => 'app',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "driver" must be a string.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsNonIntPort(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: config key "port" must be an integer.');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'mysql',
-            'host'     => 'localhost',
-            'database' => 'app',
-            'port'     => '3306',
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'port'     => '3306',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "port" must be an integer.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsNonStringNullableUsername(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: config key "username" must be a string or null.');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'mysql',
-            'host'     => 'localhost',
-            'database' => 'app',
-            'username' => 123,
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'username' => 123,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "username" must be a string or null.',
+                $e->getMessage(),
+            );
+        }
     }
 
     /**
@@ -167,51 +202,75 @@ final class ConnectionConfigResolverTest extends TestCase
     public static function invalidIdentifierProvider(): array
     {
         return [
-            'charset with space'      => ['charset', 'utf8 mb4', 'must contain only alphanumeric and underscore characters'],
-            'charset with semicolon'  => ['charset', 'utf8mb4;DROP', 'must contain only alphanumeric and underscore characters'],
-            'collation with hyphen'   => ['collation', 'utf8mb4-unicode', 'must contain only alphanumeric and underscore characters'],
-            'charset non-string'      => ['charset', 123, 'must be a string'],
+            'charset with space' => [
+                'charset', 'utf8 mb4',
+                'Connection [master]: config key "charset" must contain only alphanumeric and underscore characters, got "utf8 mb4".',
+            ],
+            'charset with semicolon' => [
+                'charset', 'utf8mb4;DROP',
+                'Connection [master]: config key "charset" must contain only alphanumeric and underscore characters, got "utf8mb4;DROP".',
+            ],
+            'collation with hyphen' => [
+                'collation', 'utf8mb4-unicode',
+                'Connection [master]: config key "collation" must contain only alphanumeric and underscore characters, got "utf8mb4-unicode".',
+            ],
+            'charset non-string' => [
+                'charset', 123,
+                'Connection [master]: config key "charset" must be a string.',
+            ],
         ];
     }
 
     #[DataProvider('invalidIdentifierProvider')]
     public function testValidateRejectsInvalidIdentifier(string $key, mixed $value, string $expectedMessage): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessageMatches('/' . preg_quote($expectedMessage, '/') . '/');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'mysql',
-            'host'     => 'localhost',
-            'database' => 'app',
-            $key       => $value,
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                $key       => $value,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame($expectedMessage, $e->getMessage());
+        }
     }
 
     public function testValidateRejectsNonArrayOptions(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: config key "options" must be an array.');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'mysql',
-            'host'     => 'localhost',
-            'database' => 'app',
-            'options'  => 'invalid',
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'options'  => 'invalid',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "options" must be an array.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsStringKeyedOptions(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: config key "options" must be an array with integer (PDO::ATTR_*) keys.');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'mysql',
-            'host'     => 'localhost',
-            'database' => 'app',
-            'options'  => ['attr_persistent' => false],
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'options'  => ['attr_persistent' => false],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "options" must be an array with integer (PDO::ATTR_*) keys.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateRejectsIntegerKey(): void
@@ -219,25 +278,37 @@ final class ConnectionConfigResolverTest extends TestCase
         // Application::filterStringKeys removes int keys before the config
         // reaches the resolver, so this scenario only fires when the resolver
         // is called directly. Cover the defensive `is_string($key)` branch.
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [master]: unsupported config key "0".');
-
-        ConnectionConfigResolver::validate('master', [
-            'driver'   => 'mysql',
-            'host'     => 'localhost',
-            'database' => 'app',
-            0          => 'unexpected_int_key',
-        ]);
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                0          => 'unexpected_int_key',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: unsupported config key "0".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateIncludesConnectionNameInMessage(): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage('Connection [analytics]:');
-
-        ConnectionConfigResolver::validate('analytics', [
-            'driver' => 'mysql',
-        ]);
+        // Confirms the connection name is propagated into all error messages.
+        // Asserts the full message so concat-mutation cannot escape.
+        try {
+            ConnectionConfigResolver::validate('analytics', [
+                'driver' => 'mysql',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [analytics]: missing required config key "host".',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testValidateReturnsValidatedConfigWithValues(): void
@@ -387,18 +458,22 @@ final class ConnectionConfigResolverTest extends TestCase
 
     public function testResolvePdoOptionsMergesUserOptions(): void
     {
+        // Multiple user options ensures the resolver returns all entries
+        // (kills ArrayOneItem mutation that would slice to a single element).
         $validated = ConnectionConfigResolver::validate('master', [
             'driver'   => 'mysql',
             'host'     => 'localhost',
             'database' => 'app',
             'options'  => [
                 PDO::ATTR_PERSISTENT => true,
+                PDO::ATTR_AUTOCOMMIT => false,
             ],
         ]);
 
         $options = ConnectionConfigResolver::resolvePdoOptions($validated);
 
         $this->assertSame(true, $options[PDO::ATTR_PERSISTENT]);
+        $this->assertSame(false, $options[PDO::ATTR_AUTOCOMMIT]);
         $this->assertSame(2, $options[PDO::ATTR_TIMEOUT]);
         $this->assertSame('SET NAMES utf8mb4', $options[PdoMysql::ATTR_INIT_COMMAND]);
     }
