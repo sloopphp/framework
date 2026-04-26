@@ -149,7 +149,7 @@ final class Connection
      *
      * MySQL/MariaDB's `SET TRANSACTION` applies only to the next single
      * transaction, so the session returns to the server default after
-     * commit/rollback. Nested transactions are not supported in v0.1.
+     * commit/rollback. Nested transactions are not supported.
      *
      * @param  IsolationLevel    $level Isolation level (Default leaves the server default)
      * @return void
@@ -259,7 +259,7 @@ final class Connection
         }
 
         if ($this->pdo->inTransaction()) {
-            throw new LogicException('Cannot start a nested transaction (v0.1 does not support savepoints).');
+            throw new LogicException('Cannot start a nested transaction (savepoints are not supported).');
         }
 
         for ($attempt = 1;; $attempt++) {

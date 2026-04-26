@@ -460,7 +460,7 @@ final class ConnectionTest extends TestCase
             $this->fail('Expected LogicException was not thrown');
         } catch (LogicException $e) {
             $this->assertSame(
-                'Cannot start a nested transaction (v0.1 does not support savepoints).',
+                'Cannot start a nested transaction (savepoints are not supported).',
                 $e->getMessage(),
             );
         } finally {
