@@ -13,7 +13,9 @@ use Sloop\Config\Config;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
+use Sloop\Database\ConnectionFactory;
 use Sloop\Database\ConnectionManager;
+use Sloop\Database\PdoConnectionFactory;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Request\Request;
@@ -178,7 +180,8 @@ final class Application implements RequestHandlerInterface
         $this->container->singleton(ResponseFormatterInterface::class, fn (): ApiResponseFormatter => $this->createResponseFormatter());
         $this->container->singleton(TraceContext::class, fn (): TraceContext => new TraceContext());
         $this->container->singleton(LogManager::class, fn (Container $container): LogManager => $this->createLogManager($container));
-        $this->container->singleton(ConnectionManager::class, fn (): ConnectionManager => $this->createConnectionManager());
+        $this->container->singleton(ConnectionFactory::class, fn (): ConnectionFactory => new PdoConnectionFactory());
+        $this->container->singleton(ConnectionManager::class, fn (Container $container): ConnectionManager => $this->createConnectionManager($container));
     }
 
     /**
@@ -287,9 +290,11 @@ final class Application implements RequestHandlerInterface
     /**
      * Create the ConnectionManager from configuration.
      *
+     * @param  Container          $container Container used to resolve the ConnectionFactory binding
      * @return ConnectionManager
+     * @throws \RuntimeException  If the ConnectionFactory binding does not implement ConnectionFactory
      */
-    private function createConnectionManager(): ConnectionManager
+    private function createConnectionManager(Container $container): ConnectionManager
     {
         $default     = '';
         $connections = [];
@@ -303,9 +308,17 @@ final class Application implements RequestHandlerInterface
             $connections = $this->normalizeDatabaseConnectionsFromConfig();
         }
 
+        $factory = $container->get(ConnectionFactory::class);
+        if (!$factory instanceof ConnectionFactory) {
+            throw new \RuntimeException(
+                'Container binding for ' . ConnectionFactory::class . ' must implement ConnectionFactory.',
+            );
+        }
+
         return new ConnectionManager(
             defaultName: $default,
             configs: $connections,
+            factory: $factory,
         );
     }
 

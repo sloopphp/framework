@@ -6,15 +6,24 @@ namespace Sloop\Tests\Integration\Database;
 
 use PDO;
 use Sloop\Database\ConnectionManager;
+use Sloop\Database\PdoConnectionFactory;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 final class ConnectionManagerTest extends IntegrationTestCase
 {
+    private PdoConnectionFactory $factory;
+
+    protected function setUp(): void
+    {
+        $this->factory = new PdoConnectionFactory();
+    }
+
     public function testConnectionReturnsUsableConnection(): void
     {
         $manager = new ConnectionManager(
             defaultName: 'master',
             configs: ['master' => self::defaultConfig()],
+            factory: $this->factory,
         );
 
         $rows = $manager->connection()->query('SELECT 1 AS v')->toArray();
@@ -27,6 +36,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $manager = new ConnectionManager(
             defaultName: 'master',
             configs: ['master' => self::defaultConfig()],
+            factory: $this->factory,
         );
 
         $first  = $manager->connection();
@@ -43,6 +53,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $manager = new ConnectionManager(
             defaultName: 'master',
             configs: ['master' => $config],
+            factory: $this->factory,
         );
 
         $rows = $manager->connection()
@@ -61,6 +72,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $manager = new ConnectionManager(
             defaultName: 'master',
             configs: ['master' => $config],
+            factory: $this->factory,
         );
 
         $rows = $manager->connection()
@@ -82,6 +94,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $manager = new ConnectionManager(
             defaultName: 'master',
             configs: ['master' => $config],
+            factory: $this->factory,
         );
 
         $rows = $manager->connection()

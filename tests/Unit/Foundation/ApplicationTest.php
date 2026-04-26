@@ -13,8 +13,12 @@ use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
+use Sloop\Database\Connection;
+use Sloop\Database\ConnectionFactory;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\PdoConnectionFactory;
+use Sloop\Database\ValidatedConfig;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Response\ResponseFormatterInterface;
@@ -867,6 +871,76 @@ final class ApplicationTest extends TestCase
         $second = $app->container->get(ConnectionManager::class);
 
         $this->assertSame($first, $second);
+    }
+
+    public function testConnectionFactoryIsRegisteredAsSingleton(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $first  = $app->container->get(ConnectionFactory::class);
+        $second = $app->container->get(ConnectionFactory::class);
+
+        $this->assertSame($first, $second);
+    }
+
+    public function testConnectionFactoryDefaultsToPdoConnectionFactory(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $factory = $app->container->get(ConnectionFactory::class);
+
+        $this->assertInstanceOf(PdoConnectionFactory::class, $factory);
+    }
+
+    public function testConnectionManagerUsesOverriddenConnectionFactoryBinding(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "primary" => [
+                    "driver"   => "mysql",
+                    "host"     => "localhost",
+                    "database" => "app",
+                ],
+            ],
+        ];');
+
+        $app = new Application($this->tmpDir);
+
+        $customFactory = new class implements ConnectionFactory {
+            public function make(ValidatedConfig $config, string $name): Connection
+            {
+                throw new \LogicException('custom factory was used');
+            }
+        };
+        $app->container->instance(ConnectionFactory::class, $customFactory);
+
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        try {
+            $manager->connection();
+            $this->fail('Expected LogicException from custom factory');
+        } catch (\LogicException $e) {
+            $this->assertSame('custom factory was used', $e->getMessage());
+        }
+    }
+
+    public function testConnectionManagerThrowsWhenConnectionFactoryBindingIsInvalid(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $app->container->instance(ConnectionFactory::class, new \stdClass());
+
+        try {
+            $app->container->get(ConnectionManager::class);
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(
+                'Container binding for ' . ConnectionFactory::class . ' must implement ConnectionFactory.',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testConfigDatabaseDefaultIsInjected(): void

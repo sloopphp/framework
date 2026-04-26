@@ -12,9 +12,9 @@ use Sloop\Database\Exception\InvalidConfigException;
  *
  * Each `connections.<name>` config entry is interpreted as a pool definition
  * (primary + optional replica list + pool-level behavior keys) via
- * ConnectionConfigResolver::validatePool(). Connections are built the first
- * time they are requested and cached so a single request reuses one PDO
- * instance per pool name.
+ * ConnectionConfigResolver::validatePool(). Connections are built through
+ * the injected ConnectionFactory the first time they are requested and
+ * cached so a single request reuses one PDO instance per pool name.
  *
  * connection() currently returns the pool's primary; replica selection and
  * the writable parameter are not yet implemented.
@@ -33,10 +33,12 @@ final class ConnectionManager
      *
      * @param string                              $defaultName Pool name to return from connection()
      * @param array<string, array<string, mixed>> $configs     Pool configurations indexed by pool name
+     * @param ConnectionFactory                   $factory     Builds Connection instances from validated configs
      */
     public function __construct(
         private readonly string $defaultName,
         private readonly array $configs,
+        private readonly ConnectionFactory $factory,
     ) {
     }
 
@@ -57,7 +59,7 @@ final class ConnectionManager
     }
 
     /**
-     * Build a new Connection to the named pool's primary.
+     * Build a new Connection to the named pool's primary via the injected factory.
      *
      * @param  string                      $name Pool name
      * @return Connection
@@ -72,15 +74,8 @@ final class ConnectionManager
             );
         }
 
-        $pool    = ConnectionConfigResolver::validatePool($name, $this->configs[$name]);
-        $primary = $pool->primary;
+        $pool = ConnectionConfigResolver::validatePool($name, $this->configs[$name]);
 
-        return Connection::open(
-            ConnectionConfigResolver::resolveDsn($primary),
-            $primary->username,
-            $primary->password,
-            ConnectionConfigResolver::resolvePdoOptions($primary),
-            $name,
-        );
+        return $this->factory->make($pool->primary, $name);
     }
 }
