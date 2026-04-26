@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Database;
 
+use Sloop\Database\Exception\DatabaseConnectionException;
+
 /**
  * Default ConnectionFactory: opens a real PDO connection via Connection::open().
  *
@@ -17,9 +19,10 @@ final class PdoConnectionFactory implements ConnectionFactory
     /**
      * Build a Connection by instantiating PDO from the validated config.
      *
-     * @param  ValidatedConfig $config Validated single-connection config
-     * @param  string          $name   Pool name used as the Connection identifier in error context
+     * @param  ValidatedConfig             $config Validated single-connection config
+     * @param  string                      $name   Pool name used as the Connection identifier in error context
      * @return Connection
+     * @throws DatabaseConnectionException When the underlying PDO connection fails
      */
     public function make(ValidatedConfig $config, string $name): Connection
     {
