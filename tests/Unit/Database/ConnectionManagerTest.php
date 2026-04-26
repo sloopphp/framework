@@ -105,10 +105,10 @@ final class ConnectionManagerTest extends TestCase
             defaultName: 'master',
             configs: [
                 'master' => [
-                    'driver'   => 'mysql',
-                    'host'     => 'localhost',
-                    'database' => 'app',
-                    'read'     => [['host' => 'replica.internal']],
+                    'driver'           => 'mysql',
+                    'host'             => 'localhost',
+                    'database'         => 'app',
+                    'query_timeout_ms' => 5000,
                 ],
             ],
         );
@@ -118,7 +118,34 @@ final class ConnectionManagerTest extends TestCase
             $this->fail('Expected InvalidConfigException');
         } catch (InvalidConfigException $e) {
             $this->assertSame(
-                'Connection [master]: unsupported config key "read".',
+                'Connection [master]: unsupported config key "query_timeout_ms".',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testConnectionPropagatesPoolStructureValidationError(): void
+    {
+        $manager = new ConnectionManager(
+            defaultName: 'master',
+            configs: [
+                'master' => [
+                    'driver'   => 'mysql',
+                    'host'     => 'localhost',
+                    'database' => 'app',
+                    'read'     => [
+                        ['host' => 'replica.internal', 'health_check' => false],
+                    ],
+                ],
+            ],
+        );
+
+        try {
+            $manager->connection();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: "read[0]" has unsupported key "health_check". Pool-level keys must be set on the pool itself, not inside read[].',
                 $e->getMessage(),
             );
         }

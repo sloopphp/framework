@@ -494,4 +494,384 @@ final class ConnectionConfigResolverTest extends TestCase
 
         $this->assertSame(30, $options[PDO::ATTR_TIMEOUT]);
     }
+
+    public function testValidatePoolReturnsPrimaryOnlyPoolWhenReadIsAbsent(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'username' => 'user',
+            'password' => 'pass',
+        ]);
+
+        $this->assertSame('mydb', $pool->name);
+        $this->assertSame('primary.example.com', $pool->primary->host);
+        $this->assertSame('user', $pool->primary->username);
+        $this->assertSame([], $pool->replicas);
+        $this->assertTrue($pool->healthCheck);
+        $this->assertSame(300, $pool->deadCacheTtlSeconds);
+        $this->assertSame('random', $pool->replicaSelector);
+        $this->assertSame(1, $pool->maxConnectionAttempts);
+    }
+
+    public function testValidatePoolInheritsPrimaryKeysIntoReplicas(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'username' => 'user',
+            'password' => 'pass',
+            'charset'  => 'utf8mb4',
+            'read'     => [
+                ['host' => 'replica-1.example.com'],
+                ['host' => 'replica-2.example.com', 'port' => 3307],
+            ],
+        ]);
+
+        $this->assertCount(2, $pool->replicas);
+
+        $replica1 = $pool->replicas[0];
+        $this->assertSame('replica-1.example.com', $replica1->host);
+        $this->assertNull($replica1->port);
+        $this->assertSame('app', $replica1->database);
+        $this->assertSame('user', $replica1->username);
+        $this->assertSame('pass', $replica1->password);
+        $this->assertSame('utf8mb4', $replica1->charset);
+
+        $replica2 = $pool->replicas[1];
+        $this->assertSame('replica-2.example.com', $replica2->host);
+        $this->assertSame(3307, $replica2->port);
+        $this->assertSame('app', $replica2->database);
+    }
+
+    public function testValidatePoolAcceptsAllPoolBehaviorKeys(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'                  => 'mysql',
+            'host'                    => 'primary.example.com',
+            'database'                => 'app',
+            'read'                    => [
+                ['host' => 'replica-1.example.com'],
+                ['host' => 'replica-2.example.com'],
+            ],
+            'health_check'            => false,
+            'dead_cache_ttl_seconds'  => 60,
+            'replica_selector'        => 'random',
+            'max_connection_attempts' => 6,
+        ]);
+
+        $this->assertFalse($pool->healthCheck);
+        $this->assertSame(60, $pool->deadCacheTtlSeconds);
+        $this->assertSame('random', $pool->replicaSelector);
+        $this->assertSame(6, $pool->maxConnectionAttempts);
+    }
+
+    public function testValidatePoolDefaultsMaxConnectionAttemptsToReplicaCountPlusOne(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'read'     => [
+                ['host' => 'replica-1.example.com'],
+                ['host' => 'replica-2.example.com'],
+                ['host' => 'replica-3.example.com'],
+            ],
+        ]);
+
+        $this->assertSame(4, $pool->maxConnectionAttempts);
+    }
+
+    public function testValidatePoolRejectsUnknownPoolKey(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'           => 'mysql',
+                'host'             => 'primary.example.com',
+                'database'         => 'app',
+                'query_timeout_ms' => 5000,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: unsupported config key "query_timeout_ms".',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonArrayRead(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => 'not-an-array',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "read" must be an array.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsStringKeyInRead(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    'first' => ['host' => 'replica-1.example.com'],
+                ],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: "read" must be a list with integer keys, got string key "first".',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonArrayReplicaEntry(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => ['not-an-array'],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: "read[0]" must be an array.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsPoolOnlyKeyInsideReplica(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 'health_check' => false],
+                ],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: "read[0]" has unsupported key "health_check". Pool-level keys must be set on the pool itself, not inside read[].',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolPropagatesReplicaValidationErrorWithLocation(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com'],
+                    ['port' => 'not-an-int'],
+                ],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb.read[1]]: config key "port" must be an integer.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonBooleanHealthCheck(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'       => 'mysql',
+                'host'         => 'primary.example.com',
+                'database'     => 'app',
+                'health_check' => 'yes',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "health_check" must be a boolean.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonIntDeadCacheTtl(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'                 => 'mysql',
+                'host'                   => 'primary.example.com',
+                'database'               => 'app',
+                'dead_cache_ttl_seconds' => '300',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "dead_cache_ttl_seconds" must be an integer.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsZeroDeadCacheTtl(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'                 => 'mysql',
+                'host'                   => 'primary.example.com',
+                'database'               => 'app',
+                'dead_cache_ttl_seconds' => 0,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "dead_cache_ttl_seconds" must be >= 1, got 0.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsUnsupportedReplicaSelector(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'           => 'mysql',
+                'host'             => 'primary.example.com',
+                'database'         => 'app',
+                'replica_selector' => 'round_robin',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                "Connection [mydb]: unsupported replica_selector \"round_robin\". Only 'random' is supported.",
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonStringReplicaSelector(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'           => 'mysql',
+                'host'             => 'primary.example.com',
+                'database'         => 'app',
+                'replica_selector' => 1,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "replica_selector" must be a string.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNegativeMaxConnectionAttempts(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.example.com',
+                'database'                => 'app',
+                'max_connection_attempts' => -1,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "max_connection_attempts" must be >= 1, got -1.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolAcceptsEmptyReadArray(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'read'     => [],
+        ]);
+
+        $this->assertSame([], $pool->replicas);
+        $this->assertSame(1, $pool->maxConnectionAttempts);
+    }
+
+    public function testValidatePoolPropagatesPrimaryValidationError(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver' => 'mysql',
+                'host'   => 'primary.example.com',
+                // database is intentionally missing to surface the primary validation path
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: missing required config key "database".',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsIntegerKeyAtPoolLevel(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                0          => 'numeric_key_value',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: unsupported config key "0".',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsIntegerKeyInsideReplica(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 0 => 'numeric_key_value'],
+                ],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: "read[0]" has unsupported key "0". Pool-level keys must be set on the pool itself, not inside read[].',
+                $e->getMessage(),
+            );
+        }
+    }
 }

@@ -9,20 +9,17 @@ use Pdo\Mysql as PdoMysql;
 use Sloop\Database\Exception\InvalidConfigException;
 
 /**
- * Pure transformation: connection config array → ValidatedConfig → DSN / PDO options.
+ * Pure transformation: connection config array → ValidatedConfig / PoolConfig → DSN / PDO options.
  *
  * Separated from ConnectionManager so that config interpretation can be
- * unit-tested without instantiating PDO, and so that later sub-phases
- * (replica resolution in sub C, etc.) share the same logic.
+ * unit-tested without instantiating PDO.
  */
 final class ConnectionConfigResolver
 {
     /**
-     * Config keys recognized by sub B. Later sub-phases extend this list
-     * (see Phase 5-1 sub-phase breakdown in docs/v0.1-plan.md).
+     * Config keys recognized at the single-connection level (a primary or one replica entry).
      *
-     * Unknown keys are rejected by validate() to prevent silently
-     * ineffective configuration.
+     * Pool-level keys (`read`, `health_check`, etc.) are listed separately in ALLOWED_POOL_KEYS.
      *
      * @var list<string>
      */
@@ -40,6 +37,32 @@ final class ConnectionConfigResolver
     ];
 
     /**
+     * Pool-level config keys: ALLOWED_KEYS plus pool-only keys.
+     *
+     * Pool-only keys MUST NOT appear inside `read[]` elements; they apply
+     * to the pool as a whole, not per replica.
+     *
+     * @var list<string>
+     */
+    private const array ALLOWED_POOL_KEYS = [
+        'driver',
+        'host',
+        'port',
+        'database',
+        'username',
+        'password',
+        'charset',
+        'collation',
+        'connect_timeout_seconds',
+        'options',
+        'read',
+        'health_check',
+        'dead_cache_ttl_seconds',
+        'replica_selector',
+        'max_connection_attempts',
+    ];
+
+    /**
      * Required config keys; absence causes InvalidConfigException.
      *
      * @var list<string>
@@ -47,11 +70,18 @@ final class ConnectionConfigResolver
     private const array REQUIRED_KEYS = ['driver', 'host', 'database'];
 
     /**
-     * Drivers accepted by sub B (v0.1 only supports MySQL/MariaDB via mysql driver).
+     * Accepted drivers (currently only MySQL/MariaDB via mysql driver).
      *
      * @var list<string>
      */
     private const array ALLOWED_DRIVERS = ['mysql'];
+
+    /**
+     * Accepted replica selection strategy identifiers.
+     *
+     * @var list<string>
+     */
+    private const array ALLOWED_REPLICA_SELECTORS = ['random'];
 
     /**
      * Default TCP connect timeout in seconds when config omits the key.
@@ -68,7 +98,31 @@ final class ConnectionConfigResolver
     private const string DEFAULT_CHARSET = 'utf8mb4';
 
     /**
-     * Validate a connection config and return a typed ValidatedConfig.
+     * Default health check ON when omitted.
+     *
+     * @var bool
+     */
+    private const bool DEFAULT_HEALTH_CHECK = true;
+
+    /**
+     * Default TTL for dead-cache entries when omitted.
+     *
+     * @var int
+     */
+    private const int DEFAULT_DEAD_CACHE_TTL_SECONDS = 300;
+
+    /**
+     * Default replica selector when omitted.
+     *
+     * @var string
+     */
+    private const string DEFAULT_REPLICA_SELECTOR = 'random';
+
+    /**
+     * Validate a single-connection config and return a typed ValidatedConfig.
+     *
+     * Public entry point for single-connection validation and the per-entry
+     * primitive used internally by validatePool() for the primary and each replica.
      *
      * Accepts array-key keys (string|int) so that integer keys from
      * mistakenly written list-style config can be detected and rejected.
@@ -94,6 +148,44 @@ final class ConnectionConfigResolver
             collation:             self::extractOptionalIdentifier($name, $config, 'collation'),
             connectTimeoutSeconds: self::extractOptionalInt($name, $config, 'connect_timeout_seconds'),
             options:               self::extractOptions($name, $config),
+        );
+    }
+
+    /**
+     * Validate a pool config (primary + optional replicas + pool-level behavior keys).
+     *
+     * Replica entries inherit primary's single-connection keys; each replica
+     * entry MAY override `host` / `port` / etc. Pool-level keys (`read`,
+     * `health_check`, `dead_cache_ttl_seconds`, `replica_selector`,
+     * `max_connection_attempts`) MUST NOT appear inside `read[]` entries.
+     *
+     * @param  string                  $name   Pool name (the connections.<name> key)
+     * @param  array<array-key, mixed> $config Raw pool config array
+     * @return PoolConfig              Validated pool with primary + replicas + behavior settings
+     * @throws InvalidConfigException  When any key is unknown, required key is missing, or a value has the wrong type
+     */
+    public static function validatePool(string $name, array $config): PoolConfig
+    {
+        self::assertNoUnknownPoolKeys($name, $config);
+
+        $primarySingleConfig = self::extractSingleConnectionConfig($config);
+        $primary             = self::validate($name, $primarySingleConfig);
+
+        $replicas = self::extractReplicas($name, $config, $primarySingleConfig);
+
+        $healthCheck  = self::extractOptionalHealthCheck($name, $config) ?? self::DEFAULT_HEALTH_CHECK;
+        $deadCacheTtl = self::extractOptionalPositiveInt($name, $config, 'dead_cache_ttl_seconds') ?? self::DEFAULT_DEAD_CACHE_TTL_SECONDS;
+        $selector     = self::extractOptionalReplicaSelector($name, $config) ?? self::DEFAULT_REPLICA_SELECTOR;
+        $maxAttempts  = self::extractOptionalPositiveInt($name, $config, 'max_connection_attempts') ?? (\count($replicas) + 1);
+
+        return new PoolConfig(
+            name:                  $name,
+            primary:               $primary,
+            replicas:              $replicas,
+            healthCheck:           $healthCheck,
+            deadCacheTtlSeconds:   $deadCacheTtl,
+            replicaSelector:       $selector,
+            maxConnectionAttempts: $maxAttempts,
         );
     }
 
@@ -354,5 +446,181 @@ final class ConnectionConfigResolver
         }
 
         return $extracted;
+    }
+
+    /**
+     * Reject any pool config key not in ALLOWED_POOL_KEYS (including non-string keys).
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Raw pool config array
+     * @return void
+     * @throws InvalidConfigException When an unknown or non-string key is present at the pool level
+     */
+    private static function assertNoUnknownPoolKeys(string $name, array $config): void
+    {
+        foreach (array_keys($config) as $key) {
+            if (!\is_string($key) || !\in_array($key, self::ALLOWED_POOL_KEYS, true)) {
+                throw new InvalidConfigException(
+                    'Connection [' . $name . ']: unsupported config key "' . $key . '".',
+                );
+            }
+        }
+    }
+
+    /**
+     * Extract only the single-connection keys from a pool config (drops pool-only keys).
+     *
+     * Used to feed the primary entry into validate() and to merge into each replica.
+     *
+     * @param  array<array-key, mixed> $poolConfig Raw pool config array
+     * @return array<string, mixed>                Subset containing only single-connection keys present in $poolConfig
+     */
+    private static function extractSingleConnectionConfig(array $poolConfig): array
+    {
+        $result = [];
+        foreach (self::ALLOWED_KEYS as $key) {
+            if (\array_key_exists($key, $poolConfig)) {
+                $result[$key] = $poolConfig[$key];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Validate the `read` array and produce a list of ValidatedConfig replicas.
+     *
+     * Each replica entry inherits the primary's single-connection keys, with
+     * the replica's explicit keys overriding. Pool-only keys (e.g. `health_check`)
+     * appearing inside a replica entry are rejected so typos surface immediately.
+     *
+     * @param  string                  $name                 Pool name for error messages
+     * @param  array<array-key, mixed> $poolConfig           Raw pool config array
+     * @param  array<string, mixed>    $primarySingleConfig  Primary's single-connection key subset (used for inheritance)
+     * @return list<ValidatedConfig>                         Validated replicas in declaration order (empty when `read` is absent)
+     * @throws InvalidConfigException                        When `read` is malformed or any replica entry is invalid
+     */
+    private static function extractReplicas(string $name, array $poolConfig, array $primarySingleConfig): array
+    {
+        if (!\array_key_exists('read', $poolConfig)) {
+            return [];
+        }
+
+        $read = $poolConfig['read'];
+        if (!\is_array($read)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "read" must be an array.',
+            );
+        }
+
+        $replicas = [];
+        foreach ($read as $index => $replicaOverride) {
+            if (!\is_int($index)) {
+                throw new InvalidConfigException(
+                    'Connection [' . $name . ']: "read" must be a list with integer keys, got string key "' . $index . '".',
+                );
+            }
+            if (!\is_array($replicaOverride)) {
+                throw new InvalidConfigException(
+                    'Connection [' . $name . ']: "read[' . $index . ']" must be an array.',
+                );
+            }
+
+            foreach (array_keys($replicaOverride) as $replicaKey) {
+                if (!\is_string($replicaKey) || !\in_array($replicaKey, self::ALLOWED_KEYS, true)) {
+                    throw new InvalidConfigException(
+                        'Connection [' . $name . ']: "read[' . $index . ']" has unsupported key "' . $replicaKey . '". Pool-level keys must be set on the pool itself, not inside read[].',
+                    );
+                }
+            }
+
+            $merged     = array_merge($primarySingleConfig, $replicaOverride);
+            $replicas[] = self::validate($name . '.read[' . $index . ']', $merged);
+        }
+
+        return $replicas;
+    }
+
+    /**
+     * Extract the optional `health_check` bool, returning null when absent.
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @return bool|null
+     * @throws InvalidConfigException When the value is present but not a bool
+     */
+    private static function extractOptionalHealthCheck(string $name, array $config): ?bool
+    {
+        if (!\array_key_exists('health_check', $config)) {
+            return null;
+        }
+
+        $value = $config['health_check'];
+        if (!\is_bool($value)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "health_check" must be a boolean.',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract an optional replica selector string, restricted to ALLOWED_REPLICA_SELECTORS.
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @return string|null
+     * @throws InvalidConfigException When the value is present but not in ALLOWED_REPLICA_SELECTORS
+     */
+    private static function extractOptionalReplicaSelector(string $name, array $config): ?string
+    {
+        if (!\array_key_exists('replica_selector', $config)) {
+            return null;
+        }
+
+        $value = $config['replica_selector'];
+        if (!\is_string($value)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "replica_selector" must be a string.',
+            );
+        }
+        if (!\in_array($value, self::ALLOWED_REPLICA_SELECTORS, true)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: unsupported replica_selector "' . $value . '". Only \'random\' is supported.',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract an optional positive-integer config value (>= 1), returning null when absent.
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @param  string                  $key    Key to extract
+     * @return int|null
+     * @throws InvalidConfigException When the value is present but not an integer or is less than 1
+     */
+    private static function extractOptionalPositiveInt(string $name, array $config, string $key): ?int
+    {
+        if (!\array_key_exists($key, $config)) {
+            return null;
+        }
+
+        $value = $config[$key];
+        if (!\is_int($value)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "' . $key . '" must be an integer.',
+            );
+        }
+        if ($value < 1) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "' . $key . '" must be >= 1, got ' . $value . '.',
+            );
+        }
+
+        return $value;
     }
 }

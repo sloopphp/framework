@@ -8,20 +8,21 @@ use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\InvalidConfigException;
 
 /**
- * Lazily creates and caches database connections from configuration.
+ * Lazily creates and caches database connections from pool configurations.
  *
- * Connections are built via Connection::open() the first time they
- * are requested. Subsequent calls return the cached Connection so
- * that a single request reuses one PDO instance per connection name.
+ * Each `connections.<name>` config entry is interpreted as a pool definition
+ * (primary + optional replica list + pool-level behavior keys) via
+ * ConnectionConfigResolver::validatePool(). Connections are built the first
+ * time they are requested and cached so a single request reuses one PDO
+ * instance per pool name.
  *
- * Sub B exposes only the default connection through connection().
- * Sub C extends the API with a writable parameter to drive
- * master/replica routing (`connection(?bool $writable = null)`).
+ * connection() currently returns the pool's primary; replica selection and
+ * the writable parameter are not yet implemented.
  */
 final class ConnectionManager
 {
     /**
-     * Cached Connection instances keyed by connection name.
+     * Cached Connection instances keyed by pool name.
      *
      * @var array<string, Connection>
      */
@@ -30,8 +31,8 @@ final class ConnectionManager
     /**
      * Construct a new ConnectionManager.
      *
-     * @param string                              $defaultName Connection name to return from connection()
-     * @param array<string, array<string, mixed>> $configs     Connection configurations indexed by connection name
+     * @param string                              $defaultName Pool name to return from connection()
+     * @param array<string, array<string, mixed>> $configs     Pool configurations indexed by pool name
      */
     public function __construct(
         private readonly string $defaultName,
@@ -40,10 +41,10 @@ final class ConnectionManager
     }
 
     /**
-     * Return the default connection, creating and caching it on first call.
+     * Return the default pool's primary connection, creating and caching it on first call.
      *
-     * @return Connection                Lazy-created, cached Connection
-     * @throws InvalidConfigException    When the default connection name is not defined or its config is malformed
+     * @return Connection                  Lazy-created, cached Connection to the default pool's primary
+     * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the underlying PDO connection cannot be established
      */
     public function connection(): Connection
@@ -56,9 +57,9 @@ final class ConnectionManager
     }
 
     /**
-     * Build a new Connection from the named config entry.
+     * Build a new Connection to the named pool's primary.
      *
-     * @param  string                      $name Connection name
+     * @param  string                      $name Pool name
      * @return Connection
      * @throws InvalidConfigException      When the name is undefined or the config is malformed
      * @throws DatabaseConnectionException When the underlying PDO connection cannot be established
@@ -71,13 +72,14 @@ final class ConnectionManager
             );
         }
 
-        $validated = ConnectionConfigResolver::validate($name, $this->configs[$name]);
+        $pool    = ConnectionConfigResolver::validatePool($name, $this->configs[$name]);
+        $primary = $pool->primary;
 
         return Connection::open(
-            ConnectionConfigResolver::resolveDsn($validated),
-            $validated->username,
-            $validated->password,
-            ConnectionConfigResolver::resolvePdoOptions($validated),
+            ConnectionConfigResolver::resolveDsn($primary),
+            $primary->username,
+            $primary->password,
+            ConnectionConfigResolver::resolvePdoOptions($primary),
             $name,
         );
     }

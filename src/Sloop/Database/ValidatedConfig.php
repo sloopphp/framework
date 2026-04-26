@@ -18,6 +18,8 @@ namespace Sloop\Database;
 final readonly class ValidatedConfig
 {
     /**
+     * Construct a fully validated single-connection definition.
+     *
      * @param string            $driver                Database driver (currently only 'mysql')
      * @param string            $host                  Database host
      * @param int|null          $port                  Database port (null uses driver default)
