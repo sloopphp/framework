@@ -907,7 +907,7 @@ final class ApplicationTest extends TestCase
 
         $app = new Application($this->tmpDir);
 
-        $customFactory = new class implements ConnectionFactory {
+        $customFactory = new class () implements ConnectionFactory {
             public function make(ValidatedConfig $config, string $name): Connection
             {
                 throw new \LogicException('custom factory was used');

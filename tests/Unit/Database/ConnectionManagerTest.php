@@ -171,7 +171,7 @@ final class ConnectionManagerTest extends TestCase
 
     public function testConnectionPropagatesFactoryExceptions(): void
     {
-        $throwingFactory = new class implements ConnectionFactory {
+        $throwingFactory = new class () implements ConnectionFactory {
             public function make(ValidatedConfig $config, string $name): Connection
             {
                 throw new DatabaseConnectionException('simulated connect failure');
