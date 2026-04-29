@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Sloop\Database;
+namespace Sloop\Database\Factory;
 
+use Sloop\Database\Config\ValidatedConfig;
+use Sloop\Database\Connection;
 use Sloop\Database\Exception\DatabaseConnectionException;
 
 /**

@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database;
 
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
-use Sloop\Database\ConnectionFactory;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\InvalidConfigException;
-use Sloop\Database\ValidatedConfig;
+use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Tests\Unit\Database\Stub\AlwaysFailConnectionFactory;
 
 final class ConnectionManagerTest extends TestCase

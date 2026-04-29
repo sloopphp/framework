@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Stub;
 
 use LogicException;
+use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
-use Sloop\Database\ConnectionFactory;
-use Sloop\Database\ValidatedConfig;
+use Sloop\Database\Factory\ConnectionFactory;
 
 final class AlwaysFailConnectionFactory implements ConnectionFactory
 {

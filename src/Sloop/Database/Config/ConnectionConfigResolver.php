@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sloop\Database;
+namespace Sloop\Database\Config;
 
 use PDO;
 use Pdo\Mysql as PdoMysql;

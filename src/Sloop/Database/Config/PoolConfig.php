@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sloop\Database;
+namespace Sloop\Database\Config;
 
 /**
  * Validated pool configuration: primary + replica list + pool-level behavior settings.

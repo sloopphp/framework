@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Sloop\Tests\Unit\Database;
+namespace Sloop\Tests\Unit\Database\Config;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
-use Sloop\Database\ValidatedConfig;
+use Sloop\Database\Config\ValidatedConfig;
 
 final class ValidatedConfigTest extends TestCase
 {

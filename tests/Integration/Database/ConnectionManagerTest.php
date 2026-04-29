@@ -6,7 +6,7 @@ namespace Sloop\Tests\Integration\Database;
 
 use PDO;
 use Sloop\Database\ConnectionManager;
-use Sloop\Database\PdoConnectionFactory;
+use Sloop\Database\Factory\PdoConnectionFactory;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 final class ConnectionManagerTest extends IntegrationTestCase

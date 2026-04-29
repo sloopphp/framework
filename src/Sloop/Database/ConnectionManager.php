@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Sloop\Database;
 
+use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Factory\ConnectionFactory;
 
 /**
  * Lazily creates and caches database connections from pool configurations.

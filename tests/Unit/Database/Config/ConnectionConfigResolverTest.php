@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Sloop\Tests\Unit\Database;
+namespace Sloop\Tests\Unit\Database\Config;
 
 use PDO;
 use Pdo\Mysql as PdoMysql;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Sloop\Database\ConnectionConfigResolver;
+use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Exception\InvalidConfigException;
 
 final class ConnectionConfigResolverTest extends TestCase
