@@ -6,3 +6,5 @@ parameters:
     scanFiles:
         - src/Sloop/Helpers/path.php
         - src/Sloop/Helpers/env.php
+    stubFiles:
+        - vendor/jetbrains/phpstorm-stubs/apcu/apcu.php

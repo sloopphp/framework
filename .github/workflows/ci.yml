@@ -22,7 +22,8 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: intl, pdo_mysql, pdo_sqlite
+          extensions: intl, pdo_mysql, pdo_sqlite, apcu
+          ini-values: apc.enable_cli=1
           coverage: none
 
       - name: Cache Composer dependencies
@@ -167,7 +168,8 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: intl, pdo_mysql, pdo_sqlite
+          extensions: intl, pdo_mysql, pdo_sqlite, apcu
+          ini-values: apc.enable_cli=1
           coverage: pcov
 
       - name: Cache Composer dependencies
