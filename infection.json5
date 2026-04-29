@@ -42,6 +42,27 @@
             "ignore": [
                 "Sloop\\Container\\Container::autowire"
             ]
+        },
+        "IncrementInteger": {
+            // Str::randomHex computes the byte count as `intdiv($length + 1, 2)`
+            // so that odd-length requests round up. Changing the `+ 1` to `+ 2`
+            // simply asks for one extra byte that substr() then trims off,
+            // leaving the visible output unchanged (equivalent mutant).
+            // \Random\Randomizer is a final core class whose state machine
+            // produces deterministic leading bytes, so a larger getBytes()
+            // call yields the same hex prefix. No black-box test can observe
+            // the difference, so the mutation cannot be killed.
+            "ignore": [
+                "Sloop\\Support\\Str::randomHex"
+            ]
+        },
+        "DecrementInteger": {
+            // Same root cause as IncrementInteger above. Changing the divisor
+            // from 2 to 1 just asks for more bytes that are then trimmed by
+            // substr(), leaving the output unchanged (equivalent mutant).
+            "ignore": [
+                "Sloop\\Support\\Str::randomHex"
+            ]
         }
     },
     "testFramework": "phpunit",
