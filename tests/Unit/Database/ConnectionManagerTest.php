@@ -666,4 +666,96 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame($first, $second);
         $this->assertCount(1, $factory->invocations);
     }
+
+    // -------------------------------------------------------
+    // transaction-aware routing
+    // -------------------------------------------------------
+
+    public function testConnectionRoutesToPrimaryWhilePrimaryIsInTransaction(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        // Cache the primary first so transaction-aware routing has a Connection to inspect.
+        $manager->connection();
+        $primary->begin();
+
+        try {
+            // Even though `read` is configured, writable: false must return the
+            // primary while a transaction is active so that subsequent SELECTs
+            // observe the in-flight changes.
+            $duringTx = $manager->connection(writable: false);
+
+            $this->assertSame($primary, $duringTx);
+            // Replica was never contacted while the transaction was active.
+            $this->assertSame(['primary.internal:0'], $factory->invocations);
+        } finally {
+            $primary->rollback();
+        }
+    }
+
+    public function testConnectionResumesReplicaRoutingAfterCommit(): void
+    {
+        $primary = $this->realConnection();
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        $manager->connection();
+        $primary->begin();
+        $primary->commit();
+
+        $afterTx = $manager->connection(writable: false);
+
+        $this->assertSame($replica, $afterTx);
+    }
+
+    public function testConnectionResumesReplicaRoutingAfterRollback(): void
+    {
+        $primary = $this->realConnection();
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        $manager->connection();
+        $primary->begin();
+        $primary->rollback();
+
+        $afterTx = $manager->connection(writable: false);
+
+        $this->assertSame($replica, $afterTx);
+    }
 }

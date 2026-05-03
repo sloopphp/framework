@@ -73,6 +73,12 @@ final class ConnectionManager
     /**
      * Return the default pool's connection, routing to primary or replica based on $writable.
      *
+     * Once the cached primary Connection is in a transaction, every subsequent
+     * call (regardless of $writable) returns that primary so that reads inside
+     * a write transaction stay consistent with the in-flight changes. Routing
+     * resumes the normal $writable rules after commit() / rollback() leaves
+     * inTransaction() == false.
+     *
      * @param  bool|null                   $writable true → primary; false → replica with primary fallback;
      *                                               null → primary (Builder layer is responsible for SELECT detection)
      * @return Connection                  Lazy-created, cached Connection
@@ -81,6 +87,11 @@ final class ConnectionManager
      */
     public function connection(?bool $writable = null): Connection
     {
+        if (isset($this->primaryConnections[$this->defaultName])
+            && $this->primaryConnections[$this->defaultName]->inTransaction()) {
+            return $this->primaryConnections[$this->defaultName];
+        }
+
         if ($writable === false) {
             return $this->getReplicaConnection($this->defaultName);
         }
