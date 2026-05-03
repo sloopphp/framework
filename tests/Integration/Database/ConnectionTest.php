@@ -234,4 +234,16 @@ final class ConnectionTest extends IntegrationTestCase
         $this->assertNotSame('', $this->connection->serverVersion());
     }
 
+    public function testPingSucceedsOnLiveConnection(): void
+    {
+        // ping() returns void on success; verify the connection stays usable
+        // for a follow-up query, which is the production caller's reason for
+        // pinging in the first place.
+        $this->connection->ping();
+
+        $rows = $this->connection->query('SELECT 1 AS one')->toArray();
+
+        $this->assertSame([['one' => 1]], $rows);
+    }
+
 }

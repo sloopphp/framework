@@ -503,4 +503,30 @@ final class ConnectionTest extends TestCase
         $this->assertSame('8.0.37', $connection->serverVersion());
     }
 
+    // -------------------------------------------------------
+    // ping
+    // -------------------------------------------------------
+
+    public function testPingWrapsExecutionFailure(): void
+    {
+        // `DO` is MySQL/MariaDB-specific; SQLite rejects it as a syntax error
+        // (SQLSTATE HY000 / driver code 1 → QueryException base class), which
+        // exercises the same PDOException → DatabaseException wrap path that
+        // production hits when the server has closed the connection.
+        $this->expectException(QueryException::class);
+
+        $this->connection->ping();
+    }
+
+    public function testPingFailureCarriesConnectionNameAndSql(): void
+    {
+        try {
+            $this->connection->ping();
+            $this->fail('Expected DatabaseException was not thrown');
+        } catch (QueryException $e) {
+            $this->assertSame('test_conn', $e->connectionName);
+            $this->assertSame('DO 1', $e->sql);
+        }
+    }
+
 }

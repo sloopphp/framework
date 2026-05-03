@@ -319,6 +319,23 @@ final class Connection
     }
 
     /**
+     * Send a `DO 1` ping to confirm the underlying connection is still alive.
+     *
+     * Issued via `PDO::exec()` so the round-trip skips prepared-statement
+     * setup; cost-wise comparable to MySQL's `COM_PING`. Detects connections
+     * the server has silently closed (e.g. `wait_timeout`) before the next
+     * real query would. Used by ConnectionManager's replica health check
+     * after a successful PDO connect.
+     *
+     * @return void
+     * @throws DatabaseException When the ping query fails
+     */
+    public function ping(): void
+    {
+        $this->execSimple('DO 1');
+    }
+
+    /**
      * Roll back silently (if still in a transaction) and normalize $e to a sloop exception.
      *
      * @param  Throwable $e Exception that aborted the transaction body
