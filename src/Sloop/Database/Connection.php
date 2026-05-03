@@ -167,8 +167,8 @@ final class Connection
             throw $e;
         }
 
-        if ($startTime !== null) {
-            $this->logQuerySuccess($sql, $bindings, $startTime, isSelect: true);
+        if ($startTime !== null && $this->logger !== null) {
+            $this->logQuerySuccess($this->logger, $sql, $bindings, $startTime, isSelect: true);
         }
 
         return new Result($rows);
@@ -197,8 +197,8 @@ final class Connection
             throw $e;
         }
 
-        if ($startTime !== null) {
-            $this->logQuerySuccess($sql, $bindings, $startTime, isSelect: false);
+        if ($startTime !== null && $this->logger !== null) {
+            $this->logQuerySuccess($this->logger, $sql, $bindings, $startTime, isSelect: false);
         }
 
         return $stmt->rowCount();
@@ -528,25 +528,29 @@ final class Connection
      *
      * Slow-query logging fires for SELECT-style queries only; statement() never
      * triggers it because the threshold is intended for read-path latency budgets.
+     * The caller passes a non-null logger so this helper can encode the
+     * shouldMeasureElapsed() invariant into its signature without re-checking.
      *
+     * @param  LoggerInterface          $logger    Logger narrowed by the caller (non-null)
      * @param  string                   $sql       Executed SQL
      * @param  array<int|string, mixed> $bindings  Bound parameters (redacted in context per LoggingOptions)
      * @param  float                    $startTime microtime(true) at the start of the call
      * @param  bool                     $isSelect  True when invoked from query(); false from statement()
      * @return void
      */
-    private function logQuerySuccess(string $sql, array $bindings, float $startTime, bool $isSelect): void
-    {
-        if ($this->logger === null) {
-            return;
-        }
-
+    private function logQuerySuccess(
+        LoggerInterface $logger,
+        string $sql,
+        array $bindings,
+        float $startTime,
+        bool $isSelect,
+    ): void {
         $elapsedMs = (microtime(true) - $startTime) * 1000;
 
         if ($isSelect
             && $this->loggingOptions->slowQueryThresholdMs !== null
             && $elapsedMs > $this->loggingOptions->slowQueryThresholdMs) {
-            $this->logger->warning(
+            $logger->warning(
                 'slow query',
                 $this->buildLogContext($sql, $bindings) + ['elapsed_ms' => $elapsedMs],
             );
@@ -555,7 +559,7 @@ final class Connection
         }
 
         if ($this->loggingOptions->logAllQueries) {
-            $this->logger->debug(
+            $logger->debug(
                 'query executed',
                 $this->buildLogContext($sql, $bindings) + ['elapsed_ms' => $elapsedMs],
             );
