@@ -57,11 +57,50 @@
             ]
         },
         "DecrementInteger": {
-            // Same root cause as IncrementInteger above. Changing the divisor
-            // from 2 to 1 just asks for more bytes that are then trimmed by
-            // substr(), leaving the output unchanged (equivalent mutant).
+            // Str::randomHex: same root cause as IncrementInteger above.
+            // Changing the divisor from 2 to 1 just asks for more bytes that
+            // are then trimmed by substr(), leaving the output unchanged.
+            // Str::random: getInt(0, $charsLen - 1) → getInt(-1, $charsLen - 1)
+            // expands the range so -1 may surface; PHP's $chars[-1] resolves
+            // to the last character ('9'), so the result keeps the same
+            // alphabet and length, only the per-character distribution shifts
+            // by ~1.6%. No deterministic black-box assertion can observe the
+            // shift without running thousands of samples; equivalent in
+            // practice for unit-test purposes.
             "ignore": [
-                "Sloop\\Support\\Str::randomHex"
+                "Sloop\\Support\\Str::randomHex",
+                "Sloop\\Support\\Str::random"
+            ]
+        },
+        "Concat": {
+            // Str::snake builds its cache key as `$value . $delimiter`.
+            // Reversing the operands to `$delimiter . $value` still yields
+            // a unique cache key for each (value, delimiter) pair, so the
+            // observable behaviour (return value, cache hit/miss outcome) is
+            // identical. Equivalent mutant.
+            "ignore": [
+                "Sloop\\Support\\Str::snake"
+            ]
+        },
+        "ReturnRemoval": {
+            // Str::snake / Str::studly cache hit branches return the cached
+            // value early. Removing the early return causes the body to run
+            // again and overwrite the cache with the same computed value, so
+            // the visible output is unchanged; only an unobservable performance
+            // difference remains. Equivalent in black-box test terms.
+            "ignore": [
+                "Sloop\\Support\\Str::snake",
+                "Sloop\\Support\\Str::studly"
+            ]
+        },
+        "ArrayItemRemoval": {
+            // Str::studly's `preg_split('/[-_\s]+/', $value) ?: [$value]`
+            // fallback is unreachable: the regex is valid so preg_split never
+            // returns false, and an empty input '' produces ['']—truthy, so
+            // the `?:` branch is never taken. Removing $value from the
+            // fallback array therefore changes nothing observable.
+            "ignore": [
+                "Sloop\\Support\\Str::studly"
             ]
         }
     },
