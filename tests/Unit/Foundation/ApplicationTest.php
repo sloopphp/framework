@@ -19,6 +19,9 @@ use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Factory\PdoConnectionFactory;
+use Sloop\Database\Replica\DeadReplicaCache;
+use Sloop\Database\Replica\RandomReplicaSelector;
+use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Response\ResponseFormatterInterface;
@@ -941,6 +944,189 @@ final class ApplicationTest extends TestCase
                 $e->getMessage(),
             );
         }
+    }
+
+    public function testReplicaSelectorIsRegisteredAsSingleton(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $first  = $app->container->get(ReplicaSelector::class);
+        $second = $app->container->get(ReplicaSelector::class);
+
+        $this->assertSame($first, $second);
+    }
+
+    public function testReplicaSelectorDefaultsToRandomReplicaSelector(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $selector = $app->container->get(ReplicaSelector::class);
+
+        $this->assertInstanceOf(RandomReplicaSelector::class, $selector);
+    }
+
+    public function testDeadReplicaCacheIsRegisteredAsSingleton(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $first  = $app->container->get(DeadReplicaCache::class);
+        $second = $app->container->get(DeadReplicaCache::class);
+
+        $this->assertSame($first, $second);
+    }
+
+    public function testDeadReplicaCacheDefaultsToConcreteImplementation(): void
+    {
+        // Resolves to ApcuDeadReplicaCache when ext-apcu is enabled and apc.enable_cli=1,
+        // otherwise InMemoryDeadReplicaCache. Either way the binding must satisfy
+        // the DeadReplicaCache contract.
+        $app = new Application($this->tmpDir);
+
+        $cache = $app->container->get(DeadReplicaCache::class);
+
+        $this->assertInstanceOf(DeadReplicaCache::class, $cache);
+    }
+
+    public function testConnectionManagerThrowsWhenReplicaSelectorBindingIsInvalid(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $app->container->instance(ReplicaSelector::class, new \stdClass());
+
+        try {
+            $app->container->get(ConnectionManager::class);
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(
+                'Container binding for ' . ReplicaSelector::class . ' must implement ReplicaSelector.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testConnectionManagerThrowsWhenDeadReplicaCacheBindingIsInvalid(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $app->container->instance(DeadReplicaCache::class, new \stdClass());
+
+        try {
+            $app->container->get(ConnectionManager::class);
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(
+                'Container binding for ' . DeadReplicaCache::class . ' must implement DeadReplicaCache.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testConnectionManagerUsesOverriddenReplicaSelectorBinding(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "primary" => [
+                    "driver"       => "mysql",
+                    "host"         => "primary.internal",
+                    "database"     => "app",
+                    "read"         => [["host" => "replica.internal"]],
+                    "health_check" => false,
+                ],
+            ],
+        ];');
+
+        $app = new Application($this->tmpDir);
+
+        $customSelector = new class () implements ReplicaSelector {
+            public bool $invoked = false;
+
+            public function pick(array $candidates): int
+            {
+                $this->invoked = true;
+
+                return 0;
+            }
+        };
+        $app->container->instance(ReplicaSelector::class, $customSelector);
+
+        // Replica route requires a Connection from the factory; override with a stub
+        // that hands back a SQLite-backed Connection so the route runs to completion.
+        $stubConnection = new Connection(new \PDO('sqlite::memory:'), 'replica');
+        $customFactory  = new readonly class ($stubConnection) implements ConnectionFactory {
+            public function __construct(private Connection $stubConnection)
+            {
+            }
+
+            public function make(ValidatedConfig $config, string $name): Connection
+            {
+                return $this->stubConnection;
+            }
+        };
+        $app->container->instance(ConnectionFactory::class, $customFactory);
+
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+        $manager->connection(writable: false);
+
+        $this->assertTrue($customSelector->invoked);
+    }
+
+    public function testConnectionManagerUsesOverriddenDeadReplicaCacheBinding(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "primary" => [
+                    "driver"       => "mysql",
+                    "host"         => "primary.internal",
+                    "database"     => "app",
+                    "read"         => [["host" => "replica.internal"]],
+                    "health_check" => false,
+                ],
+            ],
+        ];');
+
+        $app = new Application($this->tmpDir);
+
+        $customCache = new class () implements DeadReplicaCache {
+            public bool $isDeadInvoked = false;
+
+            public function isDead(string $host, int $port, string $pool): bool
+            {
+                $this->isDeadInvoked = true;
+
+                return false;
+            }
+
+            public function markServerDead(string $host, int $port, int $ttlSeconds): void
+            {
+            }
+
+            public function markPoolDead(string $host, int $port, string $pool, int $ttlSeconds): void
+            {
+            }
+        };
+        $app->container->instance(DeadReplicaCache::class, $customCache);
+
+        $stubConnection = new Connection(new \PDO('sqlite::memory:'), 'replica');
+        $customFactory  = new readonly class ($stubConnection) implements ConnectionFactory {
+            public function __construct(private Connection $stubConnection)
+            {
+            }
+
+            public function make(ValidatedConfig $config, string $name): Connection
+            {
+                return $this->stubConnection;
+            }
+        };
+        $app->container->instance(ConnectionFactory::class, $customFactory);
+
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+        $manager->connection(writable: false);
+
+        $this->assertTrue($customCache->isDeadInvoked);
     }
 
     public function testConfigDatabaseDefaultIsInjected(): void

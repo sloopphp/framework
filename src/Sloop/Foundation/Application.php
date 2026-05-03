@@ -16,6 +16,11 @@ use Sloop\Container\EntryNotFoundException;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Factory\PdoConnectionFactory;
+use Sloop\Database\Replica\ApcuDeadReplicaCache;
+use Sloop\Database\Replica\DeadReplicaCache;
+use Sloop\Database\Replica\InMemoryDeadReplicaCache;
+use Sloop\Database\Replica\RandomReplicaSelector;
+use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Request\Request;
@@ -181,7 +186,25 @@ final class Application implements RequestHandlerInterface
         $this->container->singleton(TraceContext::class, fn (): TraceContext => new TraceContext());
         $this->container->singleton(LogManager::class, fn (Container $container): LogManager => $this->createLogManager($container));
         $this->container->singleton(ConnectionFactory::class, fn (): ConnectionFactory => new PdoConnectionFactory());
+        $this->container->singleton(ReplicaSelector::class, fn (): ReplicaSelector => new RandomReplicaSelector());
+        $this->container->singleton(DeadReplicaCache::class, fn (): DeadReplicaCache => $this->createDeadReplicaCache());
         $this->container->singleton(ConnectionManager::class, fn (Container $container): ConnectionManager => $this->createConnectionManager($container));
+    }
+
+    /**
+     * Create the DeadReplicaCache implementation appropriate to the current environment.
+     *
+     * Picks ApcuDeadReplicaCache when ext-apcu is loaded and apc.enable_cli=1
+     * (cross-request dead marks); otherwise falls back to InMemoryDeadReplicaCache
+     * (per-request dead marks, sufficient as a degraded fallback).
+     *
+     * @return DeadReplicaCache
+     */
+    private function createDeadReplicaCache(): DeadReplicaCache
+    {
+        return ApcuDeadReplicaCache::isAvailable()
+            ? new ApcuDeadReplicaCache()
+            : new InMemoryDeadReplicaCache();
     }
 
     /**
@@ -290,9 +313,9 @@ final class Application implements RequestHandlerInterface
     /**
      * Create the ConnectionManager from configuration.
      *
-     * @param  Container          $container Container used to resolve the ConnectionFactory binding
+     * @param  Container         $container Container used to resolve the ConnectionFactory / ReplicaSelector / DeadReplicaCache bindings
      * @return ConnectionManager
-     * @throws \RuntimeException  If the ConnectionFactory binding does not implement ConnectionFactory
+     * @throws \RuntimeException If any required binding does not implement its declared interface
      */
     private function createConnectionManager(Container $container): ConnectionManager
     {
@@ -315,10 +338,26 @@ final class Application implements RequestHandlerInterface
             );
         }
 
+        $replicaSelector = $container->get(ReplicaSelector::class);
+        if (!$replicaSelector instanceof ReplicaSelector) {
+            throw new \RuntimeException(
+                'Container binding for ' . ReplicaSelector::class . ' must implement ReplicaSelector.',
+            );
+        }
+
+        $deadCache = $container->get(DeadReplicaCache::class);
+        if (!$deadCache instanceof DeadReplicaCache) {
+            throw new \RuntimeException(
+                'Container binding for ' . DeadReplicaCache::class . ' must implement DeadReplicaCache.',
+            );
+        }
+
         return new ConnectionManager(
             defaultName: $default,
             configs: $connections,
             factory: $factory,
+            replicaSelector: $replicaSelector,
+            deadCache: $deadCache,
         );
     }
 

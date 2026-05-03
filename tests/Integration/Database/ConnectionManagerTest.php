@@ -7,24 +7,42 @@ namespace Sloop\Tests\Integration\Database;
 use PDO;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Factory\PdoConnectionFactory;
+use Sloop\Database\Replica\InMemoryDeadReplicaCache;
+use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 final class ConnectionManagerTest extends IntegrationTestCase
 {
     private PdoConnectionFactory $factory;
 
+    private RandomReplicaSelector $selector;
+
+    private InMemoryDeadReplicaCache $deadCache;
+
     protected function setUp(): void
     {
-        $this->factory = new PdoConnectionFactory();
+        $this->factory   = new PdoConnectionFactory();
+        $this->selector  = new RandomReplicaSelector();
+        $this->deadCache = new InMemoryDeadReplicaCache();
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function manager(array $config): ConnectionManager
+    {
+        return new ConnectionManager(
+            defaultName: 'master',
+            configs: ['master' => $config],
+            factory: $this->factory,
+            replicaSelector: $this->selector,
+            deadCache: $this->deadCache,
+        );
     }
 
     public function testConnectionReturnsUsableConnection(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: ['master' => self::defaultConfig()],
-            factory: $this->factory,
-        );
+        $manager = $this->manager(self::defaultConfig());
 
         $rows = $manager->connection()->query('SELECT 1 AS v')->toArray();
 
@@ -33,11 +51,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
 
     public function testConnectionIsCachedAcrossCalls(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: ['master' => self::defaultConfig()],
-            factory: $this->factory,
-        );
+        $manager = $this->manager(self::defaultConfig());
 
         $first  = $manager->connection();
         $second = $manager->connection();
@@ -50,11 +64,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $config            = self::defaultConfig();
         $config['charset'] = 'utf8mb4';
 
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: ['master' => $config],
-            factory: $this->factory,
-        );
+        $manager = $this->manager($config);
 
         $rows = $manager->connection()
             ->query("SHOW VARIABLES LIKE 'character_set_client'")
@@ -69,11 +79,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $config['charset']   = 'utf8mb4';
         $config['collation'] = 'utf8mb4_general_ci';
 
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: ['master' => $config],
-            factory: $this->factory,
-        );
+        $manager = $this->manager($config);
 
         $rows = $manager->connection()
             ->query("SHOW VARIABLES LIKE 'collation_connection'")
@@ -91,11 +97,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $config            = self::defaultConfig();
         $config['options'] = [PDO::ATTR_CASE => PDO::CASE_UPPER];
 
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: ['master' => $config],
-            factory: $this->factory,
-        );
+        $manager = $this->manager($config);
 
         $rows = $manager->connection()
             ->query('SELECT 1 AS lower_case_alias')

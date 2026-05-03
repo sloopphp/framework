@@ -19,15 +19,11 @@ final class RandomReplicaSelector implements ReplicaSelector
     /**
      * Pick one candidate uniformly at random and return its index.
      *
-     * @param  list<ValidatedConfig> $candidates Surviving replica configs
-     * @return int|null              Index into $candidates, or null when empty
+     * @param  non-empty-list<ValidatedConfig> $candidates Surviving replica configs (must be non-empty)
+     * @return int                                         Valid index into $candidates
      */
-    public function pick(array $candidates): ?int
+    public function pick(array $candidates): int
     {
-        if ($candidates === []) {
-            return null;
-        }
-
         return (int) array_rand($candidates);
     }
 }

@@ -17,10 +17,14 @@ use Sloop\Database\Config\ValidatedConfig;
 interface ReplicaSelector
 {
     /**
-     * Pick one candidate and return its index, or null when no candidates remain.
+     * Pick one candidate and return its index.
      *
-     * @param  list<ValidatedConfig> $candidates Surviving replica configs
-     * @return int|null              Index into $candidates, or null when empty
+     * Callers must ensure $candidates is non-empty; ConnectionManager filters
+     * out dead replicas first and only invokes pick() while at least one
+     * survivor remains, so this contract is checkable at the call site.
+     *
+     * @param  non-empty-list<ValidatedConfig> $candidates Surviving replica configs (must be non-empty)
+     * @return int                                         Valid index into $candidates
      */
-    public function pick(array $candidates): ?int;
+    public function pick(array $candidates): int;
 }

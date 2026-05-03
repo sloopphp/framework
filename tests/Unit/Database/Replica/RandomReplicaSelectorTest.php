@@ -26,13 +26,6 @@ final class RandomReplicaSelectorTest extends TestCase
         );
     }
 
-    public function testPickReturnsNullForEmptyCandidates(): void
-    {
-        $selector = new RandomReplicaSelector();
-
-        $this->assertNull($selector->pick([]));
-    }
-
     public function testPickReturnsZeroForSingleCandidate(): void
     {
         $selector = new RandomReplicaSelector();
@@ -52,7 +45,6 @@ final class RandomReplicaSelectorTest extends TestCase
         for ($i = 0; $i < 200; $i++) {
             $picked = $selector->pick($candidates);
 
-            $this->assertNotNull($picked);
             $this->assertGreaterThanOrEqual(0, $picked);
             $this->assertLessThan(3, $picked);
         }
@@ -69,8 +61,7 @@ final class RandomReplicaSelectorTest extends TestCase
 
         $seen = [];
         for ($i = 0; $i < 200 && \count($seen) < 3; $i++) {
-            $picked = $selector->pick($candidates);
-            $this->assertNotNull($picked);
+            $picked        = $selector->pick($candidates);
             $seen[$picked] = true;
         }
 
@@ -81,15 +72,14 @@ final class RandomReplicaSelectorTest extends TestCase
     {
         $selector = new RandomReplicaSelector();
 
-        $this->assertNull($selector->pick([]));
+        // Single-element calls always pick 0; the selector keeps no state from the previous call.
         $this->assertSame(0, $selector->pick([$this->makeConfig('r1.example')]));
-        $this->assertNull($selector->pick([]));
+        $this->assertSame(0, $selector->pick([$this->makeConfig('r1.example')]));
 
         $picked = $selector->pick([
             $this->makeConfig('r1.example'),
             $this->makeConfig('r2.example'),
         ]);
-        $this->assertNotNull($picked);
         $this->assertGreaterThanOrEqual(0, $picked);
         $this->assertLessThan(2, $picked);
     }

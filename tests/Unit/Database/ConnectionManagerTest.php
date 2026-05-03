@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database;
 
+use PDO;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
@@ -11,24 +12,49 @@ use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
+use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Tests\Unit\Database\Stub\AlwaysFailConnectionFactory;
+use Sloop\Tests\Unit\Database\Stub\FixedReplicaSelector;
+use Sloop\Tests\Unit\Database\Stub\ScriptedConnectionFactory;
 
 final class ConnectionManagerTest extends TestCase
 {
-    private AlwaysFailConnectionFactory $factory;
+    private FixedReplicaSelector $selector;
+
+    private InMemoryDeadReplicaCache $deadCache;
 
     protected function setUp(): void
     {
-        $this->factory = new AlwaysFailConnectionFactory();
+        $this->selector  = new FixedReplicaSelector();
+        $this->deadCache = new InMemoryDeadReplicaCache();
     }
+
+    /**
+     * @param array<string, array<string, mixed>> $configs
+     */
+    private function manager(string $defaultName, array $configs, ConnectionFactory $factory): ConnectionManager
+    {
+        return new ConnectionManager(
+            defaultName: $defaultName,
+            configs: $configs,
+            factory: $factory,
+            replicaSelector: $this->selector,
+            deadCache: $this->deadCache,
+        );
+    }
+
+    private function realConnection(): Connection
+    {
+        return new Connection(new PDO('sqlite::memory:'), 'test');
+    }
+
+    // -------------------------------------------------------
+    // pool resolution / config validation
+    // -------------------------------------------------------
 
     public function testConnectionFailsWhenDefaultNameIsNotDefined(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: [],
-            factory: $this->factory,
-        );
+        $manager = $this->manager('master', [], new AlwaysFailConnectionFactory());
 
         try {
             $manager->connection();
@@ -43,17 +69,13 @@ final class ConnectionManagerTest extends TestCase
 
     public function testConnectionFailsWhenDefaultNameDiffersFromAvailableConfig(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'analytics',
-            configs: [
-                'master' => [
-                    'driver'   => 'mysql',
-                    'host'     => 'localhost',
-                    'database' => 'app',
-                ],
+        $manager = $this->manager('analytics', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
             ],
-            factory: $this->factory,
-        );
+        ], new AlwaysFailConnectionFactory());
 
         try {
             $manager->connection();
@@ -68,16 +90,12 @@ final class ConnectionManagerTest extends TestCase
 
     public function testConnectionPropagatesValidationErrorsFromResolver(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: [
-                'master' => [
-                    'driver' => 'mysql',
-                    // host and database missing
-                ],
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver' => 'mysql',
+                // host and database missing
             ],
-            factory: $this->factory,
-        );
+        ], new AlwaysFailConnectionFactory());
 
         try {
             $manager->connection();
@@ -92,17 +110,13 @@ final class ConnectionManagerTest extends TestCase
 
     public function testConnectionRejectsUnsupportedDriver(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: [
-                'master' => [
-                    'driver'   => 'sqlite',
-                    'host'     => 'localhost',
-                    'database' => 'app',
-                ],
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'sqlite',
+                'host'     => 'localhost',
+                'database' => 'app',
             ],
-            factory: $this->factory,
-        );
+        ], new AlwaysFailConnectionFactory());
 
         try {
             $manager->connection();
@@ -117,18 +131,14 @@ final class ConnectionManagerTest extends TestCase
 
     public function testConnectionRejectsUnknownConfigKey(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: [
-                'master' => [
-                    'driver'           => 'mysql',
-                    'host'             => 'localhost',
-                    'database'         => 'app',
-                    'query_timeout_ms' => 5000,
-                ],
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'localhost',
+                'database'         => 'app',
+                'query_timeout_ms' => 5000,
             ],
-            factory: $this->factory,
-        );
+        ], new AlwaysFailConnectionFactory());
 
         try {
             $manager->connection();
@@ -143,20 +153,16 @@ final class ConnectionManagerTest extends TestCase
 
     public function testConnectionPropagatesPoolStructureValidationError(): void
     {
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: [
-                'master' => [
-                    'driver'   => 'mysql',
-                    'host'     => 'localhost',
-                    'database' => 'app',
-                    'read'     => [
-                        ['host' => 'replica.internal', 'health_check' => false],
-                    ],
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica.internal', 'health_check' => false],
                 ],
             ],
-            factory: $this->factory,
-        );
+        ], new AlwaysFailConnectionFactory());
 
         try {
             $manager->connection();
@@ -178,17 +184,13 @@ final class ConnectionManagerTest extends TestCase
             }
         };
 
-        $manager = new ConnectionManager(
-            defaultName: 'master',
-            configs: [
-                'master' => [
-                    'driver'   => 'mysql',
-                    'host'     => 'localhost',
-                    'database' => 'app',
-                ],
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
             ],
-            factory: $throwingFactory,
-        );
+        ], $throwingFactory);
 
         try {
             $manager->connection();
@@ -196,5 +198,394 @@ final class ConnectionManagerTest extends TestCase
         } catch (DatabaseConnectionException $e) {
             $this->assertSame('simulated connect failure', $e->getMessage());
         }
+    }
+
+    // -------------------------------------------------------
+    // primary routing (writable: null / true)
+    // -------------------------------------------------------
+
+    public function testConnectionReturnsPrimaryWhenWritableIsNull(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $this->assertSame($primary, $manager->connection());
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testConnectionReturnsPrimaryWhenWritableIsTrue(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame($primary, $manager->connection(writable: true));
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testConnectionReusesPrimaryAcrossCalls(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $first  = $manager->connection();
+        $second = $manager->connection(writable: true);
+
+        $this->assertSame($first, $second);
+        $this->assertCount(1, $factory->invocations);
+    }
+
+    // -------------------------------------------------------
+    // replica routing (writable: false)
+    // -------------------------------------------------------
+
+    public function testReplicaRouteFallsBackToPrimaryWhenReadIsEmpty(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $this->assertSame($primary, $manager->connection(writable: false));
+    }
+
+    public function testReplicaRouteReturnsHealthyReplicaWithoutPing(): void
+    {
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        $this->assertSame($replica, $manager->connection(writable: false));
+        $this->assertSame(['replica.internal:0'], $factory->invocations);
+    }
+
+    public function testReplicaRouteSkipsReplicaMarkedDeadInCache(): void
+    {
+        $replica2 = $this->realConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+
+        $this->deadCache->markServerDead('replica1.internal', 0, 300);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        $this->assertSame($replica2, $manager->connection(writable: false));
+        $this->assertSame(['replica2.internal:0'], $factory->invocations);
+    }
+
+    public function testReplicaRouteFallsThroughToNextReplicaOnConnectFailure(): void
+    {
+        $replica2 = $this->realConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica1.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica1', null, 2002),
+        );
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check'            => false,
+                'max_connection_attempts' => 5,
+            ],
+        ], $factory);
+
+        $this->assertSame($replica2, $manager->connection(writable: false));
+        $this->assertSame(
+            ['replica1.internal:0', 'replica2.internal:0'],
+            $factory->invocations,
+        );
+    }
+
+    public function testReplicaRouteFallsBackToPrimaryWhenAllReplicasFail(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica1.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica1', null, 2002),
+        );
+        $factory->expectFailure(
+            'replica2.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica2', null, 2002),
+        );
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check'            => false,
+                'max_connection_attempts' => 5,
+            ],
+        ], $factory);
+
+        $this->assertSame($primary, $manager->connection(writable: false));
+        $this->assertSame(
+            ['replica1.internal:0', 'replica2.internal:0', 'primary.internal:0'],
+            $factory->invocations,
+        );
+    }
+
+    public function testReplicaRouteThrowsWhenAllReplicasAndPrimaryFail(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica', null, 2002),
+        );
+        $factory->expectFailure(
+            'primary.internal',
+            0,
+            new DatabaseConnectionException('refused', 'primary', null, 2002),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [['host' => 'replica.internal']],
+                'health_check'            => false,
+                'max_connection_attempts' => 5,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException $e) {
+            // port is null in ValidatedConfig → formatAttemptError renders it as "?"
+            $this->assertStringContainsString('replica.internal:? → refused', $e->getMessage());
+            $this->assertStringContainsString('primary.internal:? → refused', $e->getMessage());
+        }
+    }
+
+    public function testReplicaRouteRespectsMaxConnectionAttempts(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica1.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica1', null, 2002),
+        );
+        // replica2 should never be invoked because max_connection_attempts = 1.
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check'            => false,
+                'max_connection_attempts' => 1,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException) {
+            // empty
+        }
+
+        $this->assertSame(['replica1.internal:0'], $factory->invocations);
+    }
+
+    public function testReplicaRouteRecordsServerDeadOnConnectFailure(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica', null, 2002),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [['host' => 'replica.internal']],
+                'health_check'            => false,
+                'max_connection_attempts' => 1,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException) {
+            // empty
+        }
+
+        // server-wide dead → also dead in any other pool
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testReplicaRouteRecordsPoolDeadOnAuthFailure(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('access denied', 'replica', '28000', 1045),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [['host' => 'replica.internal']],
+                'health_check'            => false,
+                'max_connection_attempts' => 1,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException) {
+            // empty
+        }
+
+        // pool-specific dead → dead for 'master', alive for other pool
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testReplicaRouteRecordsServerDeadOnPingFailure(): void
+    {
+        // Use a PDO mock that throws on exec('DO 1') so the test reproduces a
+        // server-side ping failure without depending on SQLite's `DO` rejection.
+        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock->method('exec')
+            ->with('DO 1')
+            ->willThrowException(new \PDOException('ping failed'));
+
+        $replicaConn = new Connection($pdoMock, 'replica');
+        $factory     = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replicaConn);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [['host' => 'replica.internal']],
+                'health_check'            => true,
+                'max_connection_attempts' => 1,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException) {
+            // empty
+        }
+
+        // ping failure → server-wide dead: live in master and any other pool
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testReplicaRouteCachesSelectedReplicaAcrossCalls(): void
+    {
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        $first  = $manager->connection(writable: false);
+        $second = $manager->connection(writable: false);
+
+        $this->assertSame($first, $second);
+        $this->assertCount(1, $factory->invocations);
     }
 }
