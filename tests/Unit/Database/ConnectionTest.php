@@ -8,6 +8,7 @@ use LogicException;
 use PDO;
 use Pdo\Sqlite;
 use PDOStatement;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\Connection;
@@ -527,7 +528,22 @@ final class ConnectionTest extends TestCase
         $this->assertSame($first, $second);
     }
 
-    public function testDialectAndServerVersionShareSingleSelectVersionQuery(): void
+    /**
+     * @return array<string, array{0: list<string>}>
+     */
+    public static function interleavedDialectAndServerVersionCallProvider(): array
+    {
+        return [
+            'serverVersion first' => [['serverVersion', 'dialect', 'serverVersion', 'dialect']],
+            'dialect first'       => [['dialect', 'serverVersion', 'dialect', 'serverVersion']],
+        ];
+    }
+
+    /**
+     * @param list<string> $callOrder
+     */
+    #[DataProvider('interleavedDialectAndServerVersionCallProvider')]
+    public function testDialectAndServerVersionShareSingleSelectVersionQuery(array $callOrder): void
     {
         // Both getters are independently lazy via ??= but must share a single
         // `SELECT VERSION()` execution regardless of which is called first or
@@ -543,10 +559,13 @@ final class ConnectionTest extends TestCase
 
         $connection = new Connection($pdo, 'test');
 
-        $connection->serverVersion();
-        $connection->dialect();
-        $connection->serverVersion();
-        $connection->dialect();
+        foreach ($callOrder as $method) {
+            if ($method === 'dialect') {
+                $connection->dialect();
+            } else {
+                $connection->serverVersion();
+            }
+        }
 
         $this->assertSame(Dialect::MariaDB, $connection->dialect());
         $this->assertSame('10.11.11-MariaDB', $connection->serverVersion());
