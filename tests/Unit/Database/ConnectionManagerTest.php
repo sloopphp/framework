@@ -427,9 +427,87 @@ final class ConnectionManagerTest extends TestCase
             $this->fail('Expected DatabaseConnectionException');
         } catch (DatabaseConnectionException $e) {
             // port is null in ValidatedConfig → formatAttemptError renders it as "?"
-            $this->assertStringContainsString('replica.internal:? → refused', $e->getMessage());
-            $this->assertStringContainsString('primary.internal:? → refused', $e->getMessage());
+            $message = $e->getMessage();
+            $this->assertStringContainsString('Failed to obtain a read connection for pool [master]', $message);
+            $this->assertStringContainsString('(replica + primary fallback exhausted)', $message);
+            $this->assertStringContainsString('replica.internal:? → refused', $message);
+            $this->assertStringContainsString('primary.internal:? → refused', $message);
         }
+    }
+
+    public function testReplicaRouteIncludesSkippedDeadCacheReplicasInErrorMessage(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica2.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica2', null, 2002),
+        );
+        $factory->expectFailure(
+            'primary.internal',
+            0,
+            new DatabaseConnectionException('refused', 'primary', null, 2002),
+        );
+
+        $this->deadCache->markServerDead('replica1.internal', 0, 300);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check'            => false,
+                'max_connection_attempts' => 5,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException $e) {
+            $message = $e->getMessage();
+            $this->assertStringContainsString('replica1.internal:? → skipped (dead-cache)', $message);
+            $this->assertStringContainsString('replica2.internal:? → refused', $message);
+            $this->assertStringContainsString('primary.internal:? → refused', $message);
+        }
+    }
+
+    public function testReplicaRoutePassesReplicaPortToDeadCache(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            3306,
+            new DatabaseConnectionException('refused', 'replica', null, 2002),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [['host' => 'replica.internal', 'port' => 3306]],
+                'health_check'            => false,
+                'max_connection_attempts' => 1,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException) {
+            // empty
+        }
+
+        // port=3306 specifically: dead-cache key carries 3306, not 0.
+        // Confirms that $replica->port (not the null-coalesce default 0) is
+        // forwarded to the cache.
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 0, 'master'));
     }
 
     public function testReplicaRouteRespectsMaxConnectionAttempts(): void
