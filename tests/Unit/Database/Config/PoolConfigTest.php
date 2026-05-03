@@ -24,6 +24,9 @@ final class PoolConfigTest extends TestCase
             deadCacheTtlSeconds: 300,
             replicaSelector: 'random',
             maxConnectionAttempts: 3,
+            logBindings: false,
+            logAllQueries: true,
+            slowQueryThresholdMs: 200,
         );
 
         $this->assertSame('mydb', $pool->name);
@@ -33,6 +36,9 @@ final class PoolConfigTest extends TestCase
         $this->assertSame(300, $pool->deadCacheTtlSeconds);
         $this->assertSame('random', $pool->replicaSelector);
         $this->assertSame(3, $pool->maxConnectionAttempts);
+        $this->assertFalse($pool->logBindings);
+        $this->assertTrue($pool->logAllQueries);
+        $this->assertSame(200, $pool->slowQueryThresholdMs);
     }
 
     public function testStoresEmptyReplicas(): void
@@ -45,12 +51,18 @@ final class PoolConfigTest extends TestCase
             deadCacheTtlSeconds: 60,
             replicaSelector: 'random',
             maxConnectionAttempts: 1,
+            logBindings: true,
+            logAllQueries: false,
+            slowQueryThresholdMs: null,
         );
 
         $this->assertSame([], $pool->replicas);
         $this->assertFalse($pool->healthCheck);
         $this->assertSame(60, $pool->deadCacheTtlSeconds);
         $this->assertSame(1, $pool->maxConnectionAttempts);
+        $this->assertTrue($pool->logBindings);
+        $this->assertFalse($pool->logAllQueries);
+        $this->assertNull($pool->slowQueryThresholdMs);
     }
 
     public function testStoresSingleReplica(): void
@@ -66,6 +78,9 @@ final class PoolConfigTest extends TestCase
             deadCacheTtlSeconds: 300,
             replicaSelector: 'random',
             maxConnectionAttempts: 2,
+            logBindings: true,
+            logAllQueries: false,
+            slowQueryThresholdMs: null,
         );
 
         $this->assertCount(1, $pool->replicas);

@@ -25,6 +25,9 @@ final readonly class PoolConfig
      * @param int                   $deadCacheTtlSeconds   TTL of dead-cache entries
      * @param string                $replicaSelector       Replica selection strategy identifier
      * @param int                   $maxConnectionAttempts Maximum connection attempts before giving up
+     * @param bool                  $logBindings           Whether prepared-statement bindings appear in log context
+     * @param bool                  $logAllQueries         Whether every query is logged at `debug` level
+     * @param int|null              $slowQueryThresholdMs  Threshold (ms) above which SELECT queries log at `warning`
      */
     public function __construct(
         public string $name,
@@ -34,6 +37,9 @@ final readonly class PoolConfig
         public int $deadCacheTtlSeconds,
         public string $replicaSelector,
         public int $maxConnectionAttempts,
+        public bool $logBindings,
+        public bool $logAllQueries,
+        public ?int $slowQueryThresholdMs,
     ) {
     }
 }

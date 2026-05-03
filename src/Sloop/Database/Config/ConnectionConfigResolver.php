@@ -60,6 +60,9 @@ final class ConnectionConfigResolver
         'dead_cache_ttl_seconds',
         'replica_selector',
         'max_connection_attempts',
+        'log_bindings',
+        'log_all_queries',
+        'slow_query_threshold_ms',
     ];
 
     /**
@@ -119,6 +122,20 @@ final class ConnectionConfigResolver
     private const string DEFAULT_REPLICA_SELECTOR = 'random';
 
     /**
+     * Default for `log_bindings` when omitted: bindings appear in log context.
+     *
+     * @var bool
+     */
+    private const bool DEFAULT_LOG_BINDINGS = true;
+
+    /**
+     * Default for `log_all_queries` when omitted: only failures and slow queries are logged.
+     *
+     * @var bool
+     */
+    private const bool DEFAULT_LOG_ALL_QUERIES = false;
+
+    /**
      * Validate a single-connection config and return a typed ValidatedConfig.
      *
      * Public entry point for single-connection validation and the per-entry
@@ -173,10 +190,13 @@ final class ConnectionConfigResolver
 
         $replicas = self::extractReplicas($name, $config, $primarySingleConfig);
 
-        $healthCheck  = self::extractOptionalHealthCheck($name, $config) ?? self::DEFAULT_HEALTH_CHECK;
-        $deadCacheTtl = self::extractOptionalPositiveInt($name, $config, 'dead_cache_ttl_seconds') ?? self::DEFAULT_DEAD_CACHE_TTL_SECONDS;
-        $selector     = self::extractOptionalReplicaSelector($name, $config) ?? self::DEFAULT_REPLICA_SELECTOR;
-        $maxAttempts  = self::extractOptionalPositiveInt($name, $config, 'max_connection_attempts') ?? (\count($replicas) + 1);
+        $healthCheck     = self::extractOptionalHealthCheck($name, $config) ?? self::DEFAULT_HEALTH_CHECK;
+        $deadCacheTtl    = self::extractOptionalPositiveInt($name, $config, 'dead_cache_ttl_seconds') ?? self::DEFAULT_DEAD_CACHE_TTL_SECONDS;
+        $selector        = self::extractOptionalReplicaSelector($name, $config) ?? self::DEFAULT_REPLICA_SELECTOR;
+        $maxAttempts     = self::extractOptionalPositiveInt($name, $config, 'max_connection_attempts') ?? (\count($replicas) + 1);
+        $logBindings     = self::extractOptionalBool($name, $config, 'log_bindings') ?? self::DEFAULT_LOG_BINDINGS;
+        $logAllQueries   = self::extractOptionalBool($name, $config, 'log_all_queries') ?? self::DEFAULT_LOG_ALL_QUERIES;
+        $slowThresholdMs = self::extractOptionalPositiveInt($name, $config, 'slow_query_threshold_ms');
 
         return new PoolConfig(
             name:                  $name,
@@ -186,6 +206,9 @@ final class ConnectionConfigResolver
             deadCacheTtlSeconds:   $deadCacheTtl,
             replicaSelector:       $selector,
             maxConnectionAttempts: $maxAttempts,
+            logBindings:           $logBindings,
+            logAllQueries:         $logAllQueries,
+            slowQueryThresholdMs:  $slowThresholdMs,
         );
     }
 
@@ -595,13 +618,42 @@ final class ConnectionConfigResolver
     }
 
     /**
-     * Extract an optional positive-integer config value (>= 1), returning null when absent.
+     * Extract an optional bool-typed config value, returning null when absent.
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @param  string                  $key    Key to extract
+     * @return bool|null
+     * @throws InvalidConfigException When the value is present but not a bool
+     */
+    private static function extractOptionalBool(string $name, array $config, string $key): ?bool
+    {
+        if (!\array_key_exists($key, $config)) {
+            return null;
+        }
+
+        $value = $config[$key];
+        if (!\is_bool($value)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "' . $key . '" must be a boolean.',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract an optional positive-integer config value (>= 1), returning null when absent or explicitly null.
+     *
+     * Explicit null is accepted so config authors can disable a feature by
+     * writing `'key' => null` (mirroring docs that document null as the
+     * "off" or "use default" sentinel) without triggering a type error.
      *
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @param  string                  $key    Key to extract
      * @return int|null
-     * @throws InvalidConfigException When the value is present but not an integer or is less than 1
+     * @throws InvalidConfigException When the value is non-null and not an integer, or is less than 1
      */
     private static function extractOptionalPositiveInt(string $name, array $config, string $key): ?int
     {
@@ -610,6 +662,9 @@ final class ConnectionConfigResolver
         }
 
         $value = $config[$key];
+        if ($value === null) {
+            return null;
+        }
         if (!\is_int($value)) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be an integer.',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Database;
 
+use Psr\Log\LoggerInterface;
 use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Config\PoolConfig;
 use Sloop\Database\Config\ValidatedConfig;
@@ -66,6 +67,7 @@ final class ConnectionManager
      * @param ConnectionFactory                   $factory         Builds Connection instances from validated configs
      * @param ReplicaSelector                     $replicaSelector Strategy for picking one replica from surviving candidates
      * @param DeadReplicaCache                    $deadCache       Negative cache for replicas that recently failed to connect
+     * @param LoggerInterface|null                $logger          PSR-3 logger injected into each created Connection (typically the `database` channel); null disables query logging
      */
     public function __construct(
         private readonly string $defaultName,
@@ -73,6 +75,7 @@ final class ConnectionManager
         private readonly ConnectionFactory $factory,
         private readonly ReplicaSelector $replicaSelector,
         private readonly DeadReplicaCache $deadCache,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -118,7 +121,9 @@ final class ConnectionManager
         if (!isset($this->primaryConnections[$name])) {
             $pool = $this->resolvePool($name);
 
-            $this->primaryConnections[$name] = $this->factory->make($pool->primary, $name);
+            $connection = $this->factory->make($pool->primary, $name);
+            $this->applyLogger($connection, $pool);
+            $this->primaryConnections[$name] = $connection;
         }
 
         return $this->primaryConnections[$name];
@@ -166,6 +171,7 @@ final class ConnectionManager
 
             try {
                 $connection = $this->factory->make($picked, $name);
+                $this->applyLogger($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -232,6 +238,34 @@ final class ConnectionManager
         }
 
         return $results;
+    }
+
+    /**
+     * Wire the configured logger and pool-derived LoggingOptions into a fresh Connection.
+     *
+     * Skipped when no logger was provided to the manager, so test-only usage
+     * stays untouched. Probe connections built by probeReplicas() are
+     * intentionally not routed through this helper because they are transient
+     * and never serve queries.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config providing the logging behavior settings
+     * @return void
+     */
+    private function applyLogger(Connection $connection, PoolConfig $pool): void
+    {
+        if ($this->logger === null) {
+            return;
+        }
+
+        $connection->setLogger(
+            $this->logger,
+            new LoggingOptions(
+                logBindings:          $pool->logBindings,
+                logAllQueries:        $pool->logAllQueries,
+                slowQueryThresholdMs: $pool->slowQueryThresholdMs,
+            ),
+        );
     }
 
     /**

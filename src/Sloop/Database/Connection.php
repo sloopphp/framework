@@ -9,6 +9,7 @@ use LogicException;
 use PDO;
 use PDOException;
 use PDOStatement;
+use Psr\Log\LoggerInterface;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\DeadlockException;
@@ -57,6 +58,20 @@ final class Connection
     private ?string $serverVersion = null;
 
     /**
+     * PSR-3 logger injected by ConnectionManager via setLogger(); null until injected.
+     *
+     * @var LoggerInterface|null
+     */
+    private ?LoggerInterface $logger = null;
+
+    /**
+     * Per-connection logging behavior; replaced by setLogger() to match the configured pool settings.
+     *
+     * @var LoggingOptions
+     */
+    private LoggingOptions $loggingOptions;
+
+    /**
      * Construct with an already-configured PDO.
      *
      * @param PDO    $pdo            PDO instance with sloop's default attributes applied
@@ -66,6 +81,25 @@ final class Connection
         private readonly PDO $pdo,
         private readonly string $connectionName = '',
     ) {
+        $this->loggingOptions = new LoggingOptions();
+    }
+
+    /**
+     * Inject a PSR-3 logger and the per-connection logging options.
+     *
+     * Failure logging is unconditional once a logger is present. The options
+     * gate slow-query / log-all-queries output and binding redaction.
+     * Tests and callers that don't need query logging can leave the logger
+     * unset; the connection then logs nothing.
+     *
+     * @param  LoggerInterface $logger  PSR-3 logger (typically the `database` channel from LogManager)
+     * @param  LoggingOptions  $options Logging behavior: bindings redaction, log-all-queries, slow threshold
+     * @return void
+     */
+    public function setLogger(LoggerInterface $logger, LoggingOptions $options): void
+    {
+        $this->logger         = $logger;
+        $this->loggingOptions = $options;
     }
 
     /**
@@ -116,13 +150,25 @@ final class Connection
      */
     public function query(string $sql, array $bindings = []): Result
     {
-        $stmt = $this->prepareAndExecute($sql, $bindings);
-        $rows = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            if (!\is_array($row)) {
-                throw new UnexpectedValueException('PDO returned non-array row from FETCH_ASSOC');
+        $startTime = $this->shouldMeasureElapsed() ? microtime(true) : null;
+
+        try {
+            $stmt = $this->prepareAndExecute($sql, $bindings);
+            $rows = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if (!\is_array($row)) {
+                    throw new UnexpectedValueException('PDO returned non-array row from FETCH_ASSOC');
+                }
+                $rows[] = $row;
             }
-            $rows[] = $row;
+        } catch (DatabaseException $e) {
+            $this->logQueryFailure($sql, $bindings, $e);
+
+            throw $e;
+        }
+
+        if ($startTime !== null) {
+            $this->logQuerySuccess($sql, $bindings, $startTime, isSelect: true);
         }
 
         return new Result($rows);
@@ -141,7 +187,19 @@ final class Connection
      */
     public function statement(string $sql, array $bindings = []): int
     {
-        $stmt = $this->prepareAndExecute($sql, $bindings);
+        $startTime = $this->shouldMeasureElapsed() ? microtime(true) : null;
+
+        try {
+            $stmt = $this->prepareAndExecute($sql, $bindings);
+        } catch (DatabaseException $e) {
+            $this->logQueryFailure($sql, $bindings, $e);
+
+            throw $e;
+        }
+
+        if ($startTime !== null) {
+            $this->logQuerySuccess($sql, $bindings, $startTime, isSelect: false);
+        }
 
         return $stmt->rowCount();
     }
@@ -332,6 +390,11 @@ final class Connection
     /**
      * Roll back silently (if still in a transaction) and normalize $e to a sloop exception.
      *
+     * Rollback failures are logged at `warning` level (never thrown) because the
+     * caller still needs the original exception. Rollback failure usually signals
+     * connection drop or protocol breakage, so visibility matters even though
+     * we do not surface it directly.
+     *
      * @param  Throwable $e Exception that aborted the transaction body
      * @return Throwable    Normalized exception (PDOException wrapped, others unchanged)
      */
@@ -340,8 +403,16 @@ final class Connection
         if ($this->pdo->inTransaction()) {
             try {
                 $this->pdo->rollBack();
-            } catch (PDOException) {
-                // Swallow: surface the original exception to the caller.
+            } catch (PDOException $rollbackError) {
+                $this->logger?->warning(
+                    'rollback failed during exception unwind',
+                    [
+                        'rollback_error'     => $rollbackError->getMessage(),
+                        'original_exception' => $e::class,
+                        'original_message'   => $e->getMessage(),
+                        'connection_name'    => $this->connectionName,
+                    ],
+                );
             }
         }
 
@@ -433,5 +504,110 @@ final class Connection
         } catch (PDOException $e) {
             throw ExceptionFactory::fromPDOException($e, $this->connectionName, $sql, $bindings);
         }
+    }
+
+    /**
+     * Whether elapsed-time measurement is required for the upcoming query.
+     *
+     * Returns true only when a logger is set and at least one option that
+     * consumes `elapsed_ms` is enabled. Lets query() / statement() skip both
+     * `microtime(true)` calls in the default config (no logger or both
+     * options off), where the measurement would otherwise be dead work.
+     *
+     * @return bool
+     */
+    private function shouldMeasureElapsed(): bool
+    {
+        return $this->logger !== null
+            && ($this->loggingOptions->logAllQueries
+                || $this->loggingOptions->slowQueryThresholdMs !== null);
+    }
+
+    /**
+     * Log a successful query at `warning` (slow) or `debug` (log_all_queries) level when applicable.
+     *
+     * Slow-query logging fires for SELECT-style queries only; statement() never
+     * triggers it because the threshold is intended for read-path latency budgets.
+     *
+     * @param  string                   $sql       Executed SQL
+     * @param  array<int|string, mixed> $bindings  Bound parameters (redacted in context per LoggingOptions)
+     * @param  float                    $startTime microtime(true) at the start of the call
+     * @param  bool                     $isSelect  True when invoked from query(); false from statement()
+     * @return void
+     */
+    private function logQuerySuccess(string $sql, array $bindings, float $startTime, bool $isSelect): void
+    {
+        if ($this->logger === null) {
+            return;
+        }
+
+        $elapsedMs = (microtime(true) - $startTime) * 1000;
+
+        if ($isSelect
+            && $this->loggingOptions->slowQueryThresholdMs !== null
+            && $elapsedMs > $this->loggingOptions->slowQueryThresholdMs) {
+            $this->logger->warning(
+                'slow query',
+                $this->buildLogContext($sql, $bindings) + ['elapsed_ms' => $elapsedMs],
+            );
+
+            return;
+        }
+
+        if ($this->loggingOptions->logAllQueries) {
+            $this->logger->debug(
+                'query executed',
+                $this->buildLogContext($sql, $bindings) + ['elapsed_ms' => $elapsedMs],
+            );
+        }
+    }
+
+    /**
+     * Log a failed query at `error` level. Failure logging is unconditional once a logger is injected.
+     *
+     * @param  string                   $sql      SQL that failed
+     * @param  array<int|string, mixed> $bindings Bound parameters (redacted in context per LoggingOptions)
+     * @param  DatabaseException        $e        The wrapped failure (carries sqlState / driverCode)
+     * @return void
+     */
+    private function logQueryFailure(string $sql, array $bindings, DatabaseException $e): void
+    {
+        if ($this->logger === null) {
+            return;
+        }
+
+        $this->logger->error(
+            $e->getMessage(),
+            $this->buildLogContext($sql, $bindings) + [
+                'sqlstate'    => $e->sqlState,
+                'driver_code' => $e->driverCode,
+            ],
+        );
+    }
+
+    /**
+     * Build the log context fields shared between success and failure records.
+     *
+     * Bindings are replaced with the `[redacted]` sentinel string when
+     * `log_bindings` is false. Dialect is included only when already detected
+     * to avoid triggering an extra `SELECT VERSION()` from a failure log path.
+     *
+     * @param  string                   $sql      SQL being logged
+     * @param  array<int|string, mixed> $bindings Bound parameters
+     * @return array<string, mixed>               Context map with sql / bindings / connection_name / optional dialect
+     */
+    private function buildLogContext(string $sql, array $bindings): array
+    {
+        $context = [
+            'sql'             => $sql,
+            'bindings'        => $this->loggingOptions->logBindings ? $bindings : '[redacted]',
+            'connection_name' => $this->connectionName,
+        ];
+
+        if ($this->dialect !== null) {
+            $context['dialect'] = $this->dialect->name;
+        }
+
+        return $context;
     }
 }

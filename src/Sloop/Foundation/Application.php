@@ -352,12 +352,20 @@ final class Application implements RequestHandlerInterface
             );
         }
 
+        $logManager = $container->get(LogManager::class);
+        if (!$logManager instanceof LogManager) {
+            throw new \RuntimeException(
+                'Container binding for ' . LogManager::class . ' must be a LogManager.',
+            );
+        }
+
         return new ConnectionManager(
             defaultName: $default,
             configs: $connections,
             factory: $factory,
             replicaSelector: $replicaSelector,
             deadCache: $deadCache,
+            logger: $logManager->channel('database'),
         );
     }
 

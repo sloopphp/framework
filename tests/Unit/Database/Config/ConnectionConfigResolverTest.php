@@ -874,4 +874,172 @@ final class ConnectionConfigResolverTest extends TestCase
             );
         }
     }
+
+    public function testValidatePoolDefaultsLoggingKeysWhenOmitted(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+        ]);
+
+        $this->assertTrue($pool->logBindings);
+        $this->assertFalse($pool->logAllQueries);
+        $this->assertNull($pool->slowQueryThresholdMs);
+    }
+
+    public function testValidatePoolAcceptsExplicitLogBindings(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'       => 'mysql',
+            'host'         => 'primary.example.com',
+            'database'     => 'app',
+            'log_bindings' => false,
+        ]);
+
+        $this->assertFalse($pool->logBindings);
+    }
+
+    public function testValidatePoolAcceptsExplicitLogAllQueries(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'          => 'mysql',
+            'host'            => 'primary.example.com',
+            'database'        => 'app',
+            'log_all_queries' => true,
+        ]);
+
+        $this->assertTrue($pool->logAllQueries);
+    }
+
+    public function testValidatePoolAcceptsSlowQueryThresholdMs(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'                  => 'mysql',
+            'host'                    => 'primary.example.com',
+            'database'                => 'app',
+            'slow_query_threshold_ms' => 500,
+        ]);
+
+        $this->assertSame(500, $pool->slowQueryThresholdMs);
+    }
+
+    public function testValidatePoolRejectsNonBooleanLogBindings(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'       => 'mysql',
+                'host'         => 'primary.example.com',
+                'database'     => 'app',
+                'log_bindings' => 'yes',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "log_bindings" must be a boolean.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonBooleanLogAllQueries(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'          => 'mysql',
+                'host'            => 'primary.example.com',
+                'database'        => 'app',
+                'log_all_queries' => 1,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "log_all_queries" must be a boolean.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonIntSlowQueryThresholdMs(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.example.com',
+                'database'                => 'app',
+                'slow_query_threshold_ms' => '500',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "slow_query_threshold_ms" must be an integer.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsNonPositiveSlowQueryThresholdMs(): void
+    {
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.example.com',
+                'database'                => 'app',
+                'slow_query_threshold_ms' => 0,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "slow_query_threshold_ms" must be >= 1, got 0.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolAcceptsExplicitNullSlowQueryThresholdMs(): void
+    {
+        // Explicit null for slow_query_threshold_ms is the user-facing way to
+        // declare "logging disabled"; it must round-trip to the stored null
+        // without triggering the "must be an integer" rejection.
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'                  => 'mysql',
+            'host'                    => 'primary.example.com',
+            'database'                => 'app',
+            'slow_query_threshold_ms' => null,
+        ]);
+
+        $this->assertNull($pool->slowQueryThresholdMs);
+    }
+
+    public function testValidatePoolAcceptsExplicitNullDeadCacheTtlSeconds(): void
+    {
+        // Explicit null falls through to the default TTL (300) — same helper
+        // as slow_query_threshold_ms accepts null without erroring.
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'                 => 'mysql',
+            'host'                   => 'primary.example.com',
+            'database'               => 'app',
+            'dead_cache_ttl_seconds' => null,
+        ]);
+
+        $this->assertSame(300, $pool->deadCacheTtlSeconds);
+    }
+
+    public function testValidatePoolAcceptsExplicitNullMaxConnectionAttempts(): void
+    {
+        // Explicit null falls through to the count(read) + 1 default; the
+        // helper's null acceptance is consistent across all positive-int keys.
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'                  => 'mysql',
+            'host'                    => 'primary.example.com',
+            'database'                => 'app',
+            'read'                    => [
+                ['host' => 'replica-1.example.com'],
+                ['host' => 'replica-2.example.com'],
+            ],
+            'max_connection_attempts' => null,
+        ]);
+
+        $this->assertSame(3, $pool->maxConnectionAttempts);
+    }
 }

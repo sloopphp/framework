@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database;
 
 use LogicException;
+use Monolog\Handler\TestHandler;
+use Monolog\Level;
+use Monolog\Logger;
 use PDO;
 use Pdo\Sqlite;
 use PDOStatement;
@@ -18,6 +21,7 @@ use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\IsolationLevel;
+use Sloop\Database\LoggingOptions;
 use UnexpectedValueException;
 
 /*
@@ -67,6 +71,15 @@ final class ConnectionTest extends TestCase
         $this->assertIsInt($count);
 
         return $count;
+    }
+
+    private function attachLogger(Connection $connection, ?LoggingOptions $options = null): TestHandler
+    {
+        $handler = new TestHandler();
+        $logger  = new Logger('database', [$handler]);
+        $connection->setLogger($logger, $options ?? new LoggingOptions());
+
+        return $handler;
     }
 
     // -------------------------------------------------------
@@ -610,4 +623,266 @@ final class ConnectionTest extends TestCase
         }
     }
 
+    // -------------------------------------------------------
+    // logging
+    // -------------------------------------------------------
+
+    public function testQueryLogsErrorOnFailure(): void
+    {
+        $handler = $this->attachLogger($this->connection);
+
+        try {
+            $this->connection->query('NOT VALID SQL');
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Error, $records[0]->level);
+        $this->assertSame('NOT VALID SQL', $records[0]->context['sql']);
+        $this->assertSame([], $records[0]->context['bindings']);
+        $this->assertSame('test_conn', $records[0]->context['connection_name']);
+        $this->assertArrayHasKey('sqlstate', $records[0]->context);
+        $this->assertArrayHasKey('driver_code', $records[0]->context);
+    }
+
+    public function testStatementLogsErrorOnFailure(): void
+    {
+        $handler = $this->attachLogger($this->connection);
+
+        try {
+            $this->connection->statement('NOT VALID SQL');
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Error, $records[0]->level);
+        $this->assertSame('NOT VALID SQL', $records[0]->context['sql']);
+    }
+
+    public function testFailureLogMessageMatchesException(): void
+    {
+        // Operators grep on the log message line, so the record's message
+        // must match the thrown exception's message exactly (no prefix /
+        // wrapper text).
+        $handler = $this->attachLogger($this->connection);
+
+        try {
+            $this->connection->query('NOT VALID SQL');
+        } catch (QueryException $e) {
+            $records = $handler->getRecords();
+            $this->assertCount(1, $records);
+            $this->assertSame($e->getMessage(), $records[0]->message);
+        }
+    }
+
+    public function testFailureLogRedactsBindingsWhenLogBindingsFalse(): void
+    {
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logBindings: false),
+        );
+
+        try {
+            $this->connection->statement('INSERT INTO unknown_table (name) VALUES (?)', ['secret']);
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame('[redacted]', $records[0]->context['bindings']);
+    }
+
+    public function testFailureLogIncludesDialectWhenAlreadyDetected(): void
+    {
+        // Trigger dialect detection first.
+        $this->connection->dialect();
+
+        $handler = $this->attachLogger($this->connection);
+
+        try {
+            $this->connection->query('NOT VALID SQL');
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame('MariaDB', $records[0]->context['dialect']);
+    }
+
+    public function testFailureLogOmitsDialectWhenNotYetDetected(): void
+    {
+        $handler = $this->attachLogger($this->connection);
+
+        try {
+            $this->connection->query('NOT VALID SQL');
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertArrayNotHasKey('dialect', $records[0]->context);
+    }
+
+    public function testQueryLogsSlowWarningWhenThresholdExceeded(): void
+    {
+        // Threshold 0ms ensures any non-zero elapsed time triggers the warning.
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(slowQueryThresholdMs: 0),
+        );
+
+        $this->connection->query('SELECT 1');
+
+        $warnings = array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Warning,
+        );
+        $this->assertCount(1, $warnings);
+        $warning = array_values($warnings)[0];
+        $this->assertSame('slow query', $warning->message);
+        $this->assertSame('SELECT 1', $warning->context['sql']);
+        $this->assertArrayHasKey('elapsed_ms', $warning->context);
+    }
+
+    public function testStatementDoesNotLogSlowWarning(): void
+    {
+        // Slow threshold is intentionally limited to SELECT (query()) per design.
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(slowQueryThresholdMs: 0),
+        );
+
+        $this->connection->statement(
+            'INSERT INTO users (id, name) VALUES (?, ?)',
+            [1, 'alice'],
+        );
+
+        $warnings = array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Warning,
+        );
+        $this->assertCount(0, $warnings);
+    }
+
+    public function testQueryLogsDebugWhenLogAllQueriesEnabled(): void
+    {
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logAllQueries: true),
+        );
+
+        $this->connection->query('SELECT 1');
+
+        $debugs = array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Debug,
+        );
+        $this->assertCount(1, $debugs);
+        $debug = array_values($debugs)[0];
+        $this->assertSame('query executed', $debug->message);
+        $this->assertSame('SELECT 1', $debug->context['sql']);
+        $this->assertArrayHasKey('elapsed_ms', $debug->context);
+    }
+
+    public function testStatementLogsDebugWhenLogAllQueriesEnabled(): void
+    {
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logAllQueries: true),
+        );
+
+        $this->connection->statement(
+            'INSERT INTO users (id, name) VALUES (?, ?)',
+            [1, 'alice'],
+        );
+
+        $debugs = array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Debug,
+        );
+        $this->assertCount(1, $debugs);
+    }
+
+    public function testSuccessLogIsSilentWhenAllOptionsAreOff(): void
+    {
+        $handler = $this->attachLogger($this->connection);
+
+        $this->connection->query('SELECT 1');
+        $this->connection->statement('CREATE TABLE probe (id INTEGER)');
+
+        $this->assertCount(0, $handler->getRecords());
+    }
+
+    public function testNoLoggingWhenLoggerNotSet(): void
+    {
+        // Regression: Connection without setLogger() must not crash on the log path.
+        // The catch-block assertion confirms QueryException was raised (and no other
+        // exception slipped through from a logger reference on a null logger).
+        try {
+            $this->connection->query('NOT VALID SQL');
+        } catch (QueryException $e) {
+            $this->assertSame('test_conn', $e->connectionName);
+        }
+    }
+
+    public function testSlowWarningOverridesLogAllQueriesWhenBothApply(): void
+    {
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logAllQueries: true, slowQueryThresholdMs: 0),
+        );
+
+        $this->connection->query('SELECT 1');
+
+        // Only one record should be emitted: slow warning takes precedence over debug.
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Warning, $records[0]->level);
+    }
+
+    public function testTransactionRollbackFailureLogsWarning(): void
+    {
+        // Mock PDO so beginTransaction succeeds but rollBack throws — exercises
+        // rollbackAndNormalize's catch path, which should warn-log without
+        // surfacing the rollback error to the caller.
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturnOnConsecutiveCalls(false, false, true);
+        $pdo->method('beginTransaction')->willReturn(true);
+        $pdo->method('rollBack')->willThrowException(new \PDOException('rollback broken'));
+
+        $connection = new Connection($pdo, 'rollback_test');
+        $handler    = $this->attachLogger($connection);
+
+        try {
+            $connection->transaction(static function (): void {
+                throw new RuntimeException('callback boom');
+            });
+        } catch (RuntimeException) {
+            // empty
+        }
+
+        $warnings = array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Warning,
+        );
+        $this->assertCount(1, $warnings);
+        $warning = array_values($warnings)[0];
+        $this->assertSame('rollback failed during exception unwind', $warning->message);
+        $this->assertSame('rollback broken', $warning->context['rollback_error']);
+        $this->assertSame(RuntimeException::class, $warning->context['original_exception']);
+        $this->assertSame('callback boom', $warning->context['original_message']);
+        $this->assertSame('rollback_test', $warning->context['connection_name']);
+    }
 }

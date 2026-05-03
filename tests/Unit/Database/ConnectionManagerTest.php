@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database;
 
+use Monolog\Handler\TestHandler;
+use Monolog\Level;
+use Monolog\Logger;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Config\ValidatedConfig;
@@ -11,6 +14,7 @@ use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Tests\Support\MutableClock;
@@ -1170,5 +1174,145 @@ final class ConnectionManagerTest extends TestCase
             ->willReturn(0);
 
         return new Connection($pdoMock, 'replica');
+    }
+
+    // -------------------------------------------------------
+    // logger injection
+    // -------------------------------------------------------
+
+    public function testPrimaryConnectionReceivesInjectedLogger(): void
+    {
+        $handler = new TestHandler();
+        $logger  = new Logger('database', [$handler]);
+        $primary = new Connection(new PDO('sqlite::memory:'), 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = new ConnectionManager(
+            defaultName: 'master',
+            configs: [
+                'master' => [
+                    'driver'   => 'mysql',
+                    'host'     => 'primary.internal',
+                    'database' => 'app',
+                ],
+            ],
+            factory: $factory,
+            replicaSelector: $this->selector,
+            deadCache: $this->deadCache,
+            logger: $logger,
+        );
+
+        $connection = $manager->connection();
+
+        // Trigger an error to verify the logger is wired into the Connection.
+        try {
+            $connection->query('NOT VALID SQL');
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Error, $records[0]->level);
+        $this->assertSame('master', $records[0]->context['connection_name']);
+    }
+
+    public function testReplicaConnectionReceivesInjectedLogger(): void
+    {
+        $handler = new TestHandler();
+        $logger  = new Logger('database', [$handler]);
+        $replica = new Connection(new PDO('sqlite::memory:'), 'replica');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = new ConnectionManager(
+            defaultName: 'master',
+            configs: [
+                'master' => [
+                    'driver'       => 'mysql',
+                    'host'         => 'primary.internal',
+                    'database'     => 'app',
+                    'read'         => [['host' => 'replica.internal']],
+                    'health_check' => false,
+                ],
+            ],
+            factory: $factory,
+            replicaSelector: $this->selector,
+            deadCache: $this->deadCache,
+            logger: $logger,
+        );
+
+        $connection = $manager->connection(writable: false);
+
+        try {
+            $connection->query('NOT VALID SQL');
+            $this->fail('Expected QueryException');
+        } catch (QueryException) {
+            // empty
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame('replica', $records[0]->context['connection_name']);
+    }
+
+    public function testLoggingOptionsArePropagatedFromPoolConfig(): void
+    {
+        $handler = new TestHandler();
+        $logger  = new Logger('database', [$handler]);
+        $primary = new Connection(new PDO('sqlite::memory:'), 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = new ConnectionManager(
+            defaultName: 'master',
+            configs: [
+                'master' => [
+                    'driver'                  => 'mysql',
+                    'host'                    => 'primary.internal',
+                    'database'                => 'app',
+                    'log_bindings'            => false,
+                    'log_all_queries'         => true,
+                    'slow_query_threshold_ms' => 100,
+                ],
+            ],
+            factory: $factory,
+            replicaSelector: $this->selector,
+            deadCache: $this->deadCache,
+            logger: $logger,
+        );
+
+        $manager->connection()->query('SELECT 1');
+
+        // log_all_queries=true emits a debug record; log_bindings=false redacts the bindings array.
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Debug, $records[0]->level);
+        $this->assertSame('[redacted]', $records[0]->context['bindings']);
+    }
+
+    public function testNoLoggerInjectionWhenManagerHasNoLogger(): void
+    {
+        // Regression: existing ConnectionManager construction without a logger
+        // continues to leave Connection's logger unset (no behavior change).
+        $primary = new Connection(new PDO('sqlite::memory:'), 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection()->query('NOT VALID SQL');
+        } catch (QueryException $e) {
+            $this->assertSame('master', $e->connectionName);
+        }
     }
 }

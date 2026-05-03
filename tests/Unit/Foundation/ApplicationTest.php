@@ -17,6 +17,7 @@ use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Factory\PdoConnectionFactory;
 use Sloop\Database\Replica\DeadReplicaCache;
@@ -1019,6 +1020,72 @@ final class ApplicationTest extends TestCase
                 $e->getMessage(),
             );
         }
+    }
+
+    public function testConnectionManagerThrowsWhenLogManagerBindingIsInvalid(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $app->container->instance(LogManager::class, new \stdClass());
+
+        try {
+            $app->container->get(ConnectionManager::class);
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(
+                'Container binding for ' . LogManager::class . ' must be a LogManager.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testConnectionManagerLoggerIsBoundToDatabaseChannel(): void
+    {
+        $this->writeConfig('database.php', '<?php return [
+            "default" => "primary",
+            "connections" => [
+                "primary" => [
+                    "driver"   => "mysql",
+                    "host"     => "localhost",
+                    "database" => "app",
+                ],
+            ],
+        ];');
+
+        $app = new Application($this->tmpDir);
+
+        // Pre-register a TestHandler-backed Logger on the `database` channel
+        // before ConnectionManager is first resolved. The container's singleton
+        // closure runs on first resolve and reads channel('database') from
+        // LogManager at that point — so the addChannel call has to happen here.
+        $handler    = new TestHandler();
+        $logManager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $logManager);
+        $logManager->addChannel('database', new Logger('database', [$handler]));
+
+        // Custom factory: returns a real sqlite-backed Connection so query()
+        // failures travel through the logging path that the manager wires up.
+        $customFactory = new class () implements ConnectionFactory {
+            public function make(ValidatedConfig $config, string $name): Connection
+            {
+                return new Connection(new \PDO('sqlite::memory:'), $name);
+            }
+        };
+        $app->container->instance(ConnectionFactory::class, $customFactory);
+
+        $manager = $app->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        try {
+            $manager->connection()->query('NOT VALID SQL');
+        } catch (QueryException) {
+            // expected — failure log should land on the database channel
+        }
+
+        // Error landing on the `database` channel proves Application::createConnectionManager
+        // resolved LogManager and passed channel('database') down to the manager,
+        // which in turn injected it into the Connection it built.
+        $this->assertTrue($handler->hasErrorRecords());
     }
 
     public function testConnectionManagerUsesOverriddenReplicaSelectorBinding(): void
