@@ -32,6 +32,12 @@ use Sloop\Database\Replica\ReplicaSelector;
  *
  * Empty `read` list collapses replica routing to the primary so single-pool
  * setups keep working without reconfiguration.
+ *
+ * probeReplicas() complements the per-request lazy detection by actively
+ * connecting to every replica and refreshing the dead cache for failures.
+ * Healthy probes never clear existing dead marks (recovery is bound by the
+ * cache TTL), so it is best run from cron to warm the negative cache ahead
+ * of request traffic rather than as a recovery mechanism.
  */
 final class ConnectionManager
 {
@@ -187,6 +193,45 @@ final class ConnectionManager
             'Failed to obtain a read connection for pool [' . $name . '] (replica + primary fallback exhausted): ' . implode(' | ', $errors),
             $name,
         );
+    }
+
+    /**
+     * Actively connect to every replica in a pool and report each result.
+     *
+     * Each replica is built via the ConnectionFactory and verified with
+     * Connection::ping(); failures at either step are recorded in the dead
+     * cache identically to a request-time miss (auth → markPoolDead, anything
+     * else → markServerDead). Existing dead marks are not cleared on a healthy
+     * probe — recovery still depends on the cache TTL — and the dead-cache
+     * filter is intentionally bypassed so operators can see when a previously
+     * marked replica has recovered. Probe connections are not cached on the
+     * manager: each Connection is destroyed when its iteration ends so that
+     * subsequent connection(writable: false) calls run normal selection.
+     *
+     * @param  string|null            $name Pool to probe; defaults to the configured default pool
+     * @return array<string, bool>          host:port → true (probe succeeded) | false (probe failed)
+     * @throws InvalidConfigException       When the pool is undefined or its config is malformed
+     */
+    public function probeReplicas(?string $name = null): array
+    {
+        $poolName = $name ?? $this->defaultName;
+        $pool     = $this->resolvePool($poolName);
+        $results  = [];
+
+        foreach ($pool->replicas as $replica) {
+            $key = $replica->host . ':' . ($replica->port ?? 0);
+
+            try {
+                $connection = $this->factory->make($replica, $poolName);
+                $connection->ping();
+                $results[$key] = true;
+            } catch (DatabaseException $e) {
+                $this->recordReplicaFailure($pool, $replica, $e);
+                $results[$key] = false;
+            }
+        }
+
+        return $results;
     }
 
     /**

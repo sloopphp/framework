@@ -758,4 +758,419 @@ final class ConnectionManagerTest extends TestCase
 
         $this->assertSame($replica, $afterTx);
     }
+
+    // -------------------------------------------------------
+    // probeReplicas
+    // -------------------------------------------------------
+
+    public function testProbeReplicasReturnsEmptyMapWhenPoolHasNoReplicas(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $this->assertSame([], $manager->probeReplicas());
+        $this->assertSame([], $factory->invocations);
+    }
+
+    public function testProbeReplicasReturnsAllHealthyWhenAllConnectAndPing(): void
+    {
+        $replica1 = $this->pingableConnection();
+        $replica2 = $this->pingableConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica1.internal', 0, $replica1);
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            ['replica1.internal:0' => true, 'replica2.internal:0' => true],
+            $manager->probeReplicas(),
+        );
+        $this->assertSame(
+            ['replica1.internal:0', 'replica2.internal:0'],
+            $factory->invocations,
+        );
+        $this->assertFalse($this->deadCache->isDead('replica1.internal', 0, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica2.internal', 0, 'master'));
+    }
+
+    public function testProbeReplicasUsesDeclaredPortInResultKey(): void
+    {
+        $replica = $this->pingableConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 3306, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [['host' => 'replica.internal', 'port' => 3306]],
+            ],
+        ], $factory);
+
+        $this->assertSame(['replica.internal:3306' => true], $manager->probeReplicas());
+    }
+
+    public function testProbeReplicasMarksServerDeadOnConnectFailure(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica', null, 2002),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+        // server-wide dead → also dead in any other pool
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testProbeReplicasMarksPoolDeadOnAuthFailure(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('access denied', 'replica', '28000', 1045),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+        // pool-specific dead → dead for 'master' only, alive elsewhere
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testProbeReplicasMarksServerDeadOnPingFailure(): void
+    {
+        // PDO::exec('DO 1') throws → ping() raises DatabaseException, which the
+        // probe must record as a server-wide failure (matches request-time semantics).
+        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock->method('exec')
+            ->with('DO 1')
+            ->willThrowException(new \PDOException('ping failed'));
+
+        $replicaConn = new Connection($pdoMock, 'replica');
+        $factory     = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replicaConn);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testProbeReplicasReturnsMixedHealthMap(): void
+    {
+        $replica2 = $this->pingableConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica1.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica1', null, 2002),
+        );
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+        $factory->expectFailure(
+            'replica3.internal',
+            0,
+            new DatabaseConnectionException('access denied', 'replica3', '28000', 1045),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                    ['host' => 'replica3.internal'],
+                ],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            [
+                'replica1.internal:0' => false,
+                'replica2.internal:0' => true,
+                'replica3.internal:0' => false,
+            ],
+            $manager->probeReplicas(),
+        );
+        // Failed replicas marked, healthy replica untouched.
+        $this->assertTrue($this->deadCache->isDead('replica1.internal', 0, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica2.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica3.internal', 0, 'master'));
+        // replica1 went to the shared key (server-wide), replica3 only to the pool key.
+        $this->assertTrue($this->deadCache->isDead('replica1.internal', 0, 'unrelated_pool'));
+        $this->assertFalse($this->deadCache->isDead('replica3.internal', 0, 'unrelated_pool'));
+    }
+
+    public function testProbeReplicasRefreshesDeadMarkTtlOnRepeatedFailure(): void
+    {
+        // Use a controllable clock so the assertion proves the dead mark was
+        // re-stamped by the probe rather than just lingering from the pre-mark.
+        $now   = 1000;
+        $clock = function () use (&$now): int {
+            return $now;
+        };
+        $deadCache = new InMemoryDeadReplicaCache($clock);
+
+        // Pre-mark with a short TTL that would naturally expire at 1010.
+        $deadCache->markServerDead('replica.internal', 0, 10);
+
+        // Advance past the original expiry; sanity-check the pre-mark is gone.
+        $now = 1100;
+        $this->assertFalse($deadCache->isDead('replica.internal', 0, 'master'));
+
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica', null, 2002),
+        );
+
+        $manager = new ConnectionManager(
+            defaultName: 'master',
+            configs: [
+                'master' => [
+                    'driver'                 => 'mysql',
+                    'host'                   => 'primary.internal',
+                    'database'               => 'app',
+                    'read'                   => [['host' => 'replica.internal']],
+                    'dead_cache_ttl_seconds' => 60,
+                ],
+            ],
+            factory: $factory,
+            replicaSelector: $this->selector,
+            deadCache: $deadCache,
+        );
+
+        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+
+        // The new dead mark stamped at clock=1100 with TTL=60 expires at 1160.
+        // Still dead between the original 1010 expiry and the new 1160 expiry,
+        // and gone again past 1160. This proves a fresh stamp, not a stale entry.
+        $this->assertTrue($deadCache->isDead('replica.internal', 0, 'master'));
+        $now = 1150;
+        $this->assertTrue($deadCache->isDead('replica.internal', 0, 'master'));
+        $now = 1170;
+        $this->assertFalse($deadCache->isDead('replica.internal', 0, 'master'));
+    }
+
+    public function testProbeReplicasDoesNotPoisonReplicaSelectionCache(): void
+    {
+        // The probe must not stash its short-lived Connection in $replicaConnections;
+        // a subsequent connection(writable: false) call must build a fresh Connection
+        // through the factory rather than being handed the probe's instance back.
+        $probeConn   = $this->pingableConnection();
+        $requestConn = $this->realConnection();
+        $factory     = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $probeConn);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        $manager->probeReplicas();
+
+        // Re-script the same host with a different Connection. If the probe had
+        // cached its Connection, the request below would return $probeConn (and
+        // the factory would only show one invocation total).
+        $factory->expectSuccess('replica.internal', 0, $requestConn);
+        $afterProbe = $manager->connection(writable: false);
+
+        $this->assertSame($requestConn, $afterProbe);
+        $this->assertSame(
+            ['replica.internal:0', 'replica.internal:0'],
+            $factory->invocations,
+        );
+    }
+
+    public function testProbeReplicasIgnoresDeadCacheAndProbesAllReplicas(): void
+    {
+        // Pre-mark replica1 dead. Probe must still attempt it so operators can
+        // see real-time state, and a healthy probe must NOT clear the dead mark
+        // (recovery is bound by TTL, per ConnectionManager design).
+        $this->deadCache->markServerDead('replica1.internal', 0, 300);
+
+        $replica1 = $this->pingableConnection();
+        $replica2 = $this->pingableConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica1.internal', 0, $replica1);
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            ['replica1.internal:0' => true, 'replica2.internal:0' => true],
+            $manager->probeReplicas(),
+        );
+        $this->assertSame(
+            ['replica1.internal:0', 'replica2.internal:0'],
+            $factory->invocations,
+        );
+        // Existing dead mark is preserved; recovery still depends on TTL expiry.
+        $this->assertTrue($this->deadCache->isDead('replica1.internal', 0, 'master'));
+    }
+
+    public function testProbeReplicasUsesDefaultPoolWhenNameIsNull(): void
+    {
+        $replica = $this->pingableConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('default-replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'read'     => [['host' => 'default-replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            ['default-replica.internal:0' => true],
+            $manager->probeReplicas(),
+        );
+    }
+
+    public function testProbeReplicasAcceptsExplicitPoolName(): void
+    {
+        $analyticsReplica = $this->pingableConnection();
+        $factory          = new ScriptedConnectionFactory();
+        $factory->expectSuccess('analytics-replica.internal', 0, $analyticsReplica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+            'analytics' => [
+                'driver'   => 'mysql',
+                'host'     => 'analytics-primary.internal',
+                'database' => 'analytics',
+                'read'     => [['host' => 'analytics-replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            ['analytics-replica.internal:0' => true],
+            $manager->probeReplicas('analytics'),
+        );
+        // Default pool is untouched.
+        $this->assertSame(['analytics-replica.internal:0'], $factory->invocations);
+    }
+
+    public function testProbeReplicasFailsWhenPoolIsUndefined(): void
+    {
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], new ScriptedConnectionFactory());
+
+        try {
+            $manager->probeReplicas('analytics');
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Database connection [analytics] is not defined.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testProbeReplicasPropagatesValidationErrorsFromResolver(): void
+    {
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver' => 'mysql',
+                // host and database missing
+            ],
+        ], new ScriptedConnectionFactory());
+
+        try {
+            $manager->probeReplicas();
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: missing required config key "host".',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    private function pingableConnection(): Connection
+    {
+        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock->method('exec')
+            ->with('DO 1')
+            ->willReturn(0);
+
+        return new Connection($pdoMock, 'replica');
+    }
 }
