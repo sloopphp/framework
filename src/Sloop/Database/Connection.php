@@ -15,6 +15,7 @@ use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\Exception\ExceptionFactory;
 use Sloop\Database\Exception\LockWaitTimeoutException;
 use Throwable;
+use UnexpectedValueException;
 
 /**
  * PDO wrapper exposing sloop's database API.
@@ -107,19 +108,20 @@ final class Connection
     /**
      * Execute a SELECT-style statement and return the fetched rows.
      *
-     * @param  string                   $sql      SQL statement returning a result set
-     * @param  array<int|string, mixed> $bindings Parameters to bind
-     * @return Result                   Fetched rows
-     * @throws DatabaseException        When the statement fails
+     * @param  string                    $sql      SQL statement returning a result set
+     * @param  array<int|string, mixed>  $bindings Parameters to bind
+     * @return Result                    Fetched rows
+     * @throws DatabaseException         When the statement fails
+     * @throws UnexpectedValueException  When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
      */
     public function query(string $sql, array $bindings = []): Result
     {
         $stmt = $this->prepareAndExecute($sql, $bindings);
-        // PDOStatement::fetchAll's stub only exposes `array`, so per-row
-        // assert is required to narrow to Result's parameter type.
         $rows = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            \assert(\is_array($row));
+            if (!\is_array($row)) {
+                throw new UnexpectedValueException('PDO returned non-array row from FETCH_ASSOC');
+            }
             $rows[] = $row;
         }
 
@@ -294,11 +296,7 @@ final class Connection
      */
     public function dialect(): Dialect
     {
-        $this->ensureDialectDetected();
-
-        \assert($this->dialect !== null);
-
-        return $this->dialect;
+        return $this->dialect ??= Dialect::detect($this->serverVersion());
     }
 
     /**
@@ -311,11 +309,7 @@ final class Connection
      */
     public function serverVersion(): string
     {
-        $this->ensureDialectDetected();
-
-        \assert($this->serverVersion !== null);
-
-        return $this->serverVersion;
+        return $this->serverVersion ??= $this->probeServerVersion();
     }
 
     /**
@@ -387,17 +381,13 @@ final class Connection
     }
 
     /**
-     * Probe the server version on first use and cache the result.
+     * Probe the server version via `SELECT VERSION()`; called lazily by serverVersion().
      *
-     * @return void
+     * @return string            Raw `SELECT VERSION()` output, or '' if the driver returned false instead of throwing
      * @throws DatabaseException When `SELECT VERSION()` fails
      */
-    private function ensureDialectDetected(): void
+    private function probeServerVersion(): string
     {
-        if ($this->dialect !== null) {
-            return;
-        }
-
         try {
             $statement = $this->pdo->query('SELECT VERSION()');
         } catch (PDOException $e) {
@@ -406,10 +396,7 @@ final class Connection
 
         // Defensive: unreachable under ERRMODE_EXCEPTION (contractual for open()),
         // but tolerate callers that inject a PDO with a different error mode.
-        $value = $statement === false ? '' : (string) $statement->fetchColumn();
-
-        $this->serverVersion = $value;
-        $this->dialect       = Dialect::detect($value);
+        return $statement === false ? '' : (string) $statement->fetchColumn();
     }
 
     /**

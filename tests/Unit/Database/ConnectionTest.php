@@ -7,6 +7,7 @@ namespace Sloop\Tests\Unit\Database;
 use LogicException;
 use PDO;
 use Pdo\Sqlite;
+use PDOStatement;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\Connection;
@@ -16,6 +17,7 @@ use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\IsolationLevel;
+use UnexpectedValueException;
 
 /*
  * Policy: several tests below omit a trailing $this->fail() inside the try
@@ -55,13 +57,15 @@ final class ConnectionTest extends TestCase
     private function countUsers(): int
     {
         $stmt = $this->pdo->query('SELECT COUNT(*) AS c FROM users');
-        \assert($stmt !== false);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        \assert(\is_array($row));
-        $count = $row['c'] ?? 0;
-        \assert(\is_int($count) || \is_string($count));
+        $this->assertNotFalse($stmt);
 
-        return (int) $count;
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertIsArray($row);
+
+        $count = $row['c'] ?? 0;
+        $this->assertIsInt($count);
+
+        return $count;
     }
 
     // -------------------------------------------------------
@@ -134,6 +138,31 @@ final class ConnectionTest extends TestCase
 
         $this->assertCount(0, $result);
         $this->assertSame([], $result->toArray());
+    }
+
+    public function testQueryThrowsWhenPdoReturnsNonArrayRow(): void
+    {
+        // Defensive guard: FETCH_ASSOC contractually returns associative arrays,
+        // but the throw is the type-narrowing fallback when a non-conformant
+        // driver violates that contract.
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('execute')->willReturn(true);
+        $statement->method('fetchAll')->willReturn([['valid' => 1], 'invalid-row']);
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('prepare')->willReturn($statement);
+
+        $connection = new Connection($pdo, 'test');
+
+        try {
+            $connection->query('SELECT 1');
+            $this->fail('Expected UnexpectedValueException');
+        } catch (UnexpectedValueException $e) {
+            $this->assertSame(
+                'PDO returned non-array row from FETCH_ASSOC',
+                $e->getMessage(),
+            );
+        }
     }
 
     public function testStatementReturnsAffectedRowCount(): void
@@ -488,6 +517,39 @@ final class ConnectionTest extends TestCase
         $second = $this->connection->dialect();
 
         $this->assertSame($first, $second);
+    }
+
+    public function testServerVersionCachesResultAcrossCalls(): void
+    {
+        $first  = $this->connection->serverVersion();
+        $second = $this->connection->serverVersion();
+
+        $this->assertSame($first, $second);
+    }
+
+    public function testDialectAndServerVersionShareSingleSelectVersionQuery(): void
+    {
+        // Both getters are independently lazy via ??= but must share a single
+        // `SELECT VERSION()` execution regardless of which is called first or
+        // how many times callers interleave them.
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('fetchColumn')->willReturn('10.11.11-MariaDB');
+
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->once())
+            ->method('query')
+            ->with('SELECT VERSION()')
+            ->willReturn($statement);
+
+        $connection = new Connection($pdo, 'test');
+
+        $connection->serverVersion();
+        $connection->dialect();
+        $connection->serverVersion();
+        $connection->dialect();
+
+        $this->assertSame(Dialect::MariaDB, $connection->dialect());
+        $this->assertSame('10.11.11-MariaDB', $connection->serverVersion());
     }
 
     public function testDialectFallsBackToMysqlWhenVersionLacksMariadbMarker(): void
