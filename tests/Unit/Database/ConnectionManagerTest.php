@@ -13,6 +13,7 @@ use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
+use Sloop\Tests\Support\MutableClock;
 use Sloop\Tests\Unit\Database\Stub\AlwaysFailConnectionFactory;
 use Sloop\Tests\Unit\Database\Stub\FixedReplicaSelector;
 use Sloop\Tests\Unit\Database\Stub\ScriptedConnectionFactory;
@@ -954,17 +955,14 @@ final class ConnectionManagerTest extends TestCase
     {
         // Use a controllable clock so the assertion proves the dead mark was
         // re-stamped by the probe rather than just lingering from the pre-mark.
-        $now   = 1000;
-        $clock = function () use (&$now): int {
-            return $now;
-        };
-        $deadCache = new InMemoryDeadReplicaCache($clock);
+        $clock     = new MutableClock(1000);
+        $deadCache = new InMemoryDeadReplicaCache($clock(...));
 
         // Pre-mark with a short TTL that would naturally expire at 1010.
         $deadCache->markServerDead('replica.internal', 0, 10);
 
         // Advance past the original expiry; sanity-check the pre-mark is gone.
-        $now = 1100;
+        $clock->now = 1100;
         $this->assertFalse($deadCache->isDead('replica.internal', 0, 'master'));
 
         $factory = new ScriptedConnectionFactory();
@@ -996,9 +994,9 @@ final class ConnectionManagerTest extends TestCase
         // Still dead between the original 1010 expiry and the new 1160 expiry,
         // and gone again past 1160. This proves a fresh stamp, not a stale entry.
         $this->assertTrue($deadCache->isDead('replica.internal', 0, 'master'));
-        $now = 1150;
+        $clock->now = 1150;
         $this->assertTrue($deadCache->isDead('replica.internal', 0, 'master'));
-        $now = 1170;
+        $clock->now = 1170;
         $this->assertFalse($deadCache->isDead('replica.internal', 0, 'master'));
     }
 
