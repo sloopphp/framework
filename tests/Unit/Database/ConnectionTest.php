@@ -522,7 +522,7 @@ final class ConnectionTest extends TestCase
     {
         try {
             $this->connection->ping();
-            $this->fail('Expected DatabaseException was not thrown');
+            $this->fail('Expected QueryException was not thrown');
         } catch (QueryException $e) {
             $this->assertSame('test_conn', $e->connectionName);
             $this->assertSame('DO 1', $e->sql);
