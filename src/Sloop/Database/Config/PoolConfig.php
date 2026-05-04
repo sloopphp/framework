@@ -28,6 +28,10 @@ final readonly class PoolConfig
      * @param bool                  $logBindings           Whether prepared-statement bindings appear in log context
      * @param bool                  $logAllQueries         Whether every query is logged at `debug` level
      * @param int|null              $slowQueryThresholdMs  Threshold (ms) above which SELECT queries log at `warning`
+     * @param int|null              $queryTimeoutMs        Per-session query timeout in ms; null disables it.
+     *                                                     Connection issues a single SET SESSION (max_execution_time
+     *                                                     for MySQL, max_statement_time for MariaDB) lazily on the
+     *                                                     first query after dialect detection
      */
     public function __construct(
         public string $name,
@@ -40,6 +44,7 @@ final readonly class PoolConfig
         public bool $logBindings,
         public bool $logAllQueries,
         public ?int $slowQueryThresholdMs,
+        public ?int $queryTimeoutMs,
     ) {
     }
 }

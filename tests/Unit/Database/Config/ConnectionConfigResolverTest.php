@@ -560,12 +560,14 @@ final class ConnectionConfigResolverTest extends TestCase
             'dead_cache_ttl_seconds'  => 60,
             'replica_selector'        => 'random',
             'max_connection_attempts' => 6,
+            'query_timeout_ms'        => 5000,
         ]);
 
         $this->assertFalse($pool->healthCheck);
         $this->assertSame(60, $pool->deadCacheTtlSeconds);
         $this->assertSame('random', $pool->replicaSelector);
         $this->assertSame(6, $pool->maxConnectionAttempts);
+        $this->assertSame(5000, $pool->queryTimeoutMs);
     }
 
     public function testValidatePoolDefaultsMaxConnectionAttemptsToReplicaCountPlusOne(): void
@@ -588,15 +590,15 @@ final class ConnectionConfigResolverTest extends TestCase
     {
         try {
             ConnectionConfigResolver::validatePool('mydb', [
-                'driver'           => 'mysql',
-                'host'             => 'primary.example.com',
-                'database'         => 'app',
-                'query_timeout_ms' => 5000,
+                'driver'     => 'mysql',
+                'host'       => 'primary.example.com',
+                'database'   => 'app',
+                'persistent' => true,
             ]);
             $this->fail('Expected InvalidConfigException');
         } catch (InvalidConfigException $e) {
             $this->assertSame(
-                'Connection [mydb]: unsupported config key "query_timeout_ms".',
+                'Connection [mydb]: unsupported config key "persistent".',
                 $e->getMessage(),
             );
         }
@@ -886,6 +888,7 @@ final class ConnectionConfigResolverTest extends TestCase
         $this->assertTrue($pool->logBindings);
         $this->assertFalse($pool->logAllQueries);
         $this->assertNull($pool->slowQueryThresholdMs);
+        $this->assertNull($pool->queryTimeoutMs);
     }
 
     public function testValidatePoolAcceptsExplicitLogBindings(): void
@@ -1041,5 +1044,93 @@ final class ConnectionConfigResolverTest extends TestCase
         ]);
 
         $this->assertSame(3, $pool->maxConnectionAttempts);
+    }
+
+    /**
+     * @return array<string, array{0: int|null, 1: int|null}>
+     */
+    public static function validQueryTimeoutMsProvider(): array
+    {
+        return [
+            'positive int'  => [5000, 5000],
+            'minimum 1'     => [1,    1],
+            'explicit null' => [null, null],
+        ];
+    }
+
+    #[DataProvider('validQueryTimeoutMsProvider')]
+    public function testValidatePoolAcceptsValidQueryTimeoutMs(?int $input, ?int $expected): void
+    {
+        // Valid inputs: positive int (typical), 1 (boundary inclusion guarding
+        // a `> 1` regression), and explicit null (the "off" sentinel shared
+        // with slow_query_threshold_ms / dead_cache_ttl_seconds).
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'           => 'mysql',
+            'host'             => 'primary.example.com',
+            'database'         => 'app',
+            'query_timeout_ms' => $input,
+        ]);
+
+        $this->assertSame($expected, $pool->queryTimeoutMs);
+    }
+
+    /**
+     * @return array<string, array{0: mixed, 1: string}>
+     */
+    public static function invalidQueryTimeoutMsProvider(): array
+    {
+        return [
+            'non-int string' => ['5000', 'must be an integer'],
+            'float'          => [1.5,    'must be an integer'],
+            'bool true'      => [true,   'must be an integer'],
+            'zero'           => [0,      'must be >= 1, got 0'],
+            'negative'       => [-1,     'must be >= 1, got -1'],
+        ];
+    }
+
+    #[DataProvider('invalidQueryTimeoutMsProvider')]
+    public function testValidatePoolRejectsInvalidQueryTimeoutMs(mixed $value, string $expectedSuffix): void
+    {
+        // The two error-message templates correspond to the two rejection
+        // branches in extractOptionalPositiveInt: type check (`!is_int`) and
+        // range check (`< 1`). Bool/float are exercised explicitly so silent
+        // coercion regressions are caught.
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'           => 'mysql',
+                'host'             => 'primary.example.com',
+                'database'         => 'app',
+                'query_timeout_ms' => $value,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "query_timeout_ms" ' . $expectedSuffix . '.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsQueryTimeoutMsInsideReplica(): void
+    {
+        // query_timeout_ms is pool-level: it must be set on the pool itself,
+        // never inside a read[] entry. Same protection as the health_check
+        // regression in testValidatePoolRejectsPoolOnlyKeyInsideReplica.
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 'query_timeout_ms' => 5000],
+                ],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: "read[0]" has unsupported key "query_timeout_ms". Pool-level keys must be set on the pool itself, not inside read[].',
+                $e->getMessage(),
+            );
+        }
     }
 }

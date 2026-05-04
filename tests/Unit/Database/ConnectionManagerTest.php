@@ -138,10 +138,10 @@ final class ConnectionManagerTest extends TestCase
     {
         $manager = $this->manager('master', [
             'master' => [
-                'driver'           => 'mysql',
-                'host'             => 'localhost',
-                'database'         => 'app',
-                'query_timeout_ms' => 5000,
+                'driver'     => 'mysql',
+                'host'       => 'localhost',
+                'database'   => 'app',
+                'persistent' => true,
             ],
         ], new AlwaysFailConnectionFactory());
 
@@ -150,7 +150,7 @@ final class ConnectionManagerTest extends TestCase
             $this->fail('Expected InvalidConfigException');
         } catch (InvalidConfigException $e) {
             $this->assertSame(
-                'Connection [master]: unsupported config key "query_timeout_ms".',
+                'Connection [master]: unsupported config key "persistent".',
                 $e->getMessage(),
             );
         }
@@ -1314,5 +1314,146 @@ final class ConnectionManagerTest extends TestCase
         } catch (QueryException $e) {
             $this->assertSame('master', $e->connectionName);
         }
+    }
+
+    // -------------------------------------------------------
+    // query timeout propagation
+    // -------------------------------------------------------
+
+    public function testPrimaryConnectionReceivesQueryTimeoutFromPoolConfig(): void
+    {
+        // Pool config carries query_timeout_ms; the manager forwards it to the
+        // primary Connection, which lazy-applies SET SESSION on first query.
+        $pdo     = $this->primaryPdoExpectingTimeout('SET SESSION max_execution_time = 5000');
+        $primary = new Connection($pdo, 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'query_timeout_ms' => 5000,
+            ],
+        ], $factory);
+
+        $manager->connection()->query('SELECT 1');
+    }
+
+    public function testReplicaConnectionReceivesQueryTimeoutFromPoolConfig(): void
+    {
+        // Replica path also flows through applyQueryTimeout, so reads served
+        // off a replica pick up the same per-session timeout.
+        $pdo     = $this->primaryPdoExpectingTimeout('SET SESSION max_execution_time = 3000');
+        $replica = new Connection($pdo, 'replica');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'read'             => [['host' => 'replica.internal']],
+                'health_check'     => false,
+                'query_timeout_ms' => 3000,
+            ],
+        ], $factory);
+
+        $manager->connection(writable: false)->query('SELECT 1');
+    }
+
+    public function testQueryTimeoutNotPropagatedWhenPoolConfigOmitsKey(): void
+    {
+        // Without query_timeout_ms in config, the manager skips
+        // setQueryTimeoutMs entirely — the lazy apply path stays inert and no
+        // SET SESSION fires (only the user query reaches prepare()).
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('exec');
+        $stmt = $this->createMock(\PDOStatement::class);
+        $stmt->method('execute')->willReturn(true);
+        $stmt->method('fetchAll')->willReturn([]);
+        $pdo->method('prepare')->willReturn($stmt);
+
+        $primary = new Connection($pdo, 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $manager->connection()->query('SELECT 1');
+    }
+
+    public function testProbeReplicasDoesNotForwardQueryTimeoutToProbeConnection(): void
+    {
+        // probeReplicas() builds short-lived Connections that only run a single
+        // ping(); applyQueryTimeout() is intentionally bypassed so we don't
+        // burn an extra SELECT VERSION() + SET SESSION round trip on a probe
+        // that gets discarded. The lazy-apply semantics make this contract
+        // unobservable through query / exec mock expectations
+        // (setQueryTimeoutMs alone has no on-the-wire side effect), so we
+        // verify it directly via Reflection on the probe Connection's
+        // $queryTimeoutMs property.
+        $probeConnection = new Connection(new PDO('sqlite::memory:'), 'replica');
+        $factory         = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $probeConnection);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'read'             => [['host' => 'replica.internal']],
+                'health_check'     => false,
+                'query_timeout_ms' => 5000,
+            ],
+        ], $factory);
+
+        // probeReplicas always issues `DO 1`; on sqlite this fails as a
+        // QueryException and is recorded as a probe failure. The ordering
+        // factory.make → (apply* hooks) → ping is what matters here, and
+        // applyQueryTimeout must not have been invoked before ping ran.
+        $manager->probeReplicas();
+
+        $reflection = new \ReflectionProperty(Connection::class, 'queryTimeoutMs');
+        $this->assertNull($reflection->getValue($probeConnection));
+    }
+
+    /**
+     * Build a mock PDO with a representative MySQL VERSION() response that asserts
+     * SET SESSION fires once with the expected SQL and accepts the trailing user query.
+     *
+     * Dialect-specific output formatting (MariaDB max_statement_time) is covered
+     * by ConnectionTest's dialect provider; this helper focuses on the manager's
+     * forwarding contract using a single representative dialect.
+     *
+     * @param  string $expectedSetSessionSql Expected SET SESSION SQL passed to exec()
+     * @return PDO                           Mock PDO with the exec/query/prepare expectations wired
+     */
+    private function primaryPdoExpectingTimeout(string $expectedSetSessionSql): PDO
+    {
+        $versionStmt = $this->createStub(\PDOStatement::class);
+        $versionStmt->method('fetchColumn')->willReturn('8.0.37');
+
+        $userStmt = $this->createMock(\PDOStatement::class);
+        $userStmt->method('execute')->willReturn(true);
+        $userStmt->method('fetchAll')->willReturn([]);
+
+        $pdo = $this->createMock(PDO::class);
+        $pdo->method('query')->with('SELECT VERSION()')->willReturn($versionStmt);
+        $pdo->expects($this->once())
+            ->method('exec')
+            ->with($expectedSetSessionSql)
+            ->willReturn(0);
+        $pdo->method('prepare')->willReturn($userStmt);
+
+        return $pdo;
     }
 }

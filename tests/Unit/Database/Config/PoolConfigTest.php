@@ -27,6 +27,7 @@ final class PoolConfigTest extends TestCase
             logBindings: false,
             logAllQueries: true,
             slowQueryThresholdMs: 200,
+            queryTimeoutMs: 5000,
         );
 
         $this->assertSame('mydb', $pool->name);
@@ -39,6 +40,7 @@ final class PoolConfigTest extends TestCase
         $this->assertFalse($pool->logBindings);
         $this->assertTrue($pool->logAllQueries);
         $this->assertSame(200, $pool->slowQueryThresholdMs);
+        $this->assertSame(5000, $pool->queryTimeoutMs);
     }
 
     public function testStoresEmptyReplicas(): void
@@ -54,6 +56,7 @@ final class PoolConfigTest extends TestCase
             logBindings: true,
             logAllQueries: false,
             slowQueryThresholdMs: null,
+            queryTimeoutMs: null,
         );
 
         $this->assertSame([], $pool->replicas);
@@ -63,6 +66,7 @@ final class PoolConfigTest extends TestCase
         $this->assertTrue($pool->logBindings);
         $this->assertFalse($pool->logAllQueries);
         $this->assertNull($pool->slowQueryThresholdMs);
+        $this->assertNull($pool->queryTimeoutMs);
     }
 
     public function testStoresSingleReplica(): void
@@ -81,6 +85,7 @@ final class PoolConfigTest extends TestCase
             logBindings: true,
             logAllQueries: false,
             slowQueryThresholdMs: null,
+            queryTimeoutMs: null,
         );
 
         $this->assertCount(1, $pool->replicas);

@@ -123,6 +123,7 @@ final class ConnectionManager
 
             $connection = $this->factory->make($pool->primary, $name);
             $this->applyLogger($connection, $pool);
+            $this->applyQueryTimeout($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
 
@@ -172,6 +173,7 @@ final class ConnectionManager
             try {
                 $connection = $this->factory->make($picked, $name);
                 $this->applyLogger($connection, $pool);
+                $this->applyQueryTimeout($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -266,6 +268,27 @@ final class ConnectionManager
                 slowQueryThresholdMs: $pool->slowQueryThresholdMs,
             ),
         );
+    }
+
+    /**
+     * Forward the pool's query timeout into the Connection so it can lazy-apply on the first query.
+     *
+     * Skipped when the pool does not configure a timeout. Probe connections
+     * built by probeReplicas() are intentionally bypassed: they only run a
+     * `DO 1` ping and would just burn an extra round trip on a dialect probe
+     * plus SET SESSION before being discarded.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet executed a query
+     * @param  PoolConfig $pool       Pool config supplying queryTimeoutMs
+     * @return void
+     */
+    private function applyQueryTimeout(Connection $connection, PoolConfig $pool): void
+    {
+        if ($pool->queryTimeoutMs === null) {
+            return;
+        }
+
+        $connection->setQueryTimeoutMs($pool->queryTimeoutMs);
     }
 
     /**

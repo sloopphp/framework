@@ -12,6 +12,7 @@ use PDO;
 use Pdo\Sqlite;
 use PDOStatement;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\Connection;
@@ -80,6 +81,36 @@ final class ConnectionTest extends TestCase
         $connection->setLogger($logger, $options ?? new LoggingOptions());
 
         return $handler;
+    }
+
+    private function scriptVersionQuery(MockObject&PDO $pdo, string $versionString): void
+    {
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('fetchColumn')->willReturn($versionString);
+
+        // PDO::query is matched on its first argument because PHPUnit's strict
+        // method() expectation cannot mix `$this->any()` with a `with(...)`
+        // constraint; once method('query') is set up, every query() call falls
+        // through this rule.
+        $pdo->method('query')->with('SELECT VERSION()')->willReturn($statement);
+    }
+
+    private function scriptedSelectStatement(): PDOStatement
+    {
+        $stmt = $this->createMock(PDOStatement::class);
+        $stmt->method('execute')->willReturn(true);
+        $stmt->method('fetchAll')->willReturn([]);
+
+        return $stmt;
+    }
+
+    private function scriptedDmlStatement(): PDOStatement
+    {
+        $stmt = $this->createMock(PDOStatement::class);
+        $stmt->method('execute')->willReturn(true);
+        $stmt->method('rowCount')->willReturn(1);
+
+        return $stmt;
     }
 
     // -------------------------------------------------------
@@ -884,5 +915,257 @@ final class ConnectionTest extends TestCase
         $this->assertSame(RuntimeException::class, $warning->context['original_exception']);
         $this->assertSame('callback boom', $warning->context['original_message']);
         $this->assertSame('rollback_test', $warning->context['connection_name']);
+    }
+
+    // -------------------------------------------------------
+    // query timeout (lazy apply)
+    // -------------------------------------------------------
+
+    public function testQueryTimeoutNotIssuedUntilFirstQuery(): void
+    {
+        // setQueryTimeoutMs alone must not touch the server. Lazy apply is the
+        // contract — the first query() / statement() is what triggers SET SESSION.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('exec');
+        $pdo->expects($this->never())->method('query');
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs(5000);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: int, 2: string}>
+     */
+    public static function dialectAndTimeoutProvider(): array
+    {
+        return [
+            'MySQL'                  => ['8.0.37',           5000, 'SET SESSION max_execution_time = 5000'],
+            'MariaDB fractional sec' => ['10.11.11-MariaDB', 1500, 'SET SESSION max_statement_time = 1.500'],
+            'MariaDB minimum 1ms'    => ['10.11.11-MariaDB', 1,    'SET SESSION max_statement_time = 0.001'],
+        ];
+    }
+
+    #[DataProvider('dialectAndTimeoutProvider')]
+    public function testQueryTimeoutAppliesDialectSpecificSetSession(
+        string $versionString,
+        int $timeoutMs,
+        string $expectedSetSessionSql,
+    ): void {
+        // Each dialect emits a distinct SET SESSION statement. MariaDB also
+        // converts ms → fractional seconds with three decimal places so a 1ms
+        // boundary value surfaces as 0.001 rather than truncating to 0.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, $versionString);
+        $pdo->expects($this->once())
+            ->method('exec')
+            ->with($expectedSetSessionSql)
+            ->willReturn(0);
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs($timeoutMs);
+
+        $connection->query('SELECT 1');
+    }
+
+    public function testQueryTimeoutIsIssuedOnlyOnceAcrossMultipleQueries(): void
+    {
+        // The applied flag must short-circuit subsequent queries — re-issuing
+        // SET SESSION every time would burn a round trip per query.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+        $pdo->expects($this->once())
+            ->method('exec')
+            ->with('SET SESSION max_execution_time = 5000')
+            ->willReturn(0);
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs(5000);
+
+        $connection->query('SELECT 1');
+        $connection->query('SELECT 2');
+        $connection->query('SELECT 3');
+    }
+
+    public function testQueryTimeoutIsSkippedWhenUnset(): void
+    {
+        // No setQueryTimeoutMs call — applyQueryTimeoutIfPending must not
+        // touch exec() and must not run SELECT VERSION() (no dialect probe
+        // when the timeout is unset).
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('exec');
+        $pdo->expects($this->never())->method('query');
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+
+        $connection->query('SELECT 1');
+    }
+
+    public function testQueryTimeoutIsSkippedWhenSetToNull(): void
+    {
+        // setQueryTimeoutMs(null) explicitly disables the lazy apply path.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('exec');
+        $pdo->expects($this->never())->method('query');
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs(null);
+
+        $connection->query('SELECT 1');
+    }
+
+    public function testStatementAlsoTriggersQueryTimeoutApply(): void
+    {
+        // statement() shares the lazy apply hook with query() so DML/DDL
+        // workloads that never run a SELECT still get the timeout configured.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+        $pdo->expects($this->once())
+            ->method('exec')
+            ->with('SET SESSION max_execution_time = 5000')
+            ->willReturn(0);
+        $pdo->method('prepare')->willReturn($this->scriptedDmlStatement());
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs(5000);
+
+        $connection->statement('INSERT INTO probe (id) VALUES (1)');
+    }
+
+    public function testQueryTimeoutFailureLogsErrorAndPropagates(): void
+    {
+        // SET SESSION failure must surface to the caller (the timeout did not
+        // apply, the connection is misconfigured). When a logger is wired in,
+        // the failure also lands as `error` level so operators see it.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+        $pdo->method('exec')->willThrowException(new \PDOException('access denied'));
+
+        $connection = new Connection($pdo, 'test');
+        $handler    = $this->attachLogger($connection);
+        $connection->setQueryTimeoutMs(5000);
+
+        try {
+            $connection->query('SELECT 1');
+            $this->fail('Expected DatabaseException');
+        } catch (DatabaseException $e) {
+            $this->assertStringContainsString('access denied', $e->getMessage());
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Error, $records[0]->level);
+        $this->assertStringStartsWith('failed to apply query timeout: ', $records[0]->message);
+        $this->assertSame('test', $records[0]->context['connection_name']);
+    }
+
+    public function testQueryTimeoutFailureRetriesSetSessionOnNextQuery(): void
+    {
+        // queryTimeoutApplied stays false after a failed SET SESSION so the
+        // next query attempts it again rather than running unprotected with
+        // a silently-skipped timeout.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+        $pdo->expects($this->exactly(2))
+            ->method('exec')
+            ->willThrowException(new \PDOException('access denied'));
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs(5000);
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $connection->query('SELECT 1');
+            } catch (DatabaseException) {
+                // expected — both attempts must surface as DatabaseException
+            }
+        }
+    }
+
+    public function testQueryTimeoutFailureWithoutLoggerStillPropagates(): void
+    {
+        // applyQueryTimeoutIfPending uses `$this->logger?->error(...)` to log
+        // the failure; with no logger configured, the null-safe call must
+        // simply do nothing and the DatabaseException must still propagate
+        // cleanly — not crash with method-call-on-null.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+        $pdo->method('exec')->willThrowException(new \PDOException('access denied'));
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+        $connection->setQueryTimeoutMs(5000);
+
+        try {
+            $connection->query('SELECT 1');
+            $this->fail('Expected DatabaseException');
+        } catch (DatabaseException $e) {
+            $this->assertStringContainsString('access denied', $e->getMessage());
+        }
+    }
+
+    public function testQueryTimeoutResetsAppliedFlagWhenSetterCalledAgain(): void
+    {
+        // Setting a new timeout after the first SET SESSION must reset the
+        // applied flag so the new value gets its own SET SESSION on the next
+        // query — otherwise a re-configured value would be silently ignored.
+        $pdo = $this->createMock(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+
+        $matcher = $this->exactly(2);
+        $pdo->expects($matcher)
+            ->method('exec')
+            ->willReturnCallback(function (string $sql) use ($matcher): int {
+                $expected = match ($matcher->numberOfInvocations()) {
+                    1 => 'SET SESSION max_execution_time = 5000',
+                    2 => 'SET SESSION max_execution_time = 3000',
+                    default => throw new \LogicException('unexpected exec call: ' . $sql),
+                };
+                $this->assertSame($expected, $sql);
+
+                return 0;
+            });
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+
+        $connection->setQueryTimeoutMs(5000);
+        $connection->query('SELECT 1');
+
+        $connection->setQueryTimeoutMs(3000);
+        $connection->query('SELECT 2');
+    }
+
+    public function testQueryTimeoutDialectDetectionFailureLogsAndPropagates(): void
+    {
+        // Dialect detection runs `SELECT VERSION()` lazily; if that fails the
+        // catch in applyQueryTimeoutIfPending must still surface the error
+        // (with the same `failed to apply query timeout` log prefix as a
+        // SET SESSION failure) rather than letting the connection silently
+        // skip the timeout setup.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->method('query')
+            ->with('SELECT VERSION()')
+            ->willThrowException(new \PDOException('server gone away'));
+        $pdo->expects($this->never())->method('exec');
+
+        $connection = new Connection($pdo, 'test');
+        $handler    = $this->attachLogger($connection);
+        $connection->setQueryTimeoutMs(5000);
+
+        try {
+            $connection->query('SELECT 1');
+            $this->fail('Expected DatabaseException');
+        } catch (DatabaseException $e) {
+            $this->assertStringContainsString('server gone away', $e->getMessage());
+        }
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Error, $records[0]->level);
+        $this->assertStringStartsWith('failed to apply query timeout: ', $records[0]->message);
     }
 }

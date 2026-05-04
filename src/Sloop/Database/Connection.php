@@ -72,6 +72,24 @@ final class Connection
     private LoggingOptions $loggingOptions;
 
     /**
+     * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
+     *
+     * @var int|null
+     */
+    private ?int $queryTimeoutMs = null;
+
+    /**
+     * Whether the configured timeout has already been issued to the server on this connection.
+     *
+     * Toggled true after a successful SET SESSION (max_execution_time on MySQL,
+     * max_statement_time on MariaDB) so subsequent queries skip the redundant
+     * statement. Reset to false when setQueryTimeoutMs() is called again.
+     *
+     * @var bool
+     */
+    private bool $queryTimeoutApplied = false;
+
+    /**
      * Construct with an already-configured PDO.
      *
      * @param PDO    $pdo            PDO instance with sloop's default attributes applied
@@ -100,6 +118,28 @@ final class Connection
     {
         $this->logger         = $logger;
         $this->loggingOptions = $options;
+    }
+
+    /**
+     * Set the per-session query timeout in milliseconds (null disables it).
+     *
+     * Stored on the Connection but not issued to the server until the first
+     * query() or statement() call: dialect detection (`SELECT VERSION()`)
+     * has to run first to choose between MySQL `max_execution_time` and
+     * MariaDB `max_statement_time`. Calling this resets the "applied" flag
+     * so a fresh value will take effect on the next query — but a previously
+     * applied value remains in effect on the server session until the next
+     * SET SESSION fires (passing null does not retroactively clear it).
+     *
+     * Intended for one-time configuration before the first query runs.
+     *
+     * @param  int|null $ms Timeout in milliseconds (positive int) or null to disable
+     * @return void
+     */
+    public function setQueryTimeoutMs(?int $ms): void
+    {
+        $this->queryTimeoutMs      = $ms;
+        $this->queryTimeoutApplied = false;
     }
 
     /**
@@ -150,6 +190,8 @@ final class Connection
      */
     public function query(string $sql, array $bindings = []): Result
     {
+        $this->applyQueryTimeoutIfPending();
+
         $startTime = $this->shouldMeasureElapsed() ? microtime(true) : null;
 
         try {
@@ -187,6 +229,8 @@ final class Connection
      */
     public function statement(string $sql, array $bindings = []): int
     {
+        $this->applyQueryTimeoutIfPending();
+
         $startTime = $this->shouldMeasureElapsed() ? microtime(true) : null;
 
         try {
@@ -483,6 +527,49 @@ final class Connection
             $this->pdo->exec($sql);
         } catch (PDOException $e) {
             throw ExceptionFactory::fromPDOException($e, $this->connectionName, $sql);
+        }
+    }
+
+    /**
+     * Issue the configured per-session query timeout to the server on the first call.
+     *
+     * The timeout statement differs between server flavors (MySQL uses
+     * `max_execution_time` in milliseconds and applies only to SELECT;
+     * MariaDB uses `max_statement_time` in fractional seconds and applies
+     * to every statement), so dialect detection has to run before the
+     * SET SESSION can be assembled. The result is cached in
+     * $queryTimeoutApplied so subsequent queries do not re-issue it.
+     *
+     * Failures here are logged at `error` level when a logger is present
+     * and then re-thrown so the caller learns the timeout was not applied.
+     *
+     * @return void
+     * @throws DatabaseException When dialect detection or the SET SESSION fails
+     */
+    private function applyQueryTimeoutIfPending(): void
+    {
+        if ($this->queryTimeoutMs === null || $this->queryTimeoutApplied) {
+            return;
+        }
+
+        try {
+            $sql = match ($this->dialect()) {
+                Dialect::MySQL   => 'SET SESSION max_execution_time = ' . $this->queryTimeoutMs,
+                Dialect::MariaDB => 'SET SESSION max_statement_time = ' . \sprintf('%.3F', $this->queryTimeoutMs / 1000),
+            };
+            $this->execSimple($sql);
+            $this->queryTimeoutApplied = true;
+        } catch (DatabaseException $e) {
+            $this->logger?->error(
+                'failed to apply query timeout: ' . $e->getMessage(),
+                [
+                    'sqlstate'        => $e->sqlState,
+                    'driver_code'     => $e->driverCode,
+                    'connection_name' => $this->connectionName,
+                ],
+            );
+
+            throw $e;
         }
     }
 

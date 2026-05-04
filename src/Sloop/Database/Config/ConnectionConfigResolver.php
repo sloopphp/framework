@@ -63,6 +63,7 @@ final class ConnectionConfigResolver
         'log_bindings',
         'log_all_queries',
         'slow_query_threshold_ms',
+        'query_timeout_ms',
     ];
 
     /**
@@ -197,6 +198,7 @@ final class ConnectionConfigResolver
         $logBindings     = self::extractOptionalBool($name, $config, 'log_bindings') ?? self::DEFAULT_LOG_BINDINGS;
         $logAllQueries   = self::extractOptionalBool($name, $config, 'log_all_queries') ?? self::DEFAULT_LOG_ALL_QUERIES;
         $slowThresholdMs = self::extractOptionalPositiveInt($name, $config, 'slow_query_threshold_ms');
+        $queryTimeoutMs  = self::extractOptionalPositiveInt($name, $config, 'query_timeout_ms');
 
         return new PoolConfig(
             name:                  $name,
@@ -209,6 +211,7 @@ final class ConnectionConfigResolver
             logBindings:           $logBindings,
             logAllQueries:         $logAllQueries,
             slowQueryThresholdMs:  $slowThresholdMs,
+            queryTimeoutMs:        $queryTimeoutMs,
         );
     }
 
