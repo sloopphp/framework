@@ -23,6 +23,12 @@ final class PdoConnectionFactory implements ConnectionFactory
     /**
      * Build a Connection by instantiating PDO from the validated config.
      *
+     * The pool-level $persistent acts as the single source of truth for
+     * ATTR_PERSISTENT: it always wins over any value the caller may have set
+     * via the connection-level `options:` config key. This keeps the pool's
+     * `persistent` flag the unambiguous knob users can reach for, instead of
+     * letting an `options:` entry silently override it.
+     *
      * @param  ValidatedConfig             $config     Validated single-connection config
      * @param  string                      $name       Pool name used as the Connection identifier in error context
      * @param  bool                        $persistent Whether to open the connection with PDO::ATTR_PERSISTENT
@@ -32,9 +38,7 @@ final class PdoConnectionFactory implements ConnectionFactory
     public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
     {
         $options = ConnectionConfigResolver::resolvePdoOptions($config);
-        if ($persistent) {
-            $options[PDO::ATTR_PERSISTENT] = true;
-        }
+        $options[PDO::ATTR_PERSISTENT] = $persistent;
 
         return Connection::open(
             ConnectionConfigResolver::resolveDsn($config),

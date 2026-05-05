@@ -171,4 +171,33 @@ final class ConnectionManagerTest extends IntegrationTestCase
 
         $this->assertArrayHasKey('LOWER_CASE_ALIAS', $rows[0]);
     }
+
+    public function testPoolPersistentFalseOverridesUserOptionsAttrPersistentTrue(): void
+    {
+        // Pool-level persistent is the single source of truth for
+        // ATTR_PERSISTENT. Even when a user puts ATTR_PERSISTENT=true into the
+        // `options:` config key, an explicit (or default) persistent=false on
+        // the pool must win and open a non-persistent connection.
+        $config            = self::defaultConfig();
+        $config['options'] = [PDO::ATTR_PERSISTENT => true];
+
+        $manager    = $this->manager($config);
+        $connection = $manager->connection();
+
+        $this->assertFalse($this->extractPdo($connection)->getAttribute(PDO::ATTR_PERSISTENT));
+    }
+
+    public function testPoolPersistentTrueOverridesUserOptionsAttrPersistentFalse(): void
+    {
+        // Symmetric counterpart: pool persistent=true must win over a user
+        // `options:` entry that says ATTR_PERSISTENT=false.
+        $config               = self::defaultConfig();
+        $config['persistent'] = true;
+        $config['options']    = [PDO::ATTR_PERSISTENT => false];
+
+        $manager    = $this->manager($config);
+        $connection = $manager->connection();
+
+        $this->assertTrue($this->extractPdo($connection)->getAttribute(PDO::ATTR_PERSISTENT));
+    }
 }
