@@ -64,6 +64,7 @@ final class ConnectionConfigResolver
         'log_all_queries',
         'slow_query_threshold_ms',
         'query_timeout_ms',
+        'persistent',
     ];
 
     /**
@@ -137,6 +138,13 @@ final class ConnectionConfigResolver
     private const bool DEFAULT_LOG_ALL_QUERIES = false;
 
     /**
+     * Default for `persistent` when omitted: PDO::ATTR_PERSISTENT is not set.
+     *
+     * @var bool
+     */
+    private const bool DEFAULT_PERSISTENT = false;
+
+    /**
      * Validate a single-connection config and return a typed ValidatedConfig.
      *
      * Public entry point for single-connection validation and the per-entry
@@ -199,6 +207,7 @@ final class ConnectionConfigResolver
         $logAllQueries   = self::extractOptionalBool($name, $config, 'log_all_queries') ?? self::DEFAULT_LOG_ALL_QUERIES;
         $slowThresholdMs = self::extractOptionalPositiveInt($name, $config, 'slow_query_threshold_ms');
         $queryTimeoutMs  = self::extractOptionalPositiveInt($name, $config, 'query_timeout_ms');
+        $persistent      = self::extractOptionalBool($name, $config, 'persistent') ?? self::DEFAULT_PERSISTENT;
 
         return new PoolConfig(
             name:                  $name,
@@ -212,6 +221,7 @@ final class ConnectionConfigResolver
             logAllQueries:         $logAllQueries,
             slowQueryThresholdMs:  $slowThresholdMs,
             queryTimeoutMs:        $queryTimeoutMs,
+            persistent:            $persistent,
         );
     }
 

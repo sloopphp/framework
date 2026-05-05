@@ -21,10 +21,11 @@ interface ConnectionFactory
     /**
      * Build a Connection from a fully validated config.
      *
-     * @param  ValidatedConfig             $config Validated single-connection config
-     * @param  string                      $name   Pool name used as the Connection identifier in error context
+     * @param  ValidatedConfig             $config     Validated single-connection config
+     * @param  string                      $name       Pool name used as the Connection identifier in error context
+     * @param  bool                        $persistent Whether to open the connection with PDO::ATTR_PERSISTENT
      * @return Connection
      * @throws DatabaseConnectionException When the underlying PDO connection fails
      */
-    public function make(ValidatedConfig $config, string $name): Connection;
+    public function make(ValidatedConfig $config, string $name, bool $persistent): Connection;
 }

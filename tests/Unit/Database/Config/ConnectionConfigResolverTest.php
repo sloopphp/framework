@@ -93,6 +93,31 @@ final class ConnectionConfigResolverTest extends TestCase
         }
     }
 
+    public function testValidateRejectsPersistent(): void
+    {
+        // `persistent` is a pool-only key and is not in ALLOWED_KEYS. The
+        // pool-only contract must hold even when validate() is invoked directly
+        // on a single-connection config. testValidateRejectsUnknownKey already
+        // covers the generic unknown-key path with query_timeout_ms; this
+        // dedicated case mirrors testValidatePoolRejectsPersistentInsideReplica
+        // so the pool-only invariant is asserted on both validate() and
+        // validatePool() entry points.
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'     => 'mysql',
+                'host'       => 'localhost',
+                'database'   => 'app',
+                'persistent' => true,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: unsupported config key "persistent".',
+                $e->getMessage(),
+            );
+        }
+    }
+
     /**
      * @return array<string, array{string}>
      */
@@ -590,15 +615,15 @@ final class ConnectionConfigResolverTest extends TestCase
     {
         try {
             ConnectionConfigResolver::validatePool('mydb', [
-                'driver'     => 'mysql',
-                'host'       => 'primary.example.com',
-                'database'   => 'app',
-                'persistent' => true,
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'foo'      => true,
             ]);
             $this->fail('Expected InvalidConfigException');
         } catch (InvalidConfigException $e) {
             $this->assertSame(
-                'Connection [mydb]: unsupported config key "persistent".',
+                'Connection [mydb]: unsupported config key "foo".',
                 $e->getMessage(),
             );
         }
@@ -1129,6 +1154,103 @@ final class ConnectionConfigResolverTest extends TestCase
         } catch (InvalidConfigException $e) {
             $this->assertSame(
                 'Connection [mydb]: "read[0]" has unsupported key "query_timeout_ms". Pool-level keys must be set on the pool itself, not inside read[].',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolDefaultsPersistentToFalseWhenOmitted(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+        ]);
+
+        $this->assertFalse($pool->persistent);
+    }
+
+    public function testValidatePoolAcceptsExplicitPersistentTrue(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'     => 'mysql',
+            'host'       => 'primary.example.com',
+            'database'   => 'app',
+            'persistent' => true,
+        ]);
+
+        $this->assertTrue($pool->persistent);
+    }
+
+    public function testValidatePoolAcceptsExplicitPersistentFalse(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'     => 'mysql',
+            'host'       => 'primary.example.com',
+            'database'   => 'app',
+            'persistent' => false,
+        ]);
+
+        $this->assertFalse($pool->persistent);
+    }
+
+    /**
+     * @return array<string, array{0: mixed}>
+     */
+    public static function invalidPersistentProvider(): array
+    {
+        return [
+            'non-bool string' => ['yes'],
+            'integer 0'       => [0],
+            'integer 1'       => [1],
+            'float'           => [1.5],
+            'null'            => [null],
+            'array'           => [[]],
+        ];
+    }
+
+    #[DataProvider('invalidPersistentProvider')]
+    public function testValidatePoolRejectsInvalidPersistent(mixed $value): void
+    {
+        // extractOptionalBool rejects via !is_bool(): null / int / float /
+        // string / array all fail the type check. Explicit null is treated as
+        // a type error here, unlike extractOptionalPositiveInt which accepts
+        // explicit null as the off-sentinel; the divergence is locked in by
+        // covering null in this provider.
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'     => 'mysql',
+                'host'       => 'primary.example.com',
+                'database'   => 'app',
+                'persistent' => $value,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: config key "persistent" must be a boolean.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidatePoolRejectsPersistentInsideReplica(): void
+    {
+        // persistent is pool-level: it must be set on the pool itself,
+        // never inside a read[] entry. Same protection as the health_check
+        // regression in testValidatePoolRejectsPoolOnlyKeyInsideReplica.
+        try {
+            ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 'persistent' => true],
+                ],
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [mydb]: "read[0]" has unsupported key "persistent". Pool-level keys must be set on the pool itself, not inside read[].',
                 $e->getMessage(),
             );
         }

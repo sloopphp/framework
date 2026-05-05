@@ -11,7 +11,7 @@ use Sloop\Database\Factory\ConnectionFactory;
 
 final class AlwaysFailConnectionFactory implements ConnectionFactory
 {
-    public function make(ValidatedConfig $config, string $name): Connection
+    public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
     {
         throw new LogicException('AlwaysFailConnectionFactory should not be invoked in this test path.');
     }

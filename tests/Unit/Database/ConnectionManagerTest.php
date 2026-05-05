@@ -8,6 +8,7 @@ use Monolog\Handler\TestHandler;
 use Monolog\Level;
 use Monolog\Logger;
 use PDO;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
@@ -138,10 +139,10 @@ final class ConnectionManagerTest extends TestCase
     {
         $manager = $this->manager('master', [
             'master' => [
-                'driver'     => 'mysql',
-                'host'       => 'localhost',
-                'database'   => 'app',
-                'persistent' => true,
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'foo'      => true,
             ],
         ], new AlwaysFailConnectionFactory());
 
@@ -150,7 +151,7 @@ final class ConnectionManagerTest extends TestCase
             $this->fail('Expected InvalidConfigException');
         } catch (InvalidConfigException $e) {
             $this->assertSame(
-                'Connection [master]: unsupported config key "persistent".',
+                'Connection [master]: unsupported config key "foo".',
                 $e->getMessage(),
             );
         }
@@ -183,7 +184,7 @@ final class ConnectionManagerTest extends TestCase
     public function testConnectionPropagatesFactoryExceptions(): void
     {
         $throwingFactory = new class () implements ConnectionFactory {
-            public function make(ValidatedConfig $config, string $name): Connection
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
             {
                 throw new DatabaseConnectionException('simulated connect failure');
             }
@@ -1389,6 +1390,273 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         $manager->connection()->query('SELECT 1');
+    }
+
+    /**
+     * @return array<string, array{0: bool}>
+     */
+    public static function persistentFlagProvider(): array
+    {
+        return [
+            'persistent=true'  => [true],
+            'persistent=false' => [false],
+        ];
+    }
+
+    #[DataProvider('persistentFlagProvider')]
+    public function testPrimaryConnectionPropagatesPersistentFlagFromPoolConfig(bool $persistent): void
+    {
+        // The pool's persistent setting must reach the factory's make() call
+        // so the primary Connection opens its PDO with the matching
+        // ATTR_PERSISTENT value (true → on, false → off).
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => $persistent,
+            ],
+        ], $factory);
+
+        $manager->connection();
+
+        $this->assertSame([$persistent], $factory->persistentFlags);
+    }
+
+    #[DataProvider('persistentFlagProvider')]
+    public function testReplicaConnectionPropagatesPersistentFlagFromPoolConfig(bool $persistent): void
+    {
+        // The replica route must forward the same flag; reads served off a
+        // replica must reflect the pool's persistent setting symmetrically
+        // with the primary route.
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+                'persistent'   => $persistent,
+            ],
+        ], $factory);
+
+        $manager->connection(writable: false);
+
+        $this->assertSame([$persistent], $factory->persistentFlags);
+    }
+
+    public function testPersistentDefaultsToFalseWhenPoolConfigOmitsKey(): void
+    {
+        // Omitting persistent must result in persistent=false reaching make() —
+        // ATTR_PERSISTENT defaults off so the typical pool keeps its current
+        // (non-persistent) behavior unchanged.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $manager->connection();
+
+        $this->assertSame([false], $factory->persistentFlags);
+    }
+
+    #[DataProvider('persistentFlagProvider')]
+    public function testReplicaFailoverPropagatesPersistentFlagToEachMake(bool $persistent): void
+    {
+        // Multiple make() calls during replica failover must each receive the
+        // pool's persistent value so the eventually selected replica opens
+        // with the matching ATTR_PERSISTENT. Guards against the flag being
+        // scoped to the first attempt only.
+        $replica2 = $this->realConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica1.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica1', null, 2002),
+        );
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check' => false,
+                'persistent'   => $persistent,
+            ],
+        ], $factory);
+
+        $manager->connection(writable: false);
+
+        $this->assertSame([$persistent, $persistent], $factory->persistentFlags);
+    }
+
+    #[DataProvider('persistentFlagProvider')]
+    public function testPrimaryFallbackPropagatesPersistentFlagToEachMake(bool $persistent): void
+    {
+        // When every replica fails and the manager falls back to primary, the
+        // primary make() must also receive the pool's persistent value.
+        // Without this guard a fallback could silently drop ATTR_PERSISTENT.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica1.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica1', null, 2002),
+        );
+        $factory->expectFailure(
+            'replica2.internal',
+            0,
+            new DatabaseConnectionException('refused', 'replica2', null, 2002),
+        );
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [
+                    ['host' => 'replica1.internal'],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check'            => false,
+                'max_connection_attempts' => 5,
+                'persistent'              => $persistent,
+            ],
+        ], $factory);
+
+        $manager->connection(writable: false);
+
+        $this->assertSame([$persistent, $persistent, $persistent], $factory->persistentFlags);
+    }
+
+    #[DataProvider('persistentFlagProvider')]
+    public function testTransactionAwareRoutingPreservesPersistentFlag(bool $persistent): void
+    {
+        // While a transaction is active, connection(writable: false) returns
+        // the cached primary instead of selecting a replica. Confirm the
+        // primary was originally opened with the pool's persistent value so
+        // transaction routing inherits it consistently for true and false.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+                'persistent'   => $persistent,
+            ],
+        ], $factory);
+
+        $primaryConnection = $manager->connection();
+        $primaryConnection->begin();
+        $duringTransaction = $manager->connection(writable: false);
+        $primaryConnection->rollback();
+
+        $this->assertSame($primary, $duringTransaction);
+        $this->assertSame([$persistent], $factory->persistentFlags);
+    }
+
+    #[DataProvider('persistentFlagProvider')]
+    public function testPersistentFlagPropagatesAlongsideOtherPoolFeatures(bool $persistent): void
+    {
+        // Co-existence guard: persistent must still reach make() even when
+        // other pool-level features (logging options, slow query threshold,
+        // query timeout) are enabled together. Protects against future
+        // applyXxx hook ordering bugs from shadowing the persistent argument
+        // for either true or false.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'log_all_queries'         => true,
+                'log_bindings'            => false,
+                'slow_query_threshold_ms' => 100,
+                'query_timeout_ms'        => 5000,
+                'persistent'              => $persistent,
+            ],
+        ], $factory);
+
+        $manager->connection();
+
+        $this->assertSame([$persistent], $factory->persistentFlags);
+    }
+
+    /**
+     * @return array<string, array{0: bool, 1: list<array{host: string}>, 2: list<bool>}>
+     */
+    public static function probeReplicasPersistentProvider(): array
+    {
+        return [
+            'pool persistent=true, single replica'      => [true,  [['host' => 'replica.internal']], [false]],
+            'pool persistent=false, single replica'     => [false, [['host' => 'replica.internal']], [false]],
+            'pool persistent=true, multiple replicas'   => [true,  [['host' => 'replica1.internal'], ['host' => 'replica2.internal']], [false, false]],
+            'pool persistent=false, multiple replicas'  => [false, [['host' => 'replica1.internal'], ['host' => 'replica2.internal']], [false, false]],
+        ];
+    }
+
+    /**
+     * @param list<array{host: string}> $replicas
+     * @param list<bool>                $expectedFlags
+     */
+    #[DataProvider('probeReplicasPersistentProvider')]
+    public function testProbeReplicasAlwaysOpensNonPersistentRegardlessOfPoolConfig(
+        bool $poolPersistent,
+        array $replicas,
+        array $expectedFlags,
+    ): void {
+        // probeReplicas() opens short-lived Connections it never reuses, so it
+        // forces persistent=false even when the pool config opts in.
+        // Otherwise each probe would leak a slot into the server-side
+        // persistent pool. Verified across single / multiple replicas and
+        // both pool persistent settings.
+        $factory = new ScriptedConnectionFactory();
+        foreach ($replicas as $replica) {
+            $factory->expectSuccess($replica['host'], 0, $this->realConnection());
+        }
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'read'       => $replicas,
+                'persistent' => $poolPersistent,
+            ],
+        ], $factory);
+
+        $manager->probeReplicas();
+
+        $this->assertSame($expectedFlags, $factory->persistentFlags);
     }
 
     public function testProbeReplicasDoesNotForwardQueryTimeoutToProbeConnection(): void

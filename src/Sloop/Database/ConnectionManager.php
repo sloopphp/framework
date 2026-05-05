@@ -121,7 +121,7 @@ final class ConnectionManager
         if (!isset($this->primaryConnections[$name])) {
             $pool = $this->resolvePool($name);
 
-            $connection = $this->factory->make($pool->primary, $name);
+            $connection = $this->factory->make($pool->primary, $name, $pool->persistent);
             $this->applyLogger($connection, $pool);
             $this->applyQueryTimeout($connection, $pool);
             $this->primaryConnections[$name] = $connection;
@@ -171,7 +171,7 @@ final class ConnectionManager
             $attempts++;
 
             try {
-                $connection = $this->factory->make($picked, $name);
+                $connection = $this->factory->make($picked, $name, $pool->persistent);
                 $this->applyLogger($connection, $pool);
                 $this->applyQueryTimeout($connection, $pool);
 
@@ -230,7 +230,11 @@ final class ConnectionManager
             $key = $replica->host . ':' . ($replica->port ?? 0);
 
             try {
-                $connection = $this->factory->make($replica, $poolName);
+                // Probe connections are short-lived and not reused across requests, so they
+                // never use ATTR_PERSISTENT — opening one would just leak a slot in the
+                // server-side persistent pool. Same rationale as skipping applyLogger /
+                // applyQueryTimeout below.
+                $connection = $this->factory->make($replica, $poolName, false);
                 $connection->ping();
                 $results[$key] = true;
             } catch (DatabaseException $e) {

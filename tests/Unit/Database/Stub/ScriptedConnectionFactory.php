@@ -38,6 +38,13 @@ final class ScriptedConnectionFactory implements ConnectionFactory
     public array $invocations = [];
 
     /**
+     * Persistent flag passed to each make() call, in the same order as $invocations.
+     *
+     * @var list<bool>
+     */
+    public array $persistentFlags = [];
+
+    /**
      * Script a successful connect for the given host:port.
      *
      * @param  string     $host       Replica or primary host the test references
@@ -66,16 +73,18 @@ final class ScriptedConnectionFactory implements ConnectionFactory
     /**
      * Return or throw the scripted response for the configured host:port.
      *
-     * @param  ValidatedConfig             $config Validated config the manager passes to the factory
-     * @param  string                      $name   Pool name (unused; recorded by manager-level assertions)
+     * @param  ValidatedConfig             $config     Validated config the manager passes to the factory
+     * @param  string                      $name       Pool name (unused; recorded by manager-level assertions)
+     * @param  bool                        $persistent Persistent flag forwarded by the manager (recorded for assertions)
      * @return Connection
      * @throws DatabaseConnectionException When the scripted response for $config is a failure
      * @throws LogicException              When no scripted response exists for $config (test setup error)
      */
-    public function make(ValidatedConfig $config, string $name): Connection
+    public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
     {
         $key                 = self::key($config->host, $config->port ?? 0);
         $this->invocations[] = $key;
+        $this->persistentFlags[] = $persistent;
 
         if (!\array_key_exists($key, $this->script)) {
             throw new LogicException(

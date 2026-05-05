@@ -32,6 +32,10 @@ final readonly class PoolConfig
      *                                                     Connection issues a single SET SESSION (max_execution_time
      *                                                     for MySQL, max_statement_time for MariaDB) lazily on the
      *                                                     first query after dialect detection
+     * @param bool                  $persistent            Whether pool connections are opened with PDO::ATTR_PERSISTENT.
+     *                                                     ConnectionManager forwards this flag to ConnectionFactory::make()
+     *                                                     for primary and replica connections; probeReplicas() always
+     *                                                     opens a non-persistent connection regardless of this value
      */
     public function __construct(
         public string $name,
@@ -45,6 +49,7 @@ final readonly class PoolConfig
         public bool $logAllQueries,
         public ?int $slowQueryThresholdMs,
         public ?int $queryTimeoutMs,
+        public bool $persistent,
     ) {
     }
 }

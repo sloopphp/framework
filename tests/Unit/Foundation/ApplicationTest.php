@@ -912,7 +912,7 @@ final class ApplicationTest extends TestCase
         $app = new Application($this->tmpDir);
 
         $customFactory = new class () implements ConnectionFactory {
-            public function make(ValidatedConfig $config, string $name): Connection
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
             {
                 throw new \LogicException('custom factory was used');
             }
@@ -1066,7 +1066,7 @@ final class ApplicationTest extends TestCase
         // Custom factory: returns a real sqlite-backed Connection so query()
         // failures travel through the logging path that the manager wires up.
         $customFactory = new class () implements ConnectionFactory {
-            public function make(ValidatedConfig $config, string $name): Connection
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
             {
                 return new Connection(new \PDO('sqlite::memory:'), $name);
             }
@@ -1125,7 +1125,7 @@ final class ApplicationTest extends TestCase
             {
             }
 
-            public function make(ValidatedConfig $config, string $name): Connection
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
             {
                 return $this->stubConnection;
             }
@@ -1182,7 +1182,7 @@ final class ApplicationTest extends TestCase
             {
             }
 
-            public function make(ValidatedConfig $config, string $name): Connection
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
             {
                 return $this->stubConnection;
             }
