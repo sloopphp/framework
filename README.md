@@ -6,7 +6,7 @@ A modern PHP framework - lightweight, API-first, AI-friendly.
 
 ## Requirements
 
-- PHP 8.4+
+- PHP 8.5+
 
 ## License
 
