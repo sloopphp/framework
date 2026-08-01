@@ -18,20 +18,6 @@ use Sloop\Http\HttpStatus;
 final class Response
 {
     /**
-     * Response data to be formatted.
-     *
-     * @var mixed
-     */
-    private mixed $data;
-
-    /**
-     * Response formatter for structured output.
-     *
-     * @var ResponseFormatterInterface
-     */
-    private ResponseFormatterInterface $formatter;
-
-    /**
      * HTTP status code.
      *
      * @var int
@@ -58,10 +44,16 @@ final class Response
      * @param mixed                      $data      Response data
      * @param ResponseFormatterInterface $formatter Response formatter
      */
-    public function __construct(mixed $data, ResponseFormatterInterface $formatter)
-    {
-        $this->data      = $data;
-        $this->formatter = $formatter;
+    public function __construct(
+        /**
+         * Response data to be formatted.
+         */
+        private readonly mixed $data,
+        /**
+         * Response formatter for structured output.
+         */
+        private readonly ResponseFormatterInterface $formatter
+    ) {
     }
 
     /**
@@ -162,7 +154,7 @@ final class Response
             ? $this->data
             : json_encode($this->data, $this->formatter->getJsonOptions() | JSON_THROW_ON_ERROR);
 
-        $response = (new Psr7Response($this->status))
+        $response = new Psr7Response($this->status)
             ->withHeader('Content-Type', $contentType)
             ->withBody(Stream::create($body));
 
@@ -200,7 +192,7 @@ final class Response
      */
     public function redirect(string $url, int $status = HttpStatus::Found): ResponseInterface
     {
-        $response = (new Psr7Response($status))->withHeader('Location', $url);
+        $response = new Psr7Response($status)->withHeader('Location', $url);
 
         return $this->applyHeaders($response);
     }

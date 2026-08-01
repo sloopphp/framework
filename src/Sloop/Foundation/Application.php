@@ -541,7 +541,7 @@ final class Application implements RequestHandlerInterface
         $rawBody = file_get_contents('php://input');
         $body    = $rawBody === false || $rawBody === '' ? null : $rawBody;
 
-        return (new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER))
+        return new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER)
             ->withQueryParams($_GET)
             ->withParsedBody($_POST)
             ->withCookieParams($_COOKIE);

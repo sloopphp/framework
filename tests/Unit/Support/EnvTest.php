@@ -145,9 +145,7 @@ final class EnvTest extends TestCase
     {
         putenv('SLOOP_TEST_VAR=original');
 
-        $result = Env::withEnv(['SLOOP_TEST_VAR' => 'temporary'], function () {
-            return Env::get('SLOOP_TEST_VAR');
-        });
+        $result = Env::withEnv(['SLOOP_TEST_VAR' => 'temporary'], fn () => Env::get('SLOOP_TEST_VAR'));
 
         $this->assertSame('temporary', $result);
         $this->assertSame('original', Env::get('SLOOP_TEST_VAR'));
@@ -166,9 +164,7 @@ final class EnvTest extends TestCase
     {
         putenv('SLOOP_TEST_VAR=exists');
 
-        $result = Env::withEnv(['SLOOP_TEST_VAR' => null], function () {
-            return Env::get('SLOOP_TEST_VAR');
-        });
+        $result = Env::withEnv(['SLOOP_TEST_VAR' => null], fn () => Env::get('SLOOP_TEST_VAR'));
 
         $this->assertNull($result);
         $this->assertSame('exists', Env::get('SLOOP_TEST_VAR'));
@@ -176,9 +172,7 @@ final class EnvTest extends TestCase
 
     public function testWithEnvTemporarilySetsNewVariable(): void
     {
-        $result = Env::withEnv(['SLOOP_NEW_VAR' => 'temp'], function () {
-            return Env::get('SLOOP_NEW_VAR');
-        });
+        $result = Env::withEnv(['SLOOP_NEW_VAR' => 'temp'], fn () => Env::get('SLOOP_NEW_VAR'));
 
         $this->assertSame('temp', $result);
         $this->assertNull(Env::get('SLOOP_NEW_VAR'));
@@ -208,9 +202,7 @@ final class EnvTest extends TestCase
         Env::enableImmutable();
         Env::get('SLOOP_TEST_VAR'); // cache it
 
-        $result = Env::withEnv(['SLOOP_TEST_VAR' => 'overridden'], function () {
-            return Env::get('SLOOP_TEST_VAR');
-        });
+        $result = Env::withEnv(['SLOOP_TEST_VAR' => 'overridden'], fn () => Env::get('SLOOP_TEST_VAR'));
 
         $this->assertSame('overridden', $result);
         $this->assertSame('cached', Env::get('SLOOP_TEST_VAR'));
@@ -287,11 +279,7 @@ final class EnvTest extends TestCase
     {
         putenv('SLOOP_TEST_VAR=outer');
 
-        $result = Env::withEnv(['SLOOP_TEST_VAR' => 'inner1'], function () {
-            return Env::withEnv(['SLOOP_TEST_VAR' => 'inner2'], function () {
-                return Env::get('SLOOP_TEST_VAR');
-            });
-        });
+        $result = Env::withEnv(['SLOOP_TEST_VAR' => 'inner1'], fn () => Env::withEnv(['SLOOP_TEST_VAR' => 'inner2'], fn () => Env::get('SLOOP_TEST_VAR')));
 
         $this->assertSame('inner2', $result);
         $this->assertSame('outer', Env::get('SLOOP_TEST_VAR'));

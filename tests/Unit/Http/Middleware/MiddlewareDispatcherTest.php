@@ -27,7 +27,7 @@ final class MiddlewareDispatcherTest extends TestCase
         return new class () implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
-                return (new Response(200))->withBody(Stream::create('fallback'));
+                return new Response(200)->withBody(Stream::create('fallback'));
             }
         };
     }
@@ -57,7 +57,7 @@ final class MiddlewareDispatcherTest extends TestCase
             {
                 $body = $request->getAttribute('modified') === true ? 'modified' : 'original';
 
-                return (new Response(200))->withBody(Stream::create($body));
+                return new Response(200)->withBody(Stream::create($body));
             }
         };
 
@@ -73,7 +73,7 @@ final class MiddlewareDispatcherTest extends TestCase
         $middleware = new class () implements MiddlewareInterface {
             public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
             {
-                return (new Response(403))->withBody(Stream::create('forbidden'));
+                return new Response(403)->withBody(Stream::create('forbidden'));
             }
         };
 
@@ -87,30 +87,28 @@ final class MiddlewareDispatcherTest extends TestCase
 
     public function testMiddlewareExecutesInFifoOrder(): void
     {
-        $makeMiddleware = function (string $name): MiddlewareInterface {
-            return new readonly class ($name) implements MiddlewareInterface {
-                public function __construct(
-                    private string $name,
-                ) {
-                }
+        $makeMiddleware = (fn (string $name): MiddlewareInterface => new readonly class ($name) implements MiddlewareInterface {
+            public function __construct(
+                private string $name,
+            ) {
+            }
 
-                public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
-                {
-                    $beforeOrder   = $request->getAttribute('order');
-                    $beforeOrder   = \is_array($beforeOrder) ? $beforeOrder : [];
-                    $beforeOrder[] = $this->name . ':before';
-                    $request       = $request->withAttribute('order', $beforeOrder);
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                $beforeOrder   = $request->getAttribute('order');
+                $beforeOrder   = \is_array($beforeOrder) ? $beforeOrder : [];
+                $beforeOrder[] = $this->name . ':before';
+                $request       = $request->withAttribute('order', $beforeOrder);
 
-                    $response = $handler->handle($request);
+                $response = $handler->handle($request);
 
-                    $decoded      = json_decode($response->getHeaderLine('X-Order'), true);
-                    $afterOrder   = \is_array($decoded) ? $decoded : [];
-                    $afterOrder[] = $this->name . ':after';
+                $decoded      = json_decode($response->getHeaderLine('X-Order'), true);
+                $afterOrder   = \is_array($decoded) ? $decoded : [];
+                $afterOrder[] = $this->name . ':after';
 
-                    return $response->withHeader('X-Order', (string) json_encode($afterOrder));
-                }
-            };
-        };
+                return $response->withHeader('X-Order', (string) json_encode($afterOrder));
+            }
+        });
 
         $handler = new class () implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
@@ -118,7 +116,7 @@ final class MiddlewareDispatcherTest extends TestCase
                 $order = $request->getAttribute('order');
                 $order = \is_array($order) ? $order : [];
 
-                return (new Response(200))->withHeader('X-Order', (string) json_encode($order));
+                return new Response(200)->withHeader('X-Order', (string) json_encode($order));
             }
         };
 
@@ -213,7 +211,7 @@ final class MiddlewareDispatcherTest extends TestCase
             }
         };
 
-        $dispatcher = (new MiddlewareDispatcher($this->createFallbackHandler()))
+        $dispatcher = new MiddlewareDispatcher($this->createFallbackHandler())
             ->pipe($a)
             ->pipe($b);
 

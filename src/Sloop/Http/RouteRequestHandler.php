@@ -233,6 +233,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         $key = $className . '::' . $method;
 
         return $cache[$key]
-            ??= (new ReflectionMethod($className, $method))->getParameters();
+            ??= new ReflectionMethod($className, $method)->getParameters();
     }
 }

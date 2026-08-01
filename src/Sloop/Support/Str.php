@@ -42,11 +42,7 @@ final class Str
      */
     public static function camel(string $value): string
     {
-        if (isset(self::$camelCache[$value])) {
-            return self::$camelCache[$value];
-        }
-
-        return self::$camelCache[$value] = lcfirst(self::studly($value));
+        return self::$camelCache[$value] ?? self::$camelCache[$value] = lcfirst(self::studly($value));
     }
 
     /**

@@ -18,7 +18,7 @@ use Sloop\Http\HttpStatus;
  *
  * Replace via Container binding to customize the response structure.
  */
-final class ApiResponseFormatter implements ResponseFormatterInterface
+final readonly class ApiResponseFormatter implements ResponseFormatterInterface
 {
     /**
      * Default JSON encoding options.
@@ -33,7 +33,7 @@ final class ApiResponseFormatter implements ResponseFormatterInterface
      * @param int $jsonOptions JSON encoding options (bitwise flags)
      */
     public function __construct(
-        private readonly int $jsonOptions = self::DEFAULT_JSON_OPTIONS,
+        private int $jsonOptions = self::DEFAULT_JSON_OPTIONS,
     ) {
     }
 
@@ -102,7 +102,7 @@ final class ApiResponseFormatter implements ResponseFormatterInterface
     {
         $json = json_encode($body, $this->jsonOptions | JSON_THROW_ON_ERROR);
 
-        return (new Psr7Response($status))
+        return new Psr7Response($status)
             ->withHeader('Content-Type', 'application/json; charset=utf-8')
             ->withBody(Stream::create($json));
     }

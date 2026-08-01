@@ -55,9 +55,7 @@ final class ContainerTest extends TestCase
 
     public function testBindResolvesClosure(): void
     {
-        $this->container->bind(SimpleInterface::class, function () {
-            return new SimpleClass();
-        });
+        $this->container->bind(SimpleInterface::class, fn () => new SimpleClass());
 
         $result = $this->container->get(SimpleInterface::class);
 
@@ -68,9 +66,7 @@ final class ContainerTest extends TestCase
     {
         $obj = new SimpleClass();
         $this->container->instance(SimpleInterface::class, $obj);
-        $this->container->bind('resolved', function (Container $c) {
-            return $c->get(SimpleInterface::class);
-        });
+        $this->container->bind('resolved', fn (Container $c) => $c->get(SimpleInterface::class));
 
         $this->assertSame($obj, $this->container->get('resolved'));
     }
@@ -91,9 +87,7 @@ final class ContainerTest extends TestCase
 
     public function testSingletonWithClosureReturnsSameInstance(): void
     {
-        $this->container->singleton(SimpleInterface::class, function () {
-            return new SimpleClass();
-        });
+        $this->container->singleton(SimpleInterface::class, fn () => new SimpleClass());
 
         $a = $this->container->get(SimpleInterface::class);
         $b = $this->container->get(SimpleInterface::class);

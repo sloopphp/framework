@@ -21,6 +21,7 @@ class InfrastructureException extends SloopException
      *
      * @var int
      */
+    #[\Override]
     public protected(set) int $statusCode = HttpStatus::ServiceUnavailable;
 
     /**
@@ -28,5 +29,6 @@ class InfrastructureException extends SloopException
      *
      * @var string
      */
+    #[\Override]
     public protected(set) string $logLevel = LogLevel::ERROR;
 }

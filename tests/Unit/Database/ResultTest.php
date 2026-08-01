@@ -61,7 +61,7 @@ final class ResultTest extends TestCase
 
     public function testToArrayReturnsEmptyArrayForEmptyResult(): void
     {
-        $this->assertSame([], (new Result([]))->toArray());
+        $this->assertSame([], new Result([])->toArray());
     }
 
     public function testCanBeIteratedMultipleTimes(): void

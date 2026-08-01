@@ -30,13 +30,6 @@ use Sloop\Support\Arr;
 final class LogManager
 {
     /**
-     * Default channel name.
-     *
-     * @var string
-     */
-    public readonly string $defaultChannel;
-
-    /**
      * Cached logger instances keyed by channel name.
      *
      * @var array<string, Logger>
@@ -56,20 +49,6 @@ final class LogManager
      * @var array<string, array<string, mixed>>
      */
     private array $channelConfigs;
-
-    /**
-     * Default log level for auto-created channels without configuration.
-     *
-     * @var Level
-     */
-    private Level $defaultLevel;
-
-    /**
-     * Default stream for auto-created channels without configuration.
-     *
-     * @var string
-     */
-    private string $defaultStream;
 
     /**
      * Custom channel factory resolver.
@@ -92,16 +71,22 @@ final class LogManager
      * @return void
      */
     public function __construct(
-        string $defaultChannel = 'app',
+        /**
+         * Default channel name.
+         */
+        public readonly string $defaultChannel = 'app',
         array $channels = [],
-        Level $defaultLevel = Level::Debug,
-        string $defaultStream = 'php://stderr',
+        /**
+         * Default log level for auto-created channels without configuration.
+         */
+        private readonly Level $defaultLevel = Level::Debug,
+        /**
+         * Default stream for auto-created channels without configuration.
+         */
+        private readonly string $defaultStream = 'php://stderr',
         ?callable $customFactoryResolver = null,
     ) {
-        $this->defaultChannel        = $defaultChannel;
         $this->channelConfigs        = $channels;
-        $this->defaultLevel          = $defaultLevel;
-        $this->defaultStream         = $defaultStream;
         $this->customFactoryResolver = $customFactoryResolver;
     }
 

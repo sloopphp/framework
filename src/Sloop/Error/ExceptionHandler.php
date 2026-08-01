@@ -15,24 +15,20 @@ use Throwable;
  * For SloopException instances, uses embedded metadata (log level, status code).
  * For all other Throwable instances, defaults to HTTP 500 / critical.
  */
-final class ExceptionHandler
+final readonly class ExceptionHandler
 {
-    /**
-     * PSR-3 logger instance.
-     *
-     * @var LoggerInterface
-     */
-    private LoggerInterface $logger;
-
     /**
      * Create a new exception handler.
      *
      * @param LoggerInterface $logger PSR-3 logger for recording exceptions
      * @return void
      */
-    public function __construct(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
+    public function __construct(
+        /**
+         * PSR-3 logger instance.
+         */
+        private LoggerInterface $logger
+    ) {
     }
 
     /**

@@ -29,7 +29,7 @@ final class InMemoryDeadReplicaCache implements DeadReplicaCache
      *
      * @var Closure(): int
      */
-    private Closure $clock;
+    private readonly Closure $clock;
 
     /**
      * Build a per-request cache. Pass a clock to make expiry behaviour deterministic in tests.

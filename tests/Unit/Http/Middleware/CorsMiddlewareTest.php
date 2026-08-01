@@ -83,7 +83,7 @@ final class CorsMiddlewareTest extends TestCase
         $handler = new class () implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
-                return (new Response(200))->withHeader('Vary', 'Accept-Encoding');
+                return new Response(200)->withHeader('Vary', 'Accept-Encoding');
             }
         };
 

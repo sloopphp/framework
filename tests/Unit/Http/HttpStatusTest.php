@@ -57,7 +57,7 @@ final class HttpStatusTest extends TestCase
     #[DataProvider('statusCodeProvider')]
     public function testConstantHasCorrectValue(string $name, int $expected): void
     {
-        $this->assertSame($expected, \constant(HttpStatus::class . '::' . $name));
+        $this->assertSame($expected, HttpStatus::{$name});
     }
 
     public function testAllConstantsAreIntegers(): void

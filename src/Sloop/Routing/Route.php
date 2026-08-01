@@ -13,34 +13,6 @@ namespace Sloop\Routing;
 final class Route
 {
     /**
-     * HTTP method (GET, POST, PUT, PATCH, DELETE).
-     *
-     * @var string
-     */
-    public readonly string $method;
-
-    /**
-     * URI pattern (e.g., '/users/{id}').
-     *
-     * @var string
-     */
-    public readonly string $pattern;
-
-    /**
-     * Controller class name.
-     *
-     * @var string
-     */
-    public readonly string $controller;
-
-    /**
-     * Controller action method name.
-     *
-     * @var string
-     */
-    public readonly string $action;
-
-    /**
      * Route name for URL generation.
      *
      * @var string|null
@@ -76,13 +48,20 @@ final class Route
      * @param string $controller Controller class name
      * @param string $action     Action method name
      */
-    public function __construct(string $method, string $pattern, string $controller, string $action)
-    {
-        $this->method     = $method;
-        $this->pattern    = $pattern;
-        $this->controller = $controller;
-        $this->action     = $action;
-
+    public function __construct(/**
+                                 * HTTP method (GET, POST, PUT, PATCH, DELETE).
+                                 */
+        public readonly string $method, /**
+                                         * URI pattern (e.g., '/users/{id}').
+                                         */
+        public readonly string $pattern, /**
+                                          * Controller class name.
+                                          */
+        public readonly string $controller, /**
+                                             * Controller action method name.
+                                             */
+        public readonly string $action
+    ) {
         $this->compilePattern();
     }
 

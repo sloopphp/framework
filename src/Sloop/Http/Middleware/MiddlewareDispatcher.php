@@ -32,20 +32,16 @@ final class MiddlewareDispatcher implements RequestHandlerInterface
     private int $index = 0;
 
     /**
-     * The final request handler invoked after all middleware.
-     *
-     * @var RequestHandlerInterface
-     */
-    private RequestHandlerInterface $fallbackHandler;
-
-    /**
      * Create a new middleware dispatcher.
      *
      * @param RequestHandlerInterface $fallbackHandler Handler invoked after all middleware
      */
-    public function __construct(RequestHandlerInterface $fallbackHandler)
-    {
-        $this->fallbackHandler = $fallbackHandler;
+    public function __construct(
+        /**
+         * The final request handler invoked after all middleware.
+         */
+        private readonly RequestHandlerInterface $fallbackHandler
+    ) {
     }
 
     /**

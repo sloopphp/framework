@@ -19,5 +19,6 @@ class DatabaseConnectionException extends DatabaseException
      *
      * @var int
      */
+    #[\Override]
     public protected(set) int $statusCode = HttpStatus::ServiceUnavailable;
 }

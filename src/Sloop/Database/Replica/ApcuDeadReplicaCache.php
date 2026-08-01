@@ -18,7 +18,7 @@ use Closure;
  * and InMemoryDeadReplicaCache at bootstrap time; ext-apcu is declared
  * as a composer suggest, not a hard requirement.
  */
-final class ApcuDeadReplicaCache implements DeadReplicaCache
+final readonly class ApcuDeadReplicaCache implements DeadReplicaCache
 {
     /**
      * Returns the current unix timestamp; injected for testability.

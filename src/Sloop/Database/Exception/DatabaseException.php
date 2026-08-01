@@ -16,27 +16,6 @@ use Throwable;
 class DatabaseException extends SloopException
 {
     /**
-     * Name of the database connection that caused the error.
-     *
-     * @var string
-     */
-    public protected(set) string $connectionName = '';
-
-    /**
-     * SQLSTATE error code from PDO (e.g. "42000", "23000").
-     *
-     * @var string|null
-     */
-    public protected(set) ?string $sqlState = null;
-
-    /**
-     * Driver-specific error code (e.g. MySQL 1062, 1213).
-     *
-     * @var int|null
-     */
-    public protected(set) ?int $driverCode = null;
-
-    /**
      * Create a new database exception.
      *
      * @param string         $message        Error message
@@ -48,15 +27,20 @@ class DatabaseException extends SloopException
      */
     public function __construct(
         string $message = '',
-        string $connectionName = '',
-        ?string $sqlState = null,
-        ?int $driverCode = null,
+        /**
+         * Name of the database connection that caused the error.
+         */
+        public protected(set) string $connectionName = '',
+        /**
+         * SQLSTATE error code from PDO (e.g. "42000", "23000").
+         */
+        public protected(set) ?string $sqlState = null,
+        /**
+         * Driver-specific error code (e.g. MySQL 1062, 1213).
+         */
+        public protected(set) ?int $driverCode = null,
         ?Throwable $previous = null,
     ) {
         parent::__construct($message, previous: $previous);
-
-        $this->connectionName = $connectionName;
-        $this->sqlState       = $sqlState;
-        $this->driverCode     = $driverCode;
     }
 }

@@ -187,7 +187,7 @@ final class LogManagerTest extends TestCase
 
         $this->assertInstanceOf(RotatingFileHandler::class, $handler);
         $this->assertSame(Level::Info, $handler->getLevel());
-        $this->assertSame(14, (new ReflectionProperty(RotatingFileHandler::class, 'maxFiles'))->getValue($handler));
+        $this->assertSame(14, new ReflectionProperty(RotatingFileHandler::class, 'maxFiles')->getValue($handler));
     }
 
     public function testDailyDriverDefaultsToUnlimitedRetention(): void
@@ -203,7 +203,7 @@ final class LogManagerTest extends TestCase
         $handler = $manager->channel('app')->getHandlers()[0];
 
         $this->assertInstanceOf(RotatingFileHandler::class, $handler);
-        $this->assertSame(0, (new ReflectionProperty(RotatingFileHandler::class, 'maxFiles'))->getValue($handler));
+        $this->assertSame(0, new ReflectionProperty(RotatingFileHandler::class, 'maxFiles')->getValue($handler));
     }
 
     /**

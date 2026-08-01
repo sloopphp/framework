@@ -243,9 +243,7 @@ final class ConfigTest extends TestCase
     {
         Config::load($this->fixturesPath);
 
-        $result = Config::withConfig(['app.name' => 'Test'], function () {
-            return Config::get('app.name');
-        });
+        $result = Config::withConfig(['app.name' => 'Test'], fn () => Config::get('app.name'));
 
         $this->assertSame('Test', $result);
     }

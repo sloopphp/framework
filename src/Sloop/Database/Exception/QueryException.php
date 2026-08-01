@@ -15,20 +15,6 @@ use Throwable;
 class QueryException extends DatabaseException
 {
     /**
-     * The SQL statement that failed.
-     *
-     * @var string
-     */
-    public protected(set) string $sql = '';
-
-    /**
-     * Bound parameters for the failed query.
-     *
-     * @var array<int|string, mixed>
-     */
-    public protected(set) array $bindings = [];
-
-    /**
      * Create a new query exception.
      *
      * @param string                   $message        Error message
@@ -42,16 +28,19 @@ class QueryException extends DatabaseException
      */
     public function __construct(
         string $message = '',
-        string $sql = '',
-        array $bindings = [],
+        /**
+         * The SQL statement that failed.
+         */
+        public protected(set) string $sql = '',
+        /**
+         * Bound parameters for the failed query.
+         */
+        public protected(set) array $bindings = [],
         string $connectionName = '',
         ?string $sqlState = null,
         ?int $driverCode = null,
         ?Throwable $previous = null,
     ) {
         parent::__construct($message, $connectionName, $sqlState, $driverCode, $previous);
-
-        $this->sql      = $sql;
-        $this->bindings = $bindings;
     }
 }

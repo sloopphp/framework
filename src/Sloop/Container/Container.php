@@ -123,7 +123,7 @@ final class Container implements ContainerInterface
             return true;
         }
 
-        return class_exists($id) && (new ReflectionClass($id))->isInstantiable();
+        return class_exists($id) && new ReflectionClass($id)->isInstantiable();
     }
 
     /**
