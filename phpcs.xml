@@ -130,4 +130,28 @@
     <rule ref="SlevomatCodingStandard.PHP.DisallowReference">
         <exclude name="SlevomatCodingStandard.PHP.DisallowReference.DisallowedAssigningByReference"/>
     </rule>
+
+    <!--
+        未使用 use の検出。
+        searchAnnotations は必須。既定（false）だと PHPDoc を走査しないため、
+        @throws / @param でしか参照されない use を「未使用」と誤検知し、
+        phpcbf が自動削除して PHPDoc の型参照を壊す（本プロジェクトは @throws を必須にしている）。
+    -->
+    <rule ref="SlevomatCodingStandard.Namespaces.UnusedUses">
+        <properties>
+            <property name="searchAnnotations" value="true"/>
+        </properties>
+    </rule>
+
+    <!-- ==================== -->
+    <!-- PHPバージョン互換性  -->
+    <!-- ==================== -->
+
+    <!--
+        対象は「8.5 以降」。将来 PHP 側が新バージョンで削除・非推奨にした機能を、
+        PHPCompatibility 側が対応した時点で検出できるようにするための網。
+        現時点の検出は 0 件（testVersion 8.0- なら 169 件出る）。
+    -->
+    <config name="testVersion" value="8.5-"/>
+    <rule ref="PHPCompatibility"/>
 </ruleset>

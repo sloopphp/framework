@@ -96,6 +96,35 @@ jobs:
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse
 
+  rector:
+    name: Rector (PHP version migration)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: intl, pdo_mysql, pdo_sqlite
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      # 対象 PHP バージョンで推奨される書き方から外れた箇所を検出する。
+      # --dry-run は変更提案があると非ゼロ終了するため、そのままゲートになる。
+      - name: Check PHP version migration (Rector)
+        run: vendor/bin/rector process --dry-run --no-progress-bar
+
   integration-tests:
     name: Integration (${{ matrix.db.name }})
     runs-on: ubuntu-latest

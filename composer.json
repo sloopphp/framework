@@ -30,8 +30,13 @@
         "friendsofphp/php-cs-fixer": "^3.0",
         "infection/infection": "^0.32.6",
         "jetbrains/phpstorm-stubs": "^2026.1",
+        "phpcompatibility/php-compatibility": "^10.0@alpha",
+        "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^11.0 || ^12.0",
+        "rector/rector": "^2.4",
         "slevomat/coding-standard": "^8.28",
         "squizlabs/php_codesniffer": "^4.0"
     },
@@ -58,7 +63,8 @@
         "sort-packages": true,
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true,
-            "infection/extension-installer": true
+            "infection/extension-installer": true,
+            "phpstan/extension-installer": true
         }
     }
 }
