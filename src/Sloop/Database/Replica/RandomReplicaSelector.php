@@ -24,6 +24,6 @@ final class RandomReplicaSelector implements ReplicaSelector
      */
     public function pick(array $candidates): int
     {
-        return (int) array_rand($candidates);
+        return array_rand($candidates);
     }
 }

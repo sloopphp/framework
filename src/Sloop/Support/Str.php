@@ -83,7 +83,8 @@ final class Str
             return self::$studlyCache[$value];
         }
 
-        $words  = preg_split('/[-_\s]+/', $value) ?: [$value];
+        $split  = preg_split('/[-_\s]+/', $value);
+        $words  = $split === false || $split === [] ? [$value] : $split;
         $studly = implode('', array_map(ucfirst(...), $words));
 
         return self::$studlyCache[$value] = $studly;

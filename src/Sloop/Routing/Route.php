@@ -131,7 +131,7 @@ final class Route
             return $this->pattern === $path ? [] : null;
         }
 
-        if ($this->regex === null || !preg_match($this->regex, $path, $matches)) {
+        if ($this->regex === null || preg_match($this->regex, $path, $matches) !== 1) {
             return null;
         }
 

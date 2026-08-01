@@ -47,7 +47,7 @@ final readonly class Result implements IteratorAggregate, Countable
     /**
      * Number of rows in the result set.
      *
-     * @return int
+     * @return int<0, max>
      */
     public function count(): int
     {

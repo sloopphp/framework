@@ -26,11 +26,11 @@ abstract class IntegrationTestCase extends TestCase
      */
     protected function openConnection(): Connection
     {
-        $host = getenv('DB_HOST') ?: '127.0.0.1';
-        $port = getenv('DB_PORT') ?: '3306';
-        $name = getenv('DB_NAME') ?: 'sloop_test';
-        $user = getenv('DB_USER') ?: 'sloop';
-        $pass = getenv('DB_PASS') ?: 'secret';
+        $host = self::envOr('DB_HOST', '127.0.0.1');
+        $port = self::envOr('DB_PORT', '3306');
+        $name = self::envOr('DB_NAME', 'sloop_test');
+        $user = self::envOr('DB_USER', 'sloop');
+        $pass = self::envOr('DB_PASS', 'secret');
 
         return Connection::open(
             'mysql:host=' . $host . ';port=' . $port . ';dbname=' . $name,
@@ -40,4 +40,12 @@ abstract class IntegrationTestCase extends TestCase
             'integration',
         );
     }
+
+    private static function envOr(string $key, string $default): string
+    {
+        $value = getenv($key);
+
+        return $value === false || $value === '' ? $default : $value;
+    }
+
 }

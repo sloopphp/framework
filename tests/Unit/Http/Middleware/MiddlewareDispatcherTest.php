@@ -55,7 +55,7 @@ final class MiddlewareDispatcherTest extends TestCase
         $handler = new class () implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
-                $body = $request->getAttribute('modified') ? 'modified' : 'original';
+                $body = $request->getAttribute('modified') === true ? 'modified' : 'original';
 
                 return (new Response(200))->withBody(Stream::create($body));
             }

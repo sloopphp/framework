@@ -141,7 +141,7 @@ final class Arr
     public static function first(array $array, ?callable $callback = null, mixed $default = null): mixed
     {
         if ($callback === null) {
-            if (empty($array)) {
+            if ($array === []) {
                 return $default;
             }
 
@@ -170,7 +170,7 @@ final class Arr
     public static function last(array $array, ?callable $callback = null, mixed $default = null): mixed
     {
         if ($callback === null) {
-            if (empty($array)) {
+            if ($array === []) {
                 return $default;
             }
 

@@ -537,8 +537,9 @@ final class Application implements RequestHandlerInterface
     {
         $method  = Arr::getString($_SERVER, 'REQUEST_METHOD', 'GET');
         $uri     = Arr::getString($_SERVER, 'REQUEST_URI', '/');
-        $headers = \function_exists('getallheaders') ? (array) getallheaders() : [];
-        $body    = file_get_contents('php://input') ?: null;
+        $headers = \function_exists('getallheaders') ? getallheaders() : [];
+        $rawBody = file_get_contents('php://input');
+        $body    = $rawBody === false || $rawBody === '' ? null : $rawBody;
 
         return (new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER))
             ->withQueryParams($_GET)
