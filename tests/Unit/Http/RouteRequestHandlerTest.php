@@ -15,6 +15,10 @@ use Sloop\Http\Request\Request;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
+use Sloop\Tests\Unit\Http\Stub\CacheKeyA;
+use Sloop\Tests\Unit\Http\Stub\CacheKeyAb;
+use Sloop\Tests\Unit\Http\Stub\CacheKeySameMethodA;
+use Sloop\Tests\Unit\Http\Stub\CacheKeySameMethodB;
 use Sloop\Tests\Unit\Http\Stub\DiController;
 use Sloop\Tests\Unit\Http\Stub\DiService;
 use Sloop\Tests\Unit\Http\Stub\ResponseDiController;
@@ -226,4 +230,30 @@ final class RouteRequestHandlerTest extends TestCase
 
         $this->assertSame(2, DiController::$lastId);
     }
+
+    public function testParameterCacheDistinguishesSameMethodNameOnDifferentClasses(): void
+    {
+        $container = new Container();
+        $container->instance(DiService::class, new DiService('injected'));
+
+        $this->dispatch(CacheKeySameMethodA::class, 'show', ['id' => '42'], $container);
+        $this->dispatch(CacheKeySameMethodB::class, 'show', ['id' => '42'], $container);
+
+        $this->assertSame(42, CacheKeySameMethodA::$lastArg);
+        $this->assertInstanceOf(DiService::class, CacheKeySameMethodB::$lastArg);
+    }
+
+    public function testParameterCacheDistinguishesClassAndMethodWithoutSeparator(): void
+    {
+        // CacheKeyA::bc と CacheKeyAb::c は区切りなしで連結すると同じ文字列になる
+        $container = new Container();
+        $container->instance(DiService::class, new DiService('injected'));
+
+        $this->dispatch(CacheKeyA::class, 'bc', ['id' => '42'], $container);
+        $this->dispatch(CacheKeyAb::class, 'c', ['id' => '42'], $container);
+
+        $this->assertSame(42, CacheKeyA::$lastArg);
+        $this->assertInstanceOf(DiService::class, CacheKeyAb::$lastArg);
+    }
+
 }
