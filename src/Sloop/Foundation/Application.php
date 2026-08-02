@@ -21,6 +21,8 @@ use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelector;
+use Sloop\Error\DomainException;
+use Sloop\Error\ExceptionHandler;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Request\Request;
@@ -141,15 +143,49 @@ final class Application implements RequestHandlerInterface
     /**
      * Process an incoming request through middleware and routing.
      *
+     * Any exception escaping the middleware pipeline is caught here, logged
+     * via the ExceptionHandler, and converted into an error response.
+     *
      * @param ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
     {
         $serverRequest ??= $this->createServerRequestFromGlobals();
-        $dispatcher      = $this->buildMiddlewareDispatcher();
 
-        return $dispatcher->handle($serverRequest);
+        try {
+            return $this->buildMiddlewareDispatcher()->handle($serverRequest);
+        } catch (\Throwable $e) {
+            return $this->renderException($e);
+        }
+    }
+
+    /**
+     * Convert an uncaught exception into an error response.
+     *
+     * Acts as the outermost error boundary: the ExceptionHandler logs the
+     * exception and resolves the HTTP status. Only DomainException messages
+     * are client-caused and safe to expose; all other exceptions (including
+     * QueryException, whose message embeds the failed SQL) are reduced to a
+     * generic message so internals never reach the response body.
+     *
+     * @param  \Throwable $e Uncaught exception propagated past all middleware
+     * @return ResponseInterface
+     * @throws \RuntimeException      When the ExceptionHandler binding resolves to an unexpected type
+     * @throws EntryNotFoundException When the ExceptionHandler binding cannot be resolved
+     * @throws ContainerException     When dependency resolution detects a circular dependency
+     */
+    private function renderException(\Throwable $e): ResponseInterface
+    {
+        $exceptionHandler = $this->container->get(ExceptionHandler::class);
+        if (!$exceptionHandler instanceof ExceptionHandler) {
+            throw new \RuntimeException('Failed to resolve ExceptionHandler from container.');
+        }
+
+        $status  = $exceptionHandler->handle($e);
+        $message = $e instanceof DomainException ? $e->getMessage() : 'Server Error';
+
+        return $this->resolveFormatter()->error($message, $status);
     }
 
     /**
@@ -189,6 +225,26 @@ final class Application implements RequestHandlerInterface
         $this->container->singleton(ReplicaSelector::class, fn (): ReplicaSelector => new RandomReplicaSelector());
         $this->container->singleton(DeadReplicaCache::class, fn (): DeadReplicaCache => $this->createDeadReplicaCache());
         $this->container->singleton(ConnectionManager::class, fn (Container $container): ConnectionManager => $this->createConnectionManager($container));
+        $this->container->singleton(ExceptionHandler::class, fn (Container $container): ExceptionHandler => $this->createExceptionHandler($container));
+    }
+
+    /**
+     * Create the ExceptionHandler wired to the default log channel.
+     *
+     * @param  Container $container Container holding the LogManager singleton
+     * @return ExceptionHandler
+     * @throws \RuntimeException      When the LogManager binding resolves to an unexpected type
+     * @throws EntryNotFoundException When the LogManager binding cannot be resolved
+     * @throws ContainerException     When dependency resolution detects a circular dependency
+     */
+    private function createExceptionHandler(Container $container): ExceptionHandler
+    {
+        $logManager = $container->get(LogManager::class);
+        if (!$logManager instanceof LogManager) {
+            throw new \RuntimeException('Failed to resolve LogManager from container.');
+        }
+
+        return new ExceptionHandler($logManager->channel());
     }
 
     /**
