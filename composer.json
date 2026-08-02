@@ -28,7 +28,7 @@
         "ext-apcu": "*",
         "ext-pdo_sqlite": "*",
         "friendsofphp/php-cs-fixer": "^3.0",
-        "infection/infection": "^0.32.6",
+        "infection/infection": "^0.32.6 || ^0.34.0",
         "jetbrains/phpstorm-stubs": "^2026.1",
         "phpcompatibility/php-compatibility": "^10.0@alpha",
         "phpstan/extension-installer": "^1.4",
