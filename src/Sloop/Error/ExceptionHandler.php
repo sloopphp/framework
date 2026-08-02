@@ -14,6 +14,8 @@ use Throwable;
  *
  * For SloopException instances, uses embedded metadata (log level, status code).
  * For all other Throwable instances, defaults to HTTP 500 / critical.
+ *
+ * @api
  */
 final readonly class ExceptionHandler
 {

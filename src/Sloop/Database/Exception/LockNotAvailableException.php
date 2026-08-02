@@ -9,6 +9,8 @@ namespace Sloop\Database\Exception;
  *
  * MySQL error code 3572 (FOR UPDATE NOWAIT / SKIP LOCKED failure).
  * Not automatically retried — the caller must decide the strategy.
+ *
+ * @api
  */
 final class LockNotAvailableException extends QueryException
 {

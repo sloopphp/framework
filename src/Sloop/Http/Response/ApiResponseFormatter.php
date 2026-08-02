@@ -17,6 +17,8 @@ use Sloop\Http\HttpStatus;
  * Error:   {"error": {"message": "...", "status": 404, "errors": {...}}}
  *
  * Replace via Container binding to customize the response structure.
+ *
+ * @api
  */
 final readonly class ApiResponseFormatter implements ResponseFormatterInterface
 {

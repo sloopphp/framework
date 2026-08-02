@@ -27,6 +27,8 @@ use Sloop\Routing\Route;
  * arguments resolved from the Sloop Request, route parameters, and the
  * container (method-level DI), and wraps non-response return values via
  * the configured response formatter.
+ *
+ * @internal
  */
 final readonly class RouteRequestHandler implements RequestHandlerInterface
 {

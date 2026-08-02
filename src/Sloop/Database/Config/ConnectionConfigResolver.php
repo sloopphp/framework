@@ -13,6 +13,8 @@ use Sloop\Database\Exception\InvalidConfigException;
  *
  * Separated from ConnectionManager so that config interpretation can be
  * unit-tested without instantiating PDO.
+ *
+ * @internal
  */
 final class ConnectionConfigResolver
 {

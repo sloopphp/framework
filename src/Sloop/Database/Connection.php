@@ -28,6 +28,8 @@ use UnexpectedValueException;
  * FETCH_ASSOC / STRINGIFY_FETCHES=false) are applied by Connection::open().
  * Callers that inject a custom PDO are responsible for configuring equivalent
  * attributes themselves — the constructor does not mutate the injected PDO.
+ *
+ * @api
  */
 final class Connection
 {

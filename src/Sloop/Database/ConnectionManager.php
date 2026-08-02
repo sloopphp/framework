@@ -39,6 +39,8 @@ use Sloop\Database\Replica\ReplicaSelector;
  * Healthy probes never clear existing dead marks (recovery is bound by the
  * cache TTL), so it is best run from cron to warm the negative cache ahead
  * of request traffic rather than as a recovery mechanism.
+ *
+ * @api
  */
 final class ConnectionManager
 {

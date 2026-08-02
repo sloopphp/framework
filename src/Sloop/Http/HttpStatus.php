@@ -34,6 +34,8 @@ namespace Sloop\Http;
  *
  * For frequently used custom codes, define your own constants class in
  * application code.
+ *
+ * @api
  */
 final class HttpStatus
 {

@@ -11,6 +11,8 @@ use Sloop\Http\HttpStatus;
  *
  * Covers: authentication failure, host unreachable, max_connections exhausted.
  * Default: HTTP 503 (service unavailable).
+ *
+ * @api
  */
 class DatabaseConnectionException extends DatabaseException
 {

@@ -11,6 +11,8 @@ use Throwable;
  *
  * Carries the SQL statement and bound parameters in addition to the
  * connection / SQLSTATE / driver code inherited from DatabaseException.
+ *
+ * @api
  */
 class QueryException extends DatabaseException
 {

@@ -21,6 +21,8 @@ use Sloop\Http\HttpStatus;
  * Swapping the formatter therefore changes JSON API structure only; it
  * does not affect how plain bodies, redirects, or empty responses are
  * built.
+ *
+ * @api
  */
 interface ResponseFormatterInterface
 {

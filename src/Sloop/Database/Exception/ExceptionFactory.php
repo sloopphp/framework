@@ -13,6 +13,8 @@ use PDOException;
  * (`PDOException::$errorInfo[1]`). SQLSTATE (`[0]`) is used as a fallback
  * when the driver code is missing or not distinctive. This keeps Connection
  * and ConnectionManager free of classification noise.
+ *
+ * @internal
  */
 final class ExceptionFactory
 {

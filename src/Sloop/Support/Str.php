@@ -10,6 +10,8 @@ use Random\Randomizer;
  * String helper utilities.
  *
  * All methods are static. Fluent string wrapper is planned for v0.2.
+ *
+ * @api
  */
 final class Str
 {

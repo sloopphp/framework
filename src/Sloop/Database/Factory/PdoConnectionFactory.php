@@ -17,6 +17,8 @@ use Sloop\Database\Exception\DatabaseConnectionException;
  * ConnectionConfigResolver, then delegates to Connection::open() for
  * the actual PDO instantiation. Production code path; tests typically
  * substitute a fake ConnectionFactory in the container instead.
+ *
+ * @internal
  */
 final class PdoConnectionFactory implements ConnectionFactory
 {

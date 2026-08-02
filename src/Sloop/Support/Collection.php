@@ -20,6 +20,8 @@ use Traversable;
  * @template T
  *
  * @implements IteratorAggregate<array-key, T>
+ *
+ * @api
  */
 final readonly class Collection implements IteratorAggregate, Countable
 {

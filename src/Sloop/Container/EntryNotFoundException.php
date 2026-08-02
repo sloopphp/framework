@@ -9,6 +9,8 @@ use RuntimeException;
 
 /**
  * Thrown when a requested entry is not found in the container.
+ *
+ * @api
  */
 final class EntryNotFoundException extends RuntimeException implements NotFoundExceptionInterface
 {

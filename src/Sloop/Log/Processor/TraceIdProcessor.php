@@ -10,6 +10,8 @@ use Sloop\Log\TraceContext;
 
 /**
  * Inject the current trace-id into every log record.
+ *
+ * @internal
  */
 final readonly class TraceIdProcessor implements ProcessorInterface
 {

@@ -27,6 +27,8 @@ use Sloop\Support\Str;
  * of work — typically by rebinding the container entry at the start of
  * every job. Not doing so will cause the previous job's trace-id and
  * `$extra` bag to be injected into subsequent log records.
+ *
+ * @api
  */
 final class TraceContext
 {

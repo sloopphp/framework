@@ -15,6 +15,8 @@ use ReflectionParameter;
  *
  * Implements PSR-11 ContainerInterface. Supports explicit bindings,
  * singletons, instance registration, and constructor auto-wiring.
+ *
+ * @api
  */
 final class Container implements ContainerInterface
 {

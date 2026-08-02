@@ -11,6 +11,8 @@ namespace Sloop\Database;
  * so query/statement logging respects the pool's privacy and verbosity settings.
  * Failure logging is unconditional (the plan requires `error` records for every
  * failed query); these flags only gate optional output and binding redaction.
+ *
+ * @internal
  */
 final readonly class LoggingOptions
 {

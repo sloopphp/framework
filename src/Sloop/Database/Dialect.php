@@ -10,6 +10,8 @@ namespace Sloop\Database;
  * Used to branch SQL syntax that differs between MySQL and MariaDB —
  * currently UPSERT alias syntax (Phase 5-3) and query timeout settings
  * (max_execution_time vs max_statement_time).
+ *
+ * @api
  */
 enum Dialect: string
 {
