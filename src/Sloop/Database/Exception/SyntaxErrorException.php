@@ -9,8 +9,6 @@ namespace Sloop\Database\Exception;
  *
  * SQLSTATE 42000 / MySQL error code 1064.
  * Indicates a bug in generated SQL — should not occur in normal operation.
- *
- * @api
  */
 final class SyntaxErrorException extends QueryException
 {

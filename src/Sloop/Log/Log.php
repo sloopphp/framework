@@ -16,8 +16,6 @@ use Stringable;
  *
  * Wraps LogManager to provide PSR-3 compatible instance access
  * via channel selection. Use `Log::channel('name')` to obtain a logger.
- *
- * @api
  */
 final class Log implements LoggerInterface
 {

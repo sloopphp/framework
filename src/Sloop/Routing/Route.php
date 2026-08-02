@@ -9,8 +9,6 @@ namespace Sloop\Routing;
  *
  * Holds the HTTP method, URI pattern, controller class, action method,
  * optional name, and middleware stack for a route.
- *
- * @api
  */
 final class Route
 {

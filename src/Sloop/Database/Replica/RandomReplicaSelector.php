@@ -13,8 +13,6 @@ use Sloop\Database\Config\ValidatedConfig;
  * also relied on random selection without observed need for round-robin
  * or weighted strategies. Future selectors (e.g. RoundRobin / Weighted)
  * may be added behind the same interface in subsequent minor releases.
- *
- * @api
  */
 final class RandomReplicaSelector implements ReplicaSelector
 {

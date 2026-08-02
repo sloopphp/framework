@@ -11,8 +11,6 @@ use Monolog\Logger;
  *
  * Implement this interface to register custom log drivers (syslog, fluentd,
  * Slack, etc.) through the `custom` driver in the log configuration.
- *
- * @api
  */
 interface ChannelFactoryInterface
 {

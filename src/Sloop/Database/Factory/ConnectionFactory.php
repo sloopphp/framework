@@ -15,8 +15,6 @@ use Sloop\Database\Exception\DatabaseConnectionException;
  * be replaced with a fake in unit tests, allowing failure paths
  * (TCP refused, auth error, server unreachable) to be exercised without
  * a real database server.
- *
- * @api
  */
 interface ConnectionFactory
 {

@@ -12,8 +12,6 @@ use Sloop\Support\Arr;
  *
  * Supports individual route registration, resource() for CRUD routes,
  * route groups with shared middleware, and named routes.
- *
- * @api
  */
 final class Router
 {

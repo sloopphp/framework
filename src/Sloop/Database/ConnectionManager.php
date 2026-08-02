@@ -39,8 +39,6 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
  * Healthy probes never clear existing dead marks (recovery is bound by the
  * cache TTL), so it is best run from cron to warm the negative cache ahead
  * of request traffic rather than as a recovery mechanism.
- *
- * @api
  */
 final class ConnectionManager
 {
@@ -334,8 +332,9 @@ final class ConnectionManager
 
         $pool = ConnectionConfigResolver::validatePool($name, $this->configs[$name]);
 
-        // 読み取り経路に入る前に落とす。どの識別子が有効かはレジストリの登録内容で
-        // 決まるため、設定の検証側では型しか見ていない。
+        // Fail before the read path is entered. Which identifiers are valid is
+        // decided by the registry's contents, so config validation only checks
+        // that the value is a string.
         $this->replicaSelectors->get($pool->replicaSelector);
 
         return $pool;

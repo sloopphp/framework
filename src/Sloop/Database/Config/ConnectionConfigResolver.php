@@ -228,8 +228,8 @@ final class ConnectionConfigResolver
      */
     public static function resolveDsn(ValidatedConfig $config): string
     {
-        // 検証済みの driver をそのまま使う。リテラルを書くと、対応ドライバを
-        // 増やした際にここだけ mysql のまま取り残される。
+        // Use the validated driver rather than a literal, so that adding another
+        // supported driver does not leave this line stuck on mysql.
         $dsn = $config->driver . ':host=' . $config->host;
         if ($config->port !== null) {
             $dsn .= ';port=' . $config->port;
@@ -626,9 +626,11 @@ final class ConnectionConfigResolver
     /**
      * Extract an optional replica selector identifier.
      *
-     * どの識別子が有効かは ReplicaSelectorRegistry の登録内容で決まるため、ここでは
-     * 型だけを検証する。利用者が独自の戦略を登録できるよう、値のリストをここに
-     * 固定しない（登録されていない識別子は ConnectionManager が弾く）。
+     * Which identifiers are valid is decided by the contents of
+     * ReplicaSelectorRegistry, so only the type is checked here. The accepted
+     * values are deliberately not fixed in this class so that callers can
+     * register their own strategies; unregistered identifiers are rejected by
+     * ConnectionManager while resolving the pool.
      *
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array

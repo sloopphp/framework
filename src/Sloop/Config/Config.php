@@ -12,8 +12,6 @@ use Sloop\Support\Arr;
  *
  * Loads PHP array files from a config directory, merges environment-specific
  * overrides, and provides dot-notation access. Immutable after loading.
- *
- * @api
  */
 final class Config
 {

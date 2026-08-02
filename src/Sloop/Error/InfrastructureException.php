@@ -13,8 +13,6 @@ use Sloop\Http\HttpStatus;
  * Examples: database connection failure, external API outage, queue unavailable.
  * These are typically transient and retryable.
  * Default: HTTP 503 / error.
- *
- * @api
  */
 class InfrastructureException extends SloopException
 {

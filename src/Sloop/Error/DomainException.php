@@ -12,8 +12,6 @@ use Sloop\Http\HttpStatus;
  *
  * Examples: validation failure, business rule violation, resource not found.
  * Default: HTTP 422 / warning.
- *
- * @api
  */
 class DomainException extends SloopException
 {

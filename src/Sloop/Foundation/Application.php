@@ -46,8 +46,6 @@ use Sloop\Support\Arr;
  *
  * Orchestrates the startup sequence: Path → Config → Container → Log →
  * Middleware → Router → Controller → Response.
- *
- * @api
  */
 final class Application implements RequestHandlerInterface
 {
