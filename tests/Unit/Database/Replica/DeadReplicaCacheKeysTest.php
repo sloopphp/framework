@@ -59,7 +59,7 @@ final class DeadReplicaCacheKeysTest extends TestCase
 
     public function testServerKeysDoNotCollideWhenHostAndPortConcatenationIsAmbiguous(): void
     {
-        // 区切りの ':' が失われると 'a' + '13306' と 'a1' + '3306' が同一文字列になる
+        // If the ':' separator is lost, 'a' + '13306' and 'a1' + '3306' become the same string.
         $this->assertNotSame(
             DeadReplicaCacheKeys::server('a', 13306),
             DeadReplicaCacheKeys::server('a1', 3306),
@@ -68,7 +68,7 @@ final class DeadReplicaCacheKeysTest extends TestCase
 
     public function testPoolKeysDoNotCollideWhenPortAndPoolConcatenationIsAmbiguous(): void
     {
-        // 区切りの '.' が失われると '3306' + '1reporting' と '33061' + 'reporting' が同一になる
+        // If the '.' separator is lost, '3306' + '1reporting' and '33061' + 'reporting' become identical.
         $this->assertNotSame(
             DeadReplicaCacheKeys::pool('a', 3306, '1reporting'),
             DeadReplicaCacheKeys::pool('a', 33061, 'reporting'),

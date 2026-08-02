@@ -354,10 +354,11 @@ final class RequestTest extends TestCase
         $this->assertNull($request->ip());
     }
 
-    // Note: file() の instanceof UploadedFileInterface 防御ガードは、PSR-7 の
-    // withUploadedFiles() が型付き配列を要求するため、型安全に再現する手段がない。
-    // PHPStan サプレスはプロジェクト方針で禁止のため見送り。
-    // Request::file() の 1 行 instanceof チェックは forward-compat の防御コード。
+    // Note: the instanceof UploadedFileInterface guard in file() cannot be
+    // reproduced type-safely because PSR-7's withUploadedFiles() requires a
+    // typed array. A PHPStan suppression is forbidden by project policy, so
+    // this is left untested. The one-line instanceof check in Request::file()
+    // is forward-compat defensive code.
 
     public function testBearerTokenIsCaseInsensitive(): void
     {

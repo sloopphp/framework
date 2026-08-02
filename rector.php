@@ -13,29 +13,31 @@ return RectorConfig::configure()
         __DIR__ . '/src',
         __DIR__ . '/tests',
     ])
-    // composer.json の require."php" (^8.5) から対象バージョンを自動判定する。
-    // withPreparedSets() の codingStyle / naming は有効にしない。
-    // バージョン起因でない書き換えが大量に混ざり、レビュー不能になるため。
+    // The target version is detected automatically from require."php" (^8.5)
+    // in composer.json. codingStyle / naming from withPreparedSets() are left
+    // disabled: they mix in a large number of rewrites unrelated to the PHP
+    // version, making the diff unreviewable.
     ->withPhpSets()
     ->withConfiguredRule(ClassPropertyAssignToConstructorPromotionRector::class, [
-        // 既定 (true) だと、プロパティ名に合わせてコンストラクタ引数名をリネームする。
-        // これは名前付き引数を壊す公開 API の破壊的変更になる。
-        // 実例: LogManager の __construct(array $channels) が $channelConfigs に改名され、
-        // new LogManager(channels: [...]) を使う呼び出しが 106 件のテストごと失敗した。
-        // false にすると「引数名とプロパティ名が異なる場合は promotion 自体をスキップ」になる。
+        // The default (true) renames constructor parameters to match property
+        // names. That is a breaking change to the public API because it breaks
+        // named arguments. Real case: LogManager's __construct(array $channels)
+        // was renamed to $channelConfigs, and 106 tests calling
+        // new LogManager(channels: [...]) failed. With false, promotion itself
+        // is skipped when the parameter name and property name differ.
         ClassPropertyAssignToConstructorPromotionRector::RENAME_PROPERTY => false,
     ])
     ->withSkip([
-        // docs/coding-standards.md および .claude/CLAUDE.md で
-        // 「array_any() / array_all() は不採用（foreach の方が高速）」と定めているため、
-        // PHP 8.4 セットに含まれるこの 2 ルールは適用しない。
+        // docs/coding-standards.md and .claude/CLAUDE.md state that
+        // array_any() / array_all() are not adopted (foreach is faster),
+        // so these two rules from the PHP 8.4 set are not applied.
         ForeachToArrayAnyRector::class,
         ForeachToArrayAllRector::class,
 
-        // array_values($x)[0] → array_first($x) の変換。
-        // array_first() は空配列で null を返すため戻り値の型が広がり、
-        // 直後のプロパティアクセスが PHPStan level max で型エラーになる
-        // （ConnectionTest で 11 箇所）。変換前のコードは既に型安全なので、
-        // null 処理を足してまで置き換える利益がない。
+        // Converts array_values($x)[0] to array_first($x). array_first()
+        // returns null for an empty array, which widens the return type and
+        // makes the property access right after it a type error at PHPStan
+        // level max (11 spots in ConnectionTest). The pre-conversion code is
+        // already type-safe, so the replacement is not worth adding null handling.
         ArrayFirstLastRector::class,
     ]);

@@ -7,11 +7,11 @@ namespace Sloop\Tests\Unit\Http\Stub;
 use Sloop\Http\Request\Request;
 
 /**
- * reflectParameters のキャッシュキー検証用スタブ。
+ * Stub for verifying the cache key of reflectParameters.
  *
- * CacheKeyA::bc と CacheKeyAb::c は、クラス名とメソッド名を区切りなしで
- * 連結すると同じ文字列（...\CacheKeyAbc）になる。区切りが失われると
- * 両者が同じキャッシュエントリを共有する。
+ * CacheKeyA::bc and CacheKeyAb::c produce the same string (...\CacheKeyAbc)
+ * when the class name and method name are concatenated without a separator.
+ * If the separator is lost, both share the same cache entry.
  */
 final class CacheKeyA
 {

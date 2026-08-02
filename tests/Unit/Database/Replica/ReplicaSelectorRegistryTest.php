@@ -22,8 +22,9 @@ final class ReplicaSelectorRegistryTest extends TestCase
             'first'  => $other,
         ]);
 
-        // 識別子ごとに別のインスタンスが返ることを確認する。片方だけ検証すると
-        // 「常に同じものを返す」実装でも通ってしまう。
+        // Verify that each identifier returns a distinct instance. Checking only
+        // one of them would let an implementation that always returns the same
+        // object pass.
         $this->assertSame($random, $registry->get('random'));
         $this->assertSame($other, $registry->get('first'));
     }

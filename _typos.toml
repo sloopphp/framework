@@ -1,24 +1,24 @@
-# typos (https://github.com/crate-ci/typos) の設定。
+# Configuration for typos (https://github.com/crate-ci/typos).
 #
-# ここに並ぶのは「綴りが正しくないこと自体に意味がある」箇所のみ。
-# 本物の綴り間違いを見逃さないよう、単語単位の一括許可ではなく、
-# その文字列が現れる文脈に限定した正規表現で除外する。
+# Only entries where the misspelling itself is the point belong here.
+# To avoid missing real typos, exclusions use regexes limited to the context
+# where the string appears, not blanket word-level allowances.
 
 [default]
 extend-ignore-re = [
-    # ConnectionConfigResolverTest: 未知の設定キーを拒否することを検証するテスト。
-    # 綴り間違いが入力データそのものなので修正できない。
+    # ConnectionConfigResolverTest: verifies that unknown config keys are rejected.
+    # The misspelling is the input data itself and cannot be fixed.
     "databse",
 
-    # StrTest: truncate() の期待値。'hello' を 3 文字に切り詰めた結果。
+    # StrTest: expected value of truncate(); 'hello' cut down to 3 characters.
     "'hel(\\.\\.\\.|…)'",
 
-    # StrTest: 結合文字 (e + U+0301) が 1 書記素として扱われることの検証データ。
+    # StrTest: data verifying that a combining character (e + U+0301) counts as one grapheme.
     "caf\\\\u\\{0065\\}",
 
-    # 大文字の SQL キーワードに複数形の s が付くと、末尾 1 文字が切られて誤検出される。
+    # An uppercase SQL keyword with a plural s gets its last letter split off and misdetected.
     "SELECTs",
 
-    # LogManagerTest: Processor の適用順を確認するためのマーカー文字列。
+    # LogManagerTest: marker string used to check the order Processors are applied.
     "'BA'",
 ]

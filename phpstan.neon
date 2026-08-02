@@ -1,5 +1,6 @@
-# strict-rules / deprecation-rules は phpstan/extension-installer が自動登録するため、
-# ここに includes を書かない（書くと二重 include になり PHPStan が警告して失敗する）。
+# strict-rules / deprecation-rules are registered automatically by
+# phpstan/extension-installer, so no includes are written here (adding them
+# would double-include and PHPStan would warn and fail).
 
 parameters:
     level: max
@@ -12,17 +13,18 @@ parameters:
     stubFiles:
         - vendor/jetbrains/phpstorm-stubs/apcu/apcu.php
     strictRules:
-        # PHPUnit の Assert はメソッドが static 宣言されているため、$this->assertSame()
-        # という標準的な書き方が「静的メソッドの動的呼び出し」として報告される。
-        # tests 配下だけで 1632 件出るが、いずれも欠陥ではない。
-        # includes はファイル単位でスコープできないため、ルール自体を無効化する
-        # （ignoreErrors による抑制は本プロジェクトで禁止されているため使わない）。
-        # src 側でこのルールが検出するものは現時点で 0 件。
+        # PHPUnit's Assert declares its methods static, so the standard
+        # $this->assertSame() style is reported as a dynamic call on a static
+        # method. It yields 1632 reports under tests alone, none of which are
+        # defects. includes cannot be scoped per file, so the rule itself is
+        # disabled (suppression via ignoreErrors is forbidden in this project).
+        # On the src side this rule currently detects nothing.
         dynamicCallOnStaticMethod: false
 
-        # 可変メソッド呼び出し・可変プロパティアクセスの禁止。
-        # 発火箇所は RouteRequestHandler（ルート定義のアクション名でコントローラを呼ぶ）と
-        # Collection::readMember（キー名でメンバを読む）の 3 箇所で、いずれも
-        # フレームワークとして意図的な動的ディスパッチ。回避すると reflection や
-        # call_user_func になり、速度・可読性の両方で劣化する。
+        # Forbids variable method calls and variable property access.
+        # It fires in 3 spots: RouteRequestHandler (invokes the controller by
+        # the action name from the route definition) and Collection::readMember
+        # (reads a member by key name), all intentional dynamic dispatch for a
+        # framework. Avoiding it means reflection or call_user_func, which is
+        # worse for both speed and readability.
         noVariableVariables: false
