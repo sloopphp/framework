@@ -70,6 +70,7 @@ run_gate 'PHPStan'      vendor/bin/phpstan analyse --no-progress
 run_gate 'PHPUnit'      vendor/bin/phpunit --exclude-testsuite=Integration
 run_gate 'Rector'       vendor/bin/rector process --dry-run --no-progress-bar
 run_gate 'composer audit' composer audit
+run_gate 'composer deps'  vendor/bin/composer-dependency-analyser
 
 # typos は composer 依存ではなく各自の環境に入れるものなので、無い場合は飛ばす。
 if command -v typos > /dev/null 2>&1; then

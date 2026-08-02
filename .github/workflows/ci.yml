@@ -129,6 +129,11 @@ jobs:
       - name: Audit dependencies
         run: composer audit
 
+      # composer.json に書いていない拡張・パッケージを使っていると、利用者の環境で
+      # 初めて壊れる。逆に使っていない依存を要求すると不要なインストールを強いる。
+      - name: Check dependency declarations
+        run: vendor/bin/composer-dependency-analyser
+
   rector:
     name: Rector (PHP version migration)
     runs-on: ubuntu-latest
