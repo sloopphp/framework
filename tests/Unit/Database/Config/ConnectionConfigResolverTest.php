@@ -838,22 +838,18 @@ final class ConnectionConfigResolverTest extends TestCase
         }
     }
 
-    public function testValidatePoolRejectsUnsupportedReplicaSelector(): void
+    public function testValidatePoolAcceptsAnyReplicaSelectorIdentifier(): void
     {
-        try {
-            ConnectionConfigResolver::validatePool('mydb', [
-                'driver'           => 'mysql',
-                'host'             => 'primary.example.com',
-                'database'         => 'app',
-                'replica_selector' => 'round_robin',
-            ]);
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                "Connection [mydb]: unsupported replica_selector \"round_robin\". Only 'random' is supported.",
-                $e->getMessage(),
-            );
-        }
+        // どの識別子が有効かは ReplicaSelectorRegistry の登録内容で決まるため、
+        // ここでは値を素通しする。未登録の識別子は ConnectionManager が弾く。
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'           => 'mysql',
+            'host'             => 'primary.example.com',
+            'database'         => 'app',
+            'replica_selector' => 'round_robin',
+        ]);
+
+        $this->assertSame('round_robin', $pool->replicaSelector);
     }
 
     public function testValidatePoolRejectsNonStringReplicaSelector(): void

@@ -11,6 +11,7 @@ use Sloop\Database\ConnectionManager;
 use Sloop\Database\Factory\PdoConnectionFactory;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
+use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 final class ConnectionManagerTest extends IntegrationTestCase
@@ -37,7 +38,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
             defaultName: 'master',
             configs: ['master' => $config],
             factory: $this->factory,
-            replicaSelector: $this->selector,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
             deadCache: $this->deadCache,
         );
     }

@@ -18,6 +18,7 @@ use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
+use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Tests\Support\MutableClock;
 use Sloop\Tests\Unit\Database\Stub\AlwaysFailConnectionFactory;
 use Sloop\Tests\Unit\Database\Stub\FixedReplicaSelector;
@@ -44,7 +45,7 @@ final class ConnectionManagerTest extends TestCase
             defaultName: $defaultName,
             configs: $configs,
             factory: $factory,
-            replicaSelector: $this->selector,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
             deadCache: $this->deadCache,
         );
     }
@@ -57,6 +58,24 @@ final class ConnectionManagerTest extends TestCase
     // -------------------------------------------------------
     // pool resolution / config validation
     // -------------------------------------------------------
+
+    public function testResolvePoolRejectsReplicaSelectorMissingFromRegistry(): void
+    {
+        $manager = $this->manager('master', ['master' => [
+            'driver'           => 'mysql',
+            'host'             => 'primary.example.com',
+            'database'         => 'app',
+            'replica_selector' => 'round_robin',
+        ]], new AlwaysFailConnectionFactory());
+
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessage(
+            'No replica selector is registered for "round_robin". Registered: random.'
+        );
+
+        // 読み取り経路に入る前（プール解決の時点）で落ちることを確認する。
+        $manager->connection();
+    }
 
     public function testConnectionFailsWhenDefaultNameIsNotDefined(): void
     {
@@ -1054,7 +1073,7 @@ final class ConnectionManagerTest extends TestCase
                 ],
             ],
             factory: $factory,
-            replicaSelector: $this->selector,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
             deadCache: $deadCache,
         );
 
@@ -1264,7 +1283,7 @@ final class ConnectionManagerTest extends TestCase
                 ],
             ],
             factory: $factory,
-            replicaSelector: $this->selector,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
             deadCache: $this->deadCache,
             logger: $logger,
         );
@@ -1305,7 +1324,7 @@ final class ConnectionManagerTest extends TestCase
                 ],
             ],
             factory: $factory,
-            replicaSelector: $this->selector,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
             deadCache: $this->deadCache,
             logger: $logger,
         );
@@ -1352,7 +1371,7 @@ final class ConnectionManagerTest extends TestCase
                 ],
             ],
             factory: $factory,
-            replicaSelector: $this->selector,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
             deadCache: $this->deadCache,
             logger: $logger,
         );

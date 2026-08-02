@@ -84,13 +84,6 @@ final class ConnectionConfigResolver
     private const array ALLOWED_DRIVERS = ['mysql'];
 
     /**
-     * Accepted replica selection strategy identifiers.
-     *
-     * @var list<string>
-     */
-    private const array ALLOWED_REPLICA_SELECTORS = ['random'];
-
-    /**
      * Default TCP connect timeout in seconds when config omits the key.
      *
      * @var int
@@ -631,12 +624,16 @@ final class ConnectionConfigResolver
     }
 
     /**
-     * Extract an optional replica selector string, restricted to ALLOWED_REPLICA_SELECTORS.
+     * Extract an optional replica selector identifier.
+     *
+     * どの識別子が有効かは ReplicaSelectorRegistry の登録内容で決まるため、ここでは
+     * 型だけを検証する。利用者が独自の戦略を登録できるよう、値のリストをここに
+     * 固定しない（登録されていない識別子は ConnectionManager が弾く）。
      *
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return string|null
-     * @throws InvalidConfigException When the value is present but not in ALLOWED_REPLICA_SELECTORS
+     * @throws InvalidConfigException When the value is present but not a string
      */
     private static function extractOptionalReplicaSelector(string $name, array $config): ?string
     {
@@ -650,12 +647,6 @@ final class ConnectionConfigResolver
                 'Connection [' . $name . ']: config key "replica_selector" must be a string.',
             );
         }
-        if (!\in_array($value, self::ALLOWED_REPLICA_SELECTORS, true)) {
-            throw new InvalidConfigException(
-                'Connection [' . $name . ']: unsupported replica_selector "' . $value . '". Only \'random\' is supported.',
-            );
-        }
-
         return $value;
     }
 
