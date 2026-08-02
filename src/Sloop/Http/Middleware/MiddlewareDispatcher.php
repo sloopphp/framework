@@ -14,6 +14,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * Processes a stack of middleware in FIFO order, delegating to a
  * final request handler when the stack is exhausted.
+ *
+ * @api
  */
 final class MiddlewareDispatcher implements RequestHandlerInterface
 {

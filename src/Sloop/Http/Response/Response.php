@@ -14,6 +14,8 @@ use Sloop\Http\HttpStatus;
  *
  * Provides a fluent interface for building responses.
  * Uses the configured ResponseFormatterInterface for structured API responses.
+ *
+ * @api
  */
 final class Response
 {

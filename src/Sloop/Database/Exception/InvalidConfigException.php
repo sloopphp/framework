@@ -13,6 +13,8 @@ use LogicException;
  * unsupported drivers, unknown keys, or undefined connection names.
  * Distinct from DatabaseConnectionException, which signals runtime
  * connect failures (host unreachable, auth failure, etc.).
+ *
+ * @api
  */
 final class InvalidConfigException extends LogicException
 {

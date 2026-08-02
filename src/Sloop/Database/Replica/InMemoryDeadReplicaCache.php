@@ -14,6 +14,8 @@ use Closure;
  * fallback because dead detection still takes effect within the same
  * request once the first failure is observed; ApcuDeadReplicaCache should
  * be preferred in production for cross-request sharing.
+ *
+ * @internal
  */
 final class InMemoryDeadReplicaCache implements DeadReplicaCache
 {

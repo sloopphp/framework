@@ -11,6 +11,8 @@ use Sloop\Log\TraceContext;
 /**
  * Inject the elapsed time since request start (in milliseconds) into every
  * log record.
+ *
+ * @internal
  */
 final readonly class ElapsedTimeProcessor implements ProcessorInterface
 {

@@ -8,6 +8,8 @@ namespace Sloop\Database\Exception;
  * Thrown on unique key / primary key duplicate entry.
  *
  * MySQL error code 1062 (SQLSTATE 23000).
+ *
+ * @api
  */
 final class UniqueConstraintViolationException extends ConstraintViolationException
 {

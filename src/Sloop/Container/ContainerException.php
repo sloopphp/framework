@@ -9,6 +9,8 @@ use RuntimeException;
 
 /**
  * Thrown when an error occurs while resolving a container entry.
+ *
+ * @api
  */
 final class ContainerException extends RuntimeException implements ContainerExceptionInterface
 {

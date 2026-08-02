@@ -9,6 +9,8 @@ namespace Sloop\Database\Exception;
  *
  * SQLSTATE 40001 / MySQL error code 1213.
  * Typically retryable — used by Connection::transaction() for automatic retry.
+ *
+ * @api
  */
 final class DeadlockException extends QueryException
 {

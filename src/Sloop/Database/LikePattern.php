@@ -12,6 +12,8 @@ use InvalidArgumentException;
  * Wildcards ('%' and '_') and the escape character itself are escaped so
  * that raw user input can be safely placed inside a LIKE expression without
  * being interpreted as wildcards.
+ *
+ * @internal
  */
 final class LikePattern
 {

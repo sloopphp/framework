@@ -17,6 +17,8 @@ use Sloop\Support\Arr;
  *
  * Handles preflight OPTIONS requests and adds CORS headers
  * to responses based on configuration.
+ *
+ * @api
  */
 final readonly class CorsMiddleware implements MiddlewareInterface
 {

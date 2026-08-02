@@ -26,6 +26,8 @@ use Sloop\Http\Response\ResponseFormatterInterface;
  *     parent::__construct($formatter);
  * }
  * ```
+ *
+ * @api
  */
 abstract class Controller
 {

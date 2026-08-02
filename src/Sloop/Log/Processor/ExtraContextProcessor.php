@@ -14,6 +14,8 @@ use Sloop\Log\TraceContext;
  * Values added via `TraceContext::set()` (user id, tenant id, etc.) are
  * merged into the record's extra array so that structured log output
  * carries them automatically.
+ *
+ * @internal
  */
 final readonly class ExtraContextProcessor implements ProcessorInterface
 {

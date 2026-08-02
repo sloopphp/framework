@@ -10,6 +10,8 @@ use Sloop\Log\TraceContext;
 
 /**
  * Inject the current span-id into every log record.
+ *
+ * @internal
  */
 final readonly class SpanIdProcessor implements ProcessorInterface
 {

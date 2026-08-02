@@ -17,6 +17,8 @@ use Closure;
  * Use {@see ApcuDeadReplicaCache::isAvailable()} to decide between this
  * and InMemoryDeadReplicaCache at bootstrap time; ext-apcu is declared
  * as a composer suggest, not a hard requirement.
+ *
+ * @internal
  */
 final readonly class ApcuDeadReplicaCache implements DeadReplicaCache
 {
