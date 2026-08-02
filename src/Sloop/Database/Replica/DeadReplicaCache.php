@@ -15,8 +15,6 @@ namespace Sloop\Database\Replica;
  * Implementations:
  * - ApcuDeadReplicaCache: shared across requests via APCu, used in production.
  * - InMemoryDeadReplicaCache: per-request fallback when ext-apcu is missing.
- *
- * @api
  */
 interface DeadReplicaCache
 {

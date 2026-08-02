@@ -13,8 +13,6 @@ use Sloop\Http\HttpStatus;
  * Indicates the application cannot continue safely.
  * Triggers critical-level alerts and immediate attention.
  * Default: HTTP 500 / critical.
- *
- * @api
  */
 class FatalException extends SloopException
 {

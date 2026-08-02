@@ -13,8 +13,6 @@ use Sloop\Support\Arr;
  *
  * Wraps a PSR-7 ServerRequestInterface to provide a fluent,
  * developer-friendly API for common request operations.
- *
- * @api
  */
 final class Request
 {

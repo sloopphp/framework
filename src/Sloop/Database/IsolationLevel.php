@@ -13,8 +13,6 @@ namespace Sloop\Database;
  * session returns to the server default after commit/rollback.
  *
  * Default means "use the server default" and skips the SET TRANSACTION.
- *
- * @api
  */
 enum IsolationLevel: string
 {

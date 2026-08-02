@@ -11,8 +11,6 @@ use RuntimeException;
  *
  * Manages the base path and provides accessors for standard directory paths.
  * Must be initialized once via init() before use.
- *
- * @api
  */
 final class Path
 {

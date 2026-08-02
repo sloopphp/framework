@@ -24,8 +24,6 @@ use Sloop\Support\Str;
  * vendor-specific metadata reaches downstream services.
  *
  * Spec: https://www.w3.org/TR/trace-context/
- *
- * @api
  */
 final readonly class TracingMiddleware implements MiddlewareInterface
 {

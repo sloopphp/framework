@@ -12,8 +12,6 @@ use RuntimeException;
  *
  * Values are cached on first access and remain immutable for the process lifetime.
  * Use withEnv() for temporary overrides in tests.
- *
- * @api
  */
 final class Env
 {

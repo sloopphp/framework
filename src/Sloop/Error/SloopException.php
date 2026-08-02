@@ -14,8 +14,6 @@ use Throwable;
  *
  * Carries HTTP status code and PSR-3 log level metadata so that
  * exception handlers can respond and log consistently.
- *
- * @api
  */
 abstract class SloopException extends RuntimeException
 {

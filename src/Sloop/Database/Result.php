@@ -19,8 +19,6 @@ use Traversable;
  * value(), pluck, chunk) are added in Phase 5-2 on top of the SELECT builder.
  *
  * @implements IteratorAggregate<array-key, array<array-key, mixed>>
- *
- * @api
  */
 final readonly class Result implements IteratorAggregate, Countable
 {

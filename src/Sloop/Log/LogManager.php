@@ -26,8 +26,6 @@ use Sloop\Support\Arr;
  *
  * Creates, caches, and provides access to named Monolog loggers.
  * Each channel name maps to a single Monolog Logger instance.
- *
- * @api
  */
 final class LogManager
 {

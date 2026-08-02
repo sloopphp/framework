@@ -9,8 +9,6 @@ namespace Sloop\Routing;
  *
  * Limiting which resource methods are registered is done via the
  * `only:` / `except:` arguments of Router::resource() itself.
- *
- * @api
  */
 final readonly class RouteGroup
 {

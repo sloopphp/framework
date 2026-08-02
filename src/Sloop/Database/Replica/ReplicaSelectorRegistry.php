@@ -26,10 +26,8 @@ use Sloop\Database\Exception\InvalidConfigException;
  * );
  * ```
  *
- * The identifier must also be accepted by ConnectionConfigResolver, which
- * rejects unknown values before they reach this registry.
- *
- * @api
+ * ConnectionManager looks the identifier up while resolving the pool, so an
+ * unregistered value fails before the read path is entered.
  */
 final readonly class ReplicaSelectorRegistry
 {

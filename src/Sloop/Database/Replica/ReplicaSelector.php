@@ -13,8 +13,6 @@ use Sloop\Database\Config\ValidatedConfig;
  * DeadReplicaCache, then asks the selector to pick one of the survivors.
  * The selector is stateless across calls; ConnectionManager owns the
  * iteration and dead-list bookkeeping.
- *
- * @api
  */
 interface ReplicaSelector
 {

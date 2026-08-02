@@ -9,8 +9,6 @@ namespace Sloop\Support;
  *
  * All methods are static. Dot-notation keys (e.g. "user.name") are supported
  * for nested array access in get/set/has.
- *
- * @api
  */
 final class Arr
 {

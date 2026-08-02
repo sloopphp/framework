@@ -9,8 +9,6 @@ namespace Sloop\Database\Exception;
  *
  * Subclassed by UniqueConstraintViolationException and ForeignKeyViolationException.
  * Can also be caught directly for generic constraint errors.
- *
- * @api
  */
 class ConstraintViolationException extends QueryException
 {

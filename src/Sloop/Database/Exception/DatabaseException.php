@@ -12,8 +12,6 @@ use Throwable;
  *
  * Carries connection name, SQLSTATE code, and driver-specific error code
  * so that exception handlers can classify and log consistently.
- *
- * @api
  */
 class DatabaseException extends SloopException
 {
