@@ -172,7 +172,7 @@ final class ConnectionConfigResolver
             password:              self::extractOptionalNullableString($name, $config, 'password'),
             charset:               self::extractOptionalIdentifier($name, $config, 'charset'),
             collation:             self::extractOptionalIdentifier($name, $config, 'collation'),
-            connectTimeoutSeconds: self::extractOptionalInt($name, $config, 'connect_timeout_seconds'),
+            connectTimeoutSeconds: self::extractOptionalPositiveInt($name, $config, 'connect_timeout_seconds'),
             options:               self::extractOptions($name, $config),
         );
     }

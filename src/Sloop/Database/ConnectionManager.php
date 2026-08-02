@@ -43,6 +43,15 @@ use Sloop\Database\Replica\ReplicaSelector;
 final class ConnectionManager
 {
     /**
+     * Driver default port, used to normalize dead-cache keys when the config
+     * omits `port`. Without this, `host` and `host + port: 3306` would track
+     * the same physical server under two different keys.
+     *
+     * @var int
+     */
+    private const int DEFAULT_MYSQL_PORT = 3306;
+
+    /**
      * Cached primary Connection instances keyed by pool name.
      *
      * @var array<string, Connection>
@@ -213,8 +222,9 @@ final class ConnectionManager
      * probe — recovery still depends on the cache TTL — and the dead-cache
      * filter is intentionally bypassed so operators can see when a previously
      * marked replica has recovered. Probe connections are not cached on the
-     * manager: each Connection is destroyed when its iteration ends so that
-     * subsequent connection(writable: false) calls run normal selection.
+     * manager. Note that a replica connection already cached by a previous
+     * connection(writable: false) call is NOT evicted by a failed probe: the
+     * manager keeps serving it for the rest of the request/process.
      *
      * @param  string|null            $name Pool to probe; defaults to the configured default pool
      * @return array<string, bool>          host:port → true (probe succeeded) | false (probe failed)
@@ -227,7 +237,7 @@ final class ConnectionManager
         $results  = [];
 
         foreach ($pool->replicas as $replica) {
-            $key = $replica->host . ':' . ($replica->port ?? 0);
+            $key = $replica->host . ':' . ($replica->port ?? self::DEFAULT_MYSQL_PORT);
 
             try {
                 // Probe connections are short-lived and not reused across requests, so they
@@ -328,7 +338,7 @@ final class ConnectionManager
         $alive   = [];
         $skipped = [];
         foreach ($pool->replicas as $replica) {
-            if ($this->deadCache->isDead($replica->host, $replica->port ?? 0, $pool->name)) {
+            if ($this->deadCache->isDead($replica->host, $replica->port ?? self::DEFAULT_MYSQL_PORT, $pool->name)) {
                 $skipped[] = $replica->host . ':' . ($replica->port ?? '?') . ' → skipped (dead-cache)';
 
                 continue;
@@ -340,12 +350,23 @@ final class ConnectionManager
     }
 
     /**
+     * Driver error codes that indicate a pool-specific failure (in addition
+     * to SQLSTATE 28000 auth failures): the pool's user lacks access to its
+     * database (1044) or the configured database does not exist (1049).
+     * Both report SQLSTATE 42000, not 28000.
+     *
+     * @var list<int>
+     */
+    private const array POOL_SPECIFIC_ERROR_CODES = [1044, 1049];
+
+    /**
      * Mark a failed replica dead in the negative cache.
      *
-     * Auth failures (SQLSTATE 28000) are pool-specific: the credential is wrong
-     * only for this pool, so the per-pool key is used. Everything else (TCP
-     * refused, server unreachable, DO 1 failure) implies the host itself is
-     * unhealthy and goes to the shared key.
+     * Pool-specific failures — auth errors (SQLSTATE 28000) and per-database
+     * access errors (driver codes 1044 / 1049) — only affect this pool's
+     * credentials or database, so the per-pool key is used. Everything else
+     * (TCP refused, server unreachable, DO 1 failure) implies the host itself
+     * is unhealthy and goes to the shared key.
      *
      * @param  PoolConfig        $pool    Pool config (provides pool name and TTL)
      * @param  ValidatedConfig   $replica The replica that just failed
@@ -354,9 +375,12 @@ final class ConnectionManager
      */
     private function recordReplicaFailure(PoolConfig $pool, ValidatedConfig $replica, DatabaseException $e): void
     {
-        $port = $replica->port ?? 0;
+        $port = $replica->port ?? self::DEFAULT_MYSQL_PORT;
 
-        if ($e instanceof DatabaseConnectionException && $e->sqlState === '28000') {
+        $poolSpecific = $e instanceof DatabaseConnectionException
+            && ($e->sqlState === '28000' || \in_array($e->driverCode, self::POOL_SPECIFIC_ERROR_CODES, true));
+
+        if ($poolSpecific) {
             $this->deadCache->markPoolDead($replica->host, $port, $pool->name, $pool->deadCacheTtlSeconds);
 
             return;
