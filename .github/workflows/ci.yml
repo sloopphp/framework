@@ -36,9 +36,9 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 
-      # 実行順に依存するテストを検出するため、CI では毎回ランダム順で走らせる。
-      # 失敗時は出力ヘッダの Random Seed を --random-order-seed に渡せば再現できる。
-      # ローカルは phpunit.xml の executionOrder（前回失敗を優先）のままにしてある。
+      # CI runs tests in random order every time to detect order-dependent tests.
+      # On failure, pass the Random Seed from the output header to --random-order-seed
+      # to reproduce. Local runs keep the executionOrder in phpunit.xml (defects first).
       - name: Run tests
         run: vendor/bin/phpunit --exclude-testsuite=Integration --order-by=random
 
@@ -82,11 +82,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # 公式 Action ではなくリリースバイナリを取得する。typos は対象ファイルを読む
-      # だけで workflow のトークンやコンテキストを必要としないため、Action として
-      # 権限を渡す必然性がない。
-      # 配布元がチェックサムを公開していないので、導入時に実測した値で固定する。
-      # バージョンを上げる際は SHA256 も実測して差し替えること。
+      # Fetch the release binary instead of using the official Action. typos only
+      # reads the target files and needs no workflow token or context, so there is
+      # no reason to grant it permissions as an Action.
+      # The distributor does not publish checksums, so we pin the value measured
+      # at adoption time. When bumping the version, measure and replace the SHA256.
       - name: Install typos
         run: |
           url="https://github.com/crate-ci/typos/releases/download/v${TYPOS_VERSION}/typos-v${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz"
@@ -94,7 +94,7 @@ jobs:
           echo "${TYPOS_SHA256}  ${RUNNER_TEMP}/typos.tar.gz" | sha256sum -c -
           tar xzf "${RUNNER_TEMP}/typos.tar.gz" -C "${RUNNER_TEMP}" ./typos
 
-      # 除外設定はリポジトリ直下の _typos.toml を自動で読む。
+      # Exclusions are read automatically from _typos.toml at the repository root.
       - name: Check typos
         run: "${RUNNER_TEMP}/typos"
 
@@ -125,12 +125,13 @@ jobs:
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse
 
-      # ライブラリのため、脆弱な依存はそのまま利用者側へ伝播する。
+      # This is a library, so vulnerable dependencies propagate directly to users.
       - name: Audit dependencies
         run: composer audit
 
-      # composer.json に書いていない拡張・パッケージを使っていると、利用者の環境で
-      # 初めて壊れる。逆に使っていない依存を要求すると不要なインストールを強いる。
+      # Using extensions or packages not declared in composer.json breaks only in
+      # the user's environment. Conversely, requiring unused dependencies forces
+      # unnecessary installs on users.
       - name: Check dependency declarations
         run: vendor/bin/composer-dependency-analyser
 
@@ -158,8 +159,9 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 
-      # 対象 PHP バージョンで推奨される書き方から外れた箇所を検出する。
-      # --dry-run は変更提案があると非ゼロ終了するため、そのままゲートになる。
+      # Detects code that deviates from the recommended style for the target PHP
+      # version. --dry-run exits non-zero when it proposes changes, so it works
+      # as a gate as-is.
       - name: Check PHP version migration (Rector)
         run: vendor/bin/rector process --dry-run --no-progress-bar
 

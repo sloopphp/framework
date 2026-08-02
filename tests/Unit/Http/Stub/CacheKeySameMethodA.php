@@ -7,11 +7,11 @@ namespace Sloop\Tests\Unit\Http\Stub;
 use Sloop\Http\Request\Request;
 
 /**
- * reflectParameters のキャッシュキー検証用スタブ。
+ * Stub for verifying the cache key of reflectParameters.
  *
- * CacheKeySameMethodB と同じメソッド名 show を持ち、引数の型だけが異なる。
- * キャッシュキーからクラス名が欠落すると両者が同じエントリを共有し、
- * どちらが先にキャッシュされても他方が TypeError になる。
+ * Has the same method name show as CacheKeySameMethodB, differing only in the
+ * parameter type. If the class name is missing from the cache key, both share
+ * the same entry, and whichever is cached first makes the other raise a TypeError.
  */
 final class CacheKeySameMethodA
 {

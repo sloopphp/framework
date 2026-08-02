@@ -243,7 +243,7 @@ final class RouteRequestHandlerTest extends TestCase
 
     public function testParameterCacheDistinguishesClassAndMethodWithoutSeparator(): void
     {
-        // CacheKeyA::bc と CacheKeyAb::c は区切りなしで連結すると同じ文字列になる
+        // CacheKeyA::bc and CacheKeyAb::c become the same string when concatenated without a separator.
         $container = new Container();
         $container->instance(DiService::class, new DiService('injected'));
 

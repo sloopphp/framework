@@ -840,8 +840,9 @@ final class ConnectionConfigResolverTest extends TestCase
 
     public function testValidatePoolAcceptsAnyReplicaSelectorIdentifier(): void
     {
-        // どの識別子が有効かは ReplicaSelectorRegistry の登録内容で決まるため、
-        // ここでは値を素通しする。未登録の識別子は ConnectionManager が弾く。
+        // Which identifiers are valid is determined by what ReplicaSelectorRegistry
+        // registers, so the value passes through here. Unregistered identifiers are
+        // rejected by ConnectionManager.
         $pool = ConnectionConfigResolver::validatePool('mydb', [
             'driver'           => 'mysql',
             'host'             => 'primary.example.com',

@@ -7,7 +7,7 @@ namespace Sloop\Tests\Unit\Http\Stub;
 use Sloop\Http\Request\Request;
 
 /**
- * CacheKeyA の対。詳細は同クラスの説明を参照。
+ * Counterpart of CacheKeyA. See that class for details.
  */
 final class CacheKeyAb
 {

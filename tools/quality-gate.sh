@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
 #
-# 品質ゲートを順に実行し、各コマンドの終了コードを集約して表示する。
+# Runs the quality gates in order and prints an aggregated view of each exit code.
 #
-# パイプで出力を絞ると上流の終了コードが失われる（`cmd | tail; echo $?` は tail の
-# 0 を読む）。このスクリプトは各コマンドを単独で実行して終了コードを直接受け取り、
-# 誤読が起きない形にすることだけを目的とする。検出そのものは各ツールが行う。
+# Piping output through a filter loses the upstream exit code (`cmd | tail; echo $?`
+# reads tail's 0). This script runs each command on its own and receives its exit
+# code directly; its only purpose is to make misreads impossible. The detection
+# itself is done by each tool.
 #
-# 使い方:
-#   tools/quality-gate.sh                      # 静的チェックとテストを実行（数秒）
-#   tools/quality-gate.sh --with-mutation      # infection も実行（約 1 分）
-#   tools/quality-gate.sh --with-integration   # Integration も実行（docker compose up -d が必要）
-#   tools/quality-gate.sh --all                # 全て実行
+# Usage:
+#   tools/quality-gate.sh                      # run static checks and tests (a few seconds)
+#   tools/quality-gate.sh --with-mutation      # also run infection (about 1 minute)
+#   tools/quality-gate.sh --with-integration   # also run Integration (needs docker compose up -d)
+#   tools/quality-gate.sh --all                # run everything
 #
-# 終了コード: いずれかのゲートが失敗したら 1、全て通れば 0。
+# Exit code: 1 if any gate fails, 0 if all pass.
 
 set -uo pipefail
 
-# cd したあとも参照するため、スクリプト自身の絶対パスを先に確定させる。
+# Resolve the script's own absolute path first; it is referenced after cd.
 script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 script_path="$script_dir/$(basename "$0")"
 
 cd "$script_dir/.." || exit 1
 
-# 出力先が端末でない場合（ログへのリダイレクト、CI 等）は色を付けない。
+# Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
 if [ -t 1 ]; then
     bold=$'\033[1m'; green=$'\033[32m'; red=$'\033[31m'; reset=$'\033[0m'
 else
@@ -32,7 +33,7 @@ fi
 with_mutation=0
 with_integration=0
 
-# 冒頭のコメントブロック（2 行目から最初の空行まで）をそのままヘルプとして使う。
+# Use the leading comment block (line 2 to the first blank line) as the help text.
 usage() {
     sed -n '2,/^$/{ s/^#\{1,\} \{0,1\}//; p; }' "$script_path"
 }
@@ -43,7 +44,7 @@ for arg in "$@"; do
         --with-integration) with_integration=1 ;;
         --all) with_mutation=1; with_integration=1 ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "不明な引数: $arg" >&2; usage >&2; exit 2 ;;
+        *) echo "unknown argument: $arg" >&2; usage >&2; exit 2 ;;
     esac
 done
 
@@ -72,11 +73,11 @@ run_gate 'Rector'       vendor/bin/rector process --dry-run --no-progress-bar
 run_gate 'composer audit' composer audit
 run_gate 'composer deps'  vendor/bin/composer-dependency-analyser
 
-# typos は composer 依存ではなく各自の環境に入れるものなので、無い場合は飛ばす。
+# typos is installed per environment, not via composer; skip when absent.
 if command -v typos > /dev/null 2>&1; then
     run_gate 'typos' typos
 else
-    printf '\n  (typos 未インストールのためスキップ。apk add typos / cargo install typos-cli)\n'
+    printf '\n  (typos not installed, skipped. apk add typos / cargo install typos-cli)\n'
 fi
 
 if [ "$with_integration" -eq 1 ]; then
@@ -88,7 +89,7 @@ if [ "$with_mutation" -eq 1 ]; then
     run_gate 'Infection' vendor/bin/infection --threads=4 --no-progress
 fi
 
-printf '\n%s=== 終了コード ===%s\n' "$bold" "$reset"
+printf '\n%s=== Exit codes ===%s\n' "$bold" "$reset"
 
 failed=0
 for i in "${!names[@]}"; do
@@ -101,11 +102,11 @@ for i in "${!names[@]}"; do
 done
 
 if [ "$with_mutation" -eq 0 ]; then
-    printf '\n  (Infection は未実行。--with-mutation で実行する)\n'
+    printf '\n  (Infection not run. Use --with-mutation to run it)\n'
 fi
 
 if [ "$with_integration" -eq 0 ]; then
-    printf '  (Integration は未実行。--with-integration で実行する)\n'
+    printf '  (Integration not run. Use --with-integration to run it)\n'
 fi
 
 exit "$failed"

@@ -73,7 +73,7 @@ final class ConnectionManagerTest extends TestCase
             'No replica selector is registered for "round_robin". Registered: random.'
         );
 
-        // 読み取り経路に入る前（プール解決の時点）で落ちることを確認する。
+        // Verify it fails before entering the read path (at pool resolution time).
         $manager->connection();
     }
 

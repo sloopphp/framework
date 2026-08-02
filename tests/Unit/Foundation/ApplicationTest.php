@@ -52,13 +52,13 @@ use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
  *   the body via `echo`. Verification requires `@runInSeparateProcess` or
  *   output buffering manipulation. Defer to v0.2 integration tests.
  *
- * - **`resolveFormatter()` / `bootLog()` 解決失敗例外**: requires the
+ * - **`resolveFormatter()` / `bootLog()` resolution failure exceptions**: requires the
  *   Container to return a non-instance for the registered binding, which is
  *   not reachable through the normal Application boot path. Would need
  *   reflection or container hijacking. Low ROI for v0.1; the runtime
  *   exception is a defensive guard for future extensibility.
  *
- * - **`loadMiddleware()` の非 array 入力**: `Config::load()` validates that
+ * - **`loadMiddleware()` with non-array input**: `Config::load()` validates that
  *   all `/config/*.php` files return arrays before `loadMiddleware()` runs,
  *   so the `Arr::toStringList` non-array fallback is currently dead code.
  *   Kept as forward-compat defense; tested via the mixed-array filter path

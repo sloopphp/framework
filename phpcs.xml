@@ -12,7 +12,7 @@
     <!-- PHPDoc               -->
     <!-- ==================== -->
 
-    <!-- メソッドにPHPDoc必須（テストコードは除外） -->
+    <!-- PHPDoc required on methods (test code excluded) -->
     <rule ref="Squiz.Commenting.FunctionComment">
         <exclude-pattern>tests/*</exclude-pattern>
         <exclude name="Squiz.Commenting.FunctionComment.ParamNotFound"/>
@@ -30,28 +30,28 @@
         <exclude name="Squiz.Commenting.FunctionComment.SpacingAfterParamName"/>
     </rule>
 
-    <!-- クラスにPHPDoc必須（テストコードは除外） -->
+    <!-- PHPDoc required on classes (test code excluded) -->
     <rule ref="Squiz.Commenting.ClassComment">
         <exclude-pattern>tests/*</exclude-pattern>
-        <!-- 本プロジェクトでは @template / @implements / @extends をクラスコメントで許可 -->
+        <!-- This project allows @template / @implements / @extends in class comments -->
         <exclude name="Squiz.Commenting.ClassComment.TagNotAllowed"/>
     </rule>
 
-    <!-- プロパティにPHPDoc必須（テストコードは除外） -->
+    <!-- PHPDoc required on properties (test code excluded) -->
     <rule ref="Squiz.Commenting.VariableComment">
         <exclude-pattern>tests/*</exclude-pattern>
         <exclude name="Squiz.Commenting.VariableComment.IncorrectVarType"/>
         <exclude name="Squiz.Commenting.VariableComment.TagNotAllowed"/>
     </rule>
 
-    <!-- PHPDocアスタリスク整列 -->
+    <!-- PHPDoc asterisk alignment -->
     <rule ref="Squiz.Commenting.DocCommentAlignment"/>
 
     <!-- ==================== -->
-    <!-- コード品質           -->
+    <!-- Code quality         -->
     <!-- ==================== -->
 
-    <!-- 循環的複雑度チェック -->
+    <!-- Cyclomatic complexity check -->
     <rule ref="Generic.Metrics.CyclomaticComplexity">
         <properties>
             <property name="complexity" value="10"/>
@@ -59,7 +59,7 @@
         </properties>
     </rule>
 
-    <!-- ネストレベルチェック -->
+    <!-- Nesting level check -->
     <rule ref="Generic.Metrics.NestingLevel">
         <properties>
             <property name="nestingLevel" value="3"/>
@@ -67,29 +67,29 @@
         </properties>
     </rule>
 
-    <!-- 到達不能コードの検出 -->
+    <!-- Unreachable code detection -->
     <rule ref="Squiz.PHP.NonExecutableCode"/>
 
-    <!-- staticメソッド内の$this使用検出 -->
+    <!-- Detect $this usage inside static methods -->
     <rule ref="Squiz.Scope.StaticThisUsage"/>
 
     <!-- ==================== -->
-    <!-- PHP安全性            -->
+    <!-- PHP safety           -->
     <!-- ==================== -->
 
-    <!-- 非推奨PHP関数の検出 -->
+    <!-- Deprecated PHP function detection -->
     <rule ref="Generic.PHP.DeprecatedFunctions"/>
 
-    <!-- エラー制御演算子@の禁止 -->
+    <!-- Forbid the @ error control operator -->
     <rule ref="Generic.PHP.NoSilencedErrors"/>
 
-    <!-- PHP構文チェック -->
+    <!-- PHP syntax check -->
     <rule ref="Generic.PHP.Syntax"/>
 
-    <!-- Gitマージ競合の残留検出 -->
+    <!-- Detect leftover Git merge conflict markers -->
     <rule ref="Generic.VersionControl.GitMergeConflict"/>
 
-    <!-- デバッグ関数・型キャスト関数の禁止 -->
+    <!-- Forbid debug functions and type-cast functions -->
     <rule ref="Generic.PHP.ForbiddenFunctions">
         <properties>
             <property name="forbiddenFunctions" type="array">
@@ -109,10 +109,10 @@
     </rule>
 
     <!-- ==================== -->
-    <!-- フォーマット         -->
+    <!-- Formatting           -->
     <!-- ==================== -->
 
-    <!-- 代入演算子の縦揃え -->
+    <!-- Vertical alignment of assignment operators -->
     <rule ref="Generic.Formatting.MultipleStatementAlignment">
         <properties>
             <property name="maxPadding" value="20"/>
@@ -120,22 +120,23 @@
     </rule>
 
     <!-- ==================== -->
-    <!-- Slevomat拡張         -->
+    <!-- Slevomat extensions  -->
     <!-- ==================== -->
 
-    <!-- ダブルクォート変数展開の禁止 -->
+    <!-- Forbid variable parsing in double-quoted strings -->
     <rule ref="SlevomatCodingStandard.Strings.DisallowVariableParsing"/>
 
-    <!-- 参照渡しの禁止（メソッド引数。内部の参照代入は配列操作で必要な場合がある） -->
+    <!-- Forbid pass-by-reference (method parameters; internal reference assignment is sometimes needed for array operations) -->
     <rule ref="SlevomatCodingStandard.PHP.DisallowReference">
         <exclude name="SlevomatCodingStandard.PHP.DisallowReference.DisallowedAssigningByReference"/>
     </rule>
 
     <!--
-        未使用 use の検出。
-        searchAnnotations は必須。既定（false）だと PHPDoc を走査しないため、
-        @throws / @param でしか参照されない use を「未使用」と誤検知し、
-        phpcbf が自動削除して PHPDoc の型参照を壊す（本プロジェクトは @throws を必須にしている）。
+        Unused use detection.
+        searchAnnotations is mandatory. The default (false) skips PHPDoc, so a
+        use referenced only from @throws / @param is misdetected as unused and
+        phpcbf auto-removes it, breaking PHPDoc type references (this project
+        makes @throws mandatory).
     -->
     <rule ref="SlevomatCodingStandard.Namespaces.UnusedUses">
         <properties>
@@ -144,13 +145,14 @@
     </rule>
 
     <!-- ==================== -->
-    <!-- PHPバージョン互換性  -->
+    <!-- PHP version compatibility -->
     <!-- ==================== -->
 
     <!--
-        対象は「8.5 以降」。将来 PHP 側が新バージョンで削除・非推奨にした機能を、
-        PHPCompatibility 側が対応した時点で検出できるようにするための網。
-        現時点の検出は 0 件（testVersion 8.0- なら 169 件出る）。
+        The target is "8.5 and later". This is a safety net so that features
+        PHP removes or deprecates in future versions get detected as soon as
+        PHPCompatibility supports them. Currently 0 detections (testVersion
+        8.0- would yield 169).
     -->
     <config name="testVersion" value="8.5-"/>
     <rule ref="PHPCompatibility"/>
