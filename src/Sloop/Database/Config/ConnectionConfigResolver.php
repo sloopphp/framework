@@ -235,7 +235,9 @@ final class ConnectionConfigResolver
      */
     public static function resolveDsn(ValidatedConfig $config): string
     {
-        $dsn = 'mysql:host=' . $config->host;
+        // 検証済みの driver をそのまま使う。リテラルを書くと、対応ドライバを
+        // 増やした際にここだけ mysql のまま取り残される。
+        $dsn = $config->driver . ':host=' . $config->host;
         if ($config->port !== null) {
             $dsn .= ';port=' . $config->port;
         }
