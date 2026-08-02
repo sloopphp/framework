@@ -8,10 +8,10 @@
 # itself is done by each tool.
 #
 # Usage:
-#   tools/quality-gate.sh                      # run static checks and tests (a few seconds)
-#   tools/quality-gate.sh --with-mutation      # also run infection (about 1 minute)
-#   tools/quality-gate.sh --with-integration   # also run Integration (needs docker compose up -d)
-#   tools/quality-gate.sh --all                # run everything
+#   .claude/quality-gate.sh                    # run static checks and tests (a few seconds)
+#   .claude/quality-gate.sh --with-mutation    # also run infection (about 1 minute)
+#   .claude/quality-gate.sh --with-integration # also run Integration (needs docker compose up -d)
+#   .claude/quality-gate.sh --all              # run everything
 #
 # Exit code: 1 if any gate fails, 0 if all pass.
 

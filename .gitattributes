@@ -13,4 +13,4 @@
 /rector.php             export-ignore
 /_typos.toml            export-ignore
 /composer-dependency-analyser.php export-ignore
-/tools                  export-ignore
+/.claude                export-ignore
