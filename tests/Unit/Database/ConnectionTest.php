@@ -97,7 +97,7 @@ final class ConnectionTest extends TestCase
 
     private function scriptedSelectStatement(): PDOStatement
     {
-        $stmt = $this->createMock(PDOStatement::class);
+        $stmt = $this->createStub(PDOStatement::class);
         $stmt->method('execute')->willReturn(true);
         $stmt->method('fetchAll')->willReturn([]);
 
@@ -106,7 +106,7 @@ final class ConnectionTest extends TestCase
 
     private function scriptedDmlStatement(): PDOStatement
     {
-        $stmt = $this->createMock(PDOStatement::class);
+        $stmt = $this->createStub(PDOStatement::class);
         $stmt->method('execute')->willReturn(true);
         $stmt->method('rowCount')->willReturn(1);
 

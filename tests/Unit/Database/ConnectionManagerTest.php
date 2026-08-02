@@ -1372,7 +1372,7 @@ final class ConnectionManagerTest extends TestCase
         // SET SESSION fires (only the user query reaches prepare()).
         $pdo = $this->createMock(PDO::class);
         $pdo->expects($this->never())->method('exec');
-        $stmt = $this->createMock(\PDOStatement::class);
+        $stmt = $this->createStub(\PDOStatement::class);
         $stmt->method('execute')->willReturn(true);
         $stmt->method('fetchAll')->willReturn([]);
         $pdo->method('prepare')->willReturn($stmt);
@@ -1710,7 +1710,7 @@ final class ConnectionManagerTest extends TestCase
         $versionStmt = $this->createStub(\PDOStatement::class);
         $versionStmt->method('fetchColumn')->willReturn('8.0.37');
 
-        $userStmt = $this->createMock(\PDOStatement::class);
+        $userStmt = $this->createStub(\PDOStatement::class);
         $userStmt->method('execute')->willReturn(true);
         $userStmt->method('fetchAll')->willReturn([]);
 
