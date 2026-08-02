@@ -555,8 +555,8 @@ final class ConnectionConfigResolverTest extends TestCase
 
         $options = ConnectionConfigResolver::resolvePdoOptions($validated);
 
-        $this->assertSame(true, $options[PDO::ATTR_PERSISTENT]);
-        $this->assertSame(false, $options[PDO::ATTR_AUTOCOMMIT]);
+        $this->assertTrue($options[PDO::ATTR_PERSISTENT]);
+        $this->assertFalse($options[PDO::ATTR_AUTOCOMMIT]);
         $this->assertSame(2, $options[PDO::ATTR_TIMEOUT]);
         $this->assertSame('SET NAMES utf8mb4', $options[PdoMysql::ATTR_INIT_COMMAND]);
     }
