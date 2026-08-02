@@ -37,6 +37,7 @@ final readonly class ValidatedConfig
         public ?int $port,
         public string $database,
         public ?string $username,
+        #[\SensitiveParameter]
         public ?string $password,
         public ?string $charset,
         public ?string $collation,

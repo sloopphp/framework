@@ -164,6 +164,7 @@ final class Connection
     public static function open(
         string $dsn,
         ?string $username = null,
+        #[\SensitiveParameter]
         ?string $password = null,
         array $options = [],
         string $connectionName = '',

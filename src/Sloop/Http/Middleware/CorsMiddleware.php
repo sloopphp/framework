@@ -84,9 +84,17 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     private bool $allowCredentials;
 
     /**
+     * Whether the wildcard origin `*` is configured.
+     *
+     * @var bool
+     */
+    private bool $wildcardOrigin;
+
+    /**
      * Create a new CORS middleware.
      *
      * @param array<string, mixed> $config CORS configuration
+     * @throws \InvalidArgumentException When the wildcard origin `*` is combined with allow_credentials
      */
     public function __construct(array $config = [])
     {
@@ -94,7 +102,17 @@ final readonly class CorsMiddleware implements MiddlewareInterface
         $this->allowedMethods   = Arr::stringList($config, 'allowed_methods', self::STRING_LIST_DEFAULTS['allowed_methods']);
         $this->allowedHeaders   = Arr::stringList($config, 'allowed_headers', self::STRING_LIST_DEFAULTS['allowed_headers']);
         $this->maxAge           = \is_int($config['max_age'] ?? null) ? $config['max_age'] : self::DEFAULT_MAX_AGE;
-        $this->allowCredentials = (bool) ($config['allow_credentials'] ?? self::DEFAULT_ALLOW_CREDENTIALS);
+        $this->allowCredentials = \is_bool($config['allow_credentials'] ?? null) ? $config['allow_credentials'] : self::DEFAULT_ALLOW_CREDENTIALS;
+        $this->wildcardOrigin   = \in_array('*', $this->allowedOrigins, true);
+
+        // The Fetch spec forbids `Access-Control-Allow-Origin: *` together with
+        // credentials; reflecting the request origin instead would silently
+        // grant any site credentialed cross-origin reads, so fail loudly.
+        if ($this->wildcardOrigin && $this->allowCredentials) {
+            throw new \InvalidArgumentException(
+                'CORS config error: allowed_origins must not contain "*" when allow_credentials is true.'
+            );
+        }
     }
 
     /**
@@ -161,11 +179,16 @@ final readonly class CorsMiddleware implements MiddlewareInterface
      */
     private function addCorsHeaders(ResponseInterface $response, string $origin): ResponseInterface
     {
+        // With a wildcard config the literal `*` is sent instead of reflecting
+        // the request origin; the response then no longer varies by Origin.
         $response = $response
-            ->withHeader('Access-Control-Allow-Origin', $origin)
+            ->withHeader('Access-Control-Allow-Origin', $this->wildcardOrigin ? '*' : $origin)
             ->withHeader('Access-Control-Allow-Methods', implode(', ', $this->allowedMethods))
-            ->withHeader('Access-Control-Allow-Headers', implode(', ', $this->allowedHeaders))
-            ->withAddedHeader('Vary', 'Origin');
+            ->withHeader('Access-Control-Allow-Headers', implode(', ', $this->allowedHeaders));
+
+        if (!$this->wildcardOrigin) {
+            $response = $response->withAddedHeader('Vary', 'Origin');
+        }
 
         if ($this->allowCredentials) {
             $response = $response->withHeader('Access-Control-Allow-Credentials', 'true');

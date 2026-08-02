@@ -165,9 +165,9 @@ final class ConnectionConfigResolver
 
         return new ValidatedConfig(
             driver:                self::extractDriver($name, $config),
-            host:                  self::extractRequiredString($name, $config, 'host'),
+            host:                  self::extractDsnSafeString($name, $config, 'host'),
             port:                  self::extractOptionalInt($name, $config, 'port'),
-            database:              self::extractRequiredString($name, $config, 'database'),
+            database:              self::extractDsnSafeString($name, $config, 'database'),
             username:              self::extractOptionalNullableString($name, $config, 'username'),
             password:              self::extractOptionalNullableString($name, $config, 'password'),
             charset:               self::extractOptionalIdentifier($name, $config, 'charset'),
@@ -356,6 +356,31 @@ final class ConnectionConfigResolver
         if (!\is_string($value)) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be a string.',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract a required string that is embedded verbatim into the PDO DSN.
+     *
+     * `;` and `=` are DSN metacharacters: a tainted value such as
+     * `host=x;unix_socket=/tmp/evil.sock` could otherwise append extra DSN
+     * keys and redirect the connection.
+     *
+     * @param  string                  $name   Connection name for error context
+     * @param  array<array-key, mixed> $config Config array
+     * @param  string                  $key    Config key to extract
+     * @return string
+     * @throws InvalidConfigException When the value is not a string or contains `;`, `=`, or a NUL byte
+     */
+    private static function extractDsnSafeString(string $name, array $config, string $key): string
+    {
+        $value = self::extractRequiredString($name, $config, $key);
+        if (preg_match('/[;=\0]/', $value) === 1) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "' . $key . '" must not contain ";", "=", or NUL.',
             );
         }
 

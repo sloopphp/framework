@@ -156,11 +156,25 @@ final class CorsMiddlewareTest extends TestCase
 
     public function testWildcardOriginAllowsAll(): void
     {
+        // With a wildcard config the literal `*` is sent (never a reflected
+        // origin), and the response no longer varies by Origin.
         $cors     = $this->createCors(['allowed_origins' => ['*']]);
         $request  = $this->createRequest(origin: 'https://any.example');
         $response = $cors->process($request, $this->createHandler());
 
-        $this->assertSame('https://any.example', $response->getHeaderLine('Access-Control-Allow-Origin'));
+        $this->assertSame('*', $response->getHeaderLine('Access-Control-Allow-Origin'));
+        $this->assertFalse($response->hasHeader('Vary'));
+    }
+
+    public function testWildcardWithCredentialsIsRejectedAtConstruction(): void
+    {
+        // The Fetch spec forbids `Access-Control-Allow-Origin: *` with
+        // credentials; reflecting the origin instead would grant any site
+        // credentialed cross-origin reads, so the config is rejected outright.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('allowed_origins must not contain "*" when allow_credentials is true');
+
+        $this->createCors(['allowed_origins' => ['*'], 'allow_credentials' => true]);
     }
 
     public function testCredentialsHeaderWhenEnabled(): void
@@ -255,15 +269,17 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertSame('86400', $response->getHeaderLine('Access-Control-Max-Age'));
     }
 
-    public function testTruthyNonBoolAllowCredentialsIsCastToBool(): void
+    public function testTruthyNonBoolAllowCredentialsFallsBackToDefaultFalse(): void
     {
+        // Non-bool config must not silently enable credentials: a stray "1"
+        // or "true" string falls back to the safe default (disabled).
         $cors     = $this->createCors(['allow_credentials' => 1]);
         $response = $cors->process(
             $this->createRequest(origin: 'https://example.com'),
             $this->createHandler(),
         );
 
-        $this->assertSame('true', $response->getHeaderLine('Access-Control-Allow-Credentials'));
+        $this->assertFalse($response->hasHeader('Access-Control-Allow-Credentials'));
     }
 
     public function testFalsyNonBoolAllowCredentialsIsCastToFalse(): void
@@ -331,12 +347,12 @@ final class CorsMiddlewareTest extends TestCase
     public function testWildcardCoexistsWithSpecificOrigins(): void
     {
         // When `*` is in the allowed list (regardless of position), all origins
-        // are accepted, even those not explicitly listed.
+        // are accepted and the literal `*` is sent instead of the request origin.
         $cors     = $this->createCors(['allowed_origins' => ['https://a.example.com', '*']]);
         $request  = $this->createRequest(origin: 'https://random.example');
         $response = $cors->process($request, $this->createHandler());
 
-        $this->assertSame('https://random.example', $response->getHeaderLine('Access-Control-Allow-Origin'));
+        $this->assertSame('*', $response->getHeaderLine('Access-Control-Allow-Origin'));
     }
 
     public function testEmptyAllowedMethodsResultsInEmptyHeader(): void

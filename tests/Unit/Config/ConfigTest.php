@@ -52,6 +52,24 @@ final class ConfigTest extends TestCase
         $this->assertSame('Sloop', Config::get('app.name'));
     }
 
+    public function testLoadThrowsForEnvironmentNameWithPathTraversal(): void
+    {
+        // The environment name becomes a path segment whose PHP files get
+        // executed, so a tainted APP_ENV must not escape the config directory.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid environment name: ../evil');
+
+        Config::load($this->fixturesPath, '../evil');
+    }
+
+    public function testLoadThrowsForEnvironmentNameWithDirectorySeparator(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid environment name: sub/dir');
+
+        Config::load($this->fixturesPath, 'sub/dir');
+    }
+
     public function testLoadThrowsForNonexistentDirectory(): void
     {
         $this->expectException(RuntimeException::class);
