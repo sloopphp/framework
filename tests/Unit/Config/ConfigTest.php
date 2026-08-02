@@ -109,7 +109,7 @@ final class ConfigTest extends TestCase
         Config::load($this->fixturesPath);
 
         $this->assertSame('Sloop', Config::get('app.name'));
-        $this->assertSame(false, Config::get('app.debug'));
+        $this->assertFalse(Config::get('app.debug'));
         $this->assertSame('UTC', Config::get('app.timezone'));
     }
 
@@ -135,6 +135,100 @@ final class ConfigTest extends TestCase
     public function testGetReturnsNullBeforeLoad(): void
     {
         $this->assertNull(Config::get('app.name'));
+    }
+
+    // ---------------------------------------------------------------
+    // getString / getInt / getFloat / getBool
+    // ---------------------------------------------------------------
+
+    public function testGetStringReturnsStringValue(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame('localhost', Config::getString('database.host'));
+    }
+
+    public function testGetStringReturnsDefaultForMissingKey(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame('', Config::getString('database.missing'));
+        $this->assertSame('fallback', Config::getString('database.missing', 'fallback'));
+    }
+
+    public function testGetStringReturnsDefaultWhenValueIsNotString(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame('fallback', Config::getString('database.port', 'fallback'));
+    }
+
+    public function testGetIntReturnsIntValue(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame(3306, Config::getInt('database.port'));
+    }
+
+    public function testGetIntReturnsDefaultForMissingKey(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame(0, Config::getInt('database.missing'));
+        $this->assertSame(5432, Config::getInt('database.missing', 5432));
+    }
+
+    public function testGetIntRejectsNumericString(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame(5432, Config::getInt('database.port_as_string', 5432));
+    }
+
+    public function testGetFloatReturnsFloatValue(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame(2.5, Config::getFloat('database.timeout'));
+    }
+
+    public function testGetFloatPromotesIntValue(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame(3306.0, Config::getFloat('database.port'));
+    }
+
+    public function testGetFloatReturnsDefaultForMissingKey(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertSame(0.0, Config::getFloat('database.missing'));
+        $this->assertSame(1.5, Config::getFloat('database.missing', 1.5));
+    }
+
+    public function testGetBoolReturnsBoolValue(): void
+    {
+        Config::load($this->fixturesPath);
+
+        // Pass a default that differs from the declared value so the test
+        // fails if the default is returned instead of the configured one.
+        $this->assertFalse(Config::getBool('database.pooling', true));
+    }
+
+    public function testGetBoolReturnsDefaultForMissingKey(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertFalse(Config::getBool('database.missing'));
+        $this->assertTrue(Config::getBool('database.missing', true));
+    }
+
+    public function testGetBoolReturnsDefaultWhenValueIsNotBool(): void
+    {
+        Config::load($this->fixturesPath);
+
+        $this->assertTrue(Config::getBool('database.port', true));
     }
 
     // ---------------------------------------------------------------
