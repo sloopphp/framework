@@ -185,6 +185,27 @@ final class ConnectionConfigResolverTest extends TestCase
         }
     }
 
+    public function testValidateRejectsNonPositiveConnectTimeout(): void
+    {
+        // A zero or negative PDO::ATTR_TIMEOUT makes replica failover timing
+        // nondeterministic, so the resolver requires >= 1 like the other
+        // duration keys.
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'                  => 'mysql',
+                'host'                    => 'localhost',
+                'database'                => 'app',
+                'connect_timeout_seconds' => 0,
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "connect_timeout_seconds" must be >= 1, got 0.',
+                $e->getMessage(),
+            );
+        }
+    }
+
     public function testValidateRejectsHostContainingDsnMetacharacters(): void
     {
         // `;` and `=` are DSN metacharacters: a tainted host such as

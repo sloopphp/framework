@@ -57,7 +57,7 @@ final class ConfigTest extends TestCase
         // The environment name becomes a path segment whose PHP files get
         // executed, so a tainted APP_ENV must not escape the config directory.
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Invalid environment name: ../evil');
+        $this->expectExceptionMessage('Invalid environment name: ../evil (only [A-Za-z0-9_-] is allowed)');
 
         Config::load($this->fixturesPath, '../evil');
     }
@@ -65,7 +65,7 @@ final class ConfigTest extends TestCase
     public function testLoadThrowsForEnvironmentNameWithDirectorySeparator(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Invalid environment name: sub/dir');
+        $this->expectExceptionMessage('Invalid environment name: sub/dir (only [A-Za-z0-9_-] is allowed)');
 
         Config::load($this->fixturesPath, 'sub/dir');
     }

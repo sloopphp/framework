@@ -378,7 +378,10 @@ final class Connection
             } catch (Throwable $e) {
                 $thrown = $this->rollbackAndNormalize($e);
 
-                if ($this->shouldRetry($thrown, $attempt, $maxAttempts)) {
+                // A failed rollback can leave the PDO transaction open; retrying
+                // would then hit begin()'s nested-transaction guard and mask the
+                // original exception with a LogicException. Surface the original.
+                if ($this->shouldRetry($thrown, $attempt, $maxAttempts) && !$this->pdo->inTransaction()) {
                     $this->sleepBackoff($backoffMs);
 
                     continue;

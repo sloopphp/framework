@@ -95,31 +95,31 @@ final class LikePatternTest extends TestCase
     }
 
     #[DataProvider('provideInvalidEscapeChars')]
-    public function testEscapeThrowsOnInvalidEscapeLength(string $escape): void
+    public function testEscapeThrowsOnInvalidEscapeLength(string $escape, string $expectedMessage): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Escape character must be exactly one byte');
+        $this->expectExceptionMessage($expectedMessage);
 
         LikePattern::escape('anything', $escape);
     }
 
     /**
-     * @return array<string, array{string}>
+     * @return array<string, array{string, string}>
      */
     public static function provideInvalidEscapeChars(): array
     {
         return [
-            'empty string'    => [''],
-            'two ascii chars' => ['ab'],
-            'multibyte char'  => ['あ'],
+            'empty string'    => ['', 'Escape character must be exactly one byte, got 0.'],
+            'two ascii chars' => ['ab', 'Escape character must be exactly one byte, got 2.'],
+            'multibyte char'  => ['あ', 'Escape character must be exactly one byte, got 3.'],
         ];
     }
 
     #[DataProvider('provideWildcardEscapeChars')]
-    public function testEscapeThrowsWhenEscapeIsLikeWildcard(string $escape): void
+    public function testEscapeThrowsWhenEscapeIsLikeWildcard(string $escape, string $expectedMessage): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Escape character must not be a LIKE wildcard');
+        $this->expectExceptionMessage($expectedMessage);
 
         LikePattern::escape('anything', $escape);
     }
@@ -130,8 +130,8 @@ final class LikePatternTest extends TestCase
     public static function provideWildcardEscapeChars(): array
     {
         return [
-            'percent'    => ['%'],
-            'underscore' => ['_'],
+            'percent'    => ['%', 'Escape character must not be a LIKE wildcard, got %.'],
+            'underscore' => ['_', 'Escape character must not be a LIKE wildcard, got _.'],
         ];
     }
 }

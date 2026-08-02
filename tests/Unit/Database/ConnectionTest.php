@@ -358,6 +358,9 @@ final class ConnectionTest extends TestCase
 
         $this->assertSame('done', $result);
         $this->assertSame(1, $this->countUsers());
+        // The transaction must actually be committed, not merely visible from
+        // inside a still-open transaction on the same connection.
+        $this->assertFalse($this->connection->inTransaction());
     }
 
     public function testTransactionPassesSelfToCallback(): void
@@ -454,6 +457,63 @@ final class ConnectionTest extends TestCase
             $this->assertSame('repeat', $e->getMessage());
             $this->assertSame(3, $counter->value);
         }
+    }
+
+    public function testTransactionRetrySleepsForConfiguredBackoff(): void
+    {
+        $counter = new class () {
+            public int $value = 0;
+        };
+
+        $start = hrtime(true);
+
+        $this->connection->transaction(
+            function () use ($counter): string {
+                $counter->value++;
+                if ($counter->value < 3) {
+                    throw new DeadlockException('deadlock', '', [], 'test_conn', '40001', 1213);
+                }
+
+                return 'ok';
+            },
+            IsolationLevel::Default,
+            3,
+            1,
+        );
+
+        // 2 retries × 1ms backoff: usleep guarantees at least the requested
+        // duration, so the elapsed time gives a deterministic lower bound.
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+        $this->assertSame(3, $counter->value);
+        $this->assertGreaterThanOrEqual(2, $elapsedMs);
+    }
+
+    public function testTransactionDoesNotRetryWhenRollbackLeavesTransactionOpen(): void
+    {
+        // When ROLLBACK itself fails (e.g. the connection dropped), the PDO
+        // still reports an active transaction. Retrying would hit begin()'s
+        // nested-transaction guard and mask the original DeadlockException
+        // with a LogicException, so the retry must be abandoned instead.
+        $pdo = $this->createStub(PDO::class);
+        // Call order: transaction() guard → begin() guard → rollbackAndNormalize
+        // check → post-rollback retry check (the rollback failed, so the
+        // transaction is still reported as active from the third call on).
+        $pdo->method('inTransaction')->willReturn(false, false, true, true);
+        $pdo->method('beginTransaction')->willReturn(true);
+        $pdo->method('rollBack')->willThrowException(new \PDOException('server has gone away'));
+
+        $connection = new Connection($pdo, 'test_conn');
+
+        $this->expectException(DeadlockException::class);
+        $this->expectExceptionMessage('deadlock');
+
+        $connection->transaction(
+            function (): void {
+                throw new DeadlockException('deadlock', '', [], 'test_conn', '40001', 1213);
+            },
+            IsolationLevel::Default,
+            3,
+        );
     }
 
     public function testTransactionDoesNotRetryWhenMaxAttemptsIsOne(): void

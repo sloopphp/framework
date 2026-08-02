@@ -315,7 +315,7 @@ final class ConnectionManagerTest extends TestCase
         $factory  = new ScriptedConnectionFactory();
         $factory->expectSuccess('replica2.internal', 0, $replica2);
 
-        $this->deadCache->markServerDead('replica1.internal', 0, 300);
+        $this->deadCache->markServerDead('replica1.internal', 3306, 300);
 
         $manager = $this->manager('master', [
             'master' => [
@@ -455,7 +455,7 @@ final class ConnectionManagerTest extends TestCase
             new DatabaseConnectionException('refused', 'primary', null, 2002),
         );
 
-        $this->deadCache->markServerDead('replica1.internal', 0, 300);
+        $this->deadCache->markServerDead('replica1.internal', 3306, 300);
 
         $manager = $this->manager('master', [
             'master' => [
@@ -578,8 +578,8 @@ final class ConnectionManagerTest extends TestCase
         }
 
         // server-wide dead → also dead in any other pool
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
     public function testReplicaRouteRecordsPoolDeadOnAuthFailure(): void
@@ -610,8 +610,42 @@ final class ConnectionManagerTest extends TestCase
         }
 
         // pool-specific dead → dead for 'master', alive for other pool
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
-        $this->assertFalse($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
+    }
+
+    public function testReplicaRouteRecordsPoolDeadOnUnknownDatabase(): void
+    {
+        // Error 1049 (unknown database) reports SQLSTATE 42000, not 28000, but
+        // it is still pool-specific: only this pool's database name is wrong,
+        // so other pools sharing the same host must not be blocked.
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica.internal',
+            0,
+            new DatabaseConnectionException('unknown database', 'replica', '42000', 1049),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'read'                    => [['host' => 'replica.internal']],
+                'health_check'            => false,
+                'max_connection_attempts' => 1,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException) {
+            // empty
+        }
+
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
     public function testReplicaRouteRecordsServerDeadOnPingFailure(): void
@@ -646,8 +680,8 @@ final class ConnectionManagerTest extends TestCase
         }
 
         // ping failure → server-wide dead: live in master and any other pool
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
     public function testReplicaRouteCachesSelectedReplicaAcrossCalls(): void
@@ -806,15 +840,15 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         $this->assertSame(
-            ['replica1.internal:0' => true, 'replica2.internal:0' => true],
+            ['replica1.internal:3306' => true, 'replica2.internal:3306' => true],
             $manager->probeReplicas(),
         );
         $this->assertSame(
             ['replica1.internal:0', 'replica2.internal:0'],
             $factory->invocations,
         );
-        $this->assertFalse($this->deadCache->isDead('replica1.internal', 0, 'master'));
-        $this->assertFalse($this->deadCache->isDead('replica2.internal', 0, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica1.internal', 3306, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica2.internal', 3306, 'master'));
     }
 
     public function testProbeReplicasUsesDeclaredPortInResultKey(): void
@@ -853,10 +887,10 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+        $this->assertSame(['replica.internal:3306' => false], $manager->probeReplicas());
         // server-wide dead → also dead in any other pool
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
     public function testProbeReplicasMarksPoolDeadOnAuthFailure(): void
@@ -877,10 +911,10 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+        $this->assertSame(['replica.internal:3306' => false], $manager->probeReplicas());
         // pool-specific dead → dead for 'master' only, alive elsewhere
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
-        $this->assertFalse($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
     public function testProbeReplicasMarksServerDeadOnPingFailure(): void
@@ -905,9 +939,9 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'master'));
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 0, 'unrelated_pool'));
+        $this->assertSame(['replica.internal:3306' => false], $manager->probeReplicas());
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
     public function testProbeReplicasReturnsMixedHealthMap(): void
@@ -941,19 +975,19 @@ final class ConnectionManagerTest extends TestCase
 
         $this->assertSame(
             [
-                'replica1.internal:0' => false,
-                'replica2.internal:0' => true,
-                'replica3.internal:0' => false,
+                'replica1.internal:3306' => false,
+                'replica2.internal:3306' => true,
+                'replica3.internal:3306' => false,
             ],
             $manager->probeReplicas(),
         );
         // Failed replicas marked, healthy replica untouched.
-        $this->assertTrue($this->deadCache->isDead('replica1.internal', 0, 'master'));
-        $this->assertFalse($this->deadCache->isDead('replica2.internal', 0, 'master'));
-        $this->assertTrue($this->deadCache->isDead('replica3.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica1.internal', 3306, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica2.internal', 3306, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica3.internal', 3306, 'master'));
         // replica1 went to the shared key (server-wide), replica3 only to the pool key.
-        $this->assertTrue($this->deadCache->isDead('replica1.internal', 0, 'unrelated_pool'));
-        $this->assertFalse($this->deadCache->isDead('replica3.internal', 0, 'unrelated_pool'));
+        $this->assertTrue($this->deadCache->isDead('replica1.internal', 3306, 'unrelated_pool'));
+        $this->assertFalse($this->deadCache->isDead('replica3.internal', 3306, 'unrelated_pool'));
     }
 
     public function testProbeReplicasRefreshesDeadMarkTtlOnRepeatedFailure(): void
@@ -964,11 +998,11 @@ final class ConnectionManagerTest extends TestCase
         $deadCache = new InMemoryDeadReplicaCache($clock(...));
 
         // Pre-mark with a short TTL that would naturally expire at 1010.
-        $deadCache->markServerDead('replica.internal', 0, 10);
+        $deadCache->markServerDead('replica.internal', 3306, 10);
 
         // Advance past the original expiry; sanity-check the pre-mark is gone.
         $clock->now = 1100;
-        $this->assertFalse($deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertFalse($deadCache->isDead('replica.internal', 3306, 'master'));
 
         $factory = new ScriptedConnectionFactory();
         $factory->expectFailure(
@@ -993,16 +1027,16 @@ final class ConnectionManagerTest extends TestCase
             deadCache: $deadCache,
         );
 
-        $this->assertSame(['replica.internal:0' => false], $manager->probeReplicas());
+        $this->assertSame(['replica.internal:3306' => false], $manager->probeReplicas());
 
         // The new dead mark stamped at clock=1100 with TTL=60 expires at 1160.
         // Still dead between the original 1010 expiry and the new 1160 expiry,
         // and gone again past 1160. This proves a fresh stamp, not a stale entry.
-        $this->assertTrue($deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertTrue($deadCache->isDead('replica.internal', 3306, 'master'));
         $clock->now = 1150;
-        $this->assertTrue($deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertTrue($deadCache->isDead('replica.internal', 3306, 'master'));
         $clock->now = 1170;
-        $this->assertFalse($deadCache->isDead('replica.internal', 0, 'master'));
+        $this->assertFalse($deadCache->isDead('replica.internal', 3306, 'master'));
     }
 
     public function testProbeReplicasDoesNotPoisonReplicaSelectionCache(): void
@@ -1045,7 +1079,7 @@ final class ConnectionManagerTest extends TestCase
         // Pre-mark replica1 dead. Probe must still attempt it so operators can
         // see real-time state, and a healthy probe must NOT clear the dead mark
         // (recovery is bound by TTL, per ConnectionManager design).
-        $this->deadCache->markServerDead('replica1.internal', 0, 300);
+        $this->deadCache->markServerDead('replica1.internal', 3306, 300);
 
         $replica1 = $this->pingableConnection();
         $replica2 = $this->pingableConnection();
@@ -1066,7 +1100,7 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         $this->assertSame(
-            ['replica1.internal:0' => true, 'replica2.internal:0' => true],
+            ['replica1.internal:3306' => true, 'replica2.internal:3306' => true],
             $manager->probeReplicas(),
         );
         $this->assertSame(
@@ -1074,7 +1108,7 @@ final class ConnectionManagerTest extends TestCase
             $factory->invocations,
         );
         // Existing dead mark is preserved; recovery still depends on TTL expiry.
-        $this->assertTrue($this->deadCache->isDead('replica1.internal', 0, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica1.internal', 3306, 'master'));
     }
 
     public function testProbeReplicasUsesDefaultPoolWhenNameIsNull(): void
@@ -1093,7 +1127,7 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         $this->assertSame(
-            ['default-replica.internal:0' => true],
+            ['default-replica.internal:3306' => true],
             $manager->probeReplicas(),
         );
     }
@@ -1119,7 +1153,7 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         $this->assertSame(
-            ['analytics-replica.internal:0' => true],
+            ['analytics-replica.internal:3306' => true],
             $manager->probeReplicas('analytics'),
         );
         // Default pool is untouched.
