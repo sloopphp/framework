@@ -7,7 +7,7 @@
 # 誤読が起きない形にすることだけを目的とする。検出そのものは各ツールが行う。
 #
 # 使い方:
-#   tools/quality-gate.sh                      # 1〜5 を実行（数秒）
+#   tools/quality-gate.sh                      # 静的チェックとテストを実行（数秒）
 #   tools/quality-gate.sh --with-mutation      # infection も実行（約 1 分）
 #   tools/quality-gate.sh --with-integration   # Integration も実行（docker compose up -d が必要）
 #   tools/quality-gate.sh --all                # 全て実行
@@ -70,6 +70,13 @@ run_gate 'PHPStan'      vendor/bin/phpstan analyse --no-progress
 run_gate 'PHPUnit'      vendor/bin/phpunit --exclude-testsuite=Integration
 run_gate 'Rector'       vendor/bin/rector process --dry-run --no-progress-bar
 run_gate 'composer audit' composer audit
+
+# typos は composer 依存ではなく各自の環境に入れるものなので、無い場合は飛ばす。
+if command -v typos > /dev/null 2>&1; then
+    run_gate 'typos' typos
+else
+    printf '\n  (typos 未インストールのためスキップ。apk add typos / cargo install typos-cli)\n'
+fi
 
 if [ "$with_integration" -eq 1 ]; then
     run_gate 'Integration (3306)' vendor/bin/phpunit --testsuite=Integration

@@ -11,4 +11,5 @@
 /phpunit.xml            export-ignore
 /.php-cs-fixer.dist.php export-ignore
 /rector.php             export-ignore
+/_typos.toml            export-ignore
 /tools                  export-ignore
