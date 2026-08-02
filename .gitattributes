@@ -12,4 +12,5 @@
 /.php-cs-fixer.dist.php export-ignore
 /rector.php             export-ignore
 /_typos.toml            export-ignore
+/composer-dependency-analyser.php export-ignore
 /tools                  export-ignore

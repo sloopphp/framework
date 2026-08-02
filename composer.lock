@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "9ddeb3745d5f4c714073d6bd1bc5a3ca",
+    "content-hash": "977bd6e0eb6636b3c4a01845f2d1c776",
     "packages": [
         {
             "name": "monolog/monolog",
@@ -510,57 +510,6 @@
                 "source": "https://github.com/php-fig/log/tree/3.0.2"
             },
             "time": "2024-09-11T13:17:53+00:00"
-        },
-        {
-            "name": "psr/simple-cache",
-            "version": "3.0.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/php-fig/simple-cache.git",
-                "reference": "764e0b3939f5ca87cb904f570ef9be2d78a07865"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/php-fig/simple-cache/zipball/764e0b3939f5ca87cb904f570ef9be2d78a07865",
-                "reference": "764e0b3939f5ca87cb904f570ef9be2d78a07865",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=8.0.0"
-            },
-            "type": "library",
-            "extra": {
-                "branch-alias": {
-                    "dev-master": "3.0.x-dev"
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Psr\\SimpleCache\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "PHP-FIG",
-                    "homepage": "https://www.php-fig.org/"
-                }
-            ],
-            "description": "Common interfaces for simple caching",
-            "keywords": [
-                "cache",
-                "caching",
-                "psr",
-                "psr-16",
-                "simple-cache"
-            ],
-            "support": {
-                "source": "https://github.com/php-fig/simple-cache/tree/3.0.0"
-            },
-            "time": "2021-10-29T13:26:27+00:00"
         }
     ],
     "packages-dev": [
@@ -4842,6 +4791,72 @@
             "time": "2025-02-07T05:00:38+00:00"
         },
         {
+            "name": "shipmonk/composer-dependency-analyser",
+            "version": "1.8.4",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/shipmonk-rnd/composer-dependency-analyser.git",
+                "reference": "975e5873b519d5180b1017a5dfb43d80781abd45"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/shipmonk-rnd/composer-dependency-analyser/zipball/975e5873b519d5180b1017a5dfb43d80781abd45",
+                "reference": "975e5873b519d5180b1017a5dfb43d80781abd45",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "ext-tokenizer": "*",
+                "php": "^7.2 || ^8.0"
+            },
+            "require-dev": {
+                "editorconfig-checker/editorconfig-checker": "^10.7.0",
+                "ergebnis/composer-normalize": "^2.19.0",
+                "ext-dom": "*",
+                "ext-libxml": "*",
+                "phpcompatibility/php-compatibility": "^9.3.5",
+                "phpstan/phpstan": "^1.12.26",
+                "phpstan/phpstan-phpunit": "^1.4.2",
+                "phpstan/phpstan-strict-rules": "^1.6.2",
+                "phpunit/phpunit": "^8.5.42 || ^9.6.23",
+                "shipmonk/name-collision-detector": "^2.1.1",
+                "slevomat/coding-standard": "^8.15.0"
+            },
+            "bin": [
+                "bin/composer-dependency-analyser"
+            ],
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "ShipMonk\\ComposerDependencyAnalyser\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Fast detection of composer dependency issues (dead dependencies, shadow dependencies, misplaced dependencies)",
+            "keywords": [
+                "analyser",
+                "composer",
+                "composer dependency",
+                "dead code",
+                "dead dependency",
+                "detector",
+                "dev",
+                "misplaced dependency",
+                "shadow dependency",
+                "static analysis",
+                "unused code",
+                "unused dependency"
+            ],
+            "support": {
+                "issues": "https://github.com/shipmonk-rnd/composer-dependency-analyser/issues",
+                "source": "https://github.com/shipmonk-rnd/composer-dependency-analyser/tree/1.8.4"
+            },
+            "time": "2025-11-25T14:38:16+00:00"
+        },
+        {
             "name": "slevomat/coding-standard",
             "version": "8.28.1",
             "source": {
@@ -6797,6 +6812,7 @@
     "platform": {
         "php": "^8.5",
         "ext-intl": "*",
+        "ext-mbstring": "*",
         "ext-pdo": "*",
         "ext-pdo_mysql": "*"
     },
