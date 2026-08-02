@@ -16,18 +16,34 @@
 
 set -uo pipefail
 
-cd "$(dirname "$0")/.." || exit 1
+# cd したあとも参照するため、スクリプト自身の絶対パスを先に確定させる。
+script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
+script_path="$script_dir/$(basename "$0")"
+
+cd "$script_dir/.." || exit 1
+
+# 出力先が端末でない場合（ログへのリダイレクト、CI 等）は色を付けない。
+if [ -t 1 ]; then
+    bold=$'\033[1m'; green=$'\033[32m'; red=$'\033[31m'; reset=$'\033[0m'
+else
+    bold=''; green=''; red=''; reset=''
+fi
 
 with_mutation=0
 with_integration=0
+
+# 冒頭のコメントブロック（2 行目から最初の空行まで）をそのままヘルプとして使う。
+usage() {
+    sed -n '2,/^$/{ s/^#\{1,\} \{0,1\}//; p; }' "$script_path"
+}
 
 for arg in "$@"; do
     case "$arg" in
         --with-mutation) with_mutation=1 ;;
         --with-integration) with_integration=1 ;;
         --all) with_mutation=1; with_integration=1 ;;
-        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-        *) echo "不明な引数: $arg" >&2; exit 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "不明な引数: $arg" >&2; usage >&2; exit 2 ;;
     esac
 done
 
@@ -38,7 +54,7 @@ run_gate() {
     local name="$1"
     shift
 
-    printf '\n\033[1m▶ %s\033[0m\n' "$name"
+    printf '\n%s▶ %s%s\n' "$bold" "$name" "$reset"
     "$@"
     local code=$?
 
@@ -64,14 +80,14 @@ if [ "$with_mutation" -eq 1 ]; then
     run_gate 'Infection' vendor/bin/infection --threads=4 --no-progress
 fi
 
-printf '\n\033[1m=== 終了コード ===\033[0m\n'
+printf '\n%s=== 終了コード ===%s\n' "$bold" "$reset"
 
 failed=0
 for i in "${!names[@]}"; do
     if [ "${codes[$i]}" -eq 0 ]; then
-        printf '  \033[32mOK  \033[0m %-22s EXIT=%s\n' "${names[$i]}" "${codes[$i]}"
+        printf '  %sOK  %s %-22s EXIT=%s\n' "$green" "$reset" "${names[$i]}" "${codes[$i]}"
     else
-        printf '  \033[31mFAIL\033[0m %-22s EXIT=%s\n' "${names[$i]}" "${codes[$i]}"
+        printf '  %sFAIL%s %-22s EXIT=%s\n' "$red" "$reset" "${names[$i]}" "${codes[$i]}"
         failed=1
     fi
 done
