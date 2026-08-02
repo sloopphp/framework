@@ -32,6 +32,22 @@ abstract class SloopException extends RuntimeException
     public protected(set) string $logLevel = LogLevel::ERROR;
 
     /**
+     * Valid PSR-3 log levels.
+     *
+     * @var list<string>
+     */
+    private const array VALID_LOG_LEVELS = [
+        LogLevel::EMERGENCY,
+        LogLevel::ALERT,
+        LogLevel::CRITICAL,
+        LogLevel::ERROR,
+        LogLevel::WARNING,
+        LogLevel::NOTICE,
+        LogLevel::INFO,
+        LogLevel::DEBUG,
+    ];
+
+    /**
      * Create a new Sloop exception.
      *
      * @param string         $message    Error message
@@ -39,6 +55,7 @@ abstract class SloopException extends RuntimeException
      * @param string         $logLevel   PSR-3 log level ('' = use class default)
      * @param Throwable|null $previous   Previous exception for chaining
      * @return void
+     * @throws \InvalidArgumentException When $logLevel is not a valid PSR-3 level
      */
     public function __construct(
         string $message = '',
@@ -53,6 +70,16 @@ abstract class SloopException extends RuntimeException
         }
 
         if ($logLevel !== '') {
+            // An invalid level string would otherwise surface much later as an
+            // InvalidArgumentException inside the logger — i.e. while the
+            // exception handler is processing this very exception — turning a
+            // handled error into an unhandled one. Fail at the throw site instead.
+            if (!\in_array($logLevel, self::VALID_LOG_LEVELS, true)) {
+                throw new \InvalidArgumentException(
+                    'Invalid PSR-3 log level: ' . $logLevel
+                );
+            }
+
             $this->logLevel = $logLevel;
         }
     }
