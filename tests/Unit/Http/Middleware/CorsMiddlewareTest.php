@@ -94,6 +94,27 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertContains('Origin', $values);
     }
 
+    public function testVaryOriginIsNotDuplicatedWhenListedInCommaSeparatedHeader(): void
+    {
+        // A single `Vary: Accept-Encoding, Origin` header is the common wire
+        // form, and splitting it yields " Origin" with a leading space. The
+        // duplicate check must normalize whitespace, otherwise Origin is
+        // appended a second time.
+        $cors    = $this->createCors();
+        $request = $this->createRequest(origin: 'https://example.com');
+
+        $handler = new class () implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return new Response(200)->withHeader('Vary', 'Accept-Encoding, Origin');
+            }
+        };
+
+        $response = $cors->process($request, $handler);
+
+        $this->assertSame(['Accept-Encoding, Origin'], $response->getHeader('Vary'));
+    }
+
     public function testNoVaryForDisallowedOrigin(): void
     {
         $cors     = $this->createCors();

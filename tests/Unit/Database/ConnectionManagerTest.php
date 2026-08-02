@@ -334,6 +334,34 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame(['replica2.internal:0'], $factory->invocations);
     }
 
+    public function testReplicaRouteSkipsDeadReplicaMarkedOnNonDefaultPort(): void
+    {
+        // The dead-cache lookup must key on the configured port, not the 3306
+        // fallback: a replica on 3307 marked dead has to stay skipped.
+        $replica2 = $this->realConnection();
+        $factory  = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica2.internal', 0, $replica2);
+
+        $this->deadCache->markServerDead('replica1.internal', 3307, 300);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [
+                    ['host' => 'replica1.internal', 'port' => 3307],
+                    ['host' => 'replica2.internal'],
+                ],
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        // replica1 never reaches the factory — only replica2 is attempted.
+        $this->assertSame($replica2, $manager->connection(writable: false));
+        $this->assertSame(['replica2.internal:0'], $factory->invocations);
+    }
+
     public function testReplicaRouteFallsThroughToNextReplicaOnConnectFailure(): void
     {
         $replica2 = $this->realConnection();
@@ -487,7 +515,7 @@ final class ConnectionManagerTest extends TestCase
         $factory = new ScriptedConnectionFactory();
         $factory->expectFailure(
             'replica.internal',
-            3306,
+            3307,
             new DatabaseConnectionException('refused', 'replica', null, 2002),
         );
 
@@ -496,7 +524,7 @@ final class ConnectionManagerTest extends TestCase
                 'driver'                  => 'mysql',
                 'host'                    => 'primary.internal',
                 'database'                => 'app',
-                'read'                    => [['host' => 'replica.internal', 'port' => 3306]],
+                'read'                    => [['host' => 'replica.internal', 'port' => 3307]],
                 'health_check'            => false,
                 'max_connection_attempts' => 1,
             ],
@@ -509,11 +537,11 @@ final class ConnectionManagerTest extends TestCase
             // empty
         }
 
-        // port=3306 specifically: dead-cache key carries 3306, not 0.
-        // Confirms that $replica->port (not the null-coalesce default 0) is
-        // forwarded to the cache.
-        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
-        $this->assertFalse($this->deadCache->isDead('replica.internal', 0, 'master'));
+        // A non-default port is required here: the key falls back to 3306 when
+        // `port` is omitted, so asserting with 3306 could not tell the
+        // configured value apart from the fallback.
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3307, 'master'));
+        $this->assertFalse($this->deadCache->isDead('replica.internal', 3306, 'master'));
     }
 
     public function testReplicaRouteRespectsMaxConnectionAttempts(): void
@@ -853,20 +881,23 @@ final class ConnectionManagerTest extends TestCase
 
     public function testProbeReplicasUsesDeclaredPortInResultKey(): void
     {
+        // A non-default port is required: the key falls back to 3306 when
+        // `port` is omitted, so 3306 here could not tell the declared value
+        // apart from the fallback.
         $replica = $this->pingableConnection();
         $factory = new ScriptedConnectionFactory();
-        $factory->expectSuccess('replica.internal', 3306, $replica);
+        $factory->expectSuccess('replica.internal', 3307, $replica);
 
         $manager = $this->manager('master', [
             'master' => [
                 'driver'   => 'mysql',
                 'host'     => 'primary.internal',
                 'database' => 'app',
-                'read'     => [['host' => 'replica.internal', 'port' => 3306]],
+                'read'     => [['host' => 'replica.internal', 'port' => 3307]],
             ],
         ], $factory);
 
-        $this->assertSame(['replica.internal:3306' => true], $manager->probeReplicas());
+        $this->assertSame(['replica.internal:3307' => true], $manager->probeReplicas());
     }
 
     public function testProbeReplicasMarksServerDeadOnConnectFailure(): void
@@ -1310,7 +1341,14 @@ final class ConnectionManagerTest extends TestCase
                     'database'                => 'app',
                     'log_bindings'            => false,
                     'log_all_queries'         => true,
-                    'slow_query_threshold_ms' => 100,
+                    // The slow-query branch returns early, so a threshold the
+                    // query could plausibly exceed would turn the debug
+                    // assertion below into a warning on a slow runner (this
+                    // failed on the Windows runner at 100). The value itself is
+                    // not what this test covers — ConnectionConfigResolverTest
+                    // asserts the key reaches PoolConfig — so pick one that no
+                    // in-memory SELECT can reach.
+                    'slow_query_threshold_ms' => 60000,
                 ],
             ],
             factory: $factory,
