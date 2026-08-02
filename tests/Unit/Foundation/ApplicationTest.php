@@ -125,6 +125,23 @@ final class ApplicationTest extends TestCase
         return new ServerRequest($method, new Uri($uri));
     }
 
+    /**
+     * Replace the default log channel's handlers with a TestHandler.
+     *
+     * The ExceptionHandler singleton logs through this same cached Logger
+     * instance, so records captured here are exactly what the error boundary
+     * emitted (and nothing leaks to the real stream during tests).
+     */
+    private function captureLog(Application $app): TestHandler
+    {
+        $handler = new TestHandler();
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+        $manager->channel()->setHandlers([$handler]);
+
+        return $handler;
+    }
+
     public function testBootsWithMinimalStructure(): void
     {
         new Application($this->tmpDir);
@@ -297,14 +314,16 @@ final class ApplicationTest extends TestCase
                 ->middleware(\Sloop\Tests\Unit\Foundation\Stub\HealthController::class);
         ');
 
-        $app = new Application($this->tmpDir);
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage(
+        $response = $app->run($this->createRequest('GET', '/health'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+        $this->assertTrue($handler->hasCriticalThatContains(
             'Middleware must implement MiddlewareInterface: ' . HealthController::class,
-        );
-
-        $app->run($this->createRequest('GET', '/health'));
+        ));
     }
 
     public function testMultipleRouteMiddlewaresExecuteInRegisteredOrder(): void
@@ -794,11 +813,15 @@ final class ApplicationTest extends TestCase
 
         $app = new Application($this->tmpDir);
         $app->container->instance('NonObjectController', 'not an object');
+        $handler = $this->captureLog($app);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Controller must be an object: NonObjectController');
+        $response = $app->run($this->createRequest('GET', '/test'));
 
-        $app->run($this->createRequest('GET', '/test'));
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+        $this->assertTrue($handler->hasCriticalThatContains(
+            'Controller must be an object: NonObjectController',
+        ));
     }
 
     public function testBuildMiddlewareDispatcherThrowsForInvalidMiddleware(): void
@@ -809,62 +832,93 @@ final class ApplicationTest extends TestCase
             '<?php return [\Sloop\Tests\Unit\Foundation\Stub\HealthController::class];',
         );
 
-        $app = new Application($this->tmpDir);
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage(
-            'Middleware must implement MiddlewareInterface: '
-            . HealthController::class,
-        );
+        $response = $app->run($this->createRequest('GET', '/anything'));
 
-        $app->run($this->createRequest('GET', '/anything'));
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+        $this->assertTrue($handler->hasCriticalThatContains(
+            'Middleware must implement MiddlewareInterface: ' . HealthController::class,
+        ));
     }
 
     public function testHandleConvertsReflectionExceptionToRuntimeException(): void
     {
         // Route to a non-existent action method; RouteRequestHandler raises
         // \ReflectionException, which Application::handle wraps into a
-        // \RuntimeException so callers do not handle Reflection internals.
+        // \RuntimeException. The error boundary in run() then logs it and
+        // returns a generic 500 without leaking Reflection internals.
         $this->writeRoutes('<?php
             $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "nonExistentMethod");
         ');
 
-        $app = new Application($this->tmpDir);
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
 
-        try {
-            $app->run($this->createRequest('GET', '/test'));
-            $this->fail('Expected \RuntimeException');
-        } catch (\RuntimeException $e) {
-            $this->assertStringStartsWith(
-                'Failed to reflect controller action: ',
-                $e->getMessage(),
-            );
-            $this->assertInstanceOf(\ReflectionException::class, $e->getPrevious());
-        }
+        $response = $app->run($this->createRequest('GET', '/test'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+        $this->assertTrue($handler->hasCriticalThatContains('Failed to reflect controller action: '));
     }
 
     public function testHandleConvertsReflectionExceptionThroughMiddlewareDispatcher(): void
     {
         // Even when the route is wrapped by a middleware dispatcher, a
         // \ReflectionException raised inside the final handler must still be
-        // normalized to \RuntimeException at the Application::handle level.
+        // normalized at the Application::handle level and caught by run().
         $this->writeRoutes('<?php
             $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "nonExistentMethod")
                 ->middleware(\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class);
         ');
 
-        $app = new Application($this->tmpDir);
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
 
-        try {
-            $app->run($this->createRequest('GET', '/test'));
-            $this->fail('Expected \RuntimeException');
-        } catch (\RuntimeException $e) {
-            $this->assertStringStartsWith(
-                'Failed to reflect controller action: ',
-                $e->getMessage(),
-            );
-            $this->assertInstanceOf(\ReflectionException::class, $e->getPrevious());
-        }
+        $response = $app->run($this->createRequest('GET', '/test'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+        $this->assertTrue($handler->hasCriticalThatContains('Failed to reflect controller action: '));
+    }
+
+    public function testDomainExceptionMessageAndStatusAreExposedToTheClient(): void
+    {
+        // DomainException carries a client-caused message and its own HTTP
+        // status (422 by default), so the boundary passes both through.
+        $this->writeRoutes('<?php
+            $router->get("/order", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "domain");
+        ');
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/order'));
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertStringContainsString('Order already shipped', (string) $response->getBody());
+        $this->assertTrue($handler->hasWarningThatContains('Order already shipped'));
+    }
+
+    public function testGenericExceptionMessageIsNotExposedToTheClient(): void
+    {
+        // Non-Domain exception messages may embed internals (failed SQL,
+        // file paths); the boundary logs them but responds with a generic body.
+        $this->writeRoutes('<?php
+            $router->get("/boom", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "generic");
+        ');
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/boom'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringNotContainsString('secret internal detail', (string) $response->getBody());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+        $this->assertTrue($handler->hasCriticalThatContains('secret internal detail'));
     }
 
     public function testConnectionManagerIsRegisteredAsSingleton(): void
