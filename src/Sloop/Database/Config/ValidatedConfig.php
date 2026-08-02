@@ -13,7 +13,10 @@ namespace Sloop\Database\Config;
  * post-validation state in a typed object replaces ad-hoc array access
  * and assert() calls in the resolver.
  *
- * @internal Constructed by ConnectionConfigResolver only.
+ * 構築は ConnectionConfigResolver に限るが、ReplicaSelector::pick() の引数型
+ * として公開されるため、独自の選択戦略を実装する利用者はこの型を受け取る。
+ *
+ * @api
  */
 final readonly class ValidatedConfig
 {

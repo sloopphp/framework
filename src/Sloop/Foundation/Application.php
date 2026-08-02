@@ -20,7 +20,7 @@ use Sloop\Database\Replica\ApcuDeadReplicaCache;
 use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
-use Sloop\Database\Replica\ReplicaSelector;
+use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
@@ -251,7 +251,10 @@ final class Application implements RequestHandlerInterface
         $this->container->singleton(TraceContext::class, fn (): TraceContext => new TraceContext());
         $this->container->singleton(LogManager::class, fn (Container $container): LogManager => $this->createLogManager($container));
         $this->container->singleton(ConnectionFactory::class, fn (): ConnectionFactory => new PdoConnectionFactory());
-        $this->container->singleton(ReplicaSelector::class, fn (): ReplicaSelector => new RandomReplicaSelector());
+        $this->container->singleton(
+            ReplicaSelectorRegistry::class,
+            fn (): ReplicaSelectorRegistry => new ReplicaSelectorRegistry(['random' => new RandomReplicaSelector()]),
+        );
         $this->container->singleton(DeadReplicaCache::class, fn (): DeadReplicaCache => $this->createDeadReplicaCache());
         $this->container->singleton(ConnectionManager::class, fn (Container $container): ConnectionManager => $this->createConnectionManager($container));
         $this->container->singleton(ExceptionHandler::class, fn (Container $container): ExceptionHandler => $this->createExceptionHandler($container));
@@ -398,7 +401,7 @@ final class Application implements RequestHandlerInterface
     /**
      * Create the ConnectionManager from configuration.
      *
-     * @param  Container         $container Container used to resolve the ConnectionFactory / ReplicaSelector / DeadReplicaCache bindings
+     * @param  Container         $container Container used to resolve the ConnectionFactory / ReplicaSelectorRegistry / DeadReplicaCache bindings
      * @return ConnectionManager
      * @throws \RuntimeException If any required binding does not implement its declared interface
      */
@@ -423,10 +426,10 @@ final class Application implements RequestHandlerInterface
             );
         }
 
-        $replicaSelector = $container->get(ReplicaSelector::class);
-        if (!$replicaSelector instanceof ReplicaSelector) {
+        $replicaSelectors = $container->get(ReplicaSelectorRegistry::class);
+        if (!$replicaSelectors instanceof ReplicaSelectorRegistry) {
             throw new \RuntimeException(
-                'Container binding for ' . ReplicaSelector::class . ' must implement ReplicaSelector.',
+                'Container binding for ' . ReplicaSelectorRegistry::class . ' must be a ReplicaSelectorRegistry.',
             );
         }
 
@@ -448,7 +451,7 @@ final class Application implements RequestHandlerInterface
             defaultName: $default,
             configs: $connections,
             factory: $factory,
-            replicaSelector: $replicaSelector,
+            replicaSelectors: $replicaSelectors,
             deadCache: $deadCache,
             logger: $logManager->channel('database'),
         );

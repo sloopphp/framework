@@ -25,6 +25,7 @@ use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelector;
+use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Response\ResponseFormatterInterface;
@@ -1062,23 +1063,24 @@ final class ApplicationTest extends TestCase
         }
     }
 
-    public function testReplicaSelectorIsRegisteredAsSingleton(): void
+    public function testReplicaSelectorRegistryIsRegisteredAsSingleton(): void
     {
         $app = new Application($this->tmpDir);
 
-        $first  = $app->container->get(ReplicaSelector::class);
-        $second = $app->container->get(ReplicaSelector::class);
+        $first  = $app->container->get(ReplicaSelectorRegistry::class);
+        $second = $app->container->get(ReplicaSelectorRegistry::class);
 
         $this->assertSame($first, $second);
     }
 
-    public function testReplicaSelectorDefaultsToRandomReplicaSelector(): void
+    public function testReplicaSelectorRegistryMapsRandomToRandomReplicaSelector(): void
     {
         $app = new Application($this->tmpDir);
 
-        $selector = $app->container->get(ReplicaSelector::class);
+        $registry = $app->container->get(ReplicaSelectorRegistry::class);
 
-        $this->assertInstanceOf(RandomReplicaSelector::class, $selector);
+        $this->assertInstanceOf(ReplicaSelectorRegistry::class, $registry);
+        $this->assertInstanceOf(RandomReplicaSelector::class, $registry->get('random'));
     }
 
     public function testDeadReplicaCacheIsRegisteredAsSingleton(): void
@@ -1107,18 +1109,18 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf($expected, $cache);
     }
 
-    public function testConnectionManagerThrowsWhenReplicaSelectorBindingIsInvalid(): void
+    public function testConnectionManagerThrowsWhenReplicaSelectorRegistryBindingIsInvalid(): void
     {
         $app = new Application($this->tmpDir);
 
-        $app->container->instance(ReplicaSelector::class, new \stdClass());
+        $app->container->instance(ReplicaSelectorRegistry::class, new \stdClass());
 
         try {
             $app->container->get(ConnectionManager::class);
             $this->fail('Expected RuntimeException');
         } catch (\RuntimeException $e) {
             $this->assertSame(
-                'Container binding for ' . ReplicaSelector::class . ' must implement ReplicaSelector.',
+                'Container binding for ' . ReplicaSelectorRegistry::class . ' must be a ReplicaSelectorRegistry.',
                 $e->getMessage(),
             );
         }
@@ -1207,7 +1209,7 @@ final class ApplicationTest extends TestCase
         $this->assertTrue($handler->hasErrorRecords());
     }
 
-    public function testConnectionManagerUsesOverriddenReplicaSelectorBinding(): void
+    public function testConnectionManagerUsesSelectorFromReplicaSelectorRegistry(): void
     {
         $this->writeConfig('database.php', '<?php return [
             "default" => "primary",
@@ -1234,7 +1236,10 @@ final class ApplicationTest extends TestCase
                 return 0;
             }
         };
-        $app->container->instance(ReplicaSelector::class, $customSelector);
+        $app->container->instance(
+            ReplicaSelectorRegistry::class,
+            new ReplicaSelectorRegistry(['random' => $customSelector]),
+        );
 
         // Replica route requires a Connection from the factory; override with a stub
         // that hands back a SQLite-backed Connection so the route runs to completion.

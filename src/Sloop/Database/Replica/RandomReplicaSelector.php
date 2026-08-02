@@ -14,7 +14,7 @@ use Sloop\Database\Config\ValidatedConfig;
  * or weighted strategies. Future selectors (e.g. RoundRobin / Weighted)
  * may be added behind the same interface in subsequent minor releases.
  *
- * @internal
+ * @api
  */
 final class RandomReplicaSelector implements ReplicaSelector
 {

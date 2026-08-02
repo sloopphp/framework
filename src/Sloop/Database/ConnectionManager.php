@@ -13,7 +13,7 @@ use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Replica\DeadReplicaCache;
-use Sloop\Database\Replica\ReplicaSelector;
+use Sloop\Database\Replica\ReplicaSelectorRegistry;
 
 /**
  * Lazily creates and caches database connections from pool configurations.
@@ -86,7 +86,7 @@ final class ConnectionManager
      * @param string                              $defaultName     Pool name to return from connection()
      * @param array<string, array<string, mixed>> $configs         Pool configurations indexed by pool name
      * @param ConnectionFactory                   $factory         Builds Connection instances from validated configs
-     * @param ReplicaSelector                     $replicaSelector Strategy for picking one replica from surviving candidates
+     * @param ReplicaSelectorRegistry             $replicaSelectors Maps each pool's `replica_selector` identifier to its strategy
      * @param DeadReplicaCache                    $deadCache       Negative cache for replicas that recently failed to connect
      * @param LoggerInterface|null                $logger          PSR-3 logger injected into each created Connection (typically the `database` channel); null disables query logging
      */
@@ -94,7 +94,7 @@ final class ConnectionManager
         private readonly string $defaultName,
         private readonly array $configs,
         private readonly ConnectionFactory $factory,
-        private readonly ReplicaSelector $replicaSelector,
+        private readonly ReplicaSelectorRegistry $replicaSelectors,
         private readonly DeadReplicaCache $deadCache,
         private readonly ?LoggerInterface $logger = null,
     ) {
@@ -187,7 +187,7 @@ final class ConnectionManager
         $attempts              = 0;
 
         while ($candidates !== [] && $attempts < $pool->maxConnectionAttempts) {
-            $index  = $this->replicaSelector->pick($candidates);
+            $index  = $this->replicaSelectors->get($pool->replicaSelector)->pick($candidates);
             $picked = $candidates[$index];
             $attempts++;
 
@@ -332,7 +332,13 @@ final class ConnectionManager
             );
         }
 
-        return ConnectionConfigResolver::validatePool($name, $this->configs[$name]);
+        $pool = ConnectionConfigResolver::validatePool($name, $this->configs[$name]);
+
+        // 読み取り経路に入る前に落とす。どの識別子が有効かはレジストリの登録内容で
+        // 決まるため、設定の検証側では型しか見ていない。
+        $this->replicaSelectors->get($pool->replicaSelector);
+
+        return $pool;
     }
 
     /**
