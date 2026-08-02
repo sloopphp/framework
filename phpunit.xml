@@ -12,7 +12,8 @@
          failOnWarning="true"
          failOnNotice="true"
          failOnDeprecation="true"
-         failOnEmptyTestSuite="true">
+         failOnEmptyTestSuite="true"
+         beStrictAboutChangesToGlobalState="true">
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>

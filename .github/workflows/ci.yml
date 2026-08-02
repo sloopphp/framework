@@ -36,8 +36,11 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 
+      # 実行順に依存するテストを検出するため、CI では毎回ランダム順で走らせる。
+      # 失敗時は出力ヘッダの Random Seed を --random-order-seed に渡せば再現できる。
+      # ローカルは phpunit.xml の executionOrder（前回失敗を優先）のままにしてある。
       - name: Run tests
-        run: vendor/bin/phpunit --exclude-testsuite=Integration
+        run: vendor/bin/phpunit --exclude-testsuite=Integration --order-by=random
 
   code-style:
     name: Code Style
