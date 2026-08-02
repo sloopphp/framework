@@ -125,7 +125,7 @@ final class LikePatternTest extends TestCase
     }
 
     /**
-     * @return array<string, array{string}>
+     * @return array<string, array{string, string}>
      */
     public static function provideWildcardEscapeChars(): array
     {

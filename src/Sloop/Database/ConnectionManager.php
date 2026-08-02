@@ -52,6 +52,16 @@ final class ConnectionManager
     private const int DEFAULT_MYSQL_PORT = 3306;
 
     /**
+     * Driver error codes that indicate a pool-specific failure (in addition
+     * to SQLSTATE 28000 auth failures): the pool's user lacks access to its
+     * database (1044) or the configured database does not exist (1049).
+     * Both report SQLSTATE 42000, not 28000.
+     *
+     * @var list<int>
+     */
+    private const array POOL_SPECIFIC_ERROR_CODES = [1044, 1049];
+
+    /**
      * Cached primary Connection instances keyed by pool name.
      *
      * @var array<string, Connection>
@@ -348,16 +358,6 @@ final class ConnectionManager
 
         return [$alive, $skipped];
     }
-
-    /**
-     * Driver error codes that indicate a pool-specific failure (in addition
-     * to SQLSTATE 28000 auth failures): the pool's user lacks access to its
-     * database (1044) or the configured database does not exist (1049).
-     * Both report SQLSTATE 42000, not 28000.
-     *
-     * @var list<int>
-     */
-    private const array POOL_SPECIFIC_ERROR_CODES = [1044, 1049];
 
     /**
      * Mark a failed replica dead in the negative cache.
