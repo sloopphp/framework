@@ -9,7 +9,10 @@
          beStrictAboutCoverageMetadata="false"
          beStrictAboutOutputDuringTests="true"
          failOnRisky="true"
-         failOnWarning="true">
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         failOnEmptyTestSuite="true">
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>

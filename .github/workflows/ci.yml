@@ -96,6 +96,10 @@ jobs:
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse
 
+      # ライブラリのため、脆弱な依存はそのまま利用者側へ伝播する。
+      - name: Audit dependencies
+        run: composer audit
+
   rector:
     name: Rector (PHP version migration)
     runs-on: ubuntu-latest
