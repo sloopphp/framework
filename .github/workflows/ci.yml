@@ -69,6 +69,32 @@ jobs:
       - name: Check code style (PHPCS)
         run: vendor/bin/phpcs
 
+  typos:
+    name: Typos
+    runs-on: ubuntu-latest
+    env:
+      TYPOS_VERSION: '1.45.1'
+      TYPOS_SHA256: '33447531a0eff29796d6fb9b555b4628723db72c6bad129e168d97ac86ceb0f1'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # 公式 Action ではなくリリースバイナリを取得する。typos は対象ファイルを読む
+      # だけで workflow のトークンやコンテキストを必要としないため、Action として
+      # 権限を渡す必然性がない。
+      # 配布元がチェックサムを公開していないので、導入時に実測した値で固定する。
+      # バージョンを上げる際は SHA256 も実測して差し替えること。
+      - name: Install typos
+        run: |
+          url="https://github.com/crate-ci/typos/releases/download/v${TYPOS_VERSION}/typos-v${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -sSfL -o "${RUNNER_TEMP}/typos.tar.gz" "$url"
+          echo "${TYPOS_SHA256}  ${RUNNER_TEMP}/typos.tar.gz" | sha256sum -c -
+          tar xzf "${RUNNER_TEMP}/typos.tar.gz" -C "${RUNNER_TEMP}" ./typos
+
+      # 除外設定はリポジトリ直下の _typos.toml を自動で読む。
+      - name: Check typos
+        run: "${RUNNER_TEMP}/typos"
+
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
