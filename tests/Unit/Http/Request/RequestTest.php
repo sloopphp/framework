@@ -172,7 +172,7 @@ final class RequestTest extends TestCase
         $this->assertTrue($request->isAjax());
     }
 
-    public function testIsAjaxReturnsFalseForNormalRequest(): void
+    public function testIsAjaxReturnsFalseForNonAjaxRequest(): void
     {
         $request = $this->createRequest();
 

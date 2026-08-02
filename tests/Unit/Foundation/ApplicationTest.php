@@ -20,7 +20,9 @@ use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Factory\PdoConnectionFactory;
+use Sloop\Database\Replica\ApcuDeadReplicaCache;
 use Sloop\Database\Replica\DeadReplicaCache;
+use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Foundation\Application;
@@ -35,7 +37,7 @@ use Sloop\Tests\Unit\Foundation\Stub\HealthController;
 use Sloop\Tests\Unit\Foundation\Stub\InvalidChannelFactory;
 use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
 
-/**
+/*
  * Integration tests for Application boot sequence and request dispatch.
  *
  * ## Deferred coverage (intentionally not tested in v0.1)
@@ -921,6 +923,65 @@ final class ApplicationTest extends TestCase
         $this->assertTrue($handler->hasCriticalThatContains('secret internal detail'));
     }
 
+    public function testErrorResponsePassesBackThroughGlobalMiddleware(): void
+    {
+        // The error boundary lives in handle() (the final handler), so an
+        // error response must still travel back through the global middleware
+        // stack and receive its headers.
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
+        );
+        $this->writeRoutes('<?php
+            $router->get("/boom", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "generic");
+        ');
+
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/boom'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testRouteMiddlewareRequestMutationIsVisibleToController(): void
+    {
+        // Route middleware mutates the PSR-7 request (withAttribute); the
+        // controller's Sloop Request wraps the mutated instance — matching
+        // the behavior of global middleware.
+        $this->writeRoutes('<?php
+            $router->get("/echo", \Sloop\Tests\Unit\Foundation\Stub\AttributeEchoController::class, "show")
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\AttributeInjectingMiddleware::class);
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/echo'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('from-middleware', (string) $response->getBody());
+    }
+
+    public function testBrokenLogConfigStillYieldsErrorResponse(): void
+    {
+        // The ExceptionHandler resolves its log channel lazily, so a broken
+        // config/log.php first surfaces while handling another exception.
+        // The boundary must still produce a 500 instead of crashing.
+        $this->writeConfig('log.php', '<?php return [
+            "default"  => "app",
+            "channels" => ["app" => ["driver" => "unknown-driver"]],
+        ];');
+        $this->writeRoutes('<?php
+            $router->get("/boom", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "generic");
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/boom'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
+    }
+
     public function testConnectionManagerIsRegisteredAsSingleton(): void
     {
         $app = new Application($this->tmpDir);
@@ -1032,14 +1093,18 @@ final class ApplicationTest extends TestCase
 
     public function testDeadReplicaCacheDefaultsToConcreteImplementation(): void
     {
-        // Resolves to ApcuDeadReplicaCache when ext-apcu is enabled and apc.enable_cli=1,
-        // otherwise InMemoryDeadReplicaCache. Either way the binding must satisfy
-        // the DeadReplicaCache contract.
+        // Resolves to ApcuDeadReplicaCache when ext-apcu is enabled and
+        // apc.enable_cli=1, otherwise InMemoryDeadReplicaCache. Asserting the
+        // interface alone would pass no matter which branch was taken, so the
+        // expected class is derived from the same availability check.
         $app = new Application($this->tmpDir);
 
         $cache = $app->container->get(DeadReplicaCache::class);
 
-        $this->assertInstanceOf(DeadReplicaCache::class, $cache);
+        $expected = ApcuDeadReplicaCache::isAvailable()
+            ? ApcuDeadReplicaCache::class
+            : InMemoryDeadReplicaCache::class;
+        $this->assertInstanceOf($expected, $cache);
     }
 
     public function testConnectionManagerThrowsWhenReplicaSelectorBindingIsInvalid(): void

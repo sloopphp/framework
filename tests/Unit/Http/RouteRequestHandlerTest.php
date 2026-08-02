@@ -45,13 +45,11 @@ final class RouteRequestHandlerTest extends TestCase
         $container->instance($controller, new $controller());
 
         $serverRequest = new ServerRequest('GET', '/dispatch');
-        $sloopRequest  = new Request($serverRequest, $params);
         $route         = new Route('GET', '/dispatch', $controller, $action);
 
         $handler = new RouteRequestHandler(
             $container,
             $route,
-            $sloopRequest,
             $params,
             $this->formatter(),
         );

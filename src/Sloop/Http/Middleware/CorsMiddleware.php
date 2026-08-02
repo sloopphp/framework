@@ -186,7 +186,9 @@ final readonly class CorsMiddleware implements MiddlewareInterface
             ->withHeader('Access-Control-Allow-Methods', implode(', ', $this->allowedMethods))
             ->withHeader('Access-Control-Allow-Headers', implode(', ', $this->allowedHeaders));
 
-        if (!$this->wildcardOrigin) {
+        // Guarded append: when this middleware is registered both globally and
+        // per-route, the second pass must not produce `Vary: Origin, Origin`.
+        if (!$this->wildcardOrigin && !$this->varyContainsOrigin($response)) {
             $response = $response->withAddedHeader('Vary', 'Origin');
         }
 
@@ -195,5 +197,21 @@ final readonly class CorsMiddleware implements MiddlewareInterface
         }
 
         return $response;
+    }
+
+    /**
+     * Check whether the response's Vary header already lists Origin.
+     *
+     * @param  ResponseInterface $response Response to inspect
+     * @return bool
+     */
+    private function varyContainsOrigin(ResponseInterface $response): bool
+    {
+        $values = array_map(
+            static fn (string $value): string => strtolower(trim($value)),
+            explode(',', implode(',', $response->getHeader('Vary'))),
+        );
+
+        return \in_array('origin', $values, true);
     }
 }
