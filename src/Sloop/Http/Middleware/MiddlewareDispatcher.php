@@ -47,6 +47,9 @@ final class MiddlewareDispatcher implements RequestHandlerInterface
     /**
      * Add a middleware to the stack.
      *
+     * Only effective before handle() is called: dispatch walks the stack
+     * through clones, so middleware piped mid-dispatch is not picked up.
+     *
      * @param MiddlewareInterface $middleware Middleware to add
      * @return self
      */

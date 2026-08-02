@@ -118,7 +118,8 @@ final class Router
      * Register CRUD resource routes for a controller.
      *
      * Registers index, find, create, update, delete by default.
-     * Use only() or except() on the returned RouteGroup to customize.
+     * Use the `only:` / `except:` arguments to limit which methods
+     * are registered.
      *
      * @param string      $pattern    Base URI pattern (e.g., '/users')
      * @param string      $controller Controller class name

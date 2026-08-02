@@ -133,6 +133,17 @@ final class SloopExceptionTest extends TestCase
         $this->assertSame(LogLevel::ERROR, $exception->logLevel);
     }
 
+    public function testInvalidLogLevelIsRejectedAtConstruction(): void
+    {
+        // A typo like 'warn' would otherwise surface as an
+        // InvalidArgumentException inside the logger while the exception
+        // handler is processing this very exception, so fail at the throw site.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid PSR-3 log level: warn');
+
+        new DomainException('typo in level', 0, 'warn');
+    }
+
     public function testEmptyLogLevelUsesDefault(): void
     {
         $exception = new InfrastructureException('Timeout', 0, '');

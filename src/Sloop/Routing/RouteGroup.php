@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Sloop\Routing;
 
 /**
- * Fluent builder returned by Router::resource() for customizing CRUD routes.
+ * Group of routes returned by Router::resource() for attaching middleware.
  *
- * Allows limiting which resource methods are registered
- * via only() or except().
+ * Limiting which resource methods are registered is done via the
+ * `only:` / `except:` arguments of Router::resource() itself.
  */
 final readonly class RouteGroup
 {
@@ -24,6 +24,10 @@ final readonly class RouteGroup
 
     /**
      * Add middleware to all routes in the group.
+     *
+     * Mutates the contained Route instances in place — the same instances
+     * are already registered in the Router, so the middleware takes effect
+     * on the registered routes immediately.
      *
      * @param  string ...$middleware Middleware class names
      * @return self

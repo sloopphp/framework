@@ -64,6 +64,10 @@ abstract class Controller
     /**
      * Create a redirect response.
      *
+     * The URL is set as the Location header verbatim. When it derives from
+     * user input (e.g. a `?next=` parameter), validate it against an
+     * allow-list first — otherwise the endpoint becomes an open redirect.
+     *
      * @param  string $url    Redirect URL
      * @param  int    $status HTTP status code (default 302)
      * @return ResponseInterface
