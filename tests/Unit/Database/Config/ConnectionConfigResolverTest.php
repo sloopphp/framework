@@ -185,6 +185,43 @@ final class ConnectionConfigResolverTest extends TestCase
         }
     }
 
+    public function testValidateRejectsHostContainingDsnMetacharacters(): void
+    {
+        // `;` and `=` are DSN metacharacters: a tainted host such as
+        // `x;unix_socket=/tmp/evil.sock` could append extra DSN keys and
+        // redirect the connection.
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'x;unix_socket=/tmp/evil.sock',
+                'database' => 'app',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "host" must not contain ";", "=", or NUL.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidateRejectsDatabaseContainingDsnMetacharacters(): void
+    {
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app=x',
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                'Connection [master]: config key "database" must not contain ";", "=", or NUL.',
+                $e->getMessage(),
+            );
+        }
+    }
+
     public function testValidateRejectsNonIntPort(): void
     {
         try {

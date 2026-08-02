@@ -48,10 +48,21 @@ final class Config
      * @return void
      * @throws RuntimeException If the config directory does not exist
      * @throws RuntimeException If already loaded
+     * @throws RuntimeException If the environment name contains characters outside [A-Za-z0-9_-]
      */
     public static function load(string $configPath, ?string $environment = null): void
     {
         $instance = self::getInstance();
+
+        // The environment name becomes a path segment under the config
+        // directory whose PHP files get executed; reject anything that could
+        // escape it (e.g. an APP_ENV of '../../evil' from a tainted process env).
+        if ($environment !== null && preg_match('/\A[A-Za-z0-9_-]+\z/', $environment) !== 1) {
+            throw new RuntimeException(
+                'Invalid environment name: ' . $environment
+                . ' (only [A-Za-z0-9_-] is allowed)'
+            );
+        }
 
         if ($instance->frozen) {
             throw new RuntimeException('Configuration has already been loaded.');
