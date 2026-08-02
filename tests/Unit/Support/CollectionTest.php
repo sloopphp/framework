@@ -32,12 +32,12 @@ final class CollectionTest extends TestCase
 
     public function testCountReturnsNumberOfItems(): void
     {
-        $this->assertSame(3, Collection::from([1, 2, 3])->count());
+        $this->assertCount(3, Collection::from([1, 2, 3]));
     }
 
     public function testCountReturnsZeroForEmpty(): void
     {
-        $this->assertSame(0, Collection::from([])->count());
+        $this->assertCount(0, Collection::from([]));
     }
 
     public function testIsEmptyReturnsTrueForEmpty(): void
@@ -442,8 +442,8 @@ final class CollectionTest extends TestCase
         $result = Collection::from($items)->groupBy('type');
 
         $this->assertInstanceOf(Collection::class, $result->toArray()['fruit']);
-        $this->assertSame(2, $result->toArray()['fruit']->count());
-        $this->assertSame(1, $result->toArray()['veg']->count());
+        $this->assertCount(2, $result->toArray()['fruit']);
+        $this->assertCount(1, $result->toArray()['veg']);
     }
 
     public function testGroupByCallable(): void
