@@ -106,6 +106,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface  $request PSR-7 server request
      * @return ResponseInterface
+     * @throws \RuntimeException When the response formatter cannot be resolved while rendering an error
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
