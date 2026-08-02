@@ -33,17 +33,15 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Create a new route request handler.
      *
-     * @param Container                  $container    DI container for controller resolution
-     * @param Route                      $route        Resolved route
-     * @param Request                    $sloopRequest Sloop request wrapping the PSR-7 request
-     * @param array<string, string>      $params       Route parameters
-     * @param ResponseFormatterInterface $formatter    Formatter for non-response return values
+     * @param Container                  $container DI container for controller resolution
+     * @param Route                      $route     Resolved route
+     * @param array<string, string>      $params    Route parameters
+     * @param ResponseFormatterInterface $formatter Formatter for non-response return values
      * @return void
      */
     public function __construct(
         private Container $container,
         private Route $route,
-        private Request $sloopRequest,
         private array $params,
         private ResponseFormatterInterface $formatter,
     ) {
@@ -52,7 +50,12 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Invoke the controller action and return the response.
      *
-     * @param  ServerRequestInterface $request PSR-7 request (unused; route parameters are already bound)
+     * The Sloop Request wrapper is built here from the incoming PSR-7
+     * request, so mutations made by route middleware (withAttribute,
+     * withParsedBody, ...) are visible to the controller — matching the
+     * behavior of global middleware.
+     *
+     * @param  ServerRequestInterface $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
      * @throws RuntimeException        If the controller cannot be resolved as an object, a route parameter is missing, or a parameter type is unsupported
      * @throws EntryNotFoundException  If the controller or a typed dependency cannot be resolved by the container
@@ -66,7 +69,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             throw new RuntimeException('Controller must be an object: ' . $this->route->controller);
         }
 
-        $args = $this->buildActionArguments($controller::class, $this->route->action);
+        $sloopRequest = new Request($request, $this->params);
+        $args         = $this->buildActionArguments($controller::class, $this->route->action, $sloopRequest);
 
         $result = $controller->{$this->route->action}(...$args);
 
@@ -86,25 +90,26 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * from route parameters (looked up by name, cast to the declared type),
      * and other object types are resolved from the container.
      *
-     * @param  string $className Controller class name
-     * @param  string $method    Action method name
+     * @param  string  $className    Controller class name
+     * @param  string  $method       Action method name
+     * @param  Request $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return array<int, mixed> Positional arguments for the action
      * @throws RuntimeException       If a route parameter is missing or a parameter type is unsupported
      * @throws EntryNotFoundException If a typed object dependency cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during dependency resolution
      * @throws ReflectionException    If the action method cannot be reflected
      */
-    private function buildActionArguments(string $className, string $method): array
+    private function buildActionArguments(string $className, string $method, Request $sloopRequest): array
     {
         $parameters = self::reflectParameters($className, $method);
 
         if (self::isLegacyParameterList($parameters)) {
-            return [$this->sloopRequest, ...array_values($this->params)];
+            return [$sloopRequest, ...array_values($this->params)];
         }
 
         $args = [];
         foreach ($parameters as $parameter) {
-            $args[] = $this->resolveParameter($parameter);
+            $args[] = $this->resolveParameter($parameter, $sloopRequest);
         }
 
         return $args;
@@ -113,13 +118,14 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Resolve a single action parameter.
      *
-     * @param  ReflectionParameter $parameter Parameter to resolve
+     * @param  ReflectionParameter $parameter    Parameter to resolve
+     * @param  Request             $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return mixed Resolved argument value
      * @throws RuntimeException       If the parameter is untyped, uses a union/intersection type, or matches no route parameter
      * @throws EntryNotFoundException If a typed object parameter cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during resolution
      */
-    private function resolveParameter(ReflectionParameter $parameter): mixed
+    private function resolveParameter(ReflectionParameter $parameter, Request $sloopRequest): mixed
     {
         $type = $parameter->getType();
 
@@ -133,7 +139,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         $typeName = $type->getName();
 
         if ($typeName === Request::class) {
-            return $this->sloopRequest;
+            return $sloopRequest;
         }
 
         if ($type->isBuiltin()) {

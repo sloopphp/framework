@@ -166,6 +166,27 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertFalse($response->hasHeader('Vary'));
     }
 
+    public function testVaryOriginIsNotDuplicatedWhenAppliedTwice(): void
+    {
+        // Registering the middleware both globally and per-route runs
+        // addCorsHeaders twice; the second pass must not append another Origin.
+        $cors    = $this->createCors();
+        $request = $this->createRequest(origin: 'https://example.com');
+        $once    = $cors->process($request, $this->createHandler());
+        $twice   = $cors->process($request, new readonly class ($once) implements RequestHandlerInterface {
+            public function __construct(private ResponseInterface $response)
+            {
+            }
+
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return $this->response;
+            }
+        });
+
+        $this->assertSame(['Origin'], $twice->getHeader('Vary'));
+    }
+
     public function testWildcardWithCredentialsIsRejectedAtConstruction(): void
     {
         // The Fetch spec forbids `Access-Control-Allow-Origin: *` with

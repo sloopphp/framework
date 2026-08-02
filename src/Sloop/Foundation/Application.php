@@ -23,9 +23,9 @@ use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
+use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
-use Sloop\Http\Request\Request;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
@@ -99,13 +99,33 @@ final class Application implements RequestHandlerInterface
      * resolved) is normalized into a `\RuntimeException` so callers do not
      * need to handle Reflection internals.
      *
+     * This is also the error boundary: exceptions from route middleware and
+     * controllers are converted into error responses here, so the error
+     * response still flows back through the global middleware stack and
+     * receives its headers (traceparent, CORS, ...).
+     *
+     * @param  ServerRequestInterface  $request PSR-7 server request
+     * @return ResponseInterface
+     */
+    public function handle(ServerRequestInterface $request): ResponseInterface
+    {
+        try {
+            return $this->dispatchRoute($request);
+        } catch (\Throwable $e) {
+            return $this->renderException($e);
+        }
+    }
+
+    /**
+     * Resolve the route and invoke it through the route middleware chain.
+     *
      * @param  ServerRequestInterface  $request PSR-7 server request
      * @return ResponseInterface
      * @throws \RuntimeException       When the controller cannot be resolved as an object, parameters are invalid, or controller reflection fails
      * @throws EntryNotFoundException  When the controller or a typed dependency cannot be resolved by the container
      * @throws ContainerException      When dependency resolution detects a circular dependency
      */
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    private function dispatchRoute(ServerRequestInterface $request): ResponseInterface
     {
         $path   = $request->getUri()->getPath();
         $method = $request->getMethod();
@@ -116,12 +136,10 @@ final class Application implements RequestHandlerInterface
         }
 
         [$route, $params] = $result;
-        $sloopRequest     = new Request($request, $params);
 
         $finalHandler = new RouteRequestHandler(
             $this->container,
             $route,
-            $sloopRequest,
             $params,
             $this->resolveFormatter(),
         );
@@ -143,8 +161,9 @@ final class Application implements RequestHandlerInterface
     /**
      * Process an incoming request through middleware and routing.
      *
-     * Any exception escaping the middleware pipeline is caught here, logged
-     * via the ExceptionHandler, and converted into an error response.
+     * The primary error boundary lives in handle(), so error responses pass
+     * back through the global middleware stack. This catch is a last resort
+     * for exceptions thrown by the global middleware themselves.
      *
      * @param ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
@@ -171,18 +190,25 @@ final class Application implements RequestHandlerInterface
      *
      * @param  \Throwable $e Uncaught exception propagated past all middleware
      * @return ResponseInterface
-     * @throws \RuntimeException      When the ExceptionHandler binding resolves to an unexpected type
-     * @throws EntryNotFoundException When the ExceptionHandler binding cannot be resolved
-     * @throws ContainerException     When dependency resolution detects a circular dependency
+     * @throws \RuntimeException When the response formatter cannot be resolved from the container
      */
     private function renderException(\Throwable $e): ResponseInterface
     {
-        $exceptionHandler = $this->container->get(ExceptionHandler::class);
-        if (!$exceptionHandler instanceof ExceptionHandler) {
-            throw new \RuntimeException('Failed to resolve ExceptionHandler from container.');
+        try {
+            $exceptionHandler = $this->container->get(ExceptionHandler::class);
+            if (!$exceptionHandler instanceof ExceptionHandler) {
+                throw new \RuntimeException('Failed to resolve ExceptionHandler from container.');
+            }
+
+            $status = $exceptionHandler->handle($e);
+        } catch (\Throwable) {
+            // The ExceptionHandler resolves its log channel lazily, so a broken
+            // config/log.php would first surface right here — while handling
+            // another exception. Logging failures must not turn a handled error
+            // into an unhandled one, so fall back to the status metadata alone.
+            $status = $e instanceof SloopException ? $e->statusCode : HttpStatus::InternalServerError;
         }
 
-        $status  = $exceptionHandler->handle($e);
         $message = $e instanceof DomainException ? $e->getMessage() : 'Server Error';
 
         return $this->resolveFormatter()->error($message, $status);
