@@ -9,18 +9,24 @@ namespace Sloop\Support;
  *
  * All methods are static. Dot-notation keys (e.g. "user.name") are supported
  * for nested array access in get/set/has.
+ *
+ * @api
  */
 final class Arr
 {
     /**
      * Get a value from a nested array using dot notation.
      *
-     * @template TValue
-     * @template TDefault
-     * @param array<array-key, TValue> $array   Target array
-     * @param string|int               $key     Dot-notated key
-     * @param TDefault                 $default Returned when the key is missing
-     * @return TValue|TDefault
+     * The return type is `mixed` because dot notation descends into nested
+     * arrays: the value behind 'user.name' has no relation to the value type
+     * of the array itself, so it cannot be expressed as a generic over that
+     * type. Use getString() / getInt() / getFloat() / getBool() when a
+     * concrete type is required.
+     *
+     * @param  array<array-key, mixed> $array   Target array
+     * @param  string|int              $key     Dot-notated key
+     * @param  mixed                   $default Returned when the key is missing
+     * @return mixed
      */
     public static function get(array $array, string|int $key, mixed $default = null): mixed
     {

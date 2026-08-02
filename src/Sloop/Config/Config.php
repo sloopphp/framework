@@ -12,6 +12,8 @@ use Sloop\Support\Arr;
  *
  * Loads PHP array files from a config directory, merges environment-specific
  * overrides, and provides dot-notation access. Immutable after loading.
+ *
+ * @api
  */
 final class Config
 {
@@ -91,13 +93,83 @@ final class Config
     /**
      * Get a configuration value using dot notation.
      *
-     * @param string $key     Dot-notated configuration key (e.g. 'database.host')
-     * @param mixed  $default Value to return if the key does not exist
+     * Returns `mixed` because a config file may hold any value at any depth.
+     * Prefer getString() / getInt() / getFloat() / getBool() so that the
+     * calling code receives a concrete type instead of propagating `mixed`
+     * into the application layer.
+     *
+     * @param  string $key     Dot-notated configuration key (e.g. 'database.host')
+     * @param  mixed  $default Value to return if the key does not exist
      * @return mixed
      */
     public static function get(string $key, mixed $default = null): mixed
     {
         return Arr::get(self::getInstance()->items, $key, $default);
+    }
+
+    /**
+     * Get a string configuration value using dot notation.
+     *
+     * Returns the default if the key is missing or the value is not a string.
+     * Strict: only actual string values are accepted (no implicit casting).
+     *
+     * @param  string $key     Dot-notated configuration key
+     * @param  string $default Value to return if the key is missing or not a string
+     * @return string
+     */
+    public static function getString(string $key, string $default = ''): string
+    {
+        return Arr::getString(self::getInstance()->items, $key, $default);
+    }
+
+    /**
+     * Get an int configuration value using dot notation.
+     *
+     * Returns the default if the key is missing or the value is not an int.
+     * Strict: numeric strings such as '3306' are not accepted, so a port
+     * written as a quoted string in a config file falls back to the default
+     * rather than being silently converted.
+     *
+     * @param  string $key     Dot-notated configuration key
+     * @param  int    $default Value to return if the key is missing or not an int
+     * @return int
+     */
+    public static function getInt(string $key, int $default = 0): int
+    {
+        return Arr::getInt(self::getInstance()->items, $key, $default);
+    }
+
+    /**
+     * Get a float configuration value using dot notation.
+     *
+     * Returns the default if the key is missing or the value is neither float
+     * nor int. Int values are promoted to float to match PHP's native type
+     * promotion behavior.
+     *
+     * @param  string $key     Dot-notated configuration key
+     * @param  float  $default Value to return if the key is missing or not numeric
+     * @return float
+     */
+    public static function getFloat(string $key, float $default = 0.0): float
+    {
+        return Arr::getFloat(self::getInstance()->items, $key, $default);
+    }
+
+    /**
+     * Get a bool configuration value using dot notation.
+     *
+     * Returns the default if the key is missing or the value is not a bool.
+     * Strict: truthy values such as 1 or 'true' are not accepted. Values that
+     * come from environment variables should be normalized by Env before
+     * being placed into a config file.
+     *
+     * @param  string $key     Dot-notated configuration key
+     * @param  bool   $default Value to return if the key is missing or not a bool
+     * @return bool
+     */
+    public static function getBool(string $key, bool $default = false): bool
+    {
+        return Arr::getBool(self::getInstance()->items, $key, $default);
     }
 
     /**
