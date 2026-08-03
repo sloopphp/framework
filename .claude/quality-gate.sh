@@ -87,8 +87,15 @@ fi
 
 if [ "$with_mutation" -eq 1 ]; then
     run_gate 'Infection' vendor/bin/infection --threads=4 --no-progress
-    # Reads the report Infection just wrote, so it only makes sense after it.
-    run_gate 'Mutation baseline' php "$script_dir/mutation-baseline.php"
+
+    # The baseline reads the report Infection writes. When Infection stops
+    # before writing one, an older report is still on disk, and checking it
+    # would report a pass for a run that never happened.
+    if [ "${codes[${#codes[@]} - 1]}" -eq 0 ]; then
+        run_gate 'Mutation baseline' php "$script_dir/mutation-baseline.php"
+    else
+        printf '\n  (Infection did not finish, so the baseline was not checked)\n'
+    fi
 fi
 
 printf '\n%s=== Exit codes ===%s\n' "$bold" "$reset"
