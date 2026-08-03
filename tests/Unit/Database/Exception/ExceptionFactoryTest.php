@@ -135,6 +135,41 @@ final class ExceptionFactoryTest extends TestCase
         $this->assertNull($result->driverCode);
     }
 
+    public function testReadsSqlStateWhenErrorInfoCarriesOnlyThatElement(): void
+    {
+        $exception            = new PDOException('sqlstate only');
+        $exception->errorInfo = ['HY000'];
+
+        $result = ExceptionFactory::fromPDOException($exception);
+
+        $this->assertSame('HY000', $result->sqlState);
+        $this->assertNull($result->driverCode);
+    }
+
+    public function testReadsDriverCodeFromATwoElementErrorInfo(): void
+    {
+        // PDO drivers are free to omit the trailing driver message, so the
+        // driver code must be read from index 1 rather than a fixed tail.
+        $exception            = new PDOException('duplicate');
+        $exception->errorInfo = ['23000', 1062];
+
+        $result = ExceptionFactory::fromPDOException($exception);
+
+        $this->assertSame('23000', $result->sqlState);
+        $this->assertSame(1062, $result->driverCode);
+    }
+
+    public function testReadsDriverCodeWhenTheSqlStateElementIsAbsent(): void
+    {
+        $exception            = new PDOException('duplicate');
+        $exception->errorInfo = [1 => 1062];
+
+        $result = ExceptionFactory::fromPDOException($exception);
+
+        $this->assertNull($result->sqlState);
+        $this->assertSame(1062, $result->driverCode);
+    }
+
     public function testPopulatesFieldsFromPDOException(): void
     {
         $exception = $this->makePDOException('duplicate', '23000', 1062);

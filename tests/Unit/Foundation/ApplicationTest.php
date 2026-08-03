@@ -864,7 +864,11 @@ final class ApplicationTest extends TestCase
 
         $this->assertSame(500, $response->getStatusCode());
         $this->assertStringContainsString('Server Error', (string) $response->getBody());
-        $this->assertTrue($handler->hasCriticalThatContains('Failed to reflect controller action: '));
+        // The underlying reflection message must survive the wrapping, in that
+        // order: the prefix alone would not tell an operator which action failed.
+        $this->assertTrue($handler->hasCriticalThatContains(
+            'Failed to reflect controller action: Method ' . HealthController::class . '::nonExistentMethod() does not exist',
+        ));
     }
 
     public function testHandleConvertsReflectionExceptionThroughMiddlewareDispatcher(): void
@@ -884,7 +888,11 @@ final class ApplicationTest extends TestCase
 
         $this->assertSame(500, $response->getStatusCode());
         $this->assertStringContainsString('Server Error', (string) $response->getBody());
-        $this->assertTrue($handler->hasCriticalThatContains('Failed to reflect controller action: '));
+        // The underlying reflection message must survive the wrapping, in that
+        // order: the prefix alone would not tell an operator which action failed.
+        $this->assertTrue($handler->hasCriticalThatContains(
+            'Failed to reflect controller action: Method ' . HealthController::class . '::nonExistentMethod() does not exist',
+        ));
     }
 
     public function testDomainExceptionMessageAndStatusAreExposedToTheClient(): void

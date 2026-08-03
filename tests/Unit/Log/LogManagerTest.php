@@ -510,6 +510,21 @@ final class LogManagerTest extends TestCase
         $this->assertCount(2, $logger->getProcessors());
     }
 
+    public function testChannelWithoutConfigurationGetsNoConfigDrivenProcessors(): void
+    {
+        $manager = new LogManager(channels: [
+            'app' => [
+                'driver'     => 'stream',
+                'stream'     => 'php://memory',
+                'processors' => ['memory_usage'],
+            ],
+        ]);
+
+        $logger = $manager->channel('not_configured');
+
+        $this->assertSame([], $logger->getProcessors());
+    }
+
     public function testUnknownConfigProcessorThrowsException(): void
     {
         $manager = new LogManager(channels: [

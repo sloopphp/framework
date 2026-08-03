@@ -529,6 +529,52 @@ final class ConnectionManagerTest extends TestCase
         }
     }
 
+    public function testDiagnosticMessageRendersDeclaredPortsRatherThanThePlaceholder(): void
+    {
+        // The "?" placeholder is the fallback for an undeclared port. When the
+        // config does declare one, both the dead-cache skip line and the
+        // attempt-failure line must show it — an operator reading this message
+        // needs to know which endpoint was tried.
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'replica2.internal',
+            3308,
+            new DatabaseConnectionException('refused', 'replica2', null, 2002),
+        );
+        $factory->expectFailure(
+            'primary.internal',
+            3309,
+            new DatabaseConnectionException('refused', 'primary', null, 2002),
+        );
+
+        $this->deadCache->markServerDead('replica1.internal', 3307, 300);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'port'                    => 3309,
+                'database'                => 'app',
+                'read'                    => [
+                    ['host' => 'replica1.internal', 'port' => 3307],
+                    ['host' => 'replica2.internal', 'port' => 3308],
+                ],
+                'health_check'            => false,
+                'max_connection_attempts' => 5,
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException $e) {
+            $message = $e->getMessage();
+            $this->assertStringContainsString('replica1.internal:3307 → skipped (dead-cache)', $message);
+            $this->assertStringContainsString('replica2.internal:3308 → refused', $message);
+            $this->assertStringContainsString('primary.internal:3309 → refused', $message);
+        }
+    }
+
     public function testReplicaRoutePassesReplicaPortToDeadCache(): void
     {
         $factory = new ScriptedConnectionFactory();
