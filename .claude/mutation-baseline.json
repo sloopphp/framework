@@ -1,0 +1,83 @@
+{
+    "note": "Mutants allowed to survive. Regenerate with .claude/mutation-baseline.php --update and justify every added entry in the pull request; the gate is only as strong as that review.",
+    "allowed": [
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "method": "Container::autowire",
+            "mutator": "Throw_",
+            "diff": "-            throw new ContainerException(\n+            new ContainerException("
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "method": "Connection::shouldRetry",
+            "mutator": "FalseValue",
+            "diff": "-            return false;\n+            return true;"
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "method": "Connection::shouldRetry",
+            "mutator": "ReturnRemoval",
+            "diff": "-            return false;\n+"
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "method": "Connection::transaction",
+            "mutator": "LogicalAnd",
+            "diff": "-                if ($this->shouldRetry($thrown, $attempt, $maxAttempts) && !$this->pdo->inTransaction()) {\n+                if ($this->shouldRetry($thrown, $attempt, $maxAttempts) || !$this->pdo->inTransaction()) {"
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "method": "Connection::transaction",
+            "mutator": "LogicalAndNegation",
+            "diff": "-                if ($this->shouldRetry($thrown, $attempt, $maxAttempts) && !$this->pdo->inTransaction()) {\n+                if (!($this->shouldRetry($thrown, $attempt, $maxAttempts) && !$this->pdo->inTransaction())) {"
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "method": "Connection::transaction",
+            "mutator": "LogicalAndSingleSubExprNegation",
+            "diff": "-                if ($this->shouldRetry($thrown, $attempt, $maxAttempts) && !$this->pdo->inTransaction()) {\n+                if (!$this->shouldRetry($thrown, $attempt, $maxAttempts) && !$this->pdo->inTransaction()) {"
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "method": "Connection::transaction",
+            "mutator": "Throw_",
+            "diff": "-                throw $thrown;\n+                $thrown;"
+        },
+        {
+            "file": "src/Sloop/Database/Replica/ApcuDeadReplicaCache.php",
+            "method": "ApcuDeadReplicaCache::isAvailable",
+            "mutator": "LogicalAnd",
+            "diff": "-        return \\function_exists('apcu_enabled') && apcu_enabled();\n+        return \\function_exists('apcu_enabled') || apcu_enabled();"
+        },
+        {
+            "file": "src/Sloop/Foundation/Path.php",
+            "method": "Path::join",
+            "mutator": "Concat",
+            "diff": "-        return $base . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR . '/');\n+        return $base . DIRECTORY_SEPARATOR . ltrim($path, '/' . DIRECTORY_SEPARATOR);"
+        },
+        {
+            "file": "src/Sloop/Foundation/Path.php",
+            "method": "Path::join",
+            "mutator": "ConcatOperandRemoval",
+            "diff": "-        return $base . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR . '/');\n+        return $base . DIRECTORY_SEPARATOR . ltrim($path, '/');"
+        },
+        {
+            "file": "src/Sloop/Foundation/Path.php",
+            "method": "Path::join",
+            "mutator": "ConcatOperandRemoval",
+            "diff": "-        return $base . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR . '/');\n+        return $base . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);"
+        },
+        {
+            "file": "src/Sloop/Http/Middleware/MiddlewareDispatcher.php",
+            "method": "MiddlewareDispatcher::handle",
+            "mutator": "ArrayItemRemoval",
+            "diff": "-        $nextHandler = clone($this, ['index' => $this->index + 1]);\n+        $nextHandler = clone($this, []);"
+        },
+        {
+            "file": "src/Sloop/Http/Middleware/MiddlewareDispatcher.php",
+            "method": "MiddlewareDispatcher::handle",
+            "mutator": "DecrementInteger",
+            "diff": "-        $nextHandler = clone($this, ['index' => $this->index + 1]);\n+        $nextHandler = clone($this, ['index' => $this->index + 0]);"
+        }
+    ]
+}
