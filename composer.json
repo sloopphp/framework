@@ -27,6 +27,7 @@
     "require-dev": {
         "ext-apcu": "*",
         "ext-pdo_sqlite": "*",
+        "ext-tokenizer": "*",
         "friendsofphp/php-cs-fixer": "^3.0",
         "infection/infection": "^0.32.6 || ^0.34.0",
         "jetbrains/phpstorm-stubs": "^2026.1",
@@ -53,7 +54,10 @@
     "autoload-dev": {
         "psr-4": {
             "Sloop\\Tests\\": "tests/"
-        }
+        },
+        "classmap": [
+            ".claude/mutation-baseline.php"
+        ]
     },
     "suggest": {
         "ext-apcu": "Backs ApcuDeadReplicaCache so dead-replica marks are shared across requests; falls back to per-request InMemoryDeadReplicaCache when not installed."
