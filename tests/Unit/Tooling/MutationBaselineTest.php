@@ -187,6 +187,40 @@ final class MutationBaselineTest extends TestCase
         self::assertSame('', ScopeIndex::resolve($file, 2));
     }
 
+    public function testInterpolationBracesDoNotDetachLaterMethodsFromTheirClass(): void
+    {
+        $file = $this->workDir . '/Interpolated.php';
+        file_put_contents($file, <<<'PHP'
+            <?php
+
+            final class Interpolated
+            {
+                public function withCurly(string $name): string
+                {
+                    return "hello {$name}";
+                }
+
+                public function withHeredoc(string $name): string
+                {
+                    return <<<TXT
+                        value {$name}
+                        TXT;
+                }
+
+                public function afterwards(): int
+                {
+                    return 1;
+                }
+            }
+            PHP);
+
+        // The tokenizer closes an interpolation with a plain '}', so an
+        // uncounted opener drifts the depth and drops the class prefix.
+        self::assertSame('Interpolated::withCurly', ScopeIndex::resolve($file, 7));
+        self::assertSame('Interpolated::withHeredoc', ScopeIndex::resolve($file, 13));
+        self::assertSame('Interpolated::afterwards', ScopeIndex::resolve($file, 20));
+    }
+
     public function testInterfaceMethodsHaveNoBodyAndAreNotIndexed(): void
     {
         $file = $this->workDir . '/Contract.php';
