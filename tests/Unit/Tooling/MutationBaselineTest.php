@@ -40,16 +40,49 @@ final class MutationBaselineTest extends TestCase
 
     public function testKeyIgnoresLineNumbersSoUnrelatedEditsDoNotInvalidateEntries(): void
     {
-        $report  = $this->reportWith([
-            'escaped' => [$this->entry('Sample.php', 40, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;')],
-        ]);
-        $shifted = $this->reportWith([
-            'escaped' => [$this->entry('Sample.php', 400, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;')],
-        ]);
+        // The subject file has to exist and hold a real method, otherwise the
+        // scope resolves to '' on both sides and the test degenerates into
+        // asserting that key() carries no line field.
+        $this->writeSubject(0);
+        self::assertSame('Sample::compute', ScopeIndex::resolve($this->workDir . '/Sample.php', 7));
 
-        $this->writeBaselineFrom($report);
+        $this->writeBaselineFrom($this->reportWith([
+            'escaped' => [$this->entry('Sample.php', 7, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;')],
+        ]));
+
+        // Ten more leading lines push the same statement down the file.
+        $this->writeSubject(10);
+        self::assertSame('Sample::compute', ScopeIndex::resolve($this->workDir . '/Sample.php', 17));
+
+        $shifted = $this->reportWith([
+            'escaped' => [$this->entry('Sample.php', 17, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;')],
+        ]);
 
         self::assertSame(0, $this->check($shifted));
+    }
+
+    public function testASecondIdenticalMutantInTheSameMethodIsNotCoveredByTheFirst(): void
+    {
+        $mutant = $this->entry('Sample.php', 7, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;');
+
+        $this->writeBaselineFrom($this->reportWith(['escaped' => [$mutant]]));
+
+        self::assertSame(1, $this->check($this->reportWith(['escaped' => [$mutant, $mutant]])));
+        self::assertStringContainsString('1 mutant(s) escaped', $this->output);
+    }
+
+    public function testAReportWithoutMutantsIsAnOperatorErrorRatherThanAPass(): void
+    {
+        $this->writeBaselineFrom($this->reportWith(['escaped' => []]));
+
+        // A truncated report yields empty sections, which would otherwise pass.
+        file_put_contents($this->workDir . '/report.json', json_encode(['stats' => ['totalMutantsCount' => 0]]));
+
+        self::assertSame(2, $this->invoke([
+            '--report=' . $this->workDir . '/report.json',
+            '--baseline=' . $this->workDir . '/baseline.json',
+        ]));
+        self::assertStringContainsString('no mutants in', $this->errors);
     }
 
     public function testContextLinesDoNotTakePartInTheIdentity(): void
@@ -248,7 +281,28 @@ final class MutationBaselineTest extends TestCase
      */
     private function reportWith(array $sections): array
     {
-        return array_merge(['escaped' => [], 'timeouted' => [], 'errored' => []], $sections);
+        return array_merge(
+            ['stats' => ['totalMutantsCount' => 100], 'escaped' => [], 'timeouted' => [], 'errored' => []],
+            $sections,
+        );
+    }
+
+    /**
+     * Writes the subject file the reports point at, padded to move its method down.
+     */
+    private function writeSubject(int $leadingLines): void
+    {
+        $padding = str_repeat("// padding\n", $leadingLines);
+
+        file_put_contents($this->workDir . '/Sample.php', "<?php\n\n" . $padding . <<<'PHP'
+            final class Sample
+            {
+                public function compute(bool $a, bool $b): bool
+                {
+                    return $a && $b;
+                }
+            }
+            PHP);
     }
 
     /**

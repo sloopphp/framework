@@ -324,10 +324,12 @@ final class BraceTracker
 final class ScopeIndex
 {
     /**
-     * Function spans per file, keyed by absolute path.
+     * Function spans per file, keyed by path and file identity.
      *
      * Each span is a start line, an end line and the scope name. Files are
-     * tokenised once because a report repeats the same file many times.
+     * tokenised once because a report repeats the same file many times. The
+     * modification time and size are part of the key so that a rewritten file
+     * is re-read rather than answered from a stale entry.
      *
      * @var array<string, list<array{0: int, 1: int, 2: string}>>
      */
@@ -342,13 +344,18 @@ final class ScopeIndex
      */
     public static function resolve(string $file, int $line): string
     {
-        if (!\array_key_exists($file, self::$cache)) {
-            self::$cache[$file] = is_file($file) ? self::collect($file) : [];
+        $readable = is_file($file);
+        $key      = $readable
+            ? $file . "\0" . (string) filemtime($file) . "\0" . (string) filesize($file)
+            : $file;
+
+        if (!\array_key_exists($key, self::$cache)) {
+            self::$cache[$key] = $readable ? self::collect($file) : [];
         }
 
         $best     = '';
         $bestSpan = \PHP_INT_MAX;
-        foreach (self::$cache[$file] as [$start, $end, $name]) {
+        foreach (self::$cache[$key] as [$start, $end, $name]) {
             if ($line < $start || $line > $end) {
                 continue;
             }
@@ -580,6 +587,28 @@ final class ScopeIndex
 }
 
 /**
+ * The paths and mode a single invocation runs with.
+ */
+final readonly class Invocation
+{
+    /**
+     * Build a parsed invocation.
+     *
+     * @param bool     $update       Whether the baseline should be rewritten instead of checked
+     * @param string   $reportPath   Absolute path to the Infection JSON report
+     * @param string   $baselinePath Absolute path to the committed baseline
+     * @param int|null $exitCode     Exit code when parsing already settled the run, null to continue
+     */
+    public function __construct(
+        public bool $update,
+        public string $reportPath,
+        public string $baselinePath,
+        public ?int $exitCode,
+    ) {
+    }
+}
+
+/**
  * Entry point comparing the latest Infection run against the baseline.
  */
 final class MutationBaseline
@@ -593,7 +622,46 @@ final class MutationBaseline
      */
     public static function run(array $arguments, mixed $errorStream = null): int
     {
-        $rootDir      = \dirname(__DIR__);
+        $rootDir    = \dirname(__DIR__);
+        $invocation = self::parseArguments($arguments, $rootDir, $errorStream);
+
+        if ($invocation->exitCode !== null) {
+            return $invocation->exitCode;
+        }
+
+        $reportPath   = $invocation->reportPath;
+        $baselinePath = $invocation->baselinePath;
+        $update       = $invocation->update;
+
+        try {
+            $report  = self::loadReport($reportPath);
+            $escaped = self::readSection($report, 'escaped', $rootDir);
+            $allowed = array_merge(
+                $escaped,
+                self::readSection($report, 'timeouted', $rootDir),
+                self::readSection($report, 'errored', $rootDir),
+            );
+
+            return $update
+                ? self::write($baselinePath, $allowed)
+                : self::check($baselinePath, $escaped, $allowed);
+        } catch (\RuntimeException $exception) {
+            self::writeError($errorStream, $exception->getMessage());
+
+            return 2;
+        }
+    }
+
+    /**
+     * Turn command line arguments into the paths and mode to run with.
+     *
+     * @param list<string> $arguments   Command line arguments without the script name
+     * @param string       $rootDir     Repository root, used to build the default paths
+     * @param mixed        $errorStream Stream diagnostics are written to; STDERR when null
+     * @return Invocation Parsed invocation, carrying an exit code when the run should stop
+     */
+    private static function parseArguments(array $arguments, string $rootDir, mixed $errorStream): Invocation
+    {
         $reportPath   = $rootDir . '/build/infection/infection.json';
         $baselinePath = $rootDir . '/.claude/mutation-baseline.json';
         $update       = false;
@@ -604,7 +672,7 @@ final class MutationBaseline
             } elseif ($argument === '-h' || $argument === '--help') {
                 echo self::usage(), \PHP_EOL;
 
-                return 0;
+                return new Invocation($update, $reportPath, $baselinePath, 0);
             } elseif (str_starts_with($argument, '--report=')) {
                 $reportPath = substr($argument, \strlen('--report='));
             } elseif (str_starts_with($argument, '--baseline=')) {
@@ -612,29 +680,39 @@ final class MutationBaseline
             } else {
                 self::writeError($errorStream, 'unknown argument: ' . $argument . \PHP_EOL . self::usage());
 
-                return 2;
+                return new Invocation($update, $reportPath, $baselinePath, 2);
             }
         }
 
-        try {
-            $report = Json::readFile(
-                $reportPath,
-                'Run Infection first: vendor/bin/infection --threads=4 --no-progress',
+        return new Invocation($update, $reportPath, $baselinePath, null);
+    }
+
+    /**
+     * Read the Infection report and reject one that carries no mutants.
+     *
+     * A truncated or schema-drifted report yields empty sections, which would
+     * otherwise be indistinguishable from a clean run.
+     *
+     * @param string $reportPath Absolute path to the Infection JSON report
+     * @return array<array-key, mixed> Decoded report
+     * @throws \RuntimeException When the report is unusable or holds no mutants
+     */
+    private static function loadReport(string $reportPath): array
+    {
+        $report = Json::readFile(
+            $reportPath,
+            'Run Infection first: vendor/bin/infection --threads=4 --no-progress',
+        );
+
+        $total = Json::asInt(Json::asArray($report['stats'] ?? null)['totalMutantsCount'] ?? null);
+        if ($total <= 0) {
+            throw new \RuntimeException(
+                'no mutants in ' . $reportPath . ' (stats.totalMutantsCount is ' . $total . ').' . \PHP_EOL
+                . 'The report is truncated or written by an incompatible Infection version; rerun Infection.',
             );
-
-            $escaped = self::readSection($report, 'escaped', $rootDir);
-            $allowed = $escaped
-                + self::readSection($report, 'timeouted', $rootDir)
-                + self::readSection($report, 'errored', $rootDir);
-
-            return $update
-                ? self::write($baselinePath, $allowed)
-                : self::check($baselinePath, $escaped, $allowed);
-        } catch (\RuntimeException $exception) {
-            self::writeError($errorStream, $exception->getMessage());
-
-            return 2;
         }
+
+        return $report;
     }
 
     /**
@@ -665,7 +743,7 @@ final class MutationBaseline
      * @param array<array-key, mixed> $report  Decoded Infection JSON report
      * @param string                  $section Section name such as escaped or timeouted
      * @param string                  $rootDir Repository root, stripped from reported paths
-     * @return array<string, Mutant> Mutants indexed by their key
+     * @return list<Mutant> Mutants in report order, duplicates kept
      */
     private static function readSection(array $report, string $section, string $rootDir): array
     {
@@ -673,7 +751,10 @@ final class MutationBaseline
         foreach (Json::asArray($report[$section] ?? null) as $entry) {
             $mutant = Mutant::fromReportEntry(Json::asArray($entry), $rootDir);
             if ($mutant instanceof Mutant) {
-                $mutants[$mutant->key()] = $mutant;
+                // Duplicates are kept: one method can hold two identical
+                // mutable statements, and collapsing them would let one
+                // regress while the other covers for it in the baseline.
+                $mutants[] = $mutant;
             }
         }
 
@@ -681,15 +762,51 @@ final class MutationBaseline
     }
 
     /**
+     * Read the committed baseline as occurrence counts per identity.
+     *
+     * @param string $path Absolute path to the baseline file
+     * @return array<string, int> Allowed occurrence count per key
+     * @throws \RuntimeException When the baseline is missing or unusable
+     */
+    private static function readBaselineCounts(string $path): array
+    {
+        $baseline = Json::readFile($path, 'Create it once with: .claude/mutation-baseline.php --update');
+
+        $counts = [];
+        foreach (Json::asArray($baseline['allowed'] ?? null) as $entry) {
+            $key          = Mutant::fromBaselineEntry(Json::asArray($entry))->key();
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Count mutants per identity.
+     *
+     * @param list<Mutant> $mutants Mutants to tally
+     * @return array<string, int> Occurrence count per key
+     */
+    private static function countByKey(array $mutants): array
+    {
+        $counts = [];
+        foreach ($mutants as $mutant) {
+            $counts[$mutant->key()] = ($counts[$mutant->key()] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
      * Rewrite the baseline file from the latest run.
      *
-     * @param string                $path    Absolute path to the baseline file
-     * @param array<string, Mutant> $allowed Mutants allowed to survive
+     * @param string       $path    Absolute path to the baseline file
+     * @param list<Mutant> $allowed Mutants allowed to survive
      * @return int Process exit code
      */
     private static function write(string $path, array $allowed): int
     {
-        $mutants = array_values($allowed);
+        $mutants = $allowed;
         usort($mutants, static fn (Mutant $a, Mutant $b): int => $a->key() <=> $b->key());
 
         $encoded = json_encode(
@@ -716,26 +833,34 @@ final class MutationBaseline
     /**
      * Compare the latest run against the baseline.
      *
-     * @param string                $path    Absolute path to the baseline file
-     * @param array<string, Mutant> $escaped Mutants that escaped in the latest run
-     * @param array<string, Mutant> $allowed Mutants that survived in any form in the latest run
+     * @param string       $path    Absolute path to the baseline file
+     * @param list<Mutant> $escaped Mutants that escaped in the latest run
+     * @param list<Mutant> $allowed Mutants that survived in any form in the latest run
      * @return int Process exit code
      */
     private static function check(string $path, array $escaped, array $allowed): int
     {
-        $baseline    = Json::readFile($path, 'Create it once with: .claude/mutation-baseline.php --update');
-        $allowedKeys = [];
-        foreach (Json::asArray($baseline['allowed'] ?? null) as $entry) {
-            $allowedKeys[Mutant::fromBaselineEntry(Json::asArray($entry))->key()] = true;
-        }
-
-        $resolved = \count(array_diff_key($allowedKeys, $allowed));
+        $baselineCounts = self::readBaselineCounts($path);
+        $allowedCounts  = self::countByKey($allowed);
+        $resolved       = \count(array_diff_key($baselineCounts, $allowedCounts));
         if ($resolved > 0) {
             echo $resolved, ' baseline entries no longer survive.', \PHP_EOL,
             'Shrink the baseline with --update once the run is stable.', \PHP_EOL, \PHP_EOL;
         }
 
-        $regressions = array_diff_key($escaped, $allowedKeys);
+        // Compared by occurrence count, not by presence: a second identical
+        // mutant in the same method is a regression even when the first one
+        // is baselined.
+        $seen        = [];
+        $regressions = [];
+        foreach ($escaped as $mutant) {
+            $key        = $mutant->key();
+            $seen[$key] = ($seen[$key] ?? 0) + 1;
+            if ($seen[$key] > ($baselineCounts[$key] ?? 0)) {
+                $regressions[] = $mutant;
+            }
+        }
+
         if ($regressions === []) {
             echo 'No new escaped mutants (', \count($escaped), ' escaped, all in the baseline).', \PHP_EOL;
 
