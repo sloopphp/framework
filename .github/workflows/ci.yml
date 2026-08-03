@@ -253,3 +253,6 @@ jobs:
 
       - name: Run Infection (mutation testing)
         run: vendor/bin/infection --threads=4 --no-progress
+
+      - name: Compare escaped mutants against the baseline
+        run: php .claude/mutation-baseline.php
