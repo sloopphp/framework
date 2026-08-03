@@ -53,7 +53,21 @@
             // call yields the same hex prefix. No black-box test can observe
             // the difference, so the mutation cannot be killed.
             "ignore": [
-                "Sloop\\Support\\Str::randomHex"
+                "Sloop\\Support\\Str::randomHex",
+                // Connection::sleepBackoff / logQuerySuccess convert seconds to
+                // milliseconds with a literal 1000. Shifting it to 1001 changes
+                // a sleep duration or an elapsed-time reading by a tenth of a
+                // percent, which is only observable through an upper-bound
+                // timing assertion — the exact construct that made the Windows
+                // CI run flaky in 2026-08. Deliberately not killed.
+                "Sloop\\Database\\Connection::sleepBackoff",
+                "Sloop\\Database\\Connection::logQuerySuccess",
+                // Connection::transaction's `int $backoffMs = 0` default:
+                // raising it to 1 makes the omitted-argument case sleep for one
+                // millisecond. Observing that requires timing the call. Pinned
+                // to the parameter's line because other integer literals in the
+                // same method are killable.
+                "Sloop\\Database\\Connection::transaction::356"
             ]
         },
         "DecrementInteger": {
@@ -69,7 +83,93 @@
             // practice for unit-test purposes.
             "ignore": [
                 "Sloop\\Support\\Str::randomHex",
-                "Sloop\\Support\\Str::random"
+                "Sloop\\Support\\Str::random",
+                // Same millisecond-conversion literal as IncrementInteger above,
+                // in the opposite direction (1000 → 999).
+                "Sloop\\Database\\Connection::sleepBackoff",
+                "Sloop\\Database\\Connection::logQuerySuccess",
+                // SloopException's `int $statusCode = 0` default. The
+                // constructor applies the argument only when it is greater than
+                // zero, so 0 and -1 both mean "use the class default" — the
+                // documented contract. Pinned to the parameter's line because
+                // the `> 0` comparison in the same constructor is killable.
+                "Sloop\\Error\\SloopException::__construct::62"
+            ]
+        },
+        "GreaterThan": {
+            // Connection::sleepBackoff guards usleep with `$backoffMs > 0`.
+            // Relaxing it to `>= 0` only adds a usleep(0) call, which is not
+            // observable. Connection::logQuerySuccess compares the measured
+            // elapsed time against the slow-query threshold; distinguishing
+            // `>` from `>=` needs a query whose duration lands exactly on the
+            // threshold, which no deterministic test can arrange.
+            "ignore": [
+                "Sloop\\Database\\Connection::sleepBackoff",
+                "Sloop\\Database\\Connection::logQuerySuccess"
+            ]
+        },
+        "LogicalAnd": {
+            // Connection::shouldMeasureElapsed decides whether to call
+            // microtime() before a query. Both call sites re-check
+            // `$this->logger !== null` before logging, so turning the && into
+            // an || changes only whether a timestamp is taken — never what is
+            // written to the log.
+            "ignore": [
+                "Sloop\\Database\\Connection::shouldMeasureElapsed"
+            ]
+        },
+        "AssignCoalesce": {
+            // Connection::dialect and RouteRequestHandler::reflectParameters
+            // memoize with `??=`. Replacing it with `=` recomputes the value
+            // from inputs that are themselves already cached (serverVersion()
+            // has its own `??=`; reflection is pure), so neither the returned
+            // value nor the number of round trips to a collaborator changes.
+            // Same reasoning as the Str::snake / Str::studly entries below.
+            "ignore": [
+                "Sloop\\Database\\Connection::dialect",
+                "Sloop\\Http\\RouteRequestHandler::reflectParameters"
+            ]
+        },
+        "Coalesce": {
+            // Str::camel reads its memo with `??`. The mutation makes the
+            // method recompute and overwrite the cache with the same value.
+            "ignore": [
+                "Sloop\\Support\\Str::camel"
+            ]
+        },
+        "NullSafeMethodCall": {
+            // RouteRequestHandler::resolveBuiltinParameter is reached only for
+            // parameters that resolveParameter has already narrowed to a
+            // ReflectionNamedType, so `getType()` cannot be null there. The
+            // `?->` is defensive; dropping it takes an unreachable branch.
+            "ignore": [
+                "Sloop\\Http\\RouteRequestHandler::resolveBuiltinParameter"
+            ]
+        },
+        "RoundingFamily": {
+            // TraceContext::elapsedMs rounds a live microtime() delta. round()
+            // versus ceil()/floor() differ by at most one millisecond on a
+            // value that is not reproducible between runs, so no deterministic
+            // assertion can separate them.
+            "ignore": [
+                "Sloop\\Log\\TraceContext::elapsedMs"
+            ]
+        },
+        "PregMatchRemoveCaret": {
+            // Route::compilePattern matches each segment against
+            // `/^\{(\w+)}$/`. The segments come from preg_split with
+            // PREG_SPLIT_DELIM_CAPTURE on the same `{\w+}` shape, so a segment
+            // either is exactly a placeholder or contains no complete
+            // placeholder at all. No input can distinguish the anchored
+            // pattern from the unanchored one.
+            "ignore": [
+                "Sloop\\Routing\\Route::compilePattern"
+            ]
+        },
+        "PregMatchRemoveDollar": {
+            // Same segment-shape argument as PregMatchRemoveCaret above.
+            "ignore": [
+                "Sloop\\Routing\\Route::compilePattern"
             ]
         },
         "Concat": {
@@ -90,7 +190,60 @@
             // difference remains. Equivalent in black-box test terms.
             "ignore": [
                 "Sloop\\Support\\Str::snake",
-                "Sloop\\Support\\Str::studly"
+                "Sloop\\Support\\Str::studly",
+                // ConnectionManager::applyQueryTimeout returns early when the
+                // pool declares no timeout. It is only ever called with a
+                // freshly built Connection, whose timeout is already null and
+                // whose applied flag is already false, so falling through to
+                // setQueryTimeoutMs(null) re-assigns the current state.
+                "Sloop\\Database\\ConnectionManager::applyQueryTimeout",
+                // Route::compilePattern returns early for patterns without a
+                // placeholder. Falling through compiles a regex that match()
+                // never consults, because it short-circuits on an empty
+                // paramNames list and compares the literal pattern instead.
+                "Sloop\\Routing\\Route::compilePattern",
+                // Collection::from returns early for arrays; the fall-through
+                // reaches iterator_to_array(), which accepts arrays and
+                // preserves keys, producing the same collection.
+                "Sloop\\Support\\Collection::from",
+                // Collection::min / max return early for an empty collection.
+                // Falling through runs a loop over nothing and returns the
+                // still-null accumulator.
+                "Sloop\\Support\\Collection::min",
+                "Sloop\\Support\\Collection::max",
+                // The entries below are pinned to a line because the same
+                // method contains other early returns whose removal *is*
+                // observable, so a method-wide ignore would discard a working
+                // signal.
+                //
+                // ConnectionManager::getReplicaConnection returns the primary
+                // when a pool declares no replicas. Falling through partitions
+                // an empty replica list, skips the attempt loop, and reaches
+                // the primary fallback — the same connection, since
+                // max_connection_attempts is validated as a positive int.
+                "Sloop\\Database\\ConnectionManager::getReplicaConnection::181",
+                // Application::dispatchRoute returns early when a route has no
+                // middleware. The fall-through builds a MiddlewareDispatcher
+                // with an empty pipeline, which delegates straight to the same
+                // final handler and returns the same response.
+                "Sloop\\Foundation\\Application::dispatchRoute::150",
+                // TracingMiddleware::extractTraceId returns null for an empty
+                // header. The fall-through runs the traceparent regex against
+                // '', which cannot match, and returns null on the next line.
+                "Sloop\\Http\\Middleware\\TracingMiddleware::extractTraceId::109",
+                // LogManager::resolveChannelProcessors returns early when the
+                // channel declares no processor names. Falling through iterates
+                // an empty name list and returns the same empty array.
+                "Sloop\\Log\\LogManager::resolveChannelProcessors::242",
+                // Arr::last returns end($array) for the callback-less case. The
+                // fall-through calls first() on the reversed array with a null
+                // callback, which resolves to the same element.
+                "Sloop\\Support\\Arr::last::181",
+                // Collection::contains returns false after an exhausted
+                // callable scan. Falling through runs in_array() with the
+                // callable as the needle, which is never present among the
+                // items, so the result is false either way.
+                "Sloop\\Support\\Collection::contains::204"
             ]
         },
         "ArrayItemRemoval": {
