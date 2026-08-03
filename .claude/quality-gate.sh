@@ -87,6 +87,8 @@ fi
 
 if [ "$with_mutation" -eq 1 ]; then
     run_gate 'Infection' vendor/bin/infection --threads=4 --no-progress
+    # Reads the report Infection just wrote, so it only makes sense after it.
+    run_gate 'Mutation baseline' php "$script_dir/mutation-baseline.php"
 fi
 
 printf '\n%s=== Exit codes ===%s\n' "$bold" "$reset"
