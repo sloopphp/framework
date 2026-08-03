@@ -13,8 +13,13 @@
         "json": "build/infection/infection.json"
     },
     "tmpDir": "build/infection/tmp",
-    "minMsi": 95,
-    "minCoveredMsi": 95,
+    // The aggregate floor. Per mutant regressions are caught by
+    // .claude/mutation-baseline.php; this only guards against a broad
+    // collapse. 99 tolerates 19 escaped mutants against the 4 that exist
+    // today, which leaves room for genuinely equivalent ones to appear
+    // before the threshold has to be revisited.
+    "minMsi": 99,
+    "minCoveredMsi": 99,
     "mutators": {
         "@default": true,
         // Equivalent mutants: the mutation changes the AST but the program
