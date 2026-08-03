@@ -350,6 +350,13 @@ final class CollectionTest extends TestCase
         $this->assertSame(1, $min);
     }
 
+    public function testMinKeepsTheFirstOfTwoNumericallyEqualValues(): void
+    {
+        // int 1 and float 1.0 compare equal, so only the retained type reveals
+        // whether the strict comparison kept the first occurrence.
+        $this->assertSame(1, Collection::from([1, 1.0])->min());
+    }
+
     public function testMaxReturnsLargest(): void
     {
         $this->assertSame(5, Collection::from([3, 1, 4, 1, 5])->max());
@@ -373,6 +380,13 @@ final class CollectionTest extends TestCase
         $max   = Collection::from($items)->max(fn (int $n): int => $n);
 
         $this->assertSame(5, $max);
+    }
+
+    public function testMaxKeepsTheFirstOfTwoNumericallyEqualValues(): void
+    {
+        // int 1 and float 1.0 compare equal, so only the retained type reveals
+        // whether the strict comparison kept the first occurrence.
+        $this->assertSame(1, Collection::from([1, 1.0])->max());
     }
 
     // -------------------------------------------------------
@@ -481,6 +495,14 @@ final class CollectionTest extends TestCase
     public function testPluckReturnsNullForMissingKey(): void
     {
         $this->assertSame([null, null], Collection::from([['x' => 1], ['x' => 2]])->pluck('y')->toArray());
+    }
+
+    public function testPluckReturnsNullForMissingObjectPropertyWithoutEmittingAWarning(): void
+    {
+        $object       = new stdClass();
+        $object->name = 'alice';
+
+        $this->assertSame([null], Collection::from([$object])->pluck('missing')->toArray());
     }
 
     // -------------------------------------------------------

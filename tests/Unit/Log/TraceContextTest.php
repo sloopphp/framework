@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Log;
 
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use Sloop\Log\TraceContext;
 
 final class TraceContextTest extends TestCase
@@ -119,5 +120,22 @@ final class TraceContextTest extends TestCase
         $elapsed = $context->elapsedMs();
 
         $this->assertGreaterThanOrEqual(1, $elapsed);
+    }
+
+    public function testElapsedMsConvertsSecondsToMillisecondsAgainstAnInjectedStart(): void
+    {
+        // A start 1000 seconds in the past makes the expected result large
+        // enough that a wrong unit conversion, a wrong sign, or a per-mille
+        // scaling error lands far outside the window, while the window itself
+        // stays wide enough (500ms over a 1000s base) to absorb scheduler
+        // jitter. Deliberately not an upper bound on how fast the test runs.
+        $reflection = new ReflectionClass(TraceContext::class);
+        $context    = $reflection->newInstanceWithoutConstructor();
+        $reflection->getProperty('startedAt')->setValue($context, microtime(true) - 1000.0);
+
+        $elapsed = $context->elapsedMs();
+
+        $this->assertGreaterThanOrEqual(1_000_000, $elapsed);
+        $this->assertLessThan(1_000_500, $elapsed);
     }
 }

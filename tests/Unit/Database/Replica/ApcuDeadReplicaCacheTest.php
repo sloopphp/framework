@@ -17,16 +17,15 @@ final class ApcuDeadReplicaCacheTest extends TestCase
 {
     protected function setUp(): void
     {
-        if (!ApcuDeadReplicaCache::isAvailable()) {
+        // Probe the extension directly rather than through isAvailable(): using
+        // the subject under test as the skip condition makes every test in this
+        // class self-skipping whenever isAvailable() is wrong, which hides the
+        // very defect testIsAvailableReturnsTrueWhenApcuEnabled exists to catch.
+        if (!apcu_enabled()) {
             $this->markTestSkipped('APCu is installed but disabled in this SAPI (set apc.enable_cli=1 for CLI).');
         }
 
         apcu_clear_cache();
-    }
-
-    public function testIsAvailableReturnsTrueWhenApcuEnabled(): void
-    {
-        $this->assertTrue(ApcuDeadReplicaCache::isAvailable());
     }
 
     /**

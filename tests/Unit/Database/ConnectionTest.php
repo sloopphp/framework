@@ -1102,7 +1102,9 @@ final class ConnectionTest extends TestCase
         // the failure also lands as `error` level so operators see it.
         $pdo = $this->createMock(PDO::class);
         $this->scriptVersionQuery($pdo, '8.0.37');
-        $pdo->method('exec')->willThrowException(new \PDOException('access denied'));
+        $pdoException            = new \PDOException('access denied');
+        $pdoException->errorInfo = ['42000', 1064, 'access denied'];
+        $pdo->method('exec')->willThrowException($pdoException);
 
         $connection = new Connection($pdo, 'test');
         $handler    = $this->attachLogger($connection);
@@ -1118,8 +1120,28 @@ final class ConnectionTest extends TestCase
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
         $this->assertSame(Level::Error, $records[0]->level);
-        $this->assertStringStartsWith('failed to apply query timeout: ', $records[0]->message);
+        // The driver's own message and error identifiers are what make this
+        // record actionable, so pin the whole message and every context key
+        // rather than just the prefix.
+        $this->assertSame('failed to apply query timeout: access denied', $records[0]->message);
+        $this->assertSame('42000', $records[0]->context['sqlstate']);
+        $this->assertSame(1064, $records[0]->context['driver_code']);
         $this->assertSame('test', $records[0]->context['connection_name']);
+    }
+
+    public function testServerVersionNormalizesANonStringDriverValueToString(): void
+    {
+        // PDO::fetchColumn is typed mixed; a driver handing back an int must
+        // not leak that type through serverVersion()'s string contract.
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('fetchColumn')->willReturn(8);
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('query')->willReturn($statement);
+
+        $connection = new Connection($pdo, 'test');
+
+        $this->assertSame('8', $connection->serverVersion());
     }
 
     public function testQueryTimeoutFailureRetriesSetSessionOnNextQuery(): void

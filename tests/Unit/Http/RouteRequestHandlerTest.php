@@ -85,6 +85,16 @@ final class RouteRequestHandlerTest extends TestCase
         $this->assertInstanceOf(Request::class, DiController::$lastRequest);
     }
 
+    public function testPassesLegacyArgumentsByPositionWhenRouteParameterNamesDiffer(): void
+    {
+        // Untyped legacy signatures are filled positionally, so a route
+        // parameter whose name does not match the method's parameter must
+        // still arrive; binding by name would fail here.
+        $this->dispatch(DiController::class, 'legacyUntyped', ['userId' => '42']);
+
+        $this->assertSame('42', DiController::$lastId);
+    }
+
     public function testInjectsSloopRequestForTypedRequestParameter(): void
     {
         $this->dispatch(DiController::class, 'requestOnly', []);
@@ -200,7 +210,9 @@ final class RouteRequestHandlerTest extends TestCase
     public function testThrowsOnUnsupportedUnionType(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('only named types are supported in method DI');
+        // Naming the offending parameter is the point of the message, so assert
+        // the whole sentence rather than the trailing explanation alone.
+        $this->expectExceptionMessage('Unsupported parameter type for id: only named types are supported in method DI.');
 
         $this->dispatch(DiController::class, 'unionTyped', ['id' => '42']);
     }
