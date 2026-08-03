@@ -12,6 +12,7 @@ return RectorConfig::configure()
     ->withPaths([
         __DIR__ . '/src',
         __DIR__ . '/tests',
+        __DIR__ . '/.claude',
     ])
     // The target version is detected automatically from require."php" (^8.5)
     // in composer.json. codingStyle / naming from withPreparedSets() are left
