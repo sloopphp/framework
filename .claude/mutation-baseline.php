@@ -391,6 +391,14 @@ final class ScopeIndex
                 continue;
             }
 
+            if (self::opensInterpolation($token[0])) {
+                // The matching close is a plain '}' token, so this opener has
+                // to be counted or the brace depth drifts.
+                $braces->advance('{');
+
+                continue;
+            }
+
             if (self::isClassLike($token[0])) {
                 $braces->openScope(self::declaredName($tokens, $index, $count));
 
@@ -422,6 +430,22 @@ final class ScopeIndex
             || $tokenType === \T_INTERFACE
             || $tokenType === \T_TRAIT
             || $tokenType === \T_ENUM;
+    }
+
+    /**
+     * Report whether a token opens a brace that the tokenizer closes with a plain '}'.
+     *
+     * String interpolation and heredocs emit a dedicated opening token but an
+     * ordinary '}' to close, so counting only plain braces drifts the depth and
+     * pops the enclosing class off the stack.
+     *
+     * @param int $tokenType Token type constant
+     * @return bool True for the interpolation openers
+     */
+    private static function opensInterpolation(int $tokenType): bool
+    {
+        return $tokenType === \T_CURLY_OPEN
+            || $tokenType === \T_DOLLAR_OPEN_CURLY_BRACES;
     }
 
     /**
@@ -500,6 +524,11 @@ final class ScopeIndex
             $token = $tokens[$cursor];
 
             if (!\is_string($token)) {
+                if ($start !== null && self::opensInterpolation($token[0])) {
+                    // Closed by a plain '}', so it has to be counted here too.
+                    $depth++;
+                }
+
                 continue;
             }
 
