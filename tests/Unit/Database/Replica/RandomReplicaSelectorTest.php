@@ -94,9 +94,11 @@ final class RandomReplicaSelectorTest extends TestCase
         ];
         $snapshot   = $candidates;
 
-        $selector->pick($candidates);
-        $selector->pick($candidates);
+        $first  = $selector->pick($candidates);
+        $second = $selector->pick($candidates);
 
         $this->assertSame($snapshot, $candidates);
+        $this->assertLessThan(3, $first);
+        $this->assertLessThan(3, $second);
     }
 }
