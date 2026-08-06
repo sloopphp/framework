@@ -44,9 +44,9 @@ final readonly class ReplicaSelectorRegistry
     /**
      * Get the selector registered under the given identifier.
      *
-     * @param  string                  $identifier Value of the pool's `replica_selector` config key
+     * @param  string                 $identifier Value of the pool's `replica_selector` config key
      * @return ReplicaSelector
-     * @throws InvalidConfigException  When no selector is registered under the identifier
+     * @throws InvalidConfigException When no selector is registered under the identifier
      */
     public function get(string $identifier): ReplicaSelector
     {

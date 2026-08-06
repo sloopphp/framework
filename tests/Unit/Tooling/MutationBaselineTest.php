@@ -276,7 +276,7 @@ final class MutationBaselineTest extends TestCase
     }
 
     /**
-     * @param array<string, list<array<string, mixed>>> $sections
+     * @param  array<string, list<array<string, mixed>>> $sections
      * @return array<string, mixed>
      */
     private function reportWith(array $sections): array

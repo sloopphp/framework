@@ -22,12 +22,12 @@ final class RequestTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed>                 $query
-     * @param array<string, mixed>                 $parsedBody
-     * @param array<string, string|list<string>>   $headers
-     * @param array<string, mixed>                 $serverParams
-     * @param array<string, UploadedFile>          $uploadedFiles
-     * @param array<string, string>                $routeParams
+     * @param array<string, mixed>               $query
+     * @param array<string, mixed>               $parsedBody
+     * @param array<string, string|list<string>> $headers
+     * @param array<string, mixed>               $serverParams
+     * @param array<string, UploadedFile>        $uploadedFiles
+     * @param array<string, string>              $routeParams
      */
     private function createRequest(
         string $method = 'GET',

@@ -70,7 +70,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
      * through reflection rather than expanding the public surface.
      *
      * @param  Connection $connection Connection whose PDO is read
-     * @return PDO                    Underlying PDO instance
+     * @return PDO        Underlying PDO instance
      */
     private function extractPdo(Connection $connection): PDO
     {

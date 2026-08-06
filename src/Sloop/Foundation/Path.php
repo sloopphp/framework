@@ -24,7 +24,7 @@ final class Path
     /**
      * Initialize the base path.
      *
-     * @param string $basePath Absolute path to the application root directory
+     * @param  string           $basePath Absolute path to the application root directory
      * @return void
      * @throws RuntimeException If the directory does not exist
      */
@@ -48,7 +48,7 @@ final class Path
     /**
      * Get the application base path.
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function base(string $path = ''): string
@@ -59,7 +59,7 @@ final class Path
     /**
      * Get the source directory path (src/).
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function src(string $path = ''): string
@@ -70,7 +70,7 @@ final class Path
     /**
      * Get the configuration directory path (config/).
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function config(string $path = ''): string
@@ -81,7 +81,7 @@ final class Path
     /**
      * Get the storage directory path (storage/).
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function storage(string $path = ''): string
@@ -92,7 +92,7 @@ final class Path
     /**
      * Get the public directory path (public/).
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function public(string $path = ''): string
@@ -103,7 +103,7 @@ final class Path
     /**
      * Get the routes directory path (routes/).
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function routes(string $path = ''): string
@@ -114,7 +114,7 @@ final class Path
     /**
      * Get the tests directory path (tests/).
      *
-     * @param string $path Optional relative path to append
+     * @param  string $path Optional relative path to append
      * @return string
      */
     public static function tests(string $path = ''): string
@@ -145,7 +145,7 @@ final class Path
     /**
      * Get the verified base path.
      *
-     * @return string Resolved base path
+     * @return string           Resolved base path
      * @throws RuntimeException If not initialized
      */
     private static function getBasePath(): string
@@ -162,8 +162,8 @@ final class Path
     /**
      * Join a base path with a relative path segment.
      *
-     * @param string $base Base directory path
-     * @param string $path Relative path to append
+     * @param  string $base Base directory path
+     * @param  string $path Relative path to append
      * @return string
      */
     private static function join(string $base, string $path): string

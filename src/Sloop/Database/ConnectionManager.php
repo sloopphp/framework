@@ -81,12 +81,12 @@ final class ConnectionManager
     /**
      * Construct a new ConnectionManager.
      *
-     * @param string                              $defaultName     Pool name to return from connection()
-     * @param array<string, array<string, mixed>> $configs         Pool configurations indexed by pool name
-     * @param ConnectionFactory                   $factory         Builds Connection instances from validated configs
+     * @param string                              $defaultName      Pool name to return from connection()
+     * @param array<string, array<string, mixed>> $configs          Pool configurations indexed by pool name
+     * @param ConnectionFactory                   $factory          Builds Connection instances from validated configs
      * @param ReplicaSelectorRegistry             $replicaSelectors Maps each pool's `replica_selector` identifier to its strategy
-     * @param DeadReplicaCache                    $deadCache       Negative cache for replicas that recently failed to connect
-     * @param LoggerInterface|null                $logger          PSR-3 logger injected into each created Connection (typically the `database` channel); null disables query logging
+     * @param DeadReplicaCache                    $deadCache        Negative cache for replicas that recently failed to connect
+     * @param LoggerInterface|null                $logger           PSR-3 logger injected into each created Connection (typically the `database` channel); null disables query logging
      */
     public function __construct(
         private readonly string $defaultName,
@@ -237,8 +237,8 @@ final class ConnectionManager
      * manager keeps serving it for the rest of the request/process.
      *
      * @param  string|null            $name Pool to probe; defaults to the configured default pool
-     * @return array<string, bool>          host:port → true (probe succeeded) | false (probe failed)
-     * @throws InvalidConfigException       When the pool is undefined or its config is malformed
+     * @return array<string, bool>    host:port → true (probe succeeded) | false (probe failed)
+     * @throws InvalidConfigException When the pool is undefined or its config is malformed
      */
     public function probeReplicas(?string $name = null): array
     {
@@ -348,7 +348,7 @@ final class ConnectionManager
      * connection attempt (replica + primary fallback) fails.
      *
      * @param  PoolConfig                                       $pool Pool config (provides replica list and pool name)
-     * @return array{0: list<ValidatedConfig>, 1: list<string>}       [alive in declaration order, skip messages]
+     * @return array{0: list<ValidatedConfig>, 1: list<string>} [alive in declaration order, skip messages]
      */
     private function partitionByDeadCache(PoolConfig $pool): array
     {

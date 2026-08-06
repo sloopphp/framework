@@ -32,9 +32,9 @@ final class Env
     /**
      * Get an environment variable value.
      *
-     * @param string      $key      Environment variable name
-     * @param string|null $default  Default value if not set (incompatible with required: true)
-     * @param bool        $required Throw exception if not set (incompatible with default)
+     * @param  string                   $key      Environment variable name
+     * @param  string|null              $default  Default value if not set (incompatible with required: true)
+     * @param  bool                     $required Throw exception if not set (incompatible with default)
      * @return string|null
      * @throws InvalidArgumentException If required and default are both specified
      * @throws RuntimeException         If required and the variable is not set
@@ -102,8 +102,8 @@ final class Env
      * Original environment and cache state are restored after execution.
      *
      * @template T
-     * @param array<string, string|null> $variables Variables to set (null to unset)
-     * @param callable(): T              $callback  Code to execute with overrides
+     * @param  array<string, string|null> $variables Variables to set (null to unset)
+     * @param  callable(): T              $callback  Code to execute with overrides
      * @return T
      */
     public static function withEnv(array $variables, callable $callback): mixed

@@ -26,8 +26,8 @@ final class Request
     /**
      * Create a new request instance.
      *
-     * @param ServerRequestInterface  $serverRequest PSR-7 server request
-     * @param array<string, string>   $routeParams   Route parameters resolved by the router
+     * @param ServerRequestInterface $serverRequest PSR-7 server request
+     * @param array<string, string>  $routeParams   Route parameters resolved by the router
      */
     public function __construct(
         private readonly ServerRequestInterface $serverRequest,
@@ -38,8 +38,8 @@ final class Request
     /**
      * Get a query string parameter.
      *
-     * @param string $key     Parameter name
-     * @param mixed  $default Default value if not found
+     * @param  string $key     Parameter name
+     * @param  mixed  $default Default value if not found
      * @return mixed
      */
     public function get(string $key, mixed $default = null): mixed
@@ -50,8 +50,8 @@ final class Request
     /**
      * Get a parsed body parameter (form POST data).
      *
-     * @param string $key     Parameter name
-     * @param mixed  $default Default value if not found
+     * @param  string $key     Parameter name
+     * @param  mixed  $default Default value if not found
      * @return mixed
      */
     public function post(string $key, mixed $default = null): mixed
@@ -69,8 +69,8 @@ final class Request
      *
      * Query string is checked first, then parsed body.
      *
-     * @param string $key     Parameter name
-     * @param mixed  $default Default value if not found
+     * @param  string $key     Parameter name
+     * @param  mixed  $default Default value if not found
      * @return mixed
      */
     public function input(string $key, mixed $default = null): mixed
@@ -86,8 +86,8 @@ final class Request
     /**
      * Get a value from the parsed JSON body using dot notation.
      *
-     * @param string|null $key     Dot-notation key (null returns entire body)
-     * @param mixed       $default Default value if not found
+     * @param  string|null $key     Dot-notation key (null returns entire body)
+     * @param  mixed       $default Default value if not found
      * @return mixed
      */
     public function json(?string $key = null, mixed $default = null): mixed
@@ -119,8 +119,8 @@ final class Request
     /**
      * Get a request header value.
      *
-     * @param string      $name    Header name (case-insensitive)
-     * @param string|null $default Default value if not found
+     * @param  string      $name    Header name (case-insensitive)
+     * @param  string|null $default Default value if not found
      * @return string|null
      */
     public function header(string $name, ?string $default = null): ?string
@@ -163,7 +163,7 @@ final class Request
     /**
      * Get an uploaded file by name.
      *
-     * @param string $name File input name
+     * @param  string                     $name File input name
      * @return UploadedFileInterface|null
      */
     public function file(string $name): ?UploadedFileInterface
@@ -225,8 +225,8 @@ final class Request
     /**
      * Get a route parameter.
      *
-     * @param string      $name    Parameter name
-     * @param string|null $default Default value if not found
+     * @param  string      $name    Parameter name
+     * @param  string|null $default Default value if not found
      * @return string|null
      */
     public function param(string $name, ?string $default = null): ?string

@@ -54,7 +54,7 @@ final readonly class ApiResponseFormatter implements ResponseFormatterInterface
      * @param  array<string, mixed> $meta   Metadata (pagination, etc.)
      * @param  int                  $status HTTP status code
      * @return ResponseInterface
-     * @throws \JsonException If the data cannot be encoded to JSON
+     * @throws \JsonException       If the data cannot be encoded to JSON
      */
     public function success(mixed $data, array $meta = [], int $status = HttpStatus::Ok): ResponseInterface
     {
@@ -74,7 +74,7 @@ final readonly class ApiResponseFormatter implements ResponseFormatterInterface
      * @param  int                  $status  HTTP status code
      * @param  array<string, mixed> $errors  Detailed errors (validation, etc.)
      * @return ResponseInterface
-     * @throws \JsonException If the data cannot be encoded to JSON
+     * @throws \JsonException       If the data cannot be encoded to JSON
      */
     public function error(string $message, int $status = HttpStatus::BadRequest, array $errors = []): ResponseInterface
     {
@@ -93,10 +93,10 @@ final readonly class ApiResponseFormatter implements ResponseFormatterInterface
     /**
      * Create a JSON response with the given body and status.
      *
-     * @param array<string, mixed> $body   Response body
-     * @param int                  $status HTTP status code
+     * @param  array<string, mixed> $body   Response body
+     * @param  int                  $status HTTP status code
      * @return ResponseInterface
-     * @throws \JsonException If the body cannot be encoded to JSON
+     * @throws \JsonException       If the body cannot be encoded to JSON
      */
     private function jsonResponse(array $body, int $status): ResponseInterface
     {

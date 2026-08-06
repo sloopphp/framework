@@ -8,9 +8,9 @@ if (!function_exists('env')) {
     /**
      * Get an environment variable value.
      *
-     * @param string      $key      Environment variable name
-     * @param string|null $default  Default value if not set
-     * @param bool        $required Throw exception if not set
+     * @param  string      $key      Environment variable name
+     * @param  string|null $default  Default value if not set
+     * @param  bool        $required Throw exception if not set
      * @return string|null
      */
     function env(

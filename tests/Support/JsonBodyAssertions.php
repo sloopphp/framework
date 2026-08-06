@@ -21,7 +21,7 @@ trait JsonBodyAssertions
      * a descriptive message rather than propagating `JsonException`
      * through the test method signature.
      *
-     * @param  ResponseInterface $response Response to decode
+     * @param  ResponseInterface    $response Response to decode
      * @return array<string, mixed>
      */
     private function decodeJsonBody(ResponseInterface $response): array
@@ -40,7 +40,7 @@ trait JsonBodyAssertions
     /**
      * Narrow a mixed value to a string-keyed array.
      *
-     * @param  mixed $value Value to narrow (typically a decoded JSON object)
+     * @param  mixed                $value Value to narrow (typically a decoded JSON object)
      * @return array<string, mixed>
      */
     private function narrowToStringArray(mixed $value): array

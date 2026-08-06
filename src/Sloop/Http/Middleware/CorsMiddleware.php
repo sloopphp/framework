@@ -93,7 +93,7 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     /**
      * Create a new CORS middleware.
      *
-     * @param array<string, mixed> $config CORS configuration
+     * @param  array<string, mixed>      $config CORS configuration
      * @throws \InvalidArgumentException When the wildcard origin `*` is combined with allow_credentials
      */
     public function __construct(array $config = [])
@@ -121,8 +121,8 @@ final readonly class CorsMiddleware implements MiddlewareInterface
      * Preflight OPTIONS requests are handled immediately with a 204 response.
      * Other requests are forwarded to the next handler with CORS headers applied.
      *
-     * @param ServerRequestInterface  $request Incoming request
-     * @param RequestHandlerInterface $handler Next handler
+     * @param  ServerRequestInterface  $request Incoming request
+     * @param  RequestHandlerInterface $handler Next handler
      * @return ResponseInterface
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -145,7 +145,7 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     /**
      * Check if the given origin is allowed.
      *
-     * @param string $origin Request origin
+     * @param  string $origin Request origin
      * @return bool
      */
     private function isOriginAllowed(string $origin): bool
@@ -160,7 +160,7 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     /**
      * Handle a preflight OPTIONS request.
      *
-     * @param string $origin Allowed origin
+     * @param  string            $origin Allowed origin
      * @return ResponseInterface
      */
     private function handlePreflight(string $origin): ResponseInterface
@@ -173,8 +173,8 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     /**
      * Add CORS headers to the response.
      *
-     * @param ResponseInterface $response Response to modify
-     * @param string            $origin   Allowed origin
+     * @param  ResponseInterface $response Response to modify
+     * @param  string            $origin   Allowed origin
      * @return ResponseInterface
      */
     private function addCorsHeaders(ResponseInterface $response, string $origin): ResponseInterface

@@ -57,9 +57,9 @@ final readonly class Mutant
     /**
      * Build a mutant from one entry of an Infection JSON report.
      *
-     * @param array<array-key, mixed> $entry   Single result entry
-     * @param string                  $rootDir Repository root, stripped from the reported path
-     * @return self|null Mutant, or null when the entry carries no mutator
+     * @param  array<array-key, mixed> $entry   Single result entry
+     * @param  string                  $rootDir Repository root, stripped from the reported path
+     * @return self|null               Mutant, or null when the entry carries no mutator
      */
     public static function fromReportEntry(array $entry, string $rootDir): ?self
     {
@@ -82,8 +82,8 @@ final readonly class Mutant
     /**
      * Build a mutant from one entry of the committed baseline.
      *
-     * @param array<array-key, mixed> $entry Single baseline entry
-     * @return self Mutant with missing fields treated as empty
+     * @param  array<array-key, mixed> $entry Single baseline entry
+     * @return self                    Mutant with missing fields treated as empty
      */
     public static function fromBaselineEntry(array $entry): self
     {
@@ -139,7 +139,7 @@ final readonly class Mutant
      * Context lines are dropped so that edits around a mutant do not change the
      * identity. File headers carry no mutation information.
      *
-     * @param string $diff Diff as reported by Infection
+     * @param  string $diff Diff as reported by Infection
      * @return string Changed lines joined by newlines
      */
     private static function changedLines(string $diff): string
@@ -172,10 +172,10 @@ final class Json
     /**
      * Read and decode a JSON file, exiting with a diagnostic when it cannot be used.
      *
-     * @param string $path Absolute path to the JSON file
-     * @param string $hint Shown to the operator when the file is missing
+     * @param  string                  $path Absolute path to the JSON file
+     * @param  string                  $hint Shown to the operator when the file is missing
      * @return array<array-key, mixed> Decoded top level object
-     * @throws \RuntimeException When the file is missing, unreadable or not a JSON object
+     * @throws \RuntimeException       When the file is missing, unreadable or not a JSON object
      */
     public static function readFile(string $path, string $hint): array
     {
@@ -204,7 +204,7 @@ final class Json
     /**
      * Narrow a decoded value to a string.
      *
-     * @param mixed $value Decoded JSON value
+     * @param  mixed  $value Decoded JSON value
      * @return string The value when it is a string, an empty string otherwise
      */
     public static function asString(mixed $value): string
@@ -215,8 +215,8 @@ final class Json
     /**
      * Narrow a decoded value to an integer.
      *
-     * @param mixed $value Decoded JSON value
-     * @return int The value when it is an integer, zero otherwise
+     * @param  mixed $value Decoded JSON value
+     * @return int   The value when it is an integer, zero otherwise
      */
     public static function asInt(mixed $value): int
     {
@@ -226,7 +226,7 @@ final class Json
     /**
      * Narrow a decoded value to an array.
      *
-     * @param mixed $value Decoded JSON value
+     * @param  mixed                   $value Decoded JSON value
      * @return array<array-key, mixed> The value when it is an array, an empty array otherwise
      */
     public static function asArray(mixed $value): array
@@ -263,7 +263,7 @@ final class BraceTracker
     /**
      * Update the depth for a single character token.
      *
-     * @param string $token Character token from the stream
+     * @param  string $token Character token from the stream
      * @return void
      */
     public function advance(string $token): void
@@ -289,7 +289,7 @@ final class BraceTracker
     /**
      * Record a class-like declaration opening at the current depth.
      *
-     * @param string|null $name Declared name, or null for an anonymous class
+     * @param  string|null $name Declared name, or null for an anonymous class
      * @return void
      */
     public function openScope(?string $name): void
@@ -338,8 +338,8 @@ final class ScopeIndex
     /**
      * Return the method that encloses a line.
      *
-     * @param string $file Absolute path to the PHP source file
-     * @param int    $line 1 based line number of the mutated statement
+     * @param  string $file Absolute path to the PHP source file
+     * @param  int    $line 1 based line number of the mutated statement
      * @return string Enclosing scope such as ClassName::methodName, empty when unresolved
      */
     public static function resolve(string $file, int $line): string
@@ -374,7 +374,7 @@ final class ScopeIndex
     /**
      * Collect every function body in a file with the lines it spans.
      *
-     * @param string $file Absolute path to the PHP source file
+     * @param  string                                 $file Absolute path to the PHP source file
      * @return list<array{0: int, 1: int, 2: string}> Start line, end line and scope name
      */
     private static function collect(string $file): array
@@ -428,7 +428,7 @@ final class ScopeIndex
     /**
      * Report whether a token opens a class-like declaration.
      *
-     * @param int $tokenType Token type constant
+     * @param  int  $tokenType Token type constant
      * @return bool True for class, interface, trait and enum
      */
     private static function isClassLike(int $tokenType): bool
@@ -446,7 +446,7 @@ final class ScopeIndex
      * ordinary '}' to close, so counting only plain braces drifts the depth and
      * pops the enclosing class off the stack.
      *
-     * @param int $tokenType Token type constant
+     * @param  int  $tokenType Token type constant
      * @return bool True for the interpolation openers
      */
     private static function opensInterpolation(int $tokenType): bool
@@ -458,11 +458,11 @@ final class ScopeIndex
     /**
      * Build the scope entry for a function declaration.
      *
-     * @param list<array{0: int, 1: string, 2: int}|string> $tokens    Token stream
-     * @param int                                           $index     Index of the T_FUNCTION token
-     * @param int                                           $count     Total token count
-     * @param string                                        $enclosing Name of the enclosing class-like scope
-     * @return array{0: int, 1: int, 2: string}|null Scope entry, null when the declaration has no mutable body
+     * @param  list<array{0: int, 1: string, 2: int}|string> $tokens    Token stream
+     * @param  int                                           $index     Index of the T_FUNCTION token
+     * @param  int                                           $count     Total token count
+     * @param  string                                        $enclosing Name of the enclosing class-like scope
+     * @return array{0: int, 1: int, 2: string}|null         Scope entry, null when the declaration has no mutable body
      */
     private static function functionScope(array $tokens, int $index, int $count, string $enclosing): ?array
     {
@@ -485,10 +485,10 @@ final class ScopeIndex
     /**
      * Return the identifier that names a declaration, when it has one.
      *
-     * @param list<array{0: int, 1: string, 2: int}|string> $tokens Token stream
-     * @param int                                           $index  Index of the declaring keyword
-     * @param int                                           $count  Total token count
-     * @return string|null Declared name, or null for anonymous declarations
+     * @param  list<array{0: int, 1: string, 2: int}|string> $tokens Token stream
+     * @param  int                                           $index  Index of the declaring keyword
+     * @param  int                                           $count  Total token count
+     * @return string|null                                   Declared name, or null for anonymous declarations
      */
     private static function declaredName(array $tokens, int $index, int $count): ?string
     {
@@ -517,10 +517,10 @@ final class ScopeIndex
     /**
      * Find the line span of the body that follows a function declaration.
      *
-     * @param list<array{0: int, 1: string, 2: int}|string> $tokens Token stream
-     * @param int                                           $index  Index of the T_FUNCTION token
-     * @param int                                           $count  Total token count
-     * @return array{0: int, 1: int}|null Start and end line, null when the declaration has no body
+     * @param  list<array{0: int, 1: string, 2: int}|string> $tokens Token stream
+     * @param  int                                           $index  Index of the T_FUNCTION token
+     * @param  int                                           $count  Total token count
+     * @return array{0: int, 1: int}|null                    Start and end line, null when the declaration has no body
      */
     private static function bodySpan(array $tokens, int $index, int $count): ?array
     {
@@ -567,9 +567,9 @@ final class ScopeIndex
     /**
      * Resolve the line a brace sits on by walking back to the nearest token that carries one.
      *
-     * @param list<array{0: int, 1: string, 2: int}|string> $tokens Token stream
-     * @param int                                           $index  Index of the token to locate
-     * @return int 1 based line number, zero when no preceding token carries one
+     * @param  list<array{0: int, 1: string, 2: int}|string> $tokens Token stream
+     * @param  int                                           $index  Index of the token to locate
+     * @return int                                           1 based line number, zero when no preceding token carries one
      */
     private static function lineOf(array $tokens, int $index): int
     {
@@ -616,9 +616,9 @@ final class MutationBaseline
     /**
      * Run the comparison or rewrite the baseline.
      *
-     * @param list<string> $arguments   Command line arguments without the script name
-     * @param mixed        $errorStream Stream diagnostics are written to; STDERR when null
-     * @return int Process exit code
+     * @param  list<string> $arguments   Command line arguments without the script name
+     * @param  mixed        $errorStream Stream diagnostics are written to; STDERR when null
+     * @return int          Process exit code
      */
     public static function run(array $arguments, mixed $errorStream = null): int
     {
@@ -655,10 +655,10 @@ final class MutationBaseline
     /**
      * Turn command line arguments into the paths and mode to run with.
      *
-     * @param list<string> $arguments   Command line arguments without the script name
-     * @param string       $rootDir     Repository root, used to build the default paths
-     * @param mixed        $errorStream Stream diagnostics are written to; STDERR when null
-     * @return Invocation Parsed invocation, carrying an exit code when the run should stop
+     * @param  list<string> $arguments   Command line arguments without the script name
+     * @param  string       $rootDir     Repository root, used to build the default paths
+     * @param  mixed        $errorStream Stream diagnostics are written to; STDERR when null
+     * @return Invocation   Parsed invocation, carrying an exit code when the run should stop
      */
     private static function parseArguments(array $arguments, string $rootDir, mixed $errorStream): Invocation
     {
@@ -693,9 +693,9 @@ final class MutationBaseline
      * A truncated or schema-drifted report yields empty sections, which would
      * otherwise be indistinguishable from a clean run.
      *
-     * @param string $reportPath Absolute path to the Infection JSON report
+     * @param  string                  $reportPath Absolute path to the Infection JSON report
      * @return array<array-key, mixed> Decoded report
-     * @throws \RuntimeException When the report is unusable or holds no mutants
+     * @throws \RuntimeException       When the report is unusable or holds no mutants
      */
     private static function loadReport(string $reportPath): array
     {
@@ -718,8 +718,8 @@ final class MutationBaseline
     /**
      * Write a diagnostic to the error stream.
      *
-     * @param mixed  $errorStream Stream to write to; STDERR when it is not a stream
-     * @param string $message     Diagnostic without a trailing newline
+     * @param  mixed  $errorStream Stream to write to; STDERR when it is not a stream
+     * @param  string $message     Diagnostic without a trailing newline
      * @return void
      */
     private static function writeError(mixed $errorStream, string $message): void
@@ -740,10 +740,10 @@ final class MutationBaseline
     /**
      * Read one result section of the Infection report.
      *
-     * @param array<array-key, mixed> $report  Decoded Infection JSON report
-     * @param string                  $section Section name such as escaped or timeouted
-     * @param string                  $rootDir Repository root, stripped from reported paths
-     * @return list<Mutant> Mutants in report order, duplicates kept
+     * @param  array<array-key, mixed> $report  Decoded Infection JSON report
+     * @param  string                  $section Section name such as escaped or timeouted
+     * @param  string                  $rootDir Repository root, stripped from reported paths
+     * @return list<Mutant>            Mutants in report order, duplicates kept
      */
     private static function readSection(array $report, string $section, string $rootDir): array
     {
@@ -764,9 +764,9 @@ final class MutationBaseline
     /**
      * Read the committed baseline as occurrence counts per identity.
      *
-     * @param string $path Absolute path to the baseline file
+     * @param  string             $path Absolute path to the baseline file
      * @return array<string, int> Allowed occurrence count per key
-     * @throws \RuntimeException When the baseline is missing or unusable
+     * @throws \RuntimeException  When the baseline is missing or unusable
      */
     private static function readBaselineCounts(string $path): array
     {
@@ -784,7 +784,7 @@ final class MutationBaseline
     /**
      * Count mutants per identity.
      *
-     * @param list<Mutant> $mutants Mutants to tally
+     * @param  list<Mutant>       $mutants Mutants to tally
      * @return array<string, int> Occurrence count per key
      */
     private static function countByKey(array $mutants): array
@@ -800,9 +800,9 @@ final class MutationBaseline
     /**
      * Rewrite the baseline file from the latest run.
      *
-     * @param string       $path    Absolute path to the baseline file
-     * @param list<Mutant> $allowed Mutants allowed to survive
-     * @return int Process exit code
+     * @param  string       $path    Absolute path to the baseline file
+     * @param  list<Mutant> $allowed Mutants allowed to survive
+     * @return int          Process exit code
      */
     private static function write(string $path, array $allowed): int
     {
@@ -833,10 +833,10 @@ final class MutationBaseline
     /**
      * Compare the latest run against the baseline.
      *
-     * @param string       $path    Absolute path to the baseline file
-     * @param list<Mutant> $escaped Mutants that escaped in the latest run
-     * @param list<Mutant> $allowed Mutants that survived in any form in the latest run
-     * @return int Process exit code
+     * @param  string       $path    Absolute path to the baseline file
+     * @param  list<Mutant> $escaped Mutants that escaped in the latest run
+     * @param  list<Mutant> $allowed Mutants that survived in any form in the latest run
+     * @return int          Process exit code
      */
     private static function check(string $path, array $escaped, array $allowed): int
     {

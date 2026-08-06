@@ -59,7 +59,7 @@ final class Response
     /**
      * Set the HTTP status code.
      *
-     * @param  int $status HTTP status code
+     * @param  int  $status HTTP status code
      * @return self
      */
     public function status(int $status): self
@@ -72,8 +72,8 @@ final class Response
     /**
      * Set a response header.
      *
-     * @param string $name  Header name
-     * @param string $value Header value
+     * @param  string $name  Header name
+     * @param  string $value Header value
      * @return self
      */
     public function header(string $name, string $value): self
@@ -86,7 +86,7 @@ final class Response
     /**
      * Set multiple response headers.
      *
-     * @param array<string, string> $headers Headers to set
+     * @param  array<string, string> $headers Headers to set
      * @return self
      */
     public function headers(array $headers): self
@@ -101,7 +101,7 @@ final class Response
     /**
      * Set response metadata (pagination, etc.).
      *
-     * @param array<string, mixed> $meta Metadata
+     * @param  array<string, mixed> $meta Metadata
      * @return self
      */
     public function meta(array $meta): self
@@ -144,9 +144,9 @@ final class Response
      * String data is used as-is. Non-string data is JSON-encoded
      * using the formatter's JSON options.
      *
-     * @param string $contentType Content-Type header value
+     * @param  string            $contentType Content-Type header value
      * @return ResponseInterface
-     * @throws \JsonException If non-string data cannot be encoded to JSON
+     * @throws \JsonException    If non-string data cannot be encoded to JSON
      */
     public function raw(string $contentType = 'application/json; charset=utf-8'): ResponseInterface
     {
@@ -186,8 +186,8 @@ final class Response
     /**
      * Build a redirect response.
      *
-     * @param  string $url    Redirect URL
-     * @param  int    $status HTTP status code (default 302)
+     * @param  string            $url    Redirect URL
+     * @param  int               $status HTTP status code (default 302)
      * @return ResponseInterface
      */
     public function redirect(string $url, int $status = HttpStatus::Found): ResponseInterface
@@ -200,7 +200,7 @@ final class Response
     /**
      * Apply custom headers to the response.
      *
-     * @param ResponseInterface $response PSR-7 response
+     * @param  ResponseInterface $response PSR-7 response
      * @return ResponseInterface
      */
     private function applyHeaders(ResponseInterface $response): ResponseInterface

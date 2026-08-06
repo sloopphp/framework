@@ -22,7 +22,7 @@ final class ApiResponseFormatterTest extends TestCase
     }
 
     /**
-     * @param  array<string, mixed> $meta Metadata
+     * @param array<string, mixed> $meta Metadata
      */
     private function formatSuccess(mixed $data, array $meta = [], int $status = 200): ResponseInterface
     {
@@ -34,7 +34,7 @@ final class ApiResponseFormatterTest extends TestCase
     }
 
     /**
-     * @param  array<string, mixed> $errors Detailed errors
+     * @param array<string, mixed> $errors Detailed errors
      */
     private function formatError(string $message, int $status = 400, array $errors = []): ResponseInterface
     {

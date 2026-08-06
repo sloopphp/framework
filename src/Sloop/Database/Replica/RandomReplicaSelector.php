@@ -20,7 +20,7 @@ final class RandomReplicaSelector implements ReplicaSelector
      * Pick one candidate uniformly at random and return its index.
      *
      * @param  non-empty-list<ValidatedConfig> $candidates Surviving replica configs (must be non-empty)
-     * @return int                                         Valid index into $candidates
+     * @return int                             Valid index into $candidates
      */
     public function pick(array $candidates): int
     {

@@ -36,7 +36,7 @@ final class CorsMiddlewareTest extends TestCase
     }
 
     /**
-     * @param  array<string, mixed> $config Config overrides
+     * @param array<string, mixed> $config Config overrides
      */
     private function createCors(array $config = []): CorsMiddleware
     {

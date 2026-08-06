@@ -332,7 +332,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Extract a named field from every item. Missing values become null.
      *
-     * @param  string $key Member name to extract
+     * @param  string      $key Member name to extract
      * @return self<mixed>
      */
     public function pluck(string $key): self
@@ -343,7 +343,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Split the collection into chunks of the given size. The final chunk may be smaller.
      *
-     * @param  int $size Chunk size
+     * @param  int                      $size Chunk size
      * @return self<self<T>>
      * @throws InvalidArgumentException If size is less than 1
      */
@@ -364,7 +364,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Return the first N items, preserving keys.
      *
-     * @param  int $count Number of items to keep
+     * @param  int     $count Number of items to keep
      * @return self<T>
      */
     public function take(int $count): self
@@ -375,7 +375,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Drop the first N items and return the rest, preserving keys.
      *
-     * @param  int $count Number of items to drop
+     * @param  int     $count Number of items to drop
      * @return self<T>
      */
     public function skip(int $count): self
@@ -455,8 +455,8 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Extract a numeric value from a single item for aggregation.
      *
-     * @param  T                    $value Item
-     * @param  string|callable|null $by    Extractor (null uses $value directly)
+     * @param  T                        $value Item
+     * @param  string|callable|null     $by    Extractor (null uses $value directly)
      * @return int|float
      * @throws InvalidArgumentException If the extracted value is not numeric
      */
@@ -510,7 +510,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Narrow an arbitrary value to an array key for keyBy/groupBy.
      *
-     * @param  mixed $value Extracted key candidate
+     * @param  mixed                    $value Extracted key candidate
      * @return int|string
      * @throws InvalidArgumentException If the extracted value cannot be used as an array key
      */

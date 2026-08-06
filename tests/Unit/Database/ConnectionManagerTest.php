@@ -1840,7 +1840,7 @@ final class ConnectionManagerTest extends TestCase
      * forwarding contract using a single representative dialect.
      *
      * @param  string $expectedSetSessionSql Expected SET SESSION SQL passed to exec()
-     * @return PDO                           Mock PDO with the exec/query/prepare expectations wired
+     * @return PDO    Mock PDO with the exec/query/prepare expectations wired
      */
     private function primaryPdoExpectingTimeout(string $expectedSetSessionSql): PDO
     {

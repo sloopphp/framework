@@ -42,8 +42,8 @@ final class Container implements ContainerInterface
     /**
      * Register a binding that creates a new instance on every resolution.
      *
-     * @param string         $id       Identifier (typically an interface or class name)
-     * @param Closure|string $resolver Closure or concrete class name
+     * @param  string         $id       Identifier (typically an interface or class name)
+     * @param  Closure|string $resolver Closure or concrete class name
      * @return void
      */
     public function bind(string $id, Closure|string $resolver): void
@@ -55,8 +55,8 @@ final class Container implements ContainerInterface
     /**
      * Register a binding that creates an instance only once and caches it.
      *
-     * @param string         $id       Identifier (typically an interface or class name)
-     * @param Closure|string $resolver Closure or concrete class name
+     * @param  string         $id       Identifier (typically an interface or class name)
+     * @param  Closure|string $resolver Closure or concrete class name
      * @return void
      */
     public function singleton(string $id, Closure|string $resolver): void
@@ -68,8 +68,8 @@ final class Container implements ContainerInterface
     /**
      * Register an existing instance in the container.
      *
-     * @param string $id       Identifier (typically an interface or class name)
-     * @param mixed  $instance The instance to register
+     * @param  string $id       Identifier (typically an interface or class name)
+     * @param  mixed  $instance The instance to register
      * @return void
      */
     public function instance(string $id, mixed $instance): void
@@ -84,7 +84,7 @@ final class Container implements ContainerInterface
      * Checks in order: registered instances, explicit bindings, then
      * falls back to auto-wiring via constructor reflection.
      *
-     * @param string $id Identifier of the entry to look for
+     * @param  string                 $id Identifier of the entry to look for
      * @return mixed
      * @throws EntryNotFoundException If the entry cannot be found or auto-wired
      * @throws ContainerException     If a circular dependency is detected
@@ -110,7 +110,7 @@ final class Container implements ContainerInterface
      * get() will succeed — constructor dependency resolution may still throw
      * ContainerException at resolve time (per PSR-11 §1.3.1).
      *
-     * @param string $id Identifier of the entry to look for
+     * @param  string $id Identifier of the entry to look for
      * @return bool
      */
     public function has(string $id): bool
@@ -129,7 +129,7 @@ final class Container implements ContainerInterface
     /**
      * Resolve an entry from an explicit binding.
      *
-     * @param string $id Identifier of the binding
+     * @param  string                 $id Identifier of the binding
      * @return mixed
      * @throws EntryNotFoundException If the concrete class cannot be found or is not instantiable
      * @throws ContainerException     If resolution fails
@@ -157,7 +157,7 @@ final class Container implements ContainerInterface
     /**
      * Auto-wire a class by resolving its constructor dependencies.
      *
-     * @param string $className Fully qualified class name
+     * @param  string                 $className Fully qualified class name
      * @return object
      * @throws EntryNotFoundException If the class does not exist or is not instantiable
      * @throws ContainerException     If a circular dependency is detected or instantiation fails
@@ -211,11 +211,11 @@ final class Container implements ContainerInterface
     /**
      * Resolve an array of constructor parameters.
      *
-     * @param array<int, ReflectionParameter> $parameters Constructor parameters
-     * @param string                          $className  Class being resolved (for error messages)
+     * @param  array<int, ReflectionParameter> $parameters Constructor parameters
+     * @param  string                          $className  Class being resolved (for error messages)
      * @return array<int, mixed>
-     * @throws EntryNotFoundException If a typed parameter cannot be resolved
-     * @throws ContainerException     If a parameter cannot be resolved
+     * @throws EntryNotFoundException          If a typed parameter cannot be resolved
+     * @throws ContainerException              If a parameter cannot be resolved
      */
     private function resolveParameters(array $parameters, string $className): array
     {
@@ -231,8 +231,8 @@ final class Container implements ContainerInterface
     /**
      * Resolve a single constructor parameter.
      *
-     * @param ReflectionParameter $param     Parameter to resolve
-     * @param string              $className Class being resolved (for error messages)
+     * @param  ReflectionParameter    $param     Parameter to resolve
+     * @param  string                 $className Class being resolved (for error messages)
      * @return mixed
      * @throws EntryNotFoundException If a typed parameter cannot be resolved
      * @throws ContainerException     If the parameter cannot be resolved

@@ -20,7 +20,7 @@ final readonly class ExceptionHandler
     /**
      * Create a new exception handler.
      *
-     * @param LoggerInterface $logger PSR-3 logger for recording exceptions
+     * @param  LoggerInterface $logger PSR-3 logger for recording exceptions
      * @return void
      */
     public function __construct(
@@ -34,8 +34,8 @@ final readonly class ExceptionHandler
     /**
      * Handle an exception by logging it and returning the HTTP status code.
      *
-     * @param Throwable $exception The exception to handle
-     * @return int HTTP status code
+     * @param  Throwable $exception The exception to handle
+     * @return int       HTTP status code
      */
     public function handle(Throwable $exception): int
     {
@@ -53,8 +53,8 @@ final readonly class ExceptionHandler
     /**
      * Resolve the HTTP status code from the given exception.
      *
-     * @param Throwable $exception The exception to inspect
-     * @return int HTTP status code
+     * @param  Throwable $exception The exception to inspect
+     * @return int       HTTP status code
      */
     public function resolveStatusCode(Throwable $exception): int
     {
@@ -68,8 +68,8 @@ final readonly class ExceptionHandler
     /**
      * Resolve the PSR-3 log level from the given exception.
      *
-     * @param Throwable $exception The exception to inspect
-     * @return string PSR-3 log level
+     * @param  Throwable $exception The exception to inspect
+     * @return string    PSR-3 log level
      */
     public function resolveLogLevel(Throwable $exception): string
     {
