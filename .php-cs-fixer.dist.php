@@ -19,6 +19,7 @@ return (new PhpCsFixer\Config())
         'native_function_invocation' => ['include' => ['@compiler_optimized'], 'scope' => 'namespaced'],
         'no_unused_imports' => true,
         'phpdoc_add_missing_param_annotation' => true,
+        'phpdoc_align' => ['align' => 'vertical'],
         'ordered_imports' => ['sort_algorithm' => 'alpha'],
         'phpdoc_separation' => ['groups' => [['template', 'param', 'return', 'throws']]],
         'single_quote' => true,
