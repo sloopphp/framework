@@ -50,7 +50,7 @@ final class MiddlewareDispatcher implements RequestHandlerInterface
      * Only effective before handle() is called: dispatch walks the stack
      * through clones, so middleware piped mid-dispatch is not picked up.
      *
-     * @param MiddlewareInterface $middleware Middleware to add
+     * @param  MiddlewareInterface $middleware Middleware to add
      * @return self
      */
     public function pipe(MiddlewareInterface $middleware): self
@@ -67,7 +67,7 @@ final class MiddlewareDispatcher implements RequestHandlerInterface
      * to the next middleware. When the stack is exhausted, the fallback
      * handler is invoked.
      *
-     * @param ServerRequestInterface $request Incoming server request
+     * @param  ServerRequestInterface $request Incoming server request
      * @return ResponseInterface
      */
     public function handle(ServerRequestInterface $request): ResponseInterface

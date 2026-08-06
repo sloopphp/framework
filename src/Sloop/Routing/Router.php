@@ -52,9 +52,9 @@ final class Router
     /**
      * Register a GET route.
      *
-     * @param string $pattern    URI pattern
-     * @param string $controller Controller class name
-     * @param string $action     Action method name
+     * @param  string $pattern    URI pattern
+     * @param  string $controller Controller class name
+     * @param  string $action     Action method name
      * @return Route
      */
     public function get(string $pattern, string $controller, string $action): Route
@@ -65,9 +65,9 @@ final class Router
     /**
      * Register a POST route.
      *
-     * @param string $pattern    URI pattern
-     * @param string $controller Controller class name
-     * @param string $action     Action method name
+     * @param  string $pattern    URI pattern
+     * @param  string $controller Controller class name
+     * @param  string $action     Action method name
      * @return Route
      */
     public function post(string $pattern, string $controller, string $action): Route
@@ -78,9 +78,9 @@ final class Router
     /**
      * Register a PUT route.
      *
-     * @param string $pattern    URI pattern
-     * @param string $controller Controller class name
-     * @param string $action     Action method name
+     * @param  string $pattern    URI pattern
+     * @param  string $controller Controller class name
+     * @param  string $action     Action method name
      * @return Route
      */
     public function put(string $pattern, string $controller, string $action): Route
@@ -91,9 +91,9 @@ final class Router
     /**
      * Register a PATCH route.
      *
-     * @param string $pattern    URI pattern
-     * @param string $controller Controller class name
-     * @param string $action     Action method name
+     * @param  string $pattern    URI pattern
+     * @param  string $controller Controller class name
+     * @param  string $action     Action method name
      * @return Route
      */
     public function patch(string $pattern, string $controller, string $action): Route
@@ -104,9 +104,9 @@ final class Router
     /**
      * Register a DELETE route.
      *
-     * @param string $pattern    URI pattern
-     * @param string $controller Controller class name
-     * @param string $action     Action method name
+     * @param  string $pattern    URI pattern
+     * @param  string $controller Controller class name
+     * @param  string $action     Action method name
      * @return Route
      */
     public function delete(string $pattern, string $controller, string $action): Route
@@ -121,10 +121,10 @@ final class Router
      * Use the `only:` / `except:` arguments to limit which methods
      * are registered.
      *
-     * @param string      $pattern    Base URI pattern (e.g., '/users')
-     * @param string      $controller Controller class name
-     * @param list<string> $only      Only register these methods (empty = all)
-     * @param list<string> $except    Exclude these methods
+     * @param  string       $pattern    Base URI pattern (e.g., '/users')
+     * @param  string       $controller Controller class name
+     * @param  list<string> $only       Only register these methods (empty = all)
+     * @param  list<string> $except     Exclude these methods
      * @return RouteGroup
      */
     public function resource(
@@ -159,8 +159,8 @@ final class Router
     /**
      * Register routes within a group sharing attributes.
      *
-     * @param array<string, mixed> $attributes Group attributes (middleware, prefix)
-     * @param callable             $callback   Callback receiving the router
+     * @param  array<string, mixed> $attributes Group attributes (middleware, prefix)
+     * @param  callable             $callback   Callback receiving the router
      * @return void
      */
     public function group(array $attributes, callable $callback): void
@@ -191,8 +191,8 @@ final class Router
      * Static routes are matched before parameterized routes
      * for predictable resolution order.
      *
-     * @param string $method HTTP method
-     * @param string $path   URI path
+     * @param  string                                   $method HTTP method
+     * @param  string                                   $path   URI path
      * @return array{Route, array<string, string>}|null Route and params, or null
      */
     public function resolve(string $method, string $path): ?array
@@ -218,7 +218,7 @@ final class Router
     /**
      * Find a route by name.
      *
-     * @param string $name Route name
+     * @param  string           $name Route name
      * @return Route
      * @throws RuntimeException If the named route is not found
      */
@@ -236,10 +236,10 @@ final class Router
     /**
      * Add a route to the collection.
      *
-     * @param string $method     HTTP method
-     * @param string $pattern    URI pattern
-     * @param string $controller Controller class name
-     * @param string $action     Action method name
+     * @param  string $method     HTTP method
+     * @param  string $pattern    URI pattern
+     * @param  string $controller Controller class name
+     * @param  string $action     Action method name
      * @return Route
      */
     private function addRoute(string $method, string $pattern, string $controller, string $action): Route

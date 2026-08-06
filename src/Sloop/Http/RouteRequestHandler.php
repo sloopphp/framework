@@ -35,10 +35,10 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Create a new route request handler.
      *
-     * @param Container                  $container DI container for controller resolution
-     * @param Route                      $route     Resolved route
-     * @param array<string, string>      $params    Route parameters
-     * @param ResponseFormatterInterface $formatter Formatter for non-response return values
+     * @param  Container                  $container DI container for controller resolution
+     * @param  Route                      $route     Resolved route
+     * @param  array<string, string>      $params    Route parameters
+     * @param  ResponseFormatterInterface $formatter Formatter for non-response return values
      * @return void
      */
     public function __construct(
@@ -59,10 +59,10 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
-     * @throws RuntimeException        If the controller cannot be resolved as an object, a route parameter is missing, or a parameter type is unsupported
-     * @throws EntryNotFoundException  If the controller or a typed dependency cannot be resolved by the container
-     * @throws ContainerException      If a circular dependency is detected during resolution
-     * @throws ReflectionException     If the controller action method cannot be reflected
+     * @throws RuntimeException       If the controller cannot be resolved as an object, a route parameter is missing, or a parameter type is unsupported
+     * @throws EntryNotFoundException If the controller or a typed dependency cannot be resolved by the container
+     * @throws ContainerException     If a circular dependency is detected during resolution
+     * @throws ReflectionException    If the controller action method cannot be reflected
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -92,10 +92,10 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * from route parameters (looked up by name, cast to the declared type),
      * and other object types are resolved from the container.
      *
-     * @param  string  $className    Controller class name
-     * @param  string  $method       Action method name
-     * @param  Request $sloopRequest Sloop request wrapping the current PSR-7 request
-     * @return array<int, mixed> Positional arguments for the action
+     * @param  string                 $className    Controller class name
+     * @param  string                 $method       Action method name
+     * @param  Request                $sloopRequest Sloop request wrapping the current PSR-7 request
+     * @return array<int, mixed>      Positional arguments for the action
      * @throws RuntimeException       If a route parameter is missing or a parameter type is unsupported
      * @throws EntryNotFoundException If a typed object dependency cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during dependency resolution
@@ -120,9 +120,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Resolve a single action parameter.
      *
-     * @param  ReflectionParameter $parameter    Parameter to resolve
-     * @param  Request             $sloopRequest Sloop request wrapping the current PSR-7 request
-     * @return mixed Resolved argument value
+     * @param  ReflectionParameter    $parameter    Parameter to resolve
+     * @param  Request                $sloopRequest Sloop request wrapping the current PSR-7 request
+     * @return mixed                  Resolved argument value
      * @throws RuntimeException       If the parameter is untyped, uses a union/intersection type, or matches no route parameter
      * @throws EntryNotFoundException If a typed object parameter cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during resolution
@@ -156,8 +156,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * @param  ReflectionParameter $parameter Parameter to resolve
      * @param  string              $typeName  Declared builtin type name
-     * @return mixed Cast route parameter value, or the parameter's default, or null if nullable and absent
-     * @throws RuntimeException If the route parameter is missing and no default/nullable is declared, or if the value cannot be cast to a numeric type
+     * @return mixed               Cast route parameter value, or the parameter's default, or null if nullable and absent
+     * @throws RuntimeException    If the route parameter is missing and no default/nullable is declared, or if the value cannot be cast to a numeric type
      */
     private function resolveBuiltinParameter(ReflectionParameter $parameter, string $typeName): mixed
     {
@@ -189,8 +189,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Cast a route parameter string to a declared builtin type.
      *
-     * @param  string $value    Raw route parameter value
-     * @param  string $typeName Declared builtin type name
+     * @param  string                $value    Raw route parameter value
+     * @param  string                $typeName Declared builtin type name
      * @return int|float|bool|string Cast value
      */
     private static function castBuiltin(string $value, string $typeName): int|float|bool|string
@@ -207,7 +207,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * Check if every parameter in the list is untyped (legacy controller signature).
      *
      * @param  array<int, ReflectionParameter> $parameters Parameters to inspect
-     * @return bool True if no parameter declares a type
+     * @return bool                            True if no parameter declares a type
      *
      * @noinspection PhpArrayAllCanBeUsedInspection
      */
@@ -228,10 +228,10 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * The cache uses a function-static map because readonly classes cannot
      * declare static properties.
      *
-     * @param  string $className Controller class name
-     * @param  string $method    Action method name
+     * @param  string                          $className Controller class name
+     * @param  string                          $method    Action method name
      * @return array<int, ReflectionParameter> Cached parameter list
-     * @throws ReflectionException If the method does not exist on the class
+     * @throws ReflectionException             If the method does not exist on the class
      */
     private static function reflectParameters(string $className, string $method): array
     {

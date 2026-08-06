@@ -37,7 +37,7 @@ final class Str
     /**
      * Convert a string to camelCase.
      *
-     * @param string $value String to convert
+     * @param  string $value String to convert
      * @return string
      */
     public static function camel(string $value): string
@@ -48,8 +48,8 @@ final class Str
     /**
      * Convert a string to snake_case.
      *
-     * @param string $value     String to convert
-     * @param string $delimiter Delimiter character
+     * @param  string $value     String to convert
+     * @param  string $delimiter Delimiter character
      * @return string
      */
     public static function snake(string $value, string $delimiter = '_'): string
@@ -70,7 +70,7 @@ final class Str
     /**
      * Convert a string to StudlyCase (PascalCase).
      *
-     * @param string $value String to convert
+     * @param  string $value String to convert
      * @return string
      */
     public static function studly(string $value): string
@@ -89,8 +89,8 @@ final class Str
     /**
      * Generate a URL-friendly slug.
      *
-     * @param string $value     String to slugify
-     * @param string $separator Word separator
+     * @param  string $value     String to slugify
+     * @param  string $separator Word separator
      * @return string
      */
     public static function slug(string $value, string $separator = '-'): string
@@ -104,7 +104,7 @@ final class Str
     /**
      * Generate a random alphanumeric string.
      *
-     * @param int $length Length of the generated string
+     * @param  int                       $length Length of the generated string
      * @return string
      * @throws \InvalidArgumentException If length is negative
      */
@@ -132,7 +132,7 @@ final class Str
      * Useful for generating trace ids, request ids, opaque tokens, and
      * other values that need to be unique and hex-encoded.
      *
-     * @param  int $length Number of hex characters to generate
+     * @param  int                       $length Number of hex characters to generate
      * @return string
      * @throws \InvalidArgumentException If length is negative
      */
@@ -155,9 +155,9 @@ final class Str
     /**
      * Truncate a string to the given length, appending a suffix if truncated.
      *
-     * @param string $value String to truncate
-     * @param int    $limit Maximum character length
-     * @param string $end   Suffix appended when truncated
+     * @param  string                    $value String to truncate
+     * @param  int                       $limit Maximum character length
+     * @param  string                    $end   Suffix appended when truncated
      * @return string
      * @throws \InvalidArgumentException If limit is negative
      */
@@ -177,8 +177,8 @@ final class Str
     /**
      * Determine if a string contains a given substring or any of the given substrings.
      *
-     * @param string                    $haystack String to search in
-     * @param string|array<int, string> $needles  Substring(s) to search for
+     * @param  string                    $haystack String to search in
+     * @param  string|array<int, string> $needles  Substring(s) to search for
      * @return bool
      */
     public static function contains(string $haystack, string|array $needles): bool
@@ -195,8 +195,8 @@ final class Str
     /**
      * Determine if a string starts with a given substring or any of the given substrings.
      *
-     * @param string                    $haystack String to search in
-     * @param string|array<int, string> $needles  Prefix(es) to check
+     * @param  string                    $haystack String to search in
+     * @param  string|array<int, string> $needles  Prefix(es) to check
      * @return bool
      */
     public static function startsWith(string $haystack, string|array $needles): bool
@@ -213,8 +213,8 @@ final class Str
     /**
      * Determine if a string ends with a given substring or any of the given substrings.
      *
-     * @param string                    $haystack String to search in
-     * @param string|array<int, string> $needles  Suffix(es) to check
+     * @param  string                    $haystack String to search in
+     * @param  string|array<int, string> $needles  Suffix(es) to check
      * @return bool
      */
     public static function endsWith(string $haystack, string|array $needles): bool

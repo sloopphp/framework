@@ -43,7 +43,7 @@ final class Log implements LoggerInterface
     /**
      * Initialize the logger with a LogManager.
      *
-     * @param LogManager $manager Log manager instance
+     * @param  LogManager $manager Log manager instance
      * @return void
      */
     public static function init(LogManager $manager): void
@@ -55,8 +55,8 @@ final class Log implements LoggerInterface
     /**
      * Get a logger instance for the given channel.
      *
-     * @param string|null $name Channel name (null = default channel)
-     * @return self Log instance bound to the given channel
+     * @param  string|null $name Channel name (null = default channel)
+     * @return self        Log instance bound to the given channel
      */
     public static function channel(?string $name = null): self
     {
@@ -81,8 +81,8 @@ final class Log implements LoggerInterface
     /**
      * Log an emergency message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function emergency(string|Stringable $message, array $context = []): void
@@ -93,8 +93,8 @@ final class Log implements LoggerInterface
     /**
      * Log an alert message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function alert(string|Stringable $message, array $context = []): void
@@ -105,8 +105,8 @@ final class Log implements LoggerInterface
     /**
      * Log a critical message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function critical(string|Stringable $message, array $context = []): void
@@ -117,8 +117,8 @@ final class Log implements LoggerInterface
     /**
      * Log an error message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function error(string|Stringable $message, array $context = []): void
@@ -129,8 +129,8 @@ final class Log implements LoggerInterface
     /**
      * Log a warning message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function warning(string|Stringable $message, array $context = []): void
@@ -141,8 +141,8 @@ final class Log implements LoggerInterface
     /**
      * Log a notice message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function notice(string|Stringable $message, array $context = []): void
@@ -153,8 +153,8 @@ final class Log implements LoggerInterface
     /**
      * Log an informational message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function info(string|Stringable $message, array $context = []): void
@@ -165,8 +165,8 @@ final class Log implements LoggerInterface
     /**
      * Log a debug message.
      *
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function debug(string|Stringable $message, array $context = []): void
@@ -177,9 +177,9 @@ final class Log implements LoggerInterface
     /**
      * Log a message at the given level.
      *
-     * @param mixed             $level   PSR-3 log level
-     * @param string|Stringable $message Log message
-     * @param array<mixed>      $context Context data
+     * @param  mixed             $level   PSR-3 log level
+     * @param  string|Stringable $message Log message
+     * @param  array<mixed>      $context Context data
      * @return void
      */
     public function log(mixed $level, string|Stringable $message, array $context = []): void
@@ -206,7 +206,7 @@ final class Log implements LoggerInterface
     /**
      * Convert a PSR-3 log level to a Monolog Level.
      *
-     * @param mixed $level PSR-3 log level (string or Level)
+     * @param  mixed                    $level PSR-3 log level (string or Level)
      * @return Level
      * @throws InvalidArgumentException If the level is not a valid PSR-3 level
      */

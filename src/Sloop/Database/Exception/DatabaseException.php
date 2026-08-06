@@ -18,11 +18,11 @@ class DatabaseException extends SloopException
     /**
      * Create a new database exception.
      *
-     * @param string         $message        Error message
-     * @param string         $connectionName Connection name
-     * @param string|null    $sqlState       SQLSTATE code
-     * @param int|null       $driverCode     Driver error code
-     * @param Throwable|null $previous       Previous exception for chaining
+     * @param  string         $message        Error message
+     * @param  string         $connectionName Connection name
+     * @param  string|null    $sqlState       SQLSTATE code
+     * @param  int|null       $driverCode     Driver error code
+     * @param  Throwable|null $previous       Previous exception for chaining
      * @return void
      */
     public function __construct(

@@ -83,8 +83,8 @@ final class Arr
     /**
      * Check if a key exists in a nested array using dot notation.
      *
-     * @param array<array-key, mixed> $array Target array
-     * @param string|int              $key   Dot-notated key
+     * @param  array<array-key, mixed> $array Target array
+     * @param  string|int              $key   Dot-notated key
      * @return bool
      */
     public static function has(array $array, string|int $key): bool
@@ -111,8 +111,8 @@ final class Arr
     /**
      * Get a subset of the array with only the specified keys.
      *
-     * @param array<array-key, mixed> $array Source array
-     * @param array<int, string|int>  $keys  Keys to include
+     * @param  array<array-key, mixed> $array Source array
+     * @param  array<int, string|int>  $keys  Keys to include
      * @return array<array-key, mixed>
      */
     public static function only(array $array, array $keys): array
@@ -123,8 +123,8 @@ final class Arr
     /**
      * Get the array without the specified keys.
      *
-     * @param array<array-key, mixed> $array Source array
-     * @param array<int, string|int>  $keys  Keys to exclude
+     * @param  array<array-key, mixed> $array Source array
+     * @param  array<int, string|int>  $keys  Keys to exclude
      * @return array<array-key, mixed>
      */
     public static function except(array $array, array $keys): array
@@ -137,9 +137,9 @@ final class Arr
      *
      * @template TValue
      * @template TDefault
-     * @param array<array-key, TValue>                 $array    Source array
-     * @param (callable(TValue, array-key): bool)|null $callback Filter callback
-     * @param TDefault                                 $default  Returned when no match
+     * @param  array<array-key, TValue>                 $array    Source array
+     * @param  (callable(TValue, array-key): bool)|null $callback Filter callback
+     * @param  TDefault                                 $default  Returned when no match
      * @return TValue|TDefault
      */
     public static function first(array $array, ?callable $callback = null, mixed $default = null): mixed
@@ -166,9 +166,9 @@ final class Arr
      *
      * @template TValue
      * @template TDefault
-     * @param array<array-key, TValue>                 $array    Source array
-     * @param (callable(TValue, array-key): bool)|null $callback Filter callback
-     * @param TDefault                                 $default  Returned when no match
+     * @param  array<array-key, TValue>                 $array    Source array
+     * @param  (callable(TValue, array-key): bool)|null $callback Filter callback
+     * @param  TDefault                                 $default  Returned when no match
      * @return TValue|TDefault
      */
     public static function last(array $array, ?callable $callback = null, mixed $default = null): mixed
@@ -187,8 +187,8 @@ final class Arr
     /**
      * Flatten a multi-dimensional array into a single level.
      *
-     * @param array<array-key, mixed> $array Source array
-     * @param int                     $depth Maximum depth to flatten (INF for unlimited)
+     * @param  array<array-key, mixed>   $array Source array
+     * @param  int                       $depth Maximum depth to flatten (INF for unlimited)
      * @return array<int, mixed>
      * @throws \InvalidArgumentException If depth is negative
      */
@@ -218,11 +218,11 @@ final class Arr
     /**
      * Pluck a single key's value from each sub-array.
      *
-     * @param array<int, array<array-key, mixed>> $array Array of sub-arrays
-     * @param string                              $value Key to extract
-     * @param string|null                         $key   Optional key to use as the result's keys
+     * @param  array<int, array<array-key, mixed>> $array Array of sub-arrays
+     * @param  string                              $value Key to extract
+     * @param  string|null                         $key   Optional key to use as the result's keys
      * @return array<array-key, mixed>
-     * @throws \UnexpectedValueException If a key value is not a string or integer
+     * @throws \UnexpectedValueException           If a key value is not a string or integer
      */
     public static function pluck(array $array, string $value, ?string $key = null): array
     {
@@ -253,8 +253,8 @@ final class Arr
     /**
      * Recursively merge arrays. Numeric keys are appended, string keys are overwritten.
      *
-     * @param array<array-key, mixed> $array     Base array
-     * @param array<array-key, mixed> ...$arrays Arrays to merge
+     * @param  array<array-key, mixed> $array     Base array
+     * @param  array<array-key, mixed> ...$arrays Arrays to merge
      * @return array<array-key, mixed>
      */
     public static function merge(array $array, array ...$arrays): array
@@ -404,7 +404,7 @@ final class Arr
     /**
      * Wrap the given value in an array if it is not already one.
      *
-     * @param mixed $value Value to wrap
+     * @param  mixed                   $value Value to wrap
      * @return array<array-key, mixed>
      */
     public static function wrap(mixed $value): array

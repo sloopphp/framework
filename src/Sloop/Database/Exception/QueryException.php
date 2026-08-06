@@ -17,13 +17,13 @@ class QueryException extends DatabaseException
     /**
      * Create a new query exception.
      *
-     * @param string                   $message        Error message
-     * @param string                   $sql            Failed SQL statement
-     * @param array<int|string, mixed> $bindings       Bound parameters
-     * @param string                   $connectionName Connection name
-     * @param string|null              $sqlState       SQLSTATE code
-     * @param int|null                 $driverCode     Driver error code
-     * @param Throwable|null           $previous       Previous exception for chaining
+     * @param  string                   $message        Error message
+     * @param  string                   $sql            Failed SQL statement
+     * @param  array<int|string, mixed> $bindings       Bound parameters
+     * @param  string                   $connectionName Connection name
+     * @param  string|null              $sqlState       SQLSTATE code
+     * @param  int|null                 $driverCode     Driver error code
+     * @param  Throwable|null           $previous       Previous exception for chaining
      * @return void
      */
     public function __construct(

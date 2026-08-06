@@ -24,7 +24,7 @@ interface ReplicaSelector
      * survivor remains, so this contract is checkable at the call site.
      *
      * @param  non-empty-list<ValidatedConfig> $candidates Surviving replica configs (must be non-empty)
-     * @return int                                         Valid index into $candidates
+     * @return int                             Valid index into $candidates
      */
     public function pick(array $candidates): int;
 }

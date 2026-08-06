@@ -104,9 +104,9 @@ final class Application implements RequestHandlerInterface
      * response still flows back through the global middleware stack and
      * receives its headers (traceparent, CORS, ...).
      *
-     * @param  ServerRequestInterface  $request PSR-7 server request
+     * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
-     * @throws \RuntimeException When the response formatter cannot be resolved while rendering an error
+     * @throws \RuntimeException      When the response formatter cannot be resolved while rendering an error
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -120,11 +120,11 @@ final class Application implements RequestHandlerInterface
     /**
      * Resolve the route and invoke it through the route middleware chain.
      *
-     * @param  ServerRequestInterface  $request PSR-7 server request
+     * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
-     * @throws \RuntimeException       When the controller cannot be resolved as an object, parameters are invalid, or controller reflection fails
-     * @throws EntryNotFoundException  When the controller or a typed dependency cannot be resolved by the container
-     * @throws ContainerException      When dependency resolution detects a circular dependency
+     * @throws \RuntimeException      When the controller cannot be resolved as an object, parameters are invalid, or controller reflection fails
+     * @throws EntryNotFoundException When the controller or a typed dependency cannot be resolved by the container
+     * @throws ContainerException     When dependency resolution detects a circular dependency
      */
     private function dispatchRoute(ServerRequestInterface $request): ResponseInterface
     {
@@ -166,7 +166,7 @@ final class Application implements RequestHandlerInterface
      * back through the global middleware stack. This catch is a last resort
      * for exceptions thrown by the global middleware themselves.
      *
-     * @param ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
+     * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
@@ -189,7 +189,7 @@ final class Application implements RequestHandlerInterface
      * QueryException, whose message embeds the failed SQL) are reduced to a
      * generic message so internals never reach the response body.
      *
-     * @param  \Throwable $e Uncaught exception propagated past all middleware
+     * @param  \Throwable        $e Uncaught exception propagated past all middleware
      * @return ResponseInterface
      * @throws \RuntimeException When the response formatter cannot be resolved from the container
      */
@@ -218,7 +218,7 @@ final class Application implements RequestHandlerInterface
     /**
      * Send a PSR-7 response to the client.
      *
-     * @param ResponseInterface $response Response to send
+     * @param  ResponseInterface $response Response to send
      * @return void
      */
     public function send(ResponseInterface $response): void
@@ -261,7 +261,7 @@ final class Application implements RequestHandlerInterface
     /**
      * Create the ExceptionHandler wired to the default log channel.
      *
-     * @param  Container $container Container holding the LogManager singleton
+     * @param  Container              $container Container holding the LogManager singleton
      * @return ExceptionHandler
      * @throws \RuntimeException      When the LogManager binding resolves to an unexpected type
      * @throws EntryNotFoundException When the LogManager binding cannot be resolved
@@ -314,7 +314,7 @@ final class Application implements RequestHandlerInterface
     /**
      * Create the LogManager from configuration.
      *
-     * @param  Container $container DI container for custom factory resolution
+     * @param  Container  $container DI container for custom factory resolution
      * @return LogManager
      */
     private function createLogManager(Container $container): LogManager
@@ -379,10 +379,10 @@ final class Application implements RequestHandlerInterface
     /**
      * Resolve a ChannelFactoryInterface implementation from the container.
      *
-     * @param  Container $container    DI container
-     * @param  string    $factoryClass Factory class name
+     * @param  Container               $container    DI container
+     * @param  string                  $factoryClass Factory class name
      * @return ChannelFactoryInterface
-     * @throws \RuntimeException If the resolved instance does not implement the interface
+     * @throws \RuntimeException       If the resolved instance does not implement the interface
      */
     private function resolveChannelFactory(Container $container, string $factoryClass): ChannelFactoryInterface
     {
@@ -578,10 +578,10 @@ final class Application implements RequestHandlerInterface
      * Wraps the given final handler with the middleware stack declared on
      * the route via `Route::middleware()` or group middleware.
      *
-     * @param  Route                   $route        Matched route
-     * @param  RouteRequestHandler     $finalHandler Handler that invokes the controller
+     * @param  Route                $route        Matched route
+     * @param  RouteRequestHandler  $finalHandler Handler that invokes the controller
      * @return MiddlewareDispatcher
-     * @throws \RuntimeException If a middleware class does not implement MiddlewareInterface
+     * @throws \RuntimeException    If a middleware class does not implement MiddlewareInterface
      */
     private function buildRouteMiddlewareDispatcher(Route $route, RouteRequestHandler $finalHandler): MiddlewareDispatcher
     {

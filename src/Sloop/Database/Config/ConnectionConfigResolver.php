@@ -224,7 +224,7 @@ final class ConnectionConfigResolver
      * Build a PDO DSN string from a validated config.
      *
      * @param  ValidatedConfig $config Validated config (constructed via validate())
-     * @return string                  DSN suitable for `new PDO($dsn, ...)`
+     * @return string          DSN suitable for `new PDO($dsn, ...)`
      */
     public static function resolveDsn(ValidatedConfig $config): string
     {
@@ -246,8 +246,8 @@ final class ConnectionConfigResolver
      * (TCP timeout and INIT_COMMAND). Connection::open() then merges sloop's
      * own PDO defaults below everything.
      *
-     * @param  ValidatedConfig    $config Validated config (constructed via validate())
-     * @return array<int, mixed>          PDO attribute keys → values
+     * @param  ValidatedConfig   $config Validated config (constructed via validate())
+     * @return array<int, mixed> PDO attribute keys → values
      */
     public static function resolvePdoOptions(ValidatedConfig $config): array
     {
@@ -286,7 +286,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array
      * @return void
-     * @throws InvalidConfigException When an unknown or non-string key is present
+     * @throws InvalidConfigException  When an unknown or non-string key is present
      */
     private static function assertNoUnknownKeys(string $name, array $config): void
     {
@@ -305,7 +305,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array
      * @return void
-     * @throws InvalidConfigException When a required key is missing
+     * @throws InvalidConfigException  When a required key is missing
      */
     private static function assertRequiredKeysPresent(string $name, array $config): void
     {
@@ -324,7 +324,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array
      * @return string
-     * @throws InvalidConfigException When driver is not a string or not in ALLOWED_DRIVERS
+     * @throws InvalidConfigException  When driver is not a string or not in ALLOWED_DRIVERS
      */
     private static function extractDriver(string $name, array $config): string
     {
@@ -345,7 +345,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return string
-     * @throws InvalidConfigException When the value is not a string
+     * @throws InvalidConfigException  When the value is not a string
      */
     private static function extractRequiredString(string $name, array $config, string $key): string
     {
@@ -370,7 +370,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Config key to extract
      * @return string
-     * @throws InvalidConfigException When the value is not a string or contains `;`, `=`, or a NUL byte
+     * @throws InvalidConfigException  When the value is not a string or contains `;`, `=`, or a NUL byte
      */
     private static function extractDsnSafeString(string $name, array $config, string $key): string
     {
@@ -391,7 +391,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return int|null
-     * @throws InvalidConfigException When the value is present but not an int
+     * @throws InvalidConfigException  When the value is present but not an int
      */
     private static function extractOptionalInt(string $name, array $config, string $key): ?int
     {
@@ -416,7 +416,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return string|null
-     * @throws InvalidConfigException When the value is present but not null and not a string
+     * @throws InvalidConfigException  When the value is present but not null and not a string
      */
     private static function extractOptionalNullableString(string $name, array $config, string $key): ?string
     {
@@ -444,7 +444,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return string|null
-     * @throws InvalidConfigException When the value is present but not a valid identifier
+     * @throws InvalidConfigException  When the value is present but not a valid identifier
      */
     private static function extractOptionalIdentifier(string $name, array $config, string $key): ?string
     {
@@ -478,7 +478,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Config array
      * @return array<int, mixed>       Caller-supplied PDO attribute overrides
-     * @throws InvalidConfigException When `options` is present but not an int-keyed array
+     * @throws InvalidConfigException  When `options` is present but not an int-keyed array
      */
     private static function extractOptions(string $name, array $config): array
     {
@@ -512,7 +512,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Raw pool config array
      * @return void
-     * @throws InvalidConfigException When an unknown or non-string key is present at the pool level
+     * @throws InvalidConfigException  When an unknown or non-string key is present at the pool level
      */
     private static function assertNoUnknownPoolKeys(string $name, array $config): void
     {
@@ -531,7 +531,7 @@ final class ConnectionConfigResolver
      * Used to feed the primary entry into validate() and to merge into each replica.
      *
      * @param  array<array-key, mixed> $poolConfig Raw pool config array
-     * @return array<string, mixed>                Subset containing only single-connection keys present in $poolConfig
+     * @return array<string, mixed>    Subset containing only single-connection keys present in $poolConfig
      */
     private static function extractSingleConnectionConfig(array $poolConfig): array
     {
@@ -552,11 +552,11 @@ final class ConnectionConfigResolver
      * the replica's explicit keys overriding. Pool-only keys (e.g. `health_check`)
      * appearing inside a replica entry are rejected so typos surface immediately.
      *
-     * @param  string                  $name                 Pool name for error messages
-     * @param  array<array-key, mixed> $poolConfig           Raw pool config array
-     * @param  array<string, mixed>    $primarySingleConfig  Primary's single-connection key subset (used for inheritance)
-     * @return list<ValidatedConfig>                         Validated replicas in declaration order (empty when `read` is absent)
-     * @throws InvalidConfigException                        When `read` is malformed or any replica entry is invalid
+     * @param  string                  $name                Pool name for error messages
+     * @param  array<array-key, mixed> $poolConfig          Raw pool config array
+     * @param  array<string, mixed>    $primarySingleConfig Primary's single-connection key subset (used for inheritance)
+     * @return list<ValidatedConfig>   Validated replicas in declaration order (empty when `read` is absent)
+     * @throws InvalidConfigException  When `read` is malformed or any replica entry is invalid
      */
     private static function extractReplicas(string $name, array $poolConfig, array $primarySingleConfig): array
     {
@@ -605,7 +605,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return bool|null
-     * @throws InvalidConfigException When the value is present but not a bool
+     * @throws InvalidConfigException  When the value is present but not a bool
      */
     private static function extractOptionalHealthCheck(string $name, array $config): ?bool
     {
@@ -635,7 +635,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return string|null
-     * @throws InvalidConfigException When the value is present but not a string
+     * @throws InvalidConfigException  When the value is present but not a string
      */
     private static function extractOptionalReplicaSelector(string $name, array $config): ?string
     {
@@ -659,7 +659,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Pool config array
      * @param  string                  $key    Key to extract
      * @return bool|null
-     * @throws InvalidConfigException When the value is present but not a bool
+     * @throws InvalidConfigException  When the value is present but not a bool
      */
     private static function extractOptionalBool(string $name, array $config, string $key): ?bool
     {
@@ -688,7 +688,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Pool config array
      * @param  string                  $key    Key to extract
      * @return int|null
-     * @throws InvalidConfigException When the value is non-null and not an integer, or is less than 1
+     * @throws InvalidConfigException  When the value is non-null and not an integer, or is less than 1
      */
     private static function extractOptionalPositiveInt(string $name, array $config, string $key): ?int
     {

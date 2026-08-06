@@ -43,8 +43,8 @@ final class Config
      * environment-specific overrides from the subdirectory matching
      * the given environment name.
      *
-     * @param string $configPath  Absolute path to the config directory
-     * @param string|null $environment Environment name (e.g. 'production', 'testing')
+     * @param  string           $configPath  Absolute path to the config directory
+     * @param  string|null      $environment Environment name (e.g. 'production', 'testing')
      * @return void
      * @throws RuntimeException If the config directory does not exist
      * @throws RuntimeException If already loaded
@@ -173,7 +173,7 @@ final class Config
     /**
      * Check if a configuration key exists.
      *
-     * @param string $key Dot-notated configuration key
+     * @param  string $key Dot-notated configuration key
      * @return bool
      */
     public static function has(string $key): bool
@@ -198,8 +198,8 @@ final class Config
      * Original configuration is restored after execution.
      *
      * @template T
-     * @param array<string, mixed> $overrides Key-value pairs to override (dot notation supported)
-     * @param callable(): T        $callback  Code to execute with overrides
+     * @param  array<string, mixed> $overrides Key-value pairs to override (dot notation supported)
+     * @param  callable(): T        $callback  Code to execute with overrides
      * @return T
      */
     public static function withConfig(array $overrides, callable $callback): mixed
@@ -258,7 +258,7 @@ final class Config
      * Each file is expected to return an array. The filename (without extension)
      * becomes the top-level key.
      *
-     * @param string $directory Absolute path to the directory
+     * @param  string               $directory Absolute path to the directory
      * @return array<string, mixed>
      */
     private static function loadDirectory(string $directory): array

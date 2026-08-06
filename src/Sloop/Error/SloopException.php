@@ -50,10 +50,10 @@ abstract class SloopException extends RuntimeException
     /**
      * Create a new Sloop exception.
      *
-     * @param string         $message    Error message
-     * @param int            $statusCode HTTP status code (0 or negative = use class default)
-     * @param string         $logLevel   PSR-3 log level ('' = use class default)
-     * @param Throwable|null $previous   Previous exception for chaining
+     * @param  string                    $message    Error message
+     * @param  int                       $statusCode HTTP status code (0 or negative = use class default)
+     * @param  string                    $logLevel   PSR-3 log level ('' = use class default)
+     * @param  Throwable|null            $previous   Previous exception for chaining
      * @return void
      * @throws \InvalidArgumentException When $logLevel is not a valid PSR-3 level
      */

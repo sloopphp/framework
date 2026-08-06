@@ -43,7 +43,7 @@ abstract class Controller
     /**
      * Create a response builder with the given data.
      *
-     * @param  mixed $data Response data
+     * @param  mixed    $data Response data
      * @return Response
      */
     protected function response(mixed $data = null): Response
@@ -68,8 +68,8 @@ abstract class Controller
      * user input (e.g. a `?next=` parameter), validate it against an
      * allow-list first — otherwise the endpoint becomes an open redirect.
      *
-     * @param  string $url    Redirect URL
-     * @param  int    $status HTTP status code (default 302)
+     * @param  string            $url    Redirect URL
+     * @param  int               $status HTTP status code (default 302)
      * @return ResponseInterface
      */
     protected function redirect(string $url, int $status = HttpStatus::Found): ResponseInterface

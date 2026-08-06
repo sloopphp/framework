@@ -14,7 +14,7 @@ use Sloop\Tests\Support\MutableClock;
 final class InMemoryDeadReplicaCacheTest extends TestCase
 {
     /**
-     * @param Closure(DeadReplicaCache): void       $mark         Mark operations to perform on the cache before assertions
+     * @param Closure(DeadReplicaCache): void        $mark         Mark operations to perform on the cache before assertions
      * @param list<array{string, int, string, bool}> $expectations Each entry is [host, port, pool, expected isDead]
      */
     #[DataProvider('markScenarioProvider')]

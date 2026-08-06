@@ -9,7 +9,7 @@ use Sloop\Http\Request\Request;
 final class RawController
 {
     /**
-     * @param  Request $request HTTP request
+     * @param  Request               $request HTTP request
      * @return array<string, string>
      */
     public function data(Request $request): array

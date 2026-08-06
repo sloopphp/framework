@@ -100,7 +100,7 @@ final readonly class TracingMiddleware implements MiddlewareInterface
      * unsupported `ff` version, or contains an all-zero trace-id or
      * parent-id (spec-invalid).
      *
-     * @param  string $header Raw traceparent header value (may be empty)
+     * @param  string      $header Raw traceparent header value (may be empty)
      * @return string|null Validated 32-char hex trace-id, or null if invalid
      */
     private function extractTraceId(string $header): ?string

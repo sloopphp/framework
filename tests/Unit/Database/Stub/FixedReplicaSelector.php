@@ -21,7 +21,7 @@ final class FixedReplicaSelector implements ReplicaSelector
      * Always return 0 (the head of the surviving list).
      *
      * @param  non-empty-list<ValidatedConfig> $candidates Surviving replica configs (must be non-empty)
-     * @return int                                         Valid index into $candidates (always 0)
+     * @return int                             Valid index into $candidates (always 0)
      */
     public function pick(array $candidates): int
     {

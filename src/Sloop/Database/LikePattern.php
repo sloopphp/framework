@@ -25,9 +25,9 @@ final class LikePattern
      * the MySQL/MariaDB default. Pass a custom escape character to match the
      * `LIKE ... ESCAPE '<char>'` clause.
      *
-     * @param  string $value  Raw user input to embed in a LIKE pattern
-     * @param  string $escape Single-byte escape character (must not be '%' or '_')
-     * @return string Escaped value safe for use in a LIKE expression
+     * @param  string                   $value  Raw user input to embed in a LIKE pattern
+     * @param  string                   $escape Single-byte escape character (must not be '%' or '_')
+     * @return string                   Escaped value safe for use in a LIKE expression
      * @throws InvalidArgumentException When $escape is not exactly one byte, or is a LIKE wildcard
      */
     public static function escape(string $value, string $escape = '\\'): string

@@ -153,12 +153,12 @@ final class Connection
      * callers that need to inject a prepared PDO (custom driver, stubs, etc.)
      * use the constructor directly instead.
      *
-     * @param  string            $dsn            PDO DSN
-     * @param  string|null       $username       Database user
-     * @param  string|null       $password       Database password
-     * @param  array<int, mixed> $options        Extra or override PDO attributes
-     * @param  string            $connectionName Identifier for exception context and logs
-     * @return self              New Connection wrapping the freshly built PDO
+     * @param  string                      $dsn            PDO DSN
+     * @param  string|null                 $username       Database user
+     * @param  string|null                 $password       Database password
+     * @param  array<int, mixed>           $options        Extra or override PDO attributes
+     * @param  string                      $connectionName Identifier for exception context and logs
+     * @return self                        New Connection wrapping the freshly built PDO
      * @throws DatabaseConnectionException When the connection cannot be established
      */
     public static function open(
@@ -183,11 +183,11 @@ final class Connection
     /**
      * Execute a SELECT-style statement and return the fetched rows.
      *
-     * @param  string                    $sql      SQL statement returning a result set
-     * @param  array<int|string, mixed>  $bindings Parameters to bind
-     * @return Result                    Fetched rows
-     * @throws DatabaseException         When the statement fails
-     * @throws UnexpectedValueException  When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
+     * @param  string                   $sql      SQL statement returning a result set
+     * @param  array<int|string, mixed> $bindings Parameters to bind
+     * @return Result                   Fetched rows
+     * @throws DatabaseException        When the statement fails
+     * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
      */
     public function query(string $sql, array $bindings = []): Result
     {
@@ -444,7 +444,7 @@ final class Connection
      * we do not surface it directly.
      *
      * @param  Throwable $e Exception that aborted the transaction body
-     * @return Throwable    Normalized exception (PDOException wrapped, others unchanged)
+     * @return Throwable Normalized exception (PDOException wrapped, others unchanged)
      */
     private function rollbackAndNormalize(Throwable $e): Throwable
     {
@@ -475,7 +475,7 @@ final class Connection
      * @param  Throwable $e           Normalized exception from the failed attempt
      * @param  int       $attempt     1-based index of the attempt that failed
      * @param  int       $maxAttempts Maximum attempts allowed
-     * @return bool                   True if a retry is warranted and allowed
+     * @return bool      True if a retry is warranted and allowed
      */
     private function shouldRetry(Throwable $e, int $attempt, int $maxAttempts): bool
     {
@@ -689,7 +689,7 @@ final class Connection
      *
      * @param  string                   $sql      SQL being logged
      * @param  array<int|string, mixed> $bindings Bound parameters
-     * @return array<string, mixed>               Context map with sql / bindings / connection_name / optional dialect
+     * @return array<string, mixed>     Context map with sql / bindings / connection_name / optional dialect
      */
     private function buildLogContext(string $sql, array $bindings): array
     {

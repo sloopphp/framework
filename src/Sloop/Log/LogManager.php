@@ -63,11 +63,11 @@ final class LogManager
     /**
      * Create a new log manager.
      *
-     * @param string                                        $defaultChannel        Default channel name
-     * @param array<string, array<string, mixed>>           $channels              Channel configurations from config/log.php
-     * @param Level                                         $defaultLevel          Default log level for unconfigured channels
-     * @param string                                        $defaultStream         Default output stream for unconfigured channels
-     * @param (callable(string): ChannelFactoryInterface)|null $customFactoryResolver Resolver for custom driver factories
+     * @param  string                                           $defaultChannel        Default channel name
+     * @param  array<string, array<string, mixed>>              $channels              Channel configurations from config/log.php
+     * @param  Level                                            $defaultLevel          Default log level for unconfigured channels
+     * @param  string                                           $defaultStream         Default output stream for unconfigured channels
+     * @param  (callable(string): ChannelFactoryInterface)|null $customFactoryResolver Resolver for custom driver factories
      * @return void
      */
     public function __construct(
@@ -150,7 +150,7 @@ final class LogManager
     /**
      * Create a new Monolog Logger based on channel configuration.
      *
-     * @param  string $name Channel name
+     * @param  string           $name Channel name
      * @return Logger
      * @throws RuntimeException If the configuration is invalid
      */
@@ -195,7 +195,7 @@ final class LogManager
     /**
      * Build the Monolog Logger from channel configuration without processors.
      *
-     * @param  string $name Channel name
+     * @param  string           $name Channel name
      * @return Logger
      * @throws RuntimeException If the configuration is invalid
      */
@@ -227,7 +227,7 @@ final class LogManager
      * Supports the built-in Monolog processors by name (`web`, `introspection`,
      * `memory_usage`, `memory_peak`, `hostname`, `process_id`).
      *
-     * @param  string $name Channel name
+     * @param  string                               $name Channel name
      * @return list<callable(LogRecord): LogRecord>
      */
     private function resolveChannelProcessors(string $name): array
@@ -253,9 +253,9 @@ final class LogManager
     /**
      * Instantiate a Monolog built-in processor by name.
      *
-     * @param  string $name Processor name
+     * @param  string                         $name Processor name
      * @return callable(LogRecord): LogRecord
-     * @throws RuntimeException If the name is not recognized
+     * @throws RuntimeException               If the name is not recognized
      */
     private function resolveNamedProcessor(string $name): callable
     {
@@ -276,7 +276,7 @@ final class LogManager
      * @param  string               $driver Driver name (`stream`, `daily`)
      * @param  array<string, mixed> $config Channel configuration
      * @return HandlerInterface
-     * @throws RuntimeException If the driver is unknown or required config is missing
+     * @throws RuntimeException     If the driver is unknown or required config is missing
      */
     private function createHandler(string $driver, array $config): HandlerInterface
     {
@@ -327,7 +327,7 @@ final class LogManager
      * @param  string               $name   Channel name
      * @param  array<string, mixed> $config Channel configuration
      * @return Logger
-     * @throws RuntimeException If the factory is missing or invalid
+     * @throws RuntimeException     If the factory is missing or invalid
      */
     private function createCustomLogger(string $name, array $config): Logger
     {
@@ -347,7 +347,7 @@ final class LogManager
     /**
      * Resolve a PSR-3 level string to a Monolog Level.
      *
-     * @param  string $level Level name (`debug`, `info`, `warning`, etc.)
+     * @param  string           $level Level name (`debug`, `info`, `warning`, etc.)
      * @return Level
      * @throws RuntimeException If the level name is not recognized
      */
@@ -373,7 +373,7 @@ final class LogManager
      * @param  string               $key    Configuration key
      * @param  string               $driver Driver name for error context
      * @return string
-     * @throws RuntimeException If the key is missing or empty
+     * @throws RuntimeException     If the key is missing or empty
      */
     private function requireString(array $config, string $key, string $driver): string
     {

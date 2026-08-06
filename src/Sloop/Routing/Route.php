@@ -96,8 +96,8 @@ final class Route
     /**
      * Try to match this route against a request method and path.
      *
-     * @param string $method Request HTTP method
-     * @param string $path   Request URI path
+     * @param  string                     $method Request HTTP method
+     * @param  string                     $path   Request URI path
      * @return array<string, string>|null Route parameters, or null if no match
      */
     public function match(string $method, string $path): ?array
