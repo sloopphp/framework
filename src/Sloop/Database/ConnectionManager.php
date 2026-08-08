@@ -112,6 +112,7 @@ final class ConnectionManager
      * @return Connection                  Lazy-created, cached Connection
      * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When max_connection_attempts is exhausted on the replica path
+     * @throws DatabaseException           When a persistent primary carries a residual transaction that cannot be rolled back
      */
     public function connection(?bool $writable = null): Connection
     {
@@ -134,6 +135,7 @@ final class ConnectionManager
      * @return Connection
      * @throws InvalidConfigException      When the name is undefined or config is malformed
      * @throws DatabaseConnectionException When the underlying PDO connection fails
+     * @throws DatabaseException           When a persistent connection carries a residual transaction that cannot be rolled back
      */
     private function getPrimaryConnection(string $name): Connection
     {
@@ -143,6 +145,7 @@ final class ConnectionManager
             $connection = $this->factory->make($pool->primary, $name, $pool->persistent);
             $this->applyLogger($connection, $pool);
             $this->applyQueryTimeout($connection, $pool);
+            $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
 
@@ -155,7 +158,8 @@ final class ConnectionManager
      * Selection flow:
      * 1. Filter out replicas marked dead in the cache
      * 2. ReplicaSelector picks one of the survivors
-     * 3. Connect via ConnectionFactory; if health_check is on, verify with Connection::ping()
+     * 3. Connect via ConnectionFactory; if health_check is on, verify with
+     *    Connection::ping(); on persistent pools, roll back a residual transaction
      * 4. On failure: record dead (auth → markPoolDead, otherwise markServerDead)
      *    and remove the candidate; loop until success, candidates exhausted,
      *    or max_connection_attempts reached
@@ -197,6 +201,8 @@ final class ConnectionManager
                 if ($pool->healthCheck) {
                     $connection->ping();
                 }
+
+                $this->recoverResidualTransaction($connection, $pool);
 
                 $this->replicaConnections[$name] = $connection;
 
@@ -313,6 +319,45 @@ final class ConnectionManager
         }
 
         $connection->setQueryTimeoutMs($pool->queryTimeoutMs);
+    }
+
+    /**
+     * Roll back a transaction left open on a reused persistent connection.
+     *
+     * PDO::ATTR_PERSISTENT hands the same server session to the next request,
+     * and PDO performs no cleanup of its own when the handle returns to the
+     * pool: the PHP manual lists transactions and locks among the stateful
+     * changes that may survive. A request that ended mid-transaction would
+     * therefore leak its open transaction — and the rows it locked — into
+     * whichever request picks the handle up next. Rolling back at acquisition
+     * restores a clean session before the caller issues its first query.
+     *
+     * Non-persistent pools return immediately: a freshly opened session cannot
+     * carry a transaction, so the check costs nothing there.
+     *
+     * The check cannot see a session that merely left `autocommit` disabled.
+     * At acquisition time no statement has run yet, so the server has not
+     * opened its implicit transaction and inTransaction() still reports false.
+     * That class of leak is a documented limitation of persistent pools rather
+     * than something this method can repair.
+     *
+     * @param  Connection        $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig        $pool       Pool config providing the persistent flag and pool name
+     * @return void
+     * @throws DatabaseException When the rollback itself fails, leaving the session unusable
+     */
+    private function recoverResidualTransaction(Connection $connection, PoolConfig $pool): void
+    {
+        if (!$pool->persistent || !$connection->inTransaction()) {
+            return;
+        }
+
+        $connection->rollback();
+
+        $this->logger?->warning(
+            'residual transaction detected on persistent connection; rolled back',
+            ['connection_name' => $pool->name],
+        );
     }
 
     /**
