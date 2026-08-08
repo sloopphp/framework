@@ -14,6 +14,7 @@ use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Exception\DatabaseConnectionException;
+use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
@@ -53,6 +54,42 @@ final class ConnectionManagerTest extends TestCase
     private function realConnection(): Connection
     {
         return new Connection(new PDO('sqlite::memory:'), 'test');
+    }
+
+    private function connectionInTransaction(): Connection
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->beginTransaction();
+
+        return new Connection($pdo, 'test');
+    }
+
+    private function connectionFailingToRollBack(): Connection
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(true);
+        $pdo->method('rollBack')->willThrowException(new \PDOException('rollback failed'));
+
+        return new Connection($pdo, 'test');
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $configs
+     */
+    private function managerWithLogger(
+        string $defaultName,
+        array $configs,
+        ConnectionFactory $factory,
+        TestHandler $handler,
+    ): ConnectionManager {
+        return new ConnectionManager(
+            defaultName: $defaultName,
+            configs: $configs,
+            factory: $factory,
+            replicaSelectors: new ReplicaSelectorRegistry(['random' => $this->selector]),
+            deadCache: $this->deadCache,
+            logger: new Logger('database', [$handler]),
+        );
     }
 
     // -------------------------------------------------------
@@ -1858,6 +1895,225 @@ final class ConnectionManagerTest extends TestCase
 
         $reflection = new \ReflectionProperty(Connection::class, 'queryTimeoutMs');
         $this->assertNull($reflection->getValue($probeConnection));
+    }
+
+    // -------------------------------------------------------
+    // residual transaction recovery (persistent connections)
+    // -------------------------------------------------------
+
+    public function testPersistentPrimaryConnectionRollsBackResidualTransaction(): void
+    {
+        // PDO performs no cleanup when a persistent handle returns to the pool,
+        // so a request that died mid-transaction can hand the next one an open
+        // transaction along with the rows it locked. Acquiring the primary must
+        // roll it back and say so at warning level.
+        $primary = $this->connectionInTransaction();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $handler = new TestHandler();
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => true,
+            ],
+        ], $factory, $handler);
+
+        $connection = $manager->connection();
+
+        $this->assertFalse($connection->inTransaction());
+        $this->assertTrue($handler->hasWarningThatContains(
+            'residual transaction detected on persistent connection; rolled back'
+        ));
+        $this->assertSame(
+            ['connection_name' => 'master'],
+            $handler->getRecords()[0]->context,
+        );
+    }
+
+    public function testPersistentReplicaConnectionRollsBackResidualTransaction(): void
+    {
+        // The read path opens its own handles from the same persistent pool,
+        // so it needs the identical recovery; a replica serving a stale
+        // transaction would return a snapshot from the previous request.
+        $replica = $this->connectionInTransaction();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+        $handler = new TestHandler();
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+                'persistent'   => true,
+            ],
+        ], $factory, $handler);
+
+        $connection = $manager->connection(writable: false);
+
+        $this->assertFalse($connection->inTransaction());
+        $this->assertTrue($handler->hasWarningThatContains(
+            'residual transaction detected on persistent connection; rolled back'
+        ));
+    }
+
+    public function testNonPersistentPoolLeavesAnOpenTransactionUntouched(): void
+    {
+        // A non-persistent pool opens a fresh session that cannot carry
+        // anything over, so the check is skipped entirely and costs nothing.
+        // Feeding it a Connection that is already in a transaction proves the
+        // gate is the pool flag rather than the transaction state.
+        $primary = $this->connectionInTransaction();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $handler = new TestHandler();
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => false,
+            ],
+        ], $factory, $handler);
+
+        $connection = $manager->connection();
+
+        $this->assertTrue($connection->inTransaction());
+        $this->assertSame([], $handler->getRecords());
+    }
+
+    public function testPersistentConnectionWithoutResidualTransactionLogsNothing(): void
+    {
+        // The common case: a clean persistent handle must not produce warning
+        // noise on every acquisition.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $handler = new TestHandler();
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => true,
+            ],
+        ], $factory, $handler);
+
+        $manager->connection();
+
+        $this->assertSame([], $handler->getRecords());
+    }
+
+    public function testResidualTransactionIsRolledBackWithoutALogger(): void
+    {
+        // Recovery and reporting are independent: a manager built without a
+        // logger still has to clear the transaction, otherwise logging config
+        // would decide whether locks are released.
+        $primary = $this->connectionInTransaction();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => true,
+            ],
+        ], $factory);
+
+        $this->assertFalse($manager->connection()->inTransaction());
+    }
+
+    public function testResidualRollbackFailureOnPrimarySurfacesToTheCaller(): void
+    {
+        // A rollback that fails leaves a session nobody can reason about, so
+        // the primary path reports it as a failed acquisition instead of
+        // handing the broken handle out.
+        $primary = $this->connectionFailingToRollBack();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => true,
+            ],
+        ], $factory);
+
+        $this->expectException(DatabaseException::class);
+
+        $manager->connection();
+    }
+
+    public function testResidualRollbackFailureLeavesNothingCachedOnTheManager(): void
+    {
+        // The failed handle must not reach the cache, which is why recovery
+        // runs before the assignment. A cached one would still report
+        // inTransaction() == true, so the transaction routing at the top of
+        // connection() would hand that unusable connection to every later
+        // call — silently, without even the exception the first call raised.
+        $primary = $this->connectionFailingToRollBack();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'persistent' => true,
+            ],
+        ], $factory);
+
+        foreach ([1, 2] as $attempt) {
+            try {
+                $manager->connection();
+                $this->fail('Expected DatabaseException on attempt ' . $attempt);
+            } catch (DatabaseException) {
+                // empty
+            }
+        }
+
+        // Two builds, not one cached failure replayed.
+        $this->assertCount(2, $factory->invocations);
+    }
+
+    public function testResidualRollbackFailureOnReplicaFallsBackToPrimary(): void
+    {
+        // On the read path the same failure is just another unusable replica:
+        // it is marked dead and the manager moves on, which is what keeps a
+        // single poisoned replica from taking reads down.
+        $replica = $this->connectionFailingToRollBack();
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+                'persistent'   => true,
+            ],
+        ], $factory);
+
+        $connection = $manager->connection(writable: false);
+
+        $this->assertSame($primary, $connection);
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
     }
 
     /**
