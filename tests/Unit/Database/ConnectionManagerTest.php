@@ -1667,6 +1667,45 @@ final class ConnectionManagerTest extends TestCase
         $manager->connection()->query('SELECT 1');
     }
 
+    public function testProbeReplicasDoesNotForwardQueryTimeoutToProbeConnection(): void
+    {
+        // probeReplicas() builds short-lived Connections that only run a single
+        // ping(); applyQueryTimeout() is intentionally bypassed so we don't
+        // burn an extra SELECT VERSION() + SET SESSION round trip on a probe
+        // that gets discarded. The lazy-apply semantics make this contract
+        // unobservable through query / exec mock expectations
+        // (setQueryTimeoutMs alone has no on-the-wire side effect), so we
+        // verify it directly via Reflection on the probe Connection's
+        // $queryTimeoutMs property.
+        $probeConnection = new Connection(new PDO('sqlite::memory:'), 'replica');
+        $factory         = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $probeConnection);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'read'             => [['host' => 'replica.internal']],
+                'health_check'     => false,
+                'query_timeout_ms' => 5000,
+            ],
+        ], $factory);
+
+        // probeReplicas always issues `DO 1`; on sqlite this fails as a
+        // QueryException and is recorded as a probe failure. The ordering
+        // factory.make → (apply* hooks) → ping is what matters here, and
+        // applyQueryTimeout must not have been invoked before ping ran.
+        $manager->probeReplicas();
+
+        $reflection = new \ReflectionProperty(Connection::class, 'queryTimeoutMs');
+        $this->assertNull($reflection->getValue($probeConnection));
+    }
+
+    // -------------------------------------------------------
+    // persistent flag propagation
+    // -------------------------------------------------------
+
     /**
      * @return array<string, array{0: bool}>
      */
@@ -1932,41 +1971,6 @@ final class ConnectionManagerTest extends TestCase
         $manager->probeReplicas();
 
         $this->assertSame($expectedFlags, $factory->persistentFlags);
-    }
-
-    public function testProbeReplicasDoesNotForwardQueryTimeoutToProbeConnection(): void
-    {
-        // probeReplicas() builds short-lived Connections that only run a single
-        // ping(); applyQueryTimeout() is intentionally bypassed so we don't
-        // burn an extra SELECT VERSION() + SET SESSION round trip on a probe
-        // that gets discarded. The lazy-apply semantics make this contract
-        // unobservable through query / exec mock expectations
-        // (setQueryTimeoutMs alone has no on-the-wire side effect), so we
-        // verify it directly via Reflection on the probe Connection's
-        // $queryTimeoutMs property.
-        $probeConnection = new Connection(new PDO('sqlite::memory:'), 'replica');
-        $factory         = new ScriptedConnectionFactory();
-        $factory->expectSuccess('replica.internal', 0, $probeConnection);
-
-        $manager = $this->manager('master', [
-            'master' => [
-                'driver'           => 'mysql',
-                'host'             => 'primary.internal',
-                'database'         => 'app',
-                'read'             => [['host' => 'replica.internal']],
-                'health_check'     => false,
-                'query_timeout_ms' => 5000,
-            ],
-        ], $factory);
-
-        // probeReplicas always issues `DO 1`; on sqlite this fails as a
-        // QueryException and is recorded as a probe failure. The ordering
-        // factory.make → (apply* hooks) → ping is what matters here, and
-        // applyQueryTimeout must not have been invoked before ping ran.
-        $manager->probeReplicas();
-
-        $reflection = new \ReflectionProperty(Connection::class, 'queryTimeoutMs');
-        $this->assertNull($reflection->getValue($probeConnection));
     }
 
     // -------------------------------------------------------
