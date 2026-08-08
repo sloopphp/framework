@@ -308,6 +308,35 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame($primary, $manager->connection(writable: false));
     }
 
+    public function testEmptyReadListSurfacesThePrimaryFailureUnwrapped(): void
+    {
+        // With no replicas the read route is the primary route, so a primary
+        // failure has to surface as itself. Falling through into the selection
+        // loop would report it as "replica + primary fallback exhausted"
+        // instead, describing attempts that never happened.
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectFailure(
+            'primary.internal',
+            0,
+            new DatabaseConnectionException('refused', 'master', null, 2002),
+        );
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        try {
+            $manager->connection(writable: false);
+            $this->fail('Expected DatabaseConnectionException');
+        } catch (DatabaseConnectionException $e) {
+            $this->assertSame('refused', $e->getMessage());
+        }
+    }
+
     public function testReplicaRouteReturnsHealthyReplicaWithoutPing(): void
     {
         $replica = $this->realConnection();
