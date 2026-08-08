@@ -252,7 +252,17 @@
             // the `?:` branch is never taken. Removing $value from the
             // fallback array therefore changes nothing observable.
             "ignore": [
-                "Sloop\\Support\\Str::studly"
+                "Sloop\\Support\\Str::studly",
+                // ConnectionManager::hasConnectionInTransaction scans the cached
+                // primary and replica connections. The primary group cannot
+                // contribute a hit today: while building a primary the group is
+                // still empty (the caller is inside the isset() miss), and while
+                // building a replica a primary that held a transaction would
+                // already have been returned by connection()'s transaction
+                // routing, so the replica path is never entered. Dropping the
+                // group from the scan is therefore unobservable. It stays in the
+                // code as the invariant the routing guard relies on.
+                "Sloop\\Database\\ConnectionManager::hasConnectionInTransaction"
             ]
         }
     },

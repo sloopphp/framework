@@ -2113,7 +2113,48 @@ final class ConnectionManagerTest extends TestCase
         $connection = $manager->connection(writable: false);
 
         $this->assertSame($primary, $connection);
+        // The mark lands on the shared server key rather than this pool's own,
+        // so every pool naming the same host and port skips the replica until
+        // the entry expires. isDead() answers for either key, which is why both
+        // pools are asserted.
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
+        $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
+    }
+
+    public function testTransactionOpenedThroughTheReplicaSurvivesAcquiringThePrimary(): void
+    {
+        // PDO keys persistent handles by DSN, username and password, so a
+        // replica that inherits the primary's connection settings shares one
+        // server session with it. That is modelled here by handing both
+        // Connections the same PDO. A transaction the caller opened through the
+        // read route must not be mistaken for a leftover when the primary is
+        // acquired afterwards: rolling it back discards the caller's own
+        // uncommitted work and leaves its commit() with nothing to close.
+        $sharedPdo = new PDO('sqlite::memory:');
+        $replica   = new Connection($sharedPdo, 'replica');
+        $primary   = new Connection($sharedPdo, 'primary');
+
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $handler = new TestHandler();
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+                'persistent'   => true,
+            ],
+        ], $factory, $handler);
+
+        $manager->connection(writable: false)->begin();
+        $manager->connection();
+
+        $this->assertTrue($replica->inTransaction());
+        $this->assertSame([], $handler->getRecords());
     }
 
     /**
