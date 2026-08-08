@@ -203,7 +203,6 @@ final class ConnectionManager
                 }
 
                 $this->recoverResidualTransaction($connection, $pool);
-
                 $this->replicaConnections[$name] = $connection;
 
                 return $connection;
@@ -352,12 +351,51 @@ final class ConnectionManager
             return;
         }
 
-        $connection->rollback();
+        if ($this->hasConnectionInTransaction()) {
+            return;
+        }
 
+        $connection->rollback();
         $this->logger?->warning(
             'residual transaction detected on persistent connection; rolled back',
             ['connection_name' => $pool->name],
         );
+    }
+
+    /**
+     * Report whether a Connection this manager already handed out is inside a transaction.
+     *
+     * PDO keys its persistent handles by DSN, username and password, so a pool
+     * whose replica inherits the primary's connection settings gets one shared
+     * server session for both routes. inTransaction() then reflects that shared
+     * session, and a transaction the caller opened through the replica is
+     * indistinguishable from one an earlier request left behind — rolling it
+     * back would discard the caller's own uncommitted work.
+     *
+     * A transaction on an already-built Connection means the caller has one in
+     * flight, so recovery stands down. On the first acquisition of a request
+     * nothing is in flight, which is where a genuine leftover surfaces.
+     *
+     * The scan does not ask whether the two Connections reach the same session,
+     * so it stands down on a pool whose replica is a separate server as well: a
+     * genuine leftover on the primary survives while the caller is mid
+     * transaction on the replica. Keeping the caller's uncommitted work is the
+     * side to err on, and the surviving leftover joins the other stateful
+     * carry-overs documented as a limitation of persistent pools.
+     *
+     * @return bool
+     */
+    private function hasConnectionInTransaction(): bool
+    {
+        foreach ([$this->primaryConnections, $this->replicaConnections] as $connections) {
+            foreach ($connections as $existing) {
+                if ($existing->inTransaction()) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
