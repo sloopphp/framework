@@ -221,12 +221,6 @@
                 // observable, so a method-wide ignore would discard a working
                 // signal.
                 //
-                // ConnectionManager::getReplicaConnection returns the primary
-                // when a pool declares no replicas. Falling through partitions
-                // an empty replica list, skips the attempt loop, and reaches
-                // the primary fallback — the same connection, since
-                // max_connection_attempts is validated as a positive int.
-                "Sloop\\Database\\ConnectionManager::getReplicaConnection::181",
                 // Application::dispatchRoute returns early when a route has no
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
