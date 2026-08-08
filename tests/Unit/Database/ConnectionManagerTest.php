@@ -843,6 +843,78 @@ final class ConnectionManagerTest extends TestCase
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
     }
 
+    /**
+     * @return array<string, array{0: array<string, mixed>}>
+     */
+    public static function healthCheckEnabledProvider(): array
+    {
+        return [
+            'health_check explicitly true' => [['health_check' => true]],
+            'health_check omitted'         => [[]],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $healthCheckConfig
+     */
+    #[DataProvider('healthCheckEnabledProvider')]
+    public function testPersistentPoolStillRunsTheHealthCheckPing(array $healthCheckConfig): void
+    {
+        // A persistent handle is the case that needs the ping most: the server
+        // may have dropped the session on wait_timeout while the handle sat in
+        // the pool, and nothing would notice before the first real query.
+        // Opting into persistent must therefore not turn the check off,
+        // whether health_check is spelled out or left at its default.
+        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock->expects($this->once())
+            ->method('exec')
+            ->with('DO 1')
+            ->willReturn(0);
+
+        $replica = new Connection($pdoMock, 'replica');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => array_merge([
+                'driver'     => 'mysql',
+                'host'       => 'primary.internal',
+                'database'   => 'app',
+                'read'       => [['host' => 'replica.internal']],
+                'persistent' => true,
+            ], $healthCheckConfig),
+        ], $factory);
+
+        $this->assertSame($replica, $manager->connection(writable: false));
+    }
+
+    public function testPersistentPoolSkipsThePingWhenHealthCheckIsDisabled(): void
+    {
+        // The flag must not force the check back on either. A pool that
+        // measured the per-connection ping cost and opted out keeps lazy
+        // failover only, and turning on persistent is not a reason to
+        // reinstate a round trip it declined.
+        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock->expects($this->never())->method('exec');
+
+        $replica = new Connection($pdoMock, 'replica');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'read'         => [['host' => 'replica.internal']],
+                'health_check' => false,
+                'persistent'   => true,
+            ],
+        ], $factory);
+
+        $this->assertSame($replica, $manager->connection(writable: false));
+    }
+
     public function testReplicaRouteCachesSelectedReplicaAcrossCalls(): void
     {
         $replica = $this->realConnection();
