@@ -18,6 +18,10 @@
 # Substituting an input-side number (files on disk, packages in the lock file)
 # would only prove that work existed, not that the tool did it.
 #
+# The count check only runs here. CI calls each tool directly rather than going
+# through this script, so a change that empties a tool's file selection still
+# passes there.
+#
 # Usage:
 #   .claude/quality-gate.sh                    # run static checks and tests (a few seconds)
 #   .claude/quality-gate.sh --with-mutation    # also run infection (about 1 minute)
@@ -80,7 +84,7 @@ gate_count() {
     # escape sequences carry digits: composer-dependency-analyser writes
     # "(scanned<ESC>[0m 156" and the 0 of the reset code is read as the count.
     local plain
-    plain=$(mktemp) || return 0
+    plain=$(mktemp) || exit 1
     sed "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" "$out" > "$plain"
 
     case "$name" in
