@@ -10,6 +10,22 @@ use Sloop\Database\Config\ValidatedConfig;
 
 final class PoolConfigTest extends TestCase
 {
+    private function makeValidatedConfig(string $host): ValidatedConfig
+    {
+        return new ValidatedConfig(
+            driver: 'mysql',
+            host: $host,
+            port: null,
+            database: 'app',
+            username: 'user',
+            password: 'pass',
+            charset: null,
+            collation: null,
+            connectTimeoutSeconds: null,
+            options: [],
+        );
+    }
+
     public function testStoresAllFields(): void
     {
         $primary  = $this->makeValidatedConfig('primary.example.com');
@@ -95,21 +111,5 @@ final class PoolConfigTest extends TestCase
 
         $this->assertCount(1, $pool->replicas);
         $this->assertSame($replica, $pool->replicas[0]);
-    }
-
-    private function makeValidatedConfig(string $host): ValidatedConfig
-    {
-        return new ValidatedConfig(
-            driver: 'mysql',
-            host: $host,
-            port: null,
-            database: 'app',
-            username: 'user',
-            password: 'pass',
-            charset: null,
-            collation: null,
-            connectTimeoutSeconds: null,
-            options: [],
-        );
     }
 }

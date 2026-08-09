@@ -38,6 +38,99 @@ final class MutationBaselineTest extends TestCase
         rmdir($this->workDir);
     }
 
+    /**
+     * @param  array<string, list<array<string, mixed>>> $sections
+     * @return array<string, mixed>
+     */
+    private function reportWith(array $sections): array
+    {
+        return array_merge(
+            ['stats' => ['totalMutantsCount' => 100], 'escaped' => [], 'timeouted' => [], 'errored' => []],
+            $sections,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function entry(string $file, int $line, string $mutator, string $removed, string $added): array
+    {
+        return [
+            'mutator' => [
+                'mutatorName'       => $mutator,
+                'originalFilePath'  => $this->workDir . '/' . $file,
+                'originalStartLine' => $line,
+            ],
+            'diff' => "--- Original\n+++ New\n@@ @@\n" . $removed . "\n" . $added,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $report
+     */
+    private function writeBaselineFrom(array $report): void
+    {
+        file_put_contents($this->workDir . '/report.json', json_encode($report));
+
+        $code = $this->invoke([
+            '--update',
+            '--report=' . $this->workDir . '/report.json',
+            '--baseline=' . $this->workDir . '/baseline.json',
+        ]);
+
+        self::assertSame(0, $code);
+    }
+
+    /**
+     * @param array<string, mixed> $report
+     */
+    private function check(array $report): int
+    {
+        file_put_contents($this->workDir . '/report.json', json_encode($report));
+
+        return $this->invoke([
+            '--report=' . $this->workDir . '/report.json',
+            '--baseline=' . $this->workDir . '/baseline.json',
+        ]);
+    }
+
+    /**
+     * @param list<string> $arguments
+     */
+    private function invoke(array $arguments): int
+    {
+        $errors = fopen('php://memory', 'w+');
+        self::assertIsResource($errors);
+
+        ob_start();
+        $code         = MutationBaseline::run($arguments, $errors);
+        $this->output = (string) ob_get_clean();
+
+        rewind($errors);
+        $this->errors = (string) stream_get_contents($errors);
+        fclose($errors);
+
+        return $code;
+    }
+
+    /**
+     * Writes the subject file the reports point at, padded to move its method down.
+     */
+    private function writeSubject(int $leadingLines): void
+    {
+        $padding = str_repeat("// padding\n", $leadingLines);
+
+        file_put_contents($this->workDir . '/Sample.php', "<?php\n\n" . $padding . <<<'PHP'
+            final class Sample
+            {
+                public function compute(bool $a, bool $b): bool
+                {
+                    return $a && $b;
+                }
+            }
+            PHP);
+    }
+
     public function testKeyIgnoresLineNumbersSoUnrelatedEditsDoNotInvalidateEntries(): void
     {
         // The subject file has to exist and hold a real method, otherwise the
@@ -273,98 +366,5 @@ final class MutationBaselineTest extends TestCase
 
         self::assertSame('', ScopeIndex::resolve($file, 5));
         self::assertSame('afterwards', ScopeIndex::resolve($file, 10));
-    }
-
-    /**
-     * @param  array<string, list<array<string, mixed>>> $sections
-     * @return array<string, mixed>
-     */
-    private function reportWith(array $sections): array
-    {
-        return array_merge(
-            ['stats' => ['totalMutantsCount' => 100], 'escaped' => [], 'timeouted' => [], 'errored' => []],
-            $sections,
-        );
-    }
-
-    /**
-     * Writes the subject file the reports point at, padded to move its method down.
-     */
-    private function writeSubject(int $leadingLines): void
-    {
-        $padding = str_repeat("// padding\n", $leadingLines);
-
-        file_put_contents($this->workDir . '/Sample.php', "<?php\n\n" . $padding . <<<'PHP'
-            final class Sample
-            {
-                public function compute(bool $a, bool $b): bool
-                {
-                    return $a && $b;
-                }
-            }
-            PHP);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function entry(string $file, int $line, string $mutator, string $removed, string $added): array
-    {
-        return [
-            'mutator' => [
-                'mutatorName'       => $mutator,
-                'originalFilePath'  => $this->workDir . '/' . $file,
-                'originalStartLine' => $line,
-            ],
-            'diff' => "--- Original\n+++ New\n@@ @@\n" . $removed . "\n" . $added,
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $report
-     */
-    private function writeBaselineFrom(array $report): void
-    {
-        file_put_contents($this->workDir . '/report.json', json_encode($report));
-
-        $code = $this->invoke([
-            '--update',
-            '--report=' . $this->workDir . '/report.json',
-            '--baseline=' . $this->workDir . '/baseline.json',
-        ]);
-
-        self::assertSame(0, $code);
-    }
-
-    /**
-     * @param array<string, mixed> $report
-     */
-    private function check(array $report): int
-    {
-        file_put_contents($this->workDir . '/report.json', json_encode($report));
-
-        return $this->invoke([
-            '--report=' . $this->workDir . '/report.json',
-            '--baseline=' . $this->workDir . '/baseline.json',
-        ]);
-    }
-
-    /**
-     * @param list<string> $arguments
-     */
-    private function invoke(array $arguments): int
-    {
-        $errors = fopen('php://memory', 'w+');
-        self::assertIsResource($errors);
-
-        ob_start();
-        $code         = MutationBaseline::run($arguments, $errors);
-        $this->output = (string) ob_get_clean();
-
-        rewind($errors);
-        $this->errors = (string) stream_get_contents($errors);
-        fclose($errors);
-
-        return $code;
     }
 }

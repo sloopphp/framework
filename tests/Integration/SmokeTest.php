@@ -9,6 +9,13 @@ use PHPUnit\Framework\TestCase;
 
 final class SmokeTest extends TestCase
 {
+    private static function envOr(string $key, string $default): string
+    {
+        $value = getenv($key);
+
+        return $value === false || $value === '' ? $default : $value;
+    }
+
     public function testCanConnectToDatabase(): void
     {
         $host = self::envOr('DB_HOST', '127.0.0.1');
@@ -31,12 +38,4 @@ final class SmokeTest extends TestCase
 
         self::assertSame(1, (int) $result);
     }
-
-    private static function envOr(string $key, string $default): string
-    {
-        $value = getenv($key);
-
-        return $value === false || $value === '' ? $default : $value;
-    }
-
 }
