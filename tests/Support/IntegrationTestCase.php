@@ -22,9 +22,12 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Open a fresh sloop Connection to the integration database.
      *
+     * Static so that setUpBeforeClass(), which runs before any instance
+     * exists, can open a connection for schema setup.
+     *
      * @return Connection Configured Connection with sloop's PDO defaults
      */
-    protected function openConnection(): Connection
+    protected static function openConnection(): Connection
     {
         $host = self::envOr('DB_HOST', '127.0.0.1');
         $port = self::envOr('DB_PORT', '3306');

@@ -19,7 +19,7 @@ final class ConnectionTest extends IntegrationTestCase
 
     protected function setUp(): void
     {
-        $this->connection = $this->openConnection();
+        $this->connection = self::openConnection();
         $this->connection->statement('DROP TABLE IF EXISTS sloop_connection_test');
         $this->connection->statement(
             'CREATE TABLE sloop_connection_test ('

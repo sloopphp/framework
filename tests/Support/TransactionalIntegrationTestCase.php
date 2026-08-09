@@ -18,6 +18,11 @@ use Sloop\Database\Connection;
  * opens its own connection gets a separate session and is therefore outside
  * the fixture.
  *
+ * The tables in tests/Integration/Database/fixtures/schema.sql are dropped and
+ * recreated once per class before the first transaction opens, so a test can
+ * query them without any setup of its own. A class that needs extra tables
+ * overrides setUpSharedFixtures().
+ *
  * Not suitable for every integration test:
  * - Tests that exercise transactions themselves (begin / commit / rollback,
  *   isolation levels, deadlock retries) cannot nest inside the fixture, since
@@ -35,6 +40,41 @@ abstract class TransactionalIntegrationTestCase extends IntegrationTestCase
     protected Connection $connection;
 
     /**
+     * Create the shared tables the integration tests query.
+     *
+     * Runs here rather than in setUp() because DDL commits implicitly on MySQL
+     * and would end the per-test transaction.
+     *
+     * Final on purpose. The shared tables survive in the database between runs,
+     * so a subclass that overrode this method and forgot parent::
+     * setUpBeforeClass() would not hit a missing table — it would silently
+     * query whatever the previous run left behind. Class-level setup belongs in
+     * setUpSharedFixtures() instead, which cannot skip the load.
+     *
+     * @return void
+     */
+    final public static function setUpBeforeClass(): void
+    {
+        parent::setUpBeforeClass();
+
+        SharedSchema::load(static::openConnection());
+
+        static::setUpSharedFixtures();
+    }
+
+    /**
+     * Hook for class-level setup that needs to run outside the per-test transaction.
+     *
+     * Override this instead of setUpBeforeClass(). DDL placed here commits
+     * implicitly, which is why it must not run once a test transaction is open.
+     *
+     * @return void
+     */
+    protected static function setUpSharedFixtures(): void
+    {
+    }
+
+    /**
      * Open the connection and start the transaction that isolates the test.
      *
      * @return void
@@ -43,7 +83,7 @@ abstract class TransactionalIntegrationTestCase extends IntegrationTestCase
     {
         parent::setUp();
 
-        $this->connection = $this->openConnection();
+        $this->connection = static::openConnection();
         $this->connection->begin();
     }
 
