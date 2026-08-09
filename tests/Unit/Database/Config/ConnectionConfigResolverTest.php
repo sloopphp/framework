@@ -641,16 +641,32 @@ final class ConnectionConfigResolverTest extends TestCase
             ],
             'health_check'            => false,
             'dead_cache_ttl_seconds'  => 60,
-            'replica_selector'        => 'random',
+            'replica_selector'        => 'round_robin',
             'max_connection_attempts' => 6,
             'query_timeout_ms'        => 5000,
         ]);
 
         $this->assertFalse($pool->healthCheck);
         $this->assertSame(60, $pool->deadCacheTtlSeconds);
-        $this->assertSame('random', $pool->replicaSelector);
+        $this->assertSame('round_robin', $pool->replicaSelector);
         $this->assertSame(6, $pool->maxConnectionAttempts);
         $this->assertSame(5000, $pool->queryTimeoutMs);
+    }
+
+    public function testValidatePoolDefaultsHealthCheckDeadCacheTtlAndSelectorWhenOmitted(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'read'     => [
+                ['host' => 'replica-1.example.com'],
+            ],
+        ]);
+
+        $this->assertTrue($pool->healthCheck);
+        $this->assertSame(300, $pool->deadCacheTtlSeconds);
+        $this->assertSame('random', $pool->replicaSelector);
     }
 
     public function testValidatePoolDefaultsMaxConnectionAttemptsToReplicaCountPlusOne(): void
