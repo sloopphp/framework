@@ -12,6 +12,16 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
 
 final class ReplicaSelectorRegistryTest extends TestCase
 {
+    private function fixedSelector(): ReplicaSelector
+    {
+        return new class () implements ReplicaSelector {
+            public function pick(array $candidates): int
+            {
+                return 0;
+            }
+        };
+    }
+
     public function testGetReturnsSelectorRegisteredUnderIdentifier(): void
     {
         $random = new RandomReplicaSelector();
@@ -54,15 +64,5 @@ final class ReplicaSelectorRegistryTest extends TestCase
         );
 
         $registry->get('random');
-    }
-
-    private function fixedSelector(): ReplicaSelector
-    {
-        return new class () implements ReplicaSelector {
-            public function pick(array $candidates): int
-            {
-                return 0;
-            }
-        };
     }
 }

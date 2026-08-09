@@ -124,6 +124,47 @@ final class ConnectionManagerTest extends TestCase
     // pool resolution / config validation
     // -------------------------------------------------------
 
+    private function pingableConnection(): Connection
+    {
+        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock->method('exec')
+            ->with('DO 1')
+            ->willReturn(0);
+
+        return new Connection($pdoMock, 'replica');
+    }
+
+    /**
+     * Build a mock PDO with a representative MySQL VERSION() response that asserts
+     * SET SESSION fires once with the expected SQL and accepts the trailing user query.
+     *
+     * Dialect-specific output formatting (MariaDB max_statement_time) is covered
+     * by ConnectionTest's dialect provider; this helper focuses on the manager's
+     * forwarding contract using a single representative dialect.
+     *
+     * @param  string $expectedSetSessionSql Expected SET SESSION SQL passed to exec()
+     * @return PDO    Mock PDO with the exec/query/prepare expectations wired
+     */
+    private function primaryPdoExpectingTimeout(string $expectedSetSessionSql): PDO
+    {
+        $versionStmt = $this->createStub(\PDOStatement::class);
+        $versionStmt->method('fetchColumn')->willReturn('8.0.37');
+
+        $userStmt = $this->createStub(\PDOStatement::class);
+        $userStmt->method('execute')->willReturn(true);
+        $userStmt->method('fetchAll')->willReturn([]);
+
+        $pdo = $this->createMock(PDO::class);
+        $pdo->method('query')->with('SELECT VERSION()')->willReturn($versionStmt);
+        $pdo->expects($this->once())
+            ->method('exec')
+            ->with($expectedSetSessionSql)
+            ->willReturn(0);
+        $pdo->method('prepare')->willReturn($userStmt);
+
+        return $pdo;
+    }
+
     public function testResolvePoolRejectsReplicaSelectorMissingFromRegistry(): void
     {
         $manager = $this->manager('master', ['master' => [
@@ -1463,16 +1504,6 @@ final class ConnectionManagerTest extends TestCase
         }
     }
 
-    private function pingableConnection(): Connection
-    {
-        $pdoMock = $this->createMock(PDO::class);
-        $pdoMock->method('exec')
-            ->with('DO 1')
-            ->willReturn(0);
-
-        return new Connection($pdoMock, 'replica');
-    }
-
     // -------------------------------------------------------
     // logger injection
     // -------------------------------------------------------
@@ -2350,36 +2381,5 @@ final class ConnectionManagerTest extends TestCase
 
         $this->assertTrue($replica->inTransaction());
         $this->assertSame([], $handler->getRecords());
-    }
-
-    /**
-     * Build a mock PDO with a representative MySQL VERSION() response that asserts
-     * SET SESSION fires once with the expected SQL and accepts the trailing user query.
-     *
-     * Dialect-specific output formatting (MariaDB max_statement_time) is covered
-     * by ConnectionTest's dialect provider; this helper focuses on the manager's
-     * forwarding contract using a single representative dialect.
-     *
-     * @param  string $expectedSetSessionSql Expected SET SESSION SQL passed to exec()
-     * @return PDO    Mock PDO with the exec/query/prepare expectations wired
-     */
-    private function primaryPdoExpectingTimeout(string $expectedSetSessionSql): PDO
-    {
-        $versionStmt = $this->createStub(\PDOStatement::class);
-        $versionStmt->method('fetchColumn')->willReturn('8.0.37');
-
-        $userStmt = $this->createStub(\PDOStatement::class);
-        $userStmt->method('execute')->willReturn(true);
-        $userStmt->method('fetchAll')->willReturn([]);
-
-        $pdo = $this->createMock(PDO::class);
-        $pdo->method('query')->with('SELECT VERSION()')->willReturn($versionStmt);
-        $pdo->expects($this->once())
-            ->method('exec')
-            ->with($expectedSetSessionSql)
-            ->willReturn(0);
-        $pdo->method('prepare')->willReturn($userStmt);
-
-        return $pdo;
     }
 }
