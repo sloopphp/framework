@@ -8,6 +8,7 @@ use Monolog\Handler\TestHandler;
 use Monolog\Level;
 use Monolog\Logger;
 use PDO;
+use PDOStatement;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Config\ValidatedConfig;
@@ -90,6 +91,33 @@ final class ConnectionManagerTest extends TestCase
             deadCache: $this->deadCache,
             logger: new Logger('database', [$handler]),
         );
+    }
+
+    /**
+     * Build a Connection whose every query takes at least $elapsedMicroseconds.
+     *
+     * The slow-query branch compares real elapsed time, so a stub that returns
+     * instantly cannot tell a propagated threshold from a missing one. Pair a
+     * deliberately slow statement with a threshold of 1ms instead of waiting on
+     * a threshold that a fast query might or might not cross.
+     */
+    private function slowConnection(int $elapsedMicroseconds, string $connectionName): Connection
+    {
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('execute')->willReturnCallback(
+            static function () use ($elapsedMicroseconds): bool {
+                usleep($elapsedMicroseconds);
+
+                return true;
+            },
+        );
+        $statement->method('fetchAll')->willReturn([]);
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('prepare')->willReturn($statement);
+        $pdo->method('exec')->willReturn(0);
+
+        return new Connection($pdo, $connectionName);
     }
 
     // -------------------------------------------------------
@@ -1567,6 +1595,97 @@ final class ConnectionManagerTest extends TestCase
         $this->assertCount(1, $records);
         $this->assertSame(Level::Debug, $records[0]->level);
         $this->assertSame('[redacted]', $records[0]->context['bindings']);
+    }
+
+    public function testSlowQueryThresholdFromPoolConfigMakesASlowQueryWarn(): void
+    {
+        // testLoggingOptionsArePropagatedFromPoolConfig deliberately picks a
+        // threshold no in-memory SELECT can reach, so it cannot distinguish a
+        // propagated threshold from an unset one (both stay off the warning
+        // branch). Force the query to outlast a 1ms threshold instead: the
+        // warning can only appear if the pool value reached LoggingOptions.
+        $handler = new TestHandler();
+        $primary = $this->slowConnection(20000, 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'                  => 'mysql',
+                'host'                    => 'primary.internal',
+                'database'                => 'app',
+                'log_all_queries'         => false,
+                'slow_query_threshold_ms' => 1,
+            ],
+        ], $factory, $handler);
+
+        $manager->connection()->query('SELECT 1');
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Warning, $records[0]->level);
+        $this->assertSame('slow query', $records[0]->message);
+        $this->assertGreaterThan(1, $records[0]->context['elapsed_ms']);
+    }
+
+    public function testNoWarningWhenThePoolOmitsTheSlowQueryThreshold(): void
+    {
+        // Counterpart to the test above: the same slow query must stay silent
+        // when the pool sets no threshold. Without this, a warning hard-wired
+        // to something other than the config would still pass there.
+        $handler = new TestHandler();
+        $primary = $this->slowConnection(20000, 'master');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'          => 'mysql',
+                'host'            => 'primary.internal',
+                'database'        => 'app',
+                'log_all_queries' => false,
+            ],
+        ], $factory, $handler);
+
+        $manager->connection()->query('SELECT 1');
+
+        $this->assertSame([], $handler->getRecords());
+    }
+
+    public function testProbeReplicasLeavesTheProbeConnectionWithoutALogger(): void
+    {
+        // Probe connections are transient and never serve queries, so
+        // probeReplicas() skips applyLogger(). Nothing asserted that directly:
+        // routing the probe through applyLogger() would have gone unnoticed.
+        $handler = new TestHandler();
+        $replica = $this->slowConnection(0, 'replica');
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->managerWithLogger('master', [
+            'master' => [
+                'driver'          => 'mysql',
+                'host'            => 'primary.internal',
+                'database'        => 'app',
+                'read'            => [['host' => 'replica.internal']],
+                'health_check'    => false,
+                'log_all_queries' => true,
+            ],
+        ], $factory, $handler);
+
+        $manager->probeReplicas();
+        $replica->query('SELECT 1');
+
+        $this->assertCount(0, $handler->getRecords());
+
+        // Positive control: the same Connection does log once it is handed out
+        // as a real replica, so the silence above is the missing logger rather
+        // than a query that never reached the logging path.
+        $manager->connection(writable: false)->query('SELECT 1');
+
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame(Level::Debug, $records[0]->level);
     }
 
     public function testNoLoggerInjectionWhenManagerHasNoLogger(): void
