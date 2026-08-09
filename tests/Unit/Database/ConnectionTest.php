@@ -127,7 +127,7 @@ final class ConnectionTest extends TestCase
         $connection->statement('CREATE TABLE probe (id INTEGER PRIMARY KEY)');
         $connection->statement('INSERT INTO probe (id) VALUES (1)');
 
-        $rows = $connection->query('SELECT id FROM probe')->toArray();
+        $rows = $connection->query('SELECT id FROM probe')->asArray();
         $this->assertSame([['id' => 1]], $rows);
     }
 
@@ -152,7 +152,7 @@ final class ConnectionTest extends TestCase
 
         $this->assertSame(
             [['id' => 1, 'name' => 'alice'], ['id' => 2, 'name' => 'bob']],
-            $result->toArray(),
+            $result->asArray(),
         );
     }
 
@@ -162,7 +162,7 @@ final class ConnectionTest extends TestCase
 
         $result = $this->connection->query('SELECT name FROM users WHERE id = ?', [2]);
 
-        $this->assertSame([['name' => 'bob']], $result->toArray());
+        $this->assertSame([['name' => 'bob']], $result->asArray());
     }
 
     public function testQueryAcceptsNamedBindings(): void
@@ -174,7 +174,7 @@ final class ConnectionTest extends TestCase
             ['id' => 2],
         );
 
-        $this->assertSame([['name' => 'bob']], $result->toArray());
+        $this->assertSame([['name' => 'bob']], $result->asArray());
     }
 
     public function testQueryReturnsEmptyResultWhenNoRowsMatch(): void
@@ -182,7 +182,7 @@ final class ConnectionTest extends TestCase
         $result = $this->connection->query('SELECT id FROM users');
 
         $this->assertCount(0, $result);
-        $this->assertSame([], $result->toArray());
+        $this->assertSame([], $result->asArray());
     }
 
     public function testQueryThrowsWhenPdoReturnsNonArrayRow(): void
@@ -208,6 +208,61 @@ final class ConnectionTest extends TestCase
                 $e->getMessage(),
             );
         }
+    }
+
+    public function testQueryThrowsWhenPdoReturnsAValueOutsideTheDriverContract(): void
+    {
+        // With EMULATE_PREPARES and STRINGIFY_FETCHES off the drivers return
+        // only int/float/string/null. Letting anything else through would widen
+        // Result's value type for every caller.
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('execute')->willReturn(true);
+        $statement->method('fetchAll')->willReturn([['flag' => true]]);
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('prepare')->willReturn($statement);
+
+        $connection = new Connection($pdo, 'test');
+
+        try {
+            $connection->query('SELECT 1');
+            $this->fail('Expected UnexpectedValueException');
+        } catch (UnexpectedValueException $e) {
+            $this->assertSame(
+                'PDO returned an unsupported value type for column "flag": bool',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testQueryReturnsAnIntColumnNameForANumericColumnLabel(): void
+    {
+        // Result declares its keys as array-key rather than string because of
+        // this: the driver hands back the label "1", and PHP turns a numeric
+        // string key into an int on assignment. Pinning it here so the type
+        // declaration keeps a reason attached to it.
+        $rows = $this->connection->query('SELECT 1')->asArray();
+
+        $this->assertSame([[1 => 1]], $rows);
+        $this->assertSame([1], array_keys($rows[0]));
+    }
+
+    public function testQueryPassesTheFourContractedValueTypesThrough(): void
+    {
+        // The negative case above only shows the guard fires; this shows it does
+        // not fire on the types the drivers do return, null included.
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('execute')->willReturn(true);
+        $statement->method('fetchAll')->willReturn([
+            ['i' => 1, 'f' => 1.5, 's' => 'text', 'n' => null],
+        ]);
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('prepare')->willReturn($statement);
+
+        $rows = new Connection($pdo, 'test')->query('SELECT 1')->asArray();
+
+        $this->assertSame([['i' => 1, 'f' => 1.5, 's' => 'text', 'n' => null]], $rows);
     }
 
     public function testStatementReturnsAffectedRowCount(): void

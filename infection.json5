@@ -72,7 +72,7 @@
                 // millisecond. Observing that requires timing the call. Pinned
                 // to the parameter's line because other integer literals in the
                 // same method are killable.
-                "Sloop\\Database\\Connection::transaction::356"
+                "Sloop\\Database\\Connection::transaction::393"
             ]
         },
         "DecrementInteger": {

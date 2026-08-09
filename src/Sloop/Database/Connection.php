@@ -202,7 +202,7 @@ final class Connection
                 if (!\is_array($row)) {
                     throw new UnexpectedValueException('PDO returned non-array row from FETCH_ASSOC');
                 }
-                $rows[] = $row;
+                $rows[] = self::narrowRow($row);
             }
         } catch (DatabaseException $e) {
             $this->logQueryFailure($sql, $bindings, $e);
@@ -215,6 +215,43 @@ final class Connection
         }
 
         return new Result($rows);
+    }
+
+    /**
+     * Narrow one fetched row to the value types the drivers return.
+     *
+     * PDO's own signature is too wide to analyse statically, and carrying that
+     * width into Result would push the ambiguity into every caller's code. With
+     * EMULATE_PREPARES and STRINGIFY_FETCHES both off, the supported drivers
+     * return only these four value types, so anything else means the contract
+     * this class relies on no longer holds and is worth failing on rather than
+     * passing along.
+     *
+     * Column names stay array-key rather than string: a numeric column name
+     * such as the one `SELECT 1` produces arrives as the string "1", and PHP
+     * casts numeric string keys to int on assignment. Declaring string here
+     * would be a claim the language cannot honour.
+     *
+     * @param  array<array-key, mixed>                 $row Row as returned by PDO under FETCH_ASSOC
+     * @return array<array-key, int|float|string|null> The same row, narrowed
+     * @throws UnexpectedValueException                When a value falls outside the driver contract
+     */
+    private static function narrowRow(array $row): array
+    {
+        $narrowed = [];
+
+        foreach ($row as $column => $value) {
+            if ($value !== null && !\is_int($value) && !\is_float($value) && !\is_string($value)) {
+                throw new UnexpectedValueException(
+                    'PDO returned an unsupported value type for column "'
+                        . $column . '": ' . get_debug_type($value),
+                );
+            }
+
+            $narrowed[$column] = $value;
+        }
+
+        return $narrowed;
     }
 
     /**
