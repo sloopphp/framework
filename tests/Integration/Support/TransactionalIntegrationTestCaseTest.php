@@ -41,18 +41,18 @@ final class TransactionalIntegrationTestCaseTest extends TransactionalIntegratio
     {
         $this->connection->statement('INSERT INTO ' . self::TABLE . ' (name) VALUES (?)', ['alice']);
 
-        $this->assertCount(1, $this->connection->query('SELECT id FROM ' . self::TABLE)->toArray());
+        $this->assertCount(1, $this->connection->query('SELECT id FROM ' . self::TABLE)->asArray());
 
         // A separate session proves the row is still uncommitted rather than
         // merely absent from a stale read.
         $observer = self::openConnection();
-        $this->assertCount(0, $observer->query('SELECT id FROM ' . self::TABLE)->toArray());
+        $this->assertCount(0, $observer->query('SELECT id FROM ' . self::TABLE)->asArray());
     }
 
     #[Depends('testWritesAreInvisibleToOtherConnectionsUntilTheFixtureEnds')]
     public function testRowsWrittenByThePreviousTestAreGone(): void
     {
-        $this->assertCount(0, $this->connection->query('SELECT id FROM ' . self::TABLE)->toArray());
+        $this->assertCount(0, $this->connection->query('SELECT id FROM ' . self::TABLE)->asArray());
     }
 
     public function testTeardownRejectsAFixtureTransactionThatWasAlreadyCommitted(): void

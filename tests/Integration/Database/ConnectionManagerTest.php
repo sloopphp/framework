@@ -85,7 +85,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
     {
         $manager = $this->manager(self::defaultConfig());
 
-        $rows = $manager->connection()->query('SELECT 1 AS v')->toArray();
+        $rows = $manager->connection()->query('SELECT 1 AS v')->asArray();
 
         $this->assertSame(1, $rows[0]['v']);
     }
@@ -109,7 +109,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
 
         $rows = $manager->connection()
             ->query("SHOW VARIABLES LIKE 'character_set_client'")
-            ->toArray();
+            ->asArray();
 
         $this->assertSame('utf8mb4', $rows[0]['Value']);
     }
@@ -124,7 +124,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
 
         $rows = $manager->connection()
             ->query("SHOW VARIABLES LIKE 'collation_connection'")
-            ->toArray();
+            ->asArray();
 
         $this->assertSame('utf8mb4_general_ci', $rows[0]['Value']);
     }
@@ -168,7 +168,7 @@ final class ConnectionManagerTest extends IntegrationTestCase
 
         $rows = $manager->connection()
             ->query('SELECT 1 AS lower_case_alias')
-            ->toArray();
+            ->asArray();
 
         $this->assertArrayHasKey('LOWER_CASE_ALIAS', $rows[0]);
     }

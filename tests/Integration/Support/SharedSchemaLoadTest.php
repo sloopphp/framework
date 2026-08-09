@@ -32,7 +32,7 @@ final class SharedSchemaLoadTest extends TransactionalIntegrationTestCase
             ['alice', 'alice@example.com', 'active', 10, '2026-01-01 00:00:00'],
         );
 
-        $rows = $this->connection->query('SELECT name, score, deleted_at FROM users')->toArray();
+        $rows = $this->connection->query('SELECT name, score, deleted_at FROM users')->asArray();
 
         $this->assertSame(
             [['name' => 'alice', 'score' => 10, 'deleted_at' => null]],
@@ -45,7 +45,7 @@ final class SharedSchemaLoadTest extends TransactionalIntegrationTestCase
     {
         // The shared tables outlive the class, so a leak here would poison every
         // later test that counts rows in users.
-        $this->assertCount(0, $this->connection->query('SELECT id FROM users')->toArray());
+        $this->assertCount(0, $this->connection->query('SELECT id FROM users')->asArray());
     }
 
     public function testPostsTableAcceptsWritesAndReadsThemBack(): void
@@ -55,7 +55,7 @@ final class SharedSchemaLoadTest extends TransactionalIntegrationTestCase
             [1, 'first post', 1, '2026-01-01 00:00:00'],
         );
 
-        $rows = $this->connection->query('SELECT user_id, title, published FROM posts')->toArray();
+        $rows = $this->connection->query('SELECT user_id, title, published FROM posts')->asArray();
 
         $this->assertSame(
             [['user_id' => 1, 'title' => 'first post', 'published' => 1]],
@@ -66,7 +66,7 @@ final class SharedSchemaLoadTest extends TransactionalIntegrationTestCase
     #[Depends('testPostsTableAcceptsWritesAndReadsThemBack')]
     public function testPostsWrittenByThePreviousTestDoNotSurviveIntoThisOne(): void
     {
-        $this->assertCount(0, $this->connection->query('SELECT id FROM posts')->toArray());
+        $this->assertCount(0, $this->connection->query('SELECT id FROM posts')->asArray());
     }
 
     public function testEveryFixtureTableIsTransactionalAndUsesThePinnedCollation(): void
@@ -85,7 +85,7 @@ final class SharedSchemaLoadTest extends TransactionalIntegrationTestCase
                 . ' FROM information_schema.tables'
                 . ' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (' . $placeholders . ')',
             $names,
-        )->toArray();
+        )->asArray();
 
         $actual = [];
 

@@ -51,7 +51,7 @@ final class ConnectionTest extends IntegrationTestCase
         //
         // Here we just assert the Connection is usable end-to-end, which
         // confirms open() produced a working, configured handle.
-        $rows = $this->connection->query('SELECT 1 AS v')->toArray();
+        $rows = $this->connection->query('SELECT 1 AS v')->asArray();
         $this->assertSame(1, $rows[0]['v']);
     }
 
@@ -62,7 +62,7 @@ final class ConnectionTest extends IntegrationTestCase
             ['alice', 100],
         );
 
-        $rows = $this->connection->query('SELECT id, balance FROM sloop_connection_test')->toArray();
+        $rows = $this->connection->query('SELECT id, balance FROM sloop_connection_test')->asArray();
 
         $this->assertCount(1, $rows);
         $this->assertIsInt($rows[0]['id']);
@@ -81,7 +81,7 @@ final class ConnectionTest extends IntegrationTestCase
 
         $rows = $this->connection->query(
             'SELECT name FROM sloop_connection_test ORDER BY id',
-        )->toArray();
+        )->asArray();
 
         $this->assertSame([['name' => 'alice'], ['name' => 'bob']], $rows);
     }
@@ -104,7 +104,7 @@ final class ConnectionTest extends IntegrationTestCase
 
         $rows = $this->connection->query(
             'SELECT name FROM sloop_connection_test ORDER BY id',
-        )->toArray();
+        )->asArray();
         $this->assertSame([['name' => 'alice']], $rows);
     }
 
@@ -129,7 +129,7 @@ final class ConnectionTest extends IntegrationTestCase
     public function testBeginAcceptsExplicitIsolationLevel(IsolationLevel $level): void
     {
         $this->connection->begin($level);
-        $rows = $this->connection->query('SELECT 1 AS v')->toArray();
+        $rows = $this->connection->query('SELECT 1 AS v')->asArray();
         $this->connection->commit();
 
         $this->assertSame(1, $rows[0]['v']);
@@ -146,7 +146,7 @@ final class ConnectionTest extends IntegrationTestCase
 
         $rows = $this->connection->query(
             'SELECT name FROM sloop_connection_test',
-        )->toArray();
+        )->asArray();
         $this->assertSame([['name' => 'alice']], $rows);
     }
 
@@ -177,7 +177,7 @@ final class ConnectionTest extends IntegrationTestCase
         $this->assertFalse($this->connection->inTransaction());
         $rows = $this->connection->query(
             'SELECT name FROM sloop_connection_test',
-        )->toArray();
+        )->asArray();
         $this->assertSame([['name' => 'alice']], $rows);
     }
 
@@ -241,7 +241,7 @@ final class ConnectionTest extends IntegrationTestCase
         // pinging in the first place.
         $this->connection->ping();
 
-        $rows = $this->connection->query('SELECT 1 AS one')->toArray();
+        $rows = $this->connection->query('SELECT 1 AS one')->asArray();
 
         $this->assertSame([['one' => 1]], $rows);
     }
