@@ -525,6 +525,36 @@ final class ApplicationTest extends TestCase
         $this->assertStringContainsString('    ', $body);
     }
 
+    public function testConfigJsonOptionsFallsBackWhenResponseConfigIsAbsent(): void
+    {
+        $this->writeRoutes('<?php
+            $router->get("/unicode", \Sloop\Tests\Unit\Foundation\Stub\UnicodeSlashController::class, "show");
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/unicode'));
+        $body     = (string) $response->getBody();
+
+        $this->assertStringContainsString('"label":"テスト"', $body);
+        $this->assertStringContainsString('"path":"a/b"', $body);
+    }
+
+    public function testConfigJsonOptionsFallsBackWhenValueIsNotInt(): void
+    {
+        $this->writeConfig('response.php', '<?php return ["json_options" => "pretty"];');
+        $this->writeRoutes('<?php
+            $router->get("/unicode", \Sloop\Tests\Unit\Foundation\Stub\UnicodeSlashController::class, "show");
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/unicode'));
+        $body     = (string) $response->getBody();
+
+        $this->assertStringContainsString('"label":"テスト"', $body);
+        $this->assertStringContainsString('"path":"a/b"', $body);
+        $this->assertStringNotContainsString("\n", $body);
+    }
+
     public function testConfigLogDefaultChannelIsInjected(): void
     {
         $this->writeConfig('log.php', '<?php return ["default" => "custom"];');
