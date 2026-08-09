@@ -906,6 +906,93 @@ final class ConnectionTest extends TestCase
         $this->assertCount(1, $debugs);
     }
 
+    public function testSlowWarningRedactsBindingsAndCarriesConnectionName(): void
+    {
+        // buildLogContext() is shared with the failure path, where redaction
+        // and connection_name are already asserted. Sharing an implementation
+        // is not the same as sharing coverage: the success path reaches it
+        // through a different caller, so assert it here too.
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logBindings: false, slowQueryThresholdMs: 0),
+        );
+
+        $this->connection->query('SELECT * FROM users WHERE id = ?', [1]);
+
+        $warnings = array_values(array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Warning,
+        ));
+        $this->assertCount(1, $warnings);
+        $this->assertSame('[redacted]', $warnings[0]->context['bindings']);
+        $this->assertSame('test_conn', $warnings[0]->context['connection_name']);
+    }
+
+    public function testDebugLogRedactsBindingsAndCarriesConnectionName(): void
+    {
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logBindings: false, logAllQueries: true),
+        );
+
+        $this->connection->query('SELECT * FROM users WHERE id = ?', [1]);
+
+        $debugs = array_values(array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Debug,
+        ));
+        $this->assertCount(1, $debugs);
+        $this->assertSame('[redacted]', $debugs[0]->context['bindings']);
+        $this->assertSame('test_conn', $debugs[0]->context['connection_name']);
+    }
+
+    public function testDebugLogIncludesDialectOnceItHasBeenDetected(): void
+    {
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logAllQueries: true),
+        );
+
+        $this->connection->query('SELECT 1');
+        $this->connection->dialect();
+        $this->connection->query('SELECT 1');
+
+        $debugs = array_values(array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Debug,
+        ));
+        $this->assertCount(2, $debugs);
+        // The first query ran before detection, so paying for a SELECT
+        // VERSION() just to fill the log field is exactly what the guard
+        // avoids; the second one gets the field for free.
+        $this->assertArrayNotHasKey('dialect', $debugs[0]->context);
+        $this->assertSame('MariaDB', $debugs[1]->context['dialect']);
+    }
+
+    public function testStatementDebugLogCarriesSqlAndBindings(): void
+    {
+        // The existing statement() debug test asserts the record count only,
+        // so the context could be empty and it would still pass.
+        $handler = $this->attachLogger(
+            $this->connection,
+            new LoggingOptions(logAllQueries: true),
+        );
+
+        $this->connection->statement(
+            'INSERT INTO users (id, name) VALUES (?, ?)',
+            [1, 'alice'],
+        );
+
+        $debugs = array_values(array_filter(
+            $handler->getRecords(),
+            static fn ($record): bool => $record->level === Level::Debug,
+        ));
+        $this->assertCount(1, $debugs);
+        $this->assertSame('INSERT INTO users (id, name) VALUES (?, ?)', $debugs[0]->context['sql']);
+        $this->assertSame([1, 'alice'], $debugs[0]->context['bindings']);
+        $this->assertSame('test_conn', $debugs[0]->context['connection_name']);
+    }
+
     public function testSuccessLogIsSilentWhenAllOptionsAreOff(): void
     {
         $handler = $this->attachLogger($this->connection);
