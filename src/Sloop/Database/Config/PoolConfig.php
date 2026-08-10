@@ -36,6 +36,9 @@ final readonly class PoolConfig
      *                                                     ConnectionManager forwards this flag to ConnectionFactory::make()
      *                                                     for primary and replica connections; probeReplicas() always
      *                                                     opens a non-persistent connection regardless of this value
+     * @param string                $prefix                Prepended to every table name a query builder quotes; empty for none.
+     *                                                     Pool-level rather than per server, because the primary and its
+     *                                                     replicas hold the same tables
      */
     public function __construct(
         public string $name,
@@ -50,6 +53,7 @@ final readonly class PoolConfig
         public ?int $slowQueryThresholdMs,
         public ?int $queryTimeoutMs,
         public bool $persistent,
+        public string $prefix,
     ) {
     }
 }

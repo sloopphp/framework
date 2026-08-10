@@ -67,6 +67,7 @@ final class ConnectionConfigResolver
         'slow_query_threshold_ms',
         'query_timeout_ms',
         'persistent',
+        'prefix',
     ];
 
     /**
@@ -82,6 +83,60 @@ final class ConnectionConfigResolver
      * @var list<string>
      */
     private const array ALLOWED_DRIVERS = ['mysql'];
+
+    /**
+     * Charsets a connection may use.
+     *
+     * The framework quotes identifiers by wrapping them in backticks and
+     * doubling the backticks inside, which is a byte for byte rewrite. Under a
+     * charset whose multi-byte characters can end in the byte 0x60, the server
+     * reads that byte as part of the preceding character, so an identifier can
+     * close where the framework did not intend it to and the text after it is
+     * parsed as SQL. That needs no backtick and no invalid UTF-8 in the
+     * identifier itself, so it cannot be caught on the identifier side.
+     *
+     * The list is every charset that MySQL 8.0.46 and MariaDB 10.11.18 accept
+     * as a client charset, minus the ones where the server itself reports that
+     * some lead byte pairs with 0x60 into a single character (big5, cp932,
+     * gb18030, gbk, sjis). ucs2, utf16, utf16le and utf32 are absent because
+     * the server refuses them as a client charset in the first place.
+     *
+     * @var list<string>
+     */
+    private const array ALLOWED_CHARSETS = [
+        'armscii8',
+        'ascii',
+        'binary',
+        'cp1250',
+        'cp1251',
+        'cp1256',
+        'cp1257',
+        'cp850',
+        'cp852',
+        'cp866',
+        'dec8',
+        'eucjpms',
+        'euckr',
+        'gb2312',
+        'geostd8',
+        'greek',
+        'hebrew',
+        'hp8',
+        'keybcs2',
+        'koi8r',
+        'koi8u',
+        'latin1',
+        'latin2',
+        'latin5',
+        'latin7',
+        'macce',
+        'macroman',
+        'swe7',
+        'tis620',
+        'ujis',
+        'utf8mb3',
+        'utf8mb4',
+    ];
 
     /**
      * Default TCP connect timeout in seconds when config omits the key.
@@ -140,6 +195,13 @@ final class ConnectionConfigResolver
     private const bool DEFAULT_PERSISTENT = false;
 
     /**
+     * Default table prefix when omitted: table names are used as written.
+     *
+     * @var string
+     */
+    private const string DEFAULT_PREFIX = '';
+
+    /**
      * Validate a single-connection config and return a typed ValidatedConfig.
      *
      * Public entry point for single-connection validation and the per-entry
@@ -165,7 +227,7 @@ final class ConnectionConfigResolver
             database:              self::extractDsnSafeString($name, $config, 'database'),
             username:              self::extractOptionalNullableString($name, $config, 'username'),
             password:              self::extractOptionalNullableString($name, $config, 'password'),
-            charset:               self::extractOptionalIdentifier($name, $config, 'charset'),
+            charset:               self::extractOptionalCharset($name, $config),
             collation:             self::extractOptionalIdentifier($name, $config, 'collation'),
             connectTimeoutSeconds: self::extractOptionalPositiveInt($name, $config, 'connect_timeout_seconds'),
             options:               self::extractOptions($name, $config),
@@ -203,6 +265,7 @@ final class ConnectionConfigResolver
         $slowThresholdMs = self::extractOptionalPositiveInt($name, $config, 'slow_query_threshold_ms');
         $queryTimeoutMs  = self::extractOptionalPositiveInt($name, $config, 'query_timeout_ms');
         $persistent      = self::extractOptionalBool($name, $config, 'persistent') ?? self::DEFAULT_PERSISTENT;
+        $prefix          = self::extractOptionalPrefix($name, $config) ?? self::DEFAULT_PREFIX;
 
         return new PoolConfig(
             name:                  $name,
@@ -217,6 +280,7 @@ final class ConnectionConfigResolver
             slowQueryThresholdMs:  $slowThresholdMs,
             queryTimeoutMs:        $queryTimeoutMs,
             persistent:            $persistent,
+            prefix:                $prefix,
         );
     }
 
@@ -462,6 +526,63 @@ final class ConnectionConfigResolver
         if (preg_match('/^[a-zA-Z0-9_]+$/', $value) !== 1) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must contain only alphanumeric and underscore characters, got "' . $value . '".',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract the optional `charset`, restricted to the charsets that keep identifier quoting intact.
+     *
+     * @param  string                  $name   Connection name for error messages
+     * @param  array<array-key, mixed> $config Config array
+     * @return string|null
+     * @throws InvalidConfigException  When the value is not a valid identifier, or names a charset that is not allowed
+     */
+    private static function extractOptionalCharset(string $name, array $config): ?string
+    {
+        $charset = self::extractOptionalIdentifier($name, $config, 'charset');
+
+        if ($charset !== null && !\in_array($charset, self::ALLOWED_CHARSETS, true)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: unsupported charset "' . $charset . '". Only charsets that the server accepts as a client charset, '
+                . 'and whose multi-byte characters cannot end in a backtick byte, are allowed.',
+            );
+        }
+
+        return $charset;
+    }
+
+    /**
+     * Extract the optional `prefix`, returning null when absent.
+     *
+     * The prefix is concatenated onto a table name before the name is quoted,
+     * so it is held to the same shape as an identifier the framework writes
+     * itself. Unlike charset and collation, the empty string is meaningful: it
+     * is the explicit way to say that table names are used as written.
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @return string|null
+     * @throws InvalidConfigException  When the value is not a string, or is not alphanumeric and underscore
+     */
+    private static function extractOptionalPrefix(string $name, array $config): ?string
+    {
+        if (!\array_key_exists('prefix', $config)) {
+            return null;
+        }
+
+        $value = $config['prefix'];
+        if (!\is_string($value)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "prefix" must be a string.',
+            );
+        }
+
+        if (preg_match('/^[a-zA-Z0-9_]*$/', $value) !== 1) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "prefix" must contain only alphanumeric and underscore characters, got "' . $value . '".',
             );
         }
 
