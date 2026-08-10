@@ -1350,7 +1350,9 @@ final class ConnectionConfigResolverTest extends TestCase
         $this->assertSame('', $pool->prefix);
     }
 
-    public function testValidatePoolAcceptsAnExplicitlyEmptyPrefix(): void
+    // An explicit '' and an omitted key both resolve to '', so this only shows
+    // that '' is accepted rather than rejected as malformed.
+    public function testValidatePoolDoesNotRejectAnExplicitlyEmptyPrefix(): void
     {
         $pool = ConnectionConfigResolver::validatePool('mydb', [
             'driver'   => 'mysql',
@@ -1371,6 +1373,9 @@ final class ConnectionConfigResolverTest extends TestCase
             'dot'        => ['app.', 'Connection [mydb]: config key "prefix" must contain only alphanumeric and underscore characters, got "app.".'],
             'backtick'   => ['app`', 'Connection [mydb]: config key "prefix" must contain only alphanumeric and underscore characters, got "app`".'],
             'space'      => ['app ', 'Connection [mydb]: config key "prefix" must contain only alphanumeric and underscore characters, got "app ".'],
+            // PCRE's $ also matches before a trailing newline, so ^...$ would
+            // let this through while the message says it does not.
+            'newline'    => ["app_\n", "Connection [mydb]: config key \"prefix\" must contain only alphanumeric and underscore characters, got \"app_\n\"."],
             'non-string' => [123, 'Connection [mydb]: config key "prefix" must be a string.'],
         ];
     }
@@ -1444,6 +1449,12 @@ final class ConnectionConfigResolverTest extends TestCase
             'ujis'    => ['ujis'],
             'euckr'   => ['euckr'],
             'binary'  => ['binary'],
+            // Accepted by both servers as an alias of utf8mb3, but not listed
+            // by SHOW CHARACTER SET, which is where the allowlist came from.
+            'utf8'    => ['utf8'],
+            // The server takes charset names without regard to case.
+            'uppercase utf8mb4' => ['UTF8MB4'],
+            'mixed case latin1' => ['Latin1'],
         ];
     }
 
@@ -1478,6 +1489,8 @@ final class ConnectionConfigResolverTest extends TestCase
             'utf16'   => ['utf16'],
             'utf16le' => ['utf16le'],
             'utf32'   => ['utf32'],
+            // Case does not open a way past the list either.
+            'uppercase gbk' => ['GBK'],
             // Not a charset the server knows.
             'unknown' => ['utf9'],
         ];
@@ -1498,6 +1511,26 @@ final class ConnectionConfigResolverTest extends TestCase
             $this->assertSame(
                 'Connection [master]: unsupported charset "' . $charset . '". Only charsets that the server accepts as a client charset, '
                 . 'and whose multi-byte characters cannot end in a backtick byte, are allowed.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testValidateRejectsACollationEndingInANewline(): void
+    {
+        // collation goes into SET NAMES ... COLLATE ... verbatim, and ^...$
+        // let a trailing newline through.
+        try {
+            ConnectionConfigResolver::validate('master', [
+                'driver'    => 'mysql',
+                'host'      => 'localhost',
+                'database'  => 'app',
+                'collation' => "utf8mb4_unicode_ci\n",
+            ]);
+            $this->fail('Expected InvalidConfigException');
+        } catch (InvalidConfigException $e) {
+            $this->assertSame(
+                "Connection [master]: config key \"collation\" must contain only alphanumeric and underscore characters, got \"utf8mb4_unicode_ci\n\".",
                 $e->getMessage(),
             );
         }

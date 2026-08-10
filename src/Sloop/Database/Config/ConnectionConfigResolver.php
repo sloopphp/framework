@@ -95,11 +95,15 @@ final class ConnectionConfigResolver
      * parsed as SQL. That needs no backtick and no invalid UTF-8 in the
      * identifier itself, so it cannot be caught on the identifier side.
      *
-     * The list is every charset that MySQL 8.0.46 and MariaDB 10.11.18 accept
-     * as a client charset, minus the ones where the server itself reports that
-     * some lead byte pairs with 0x60 into a single character (big5, cp932,
-     * gb18030, gbk, sjis). ucs2, utf16, utf16le and utf32 are absent because
-     * the server refuses them as a client charset in the first place.
+     * Built from `SHOW CHARACTER SET` on MySQL 8.0.46 and MariaDB 10.11.18,
+     * minus the ones where the server itself reports that some lead byte pairs
+     * with 0x60 into a single character (big5, cp932, gb18030, gbk, sjis), and
+     * minus ucs2, utf16, utf16le and utf32, which the server refuses as a
+     * client charset in the first place. `utf8` is added by hand: it is an
+     * accepted alias of utf8mb3 that `SHOW CHARACTER SET` does not list.
+     *
+     * Names are compared without regard to case, because the server accepts
+     * `UTF8MB4` as readily as `utf8mb4`.
      *
      * @var list<string>
      */
@@ -134,6 +138,7 @@ final class ConnectionConfigResolver
         'swe7',
         'tis620',
         'ujis',
+        'utf8',
         'utf8mb3',
         'utf8mb4',
     ];
@@ -503,6 +508,8 @@ final class ConnectionConfigResolver
      *
      * Restricting to ASCII alphanumeric + underscore is sufficient for MySQL
      * charset / collation names and prevents injection via INIT_COMMAND.
+     * Anchored with \A and \z rather than ^ and $, because $ also matches
+     * before a trailing newline and would let one through.
      *
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Config array
@@ -523,7 +530,7 @@ final class ConnectionConfigResolver
             );
         }
 
-        if (preg_match('/^[a-zA-Z0-9_]+$/', $value) !== 1) {
+        if (preg_match('/\A[a-zA-Z0-9_]+\z/', $value) !== 1) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must contain only alphanumeric and underscore characters, got "' . $value . '".',
             );
@@ -544,7 +551,7 @@ final class ConnectionConfigResolver
     {
         $charset = self::extractOptionalIdentifier($name, $config, 'charset');
 
-        if ($charset !== null && !\in_array($charset, self::ALLOWED_CHARSETS, true)) {
+        if ($charset !== null && !\in_array(strtolower($charset), self::ALLOWED_CHARSETS, true)) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: unsupported charset "' . $charset . '". Only charsets that the server accepts as a client charset, '
                 . 'and whose multi-byte characters cannot end in a backtick byte, are allowed.',
@@ -580,7 +587,7 @@ final class ConnectionConfigResolver
             );
         }
 
-        if (preg_match('/^[a-zA-Z0-9_]*$/', $value) !== 1) {
+        if (preg_match('/\A[a-zA-Z0-9_]*\z/', $value) !== 1) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "prefix" must contain only alphanumeric and underscore characters, got "' . $value . '".',
             );
