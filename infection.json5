@@ -55,7 +55,7 @@
             // same string. The cast states the intent that the branch and the
             // Expression branch both yield SQL text, so it stays in the source.
             "ignore": [
-                "Sloop\\Database\\Query\\Expression::elt::105"
+                "Sloop\\Database\\Query\\Expression::elt::103"
             ]
         },
         "IncrementInteger": {
@@ -89,7 +89,7 @@
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::236"
+                "Sloop\\Database\\Query\\Expression::placeholders::202"
             ]
         },
         "DecrementInteger": {
@@ -118,7 +118,7 @@
                 "Sloop\\Error\\SloopException::__construct::62",
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
-                "Sloop\\Database\\Query\\Expression::placeholders::236"
+                "Sloop\\Database\\Query\\Expression::placeholders::202"
             ]
         },
         "GreaterThan": {

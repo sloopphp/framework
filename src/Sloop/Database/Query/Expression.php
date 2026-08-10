@@ -18,10 +18,8 @@ use InvalidArgumentException;
  * hand. They quote the column they are given and bind the values, so only the
  * SQL text passed to `of()` is taken as-is.
  *
- * Quoting a column assumes the connection charset is ASCII transparent, which
- * the default utf8mb4 is. Under a charset where a multi-byte character may end
- * in a backtick byte (gbk, big5, sjis, cp932), doubling backticks byte by byte
- * no longer closes off the identifier.
+ * Columns are quoted by IdentifierQuoter, the same way a query builder quotes
+ * the ones it is given.
  */
 final readonly class Expression
 {
@@ -78,7 +76,7 @@ final readonly class Expression
         $bindings = self::toBindings($values, 'Values');
 
         return new self(
-            'FIELD(' . self::quoteIdentifier($column) . ', ' . self::placeholders(\count($bindings)) . ')',
+            'FIELD(' . IdentifierQuoter::quote($column) . ', ' . self::placeholders(\count($bindings)) . ')',
             $bindings,
         );
     }
@@ -124,7 +122,7 @@ final readonly class Expression
      */
     public static function increment(string $column, int $by = 1): self
     {
-        return new self(self::quoteIdentifier($column) . ' + ' . $by, []);
+        return new self(IdentifierQuoter::quote($column) . ' + ' . $by, []);
     }
 
     /**
@@ -141,7 +139,7 @@ final readonly class Expression
      */
     public static function decrement(string $column, int $by = 1): self
     {
-        return new self(self::quoteIdentifier($column) . ' - ' . $by, []);
+        return new self(IdentifierQuoter::quote($column) . ' - ' . $by, []);
     }
 
     /**
@@ -191,38 +189,6 @@ final readonly class Expression
         }
 
         return $bindings;
-    }
-
-    /**
-     * Quote a possibly qualified identifier for MySQL.
-     *
-     * Splits on '.' and wraps each part in backticks, doubling any backtick
-     * inside it. Every part has to be non-empty, which rejects the shapes that
-     * would otherwise produce the empty identifier '``'.
-     *
-     * @param  string                   $identifier Identifier, optionally qualified ('users.score')
-     * @return string                   Backtick-quoted identifier
-     * @throws InvalidArgumentException When any segment is empty
-     */
-    private static function quoteIdentifier(string $identifier): string
-    {
-        $segments = explode('.', $identifier);
-
-        foreach ($segments as $segment) {
-            if ($segment === '') {
-                throw new InvalidArgumentException(
-                    'Identifier must not contain an empty segment, got ' . $identifier . '.',
-                );
-            }
-        }
-
-        return implode(
-            '.',
-            array_map(
-                static fn (string $segment): string => '`' . str_replace('`', '``', $segment) . '`',
-                $segments,
-            ),
-        );
     }
 
     /**
