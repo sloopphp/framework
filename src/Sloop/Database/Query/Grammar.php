@@ -27,9 +27,15 @@ class Grammar
      * Anchored with \A and \z rather than ^ and $, because $ also matches
      * before a trailing newline and would let one through.
      *
+     * ConnectionConfigResolver applies the same rule to the `prefix` config
+     * key. The check is repeated here because a Grammar can be built without
+     * going through the config layer at all, and this is where the value
+     * reaches an identifier. PrefixRuleAgreementTest holds the two to the same
+     * set of accepted and rejected values.
+     *
      * @var string
      */
-    private const string PREFIX_PATTERN = '/\A[A-Za-z0-9_]*\z/';
+    private const string PREFIX_PATTERN = '/\A[a-zA-Z0-9_]*\z/';
 
     /**
      * Build a grammar for a connection.
@@ -103,11 +109,15 @@ class Grammar
      * the table is the second-to-last segment, so `users.id` and
      * `reporting.users.id` both prefix `users`.
      *
-     * @param  string                   $identifier Identifier, optionally qualified ('users.id')
+     * `*` only names every column where a list of columns is expected, so it is
+     * rejected unless the caller says it stands in such a place.
+     *
+     * @param  string                   $identifier       Identifier, optionally qualified ('users.id')
+     * @param  bool                     $allowEveryColumn Whether a trailing `*` stands for every column here
      * @return string                   Backtick-quoted identifier
-     * @throws InvalidArgumentException When a segment is empty or the name has more than three segments
+     * @throws InvalidArgumentException When a segment is empty, the name has more than three segments, or `*` stands where it has no meaning
      */
-    public function quoteIdentifier(string $identifier): string
+    public function quoteIdentifier(string $identifier, bool $allowEveryColumn = false): string
     {
         $segments = IdentifierQuoter::split($identifier);
 
@@ -117,7 +127,7 @@ class Grammar
             );
         }
 
-        return $this->quoteSegments($segments, \count($segments) - 2, allowStar: true);
+        return $this->quoteSegments($segments, \count($segments) - 2, allowStar: $allowEveryColumn);
     }
 
     /**
@@ -137,7 +147,7 @@ class Grammar
         $bindings = [];
 
         foreach ($columns as $column) {
-            $compiled = $this->compileColumnReference($column);
+            $compiled = $this->compileColumnReference($column, allowEveryColumn: true);
             $parts[]  = $compiled->sql;
             $bindings = array_merge($bindings, $compiled->bindings);
         }
@@ -234,15 +244,16 @@ class Grammar
     /**
      * Compile something that stands where a column may stand.
      *
-     * @param  string|Expression        $column Column name, or an Expression standing in for one
+     * @param  string|Expression        $column           Column name, or an Expression standing in for one
+     * @param  bool                     $allowEveryColumn Whether a trailing `*` stands for every column here
      * @return CompiledSql              Quoted identifier, or the SQL of the Expression with its bindings
      * @throws InvalidArgumentException When the identifier is malformed
      */
-    protected function compileColumnReference(string|Expression $column): CompiledSql
+    protected function compileColumnReference(string|Expression $column, bool $allowEveryColumn = false): CompiledSql
     {
         return $column instanceof Expression
             ? new CompiledSql($column->sql(), $column->bindings())
-            : new CompiledSql($this->quoteIdentifier($column));
+            : new CompiledSql($this->quoteIdentifier($column, $allowEveryColumn));
     }
 
     /**

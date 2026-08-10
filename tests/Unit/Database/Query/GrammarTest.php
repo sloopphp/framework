@@ -336,6 +336,26 @@ final class GrammarTest extends TestCase
         new Grammar()->quoteIdentifier('*.id');
     }
 
+    public function testQuoteIdentifierRejectsEveryColumnUnlessTheCallerAsksForIt(): void
+    {
+        // The public default is the strict one: only a caller that knows it is
+        // building a list of columns may pass *.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(
+            'A column reference may end in *, but nothing else may contain it, got users.*.',
+        );
+
+        new Grammar()->quoteIdentifier('users.*');
+    }
+
+    public function testQuoteIdentifierAllowsEveryColumnWhenTheCallerAsksForIt(): void
+    {
+        $this->assertSame(
+            '`app_users`.*',
+            new Grammar('app_')->quoteIdentifier('users.*', allowEveryColumn: true),
+        );
+    }
+
     public function testQuoteTableRejectsStar(): void
     {
         // * names every column, so it can never name a table. Letting it
@@ -411,6 +431,56 @@ final class GrammarTest extends TestCase
         $this->assertSame(['todo', 'done', 'admin', 'editor'], $compiled->bindings);
     }
 
+    public function testFromClauseCarriesTheBindingsOfASubclass(): void
+    {
+        // The FROM half of the CompiledSql return type had no guard: dropping
+        // $from->bindings from the merge left the whole suite green.
+        $grammar = new class () extends Grammar {
+            protected function compileFrom(string $table): CompiledSql
+            {
+                return new CompiledSql(
+                    ' FROM (SELECT ? AS id) AS ' . $this->quoteTable($table),
+                    ['seed'],
+                );
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('id', '=', 1)],
+        ));
+
+        $this->assertSame('SELECT * FROM (SELECT ? AS id) AS `users` WHERE `id` = ?', $compiled->sql);
+        $this->assertSame(['seed', 1], $compiled->bindings);
+    }
+
+    public function testWhereRejectsEveryColumnAsAComparisonTarget(): void
+    {
+        // * names a list of columns, so it cannot be one side of a comparison.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(
+            'A column reference may end in *, but nothing else may contain it, got *.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('*', '=', 1)],
+        ));
+    }
+
+    public function testOrderByRejectsEveryColumn(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(
+            'A column reference may end in *, but nothing else may contain it, got users.*.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:   'users',
+            orders: [new Order('users.*')],
+        ));
+    }
+
     public function testEveryClauseIsOpenToASubclass(): void
     {
         // Phase 5-3 and 5-4 extend the grammar clause by clause, so each
@@ -451,9 +521,11 @@ final class GrammarTest extends TestCase
                 return new CompiledSql($compiled->sql . '/*limit*/', $compiled->bindings);
             }
 
-            protected function compileColumnReference(string|Expression $column): CompiledSql
-            {
-                $compiled = parent::compileColumnReference($column);
+            protected function compileColumnReference(
+                string|Expression $column,
+                bool $allowEveryColumn = false,
+            ): CompiledSql {
+                $compiled = parent::compileColumnReference($column, $allowEveryColumn);
 
                 return new CompiledSql('/*reference*/' . $compiled->sql, $compiled->bindings);
             }
