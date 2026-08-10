@@ -329,9 +329,55 @@ final class GrammarTest extends TestCase
     public function testQuoteIdentifierRejectsStarThatIsNotTheLastSegment(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('An identifier may only end in *, got *.id.');
+        $this->expectExceptionMessage(
+            'A column reference may end in *, but nothing else may contain it, got *.id.',
+        );
 
         new Grammar()->quoteIdentifier('*.id');
+    }
+
+    public function testQuoteTableRejectsStar(): void
+    {
+        // * names every column, so it can never name a table. Letting it
+        // through produced `FROM *`, which only fails once MySQL parses it.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(
+            'A column reference may end in *, but nothing else may contain it, got *.',
+        );
+
+        new Grammar()->quoteTable('*');
+    }
+
+    public function testWhereKeepsColumnBindingsBeforeValueBindings(): void
+    {
+        // Both sides of the comparison carry bindings, so a merge in the wrong
+        // order swaps values that are still the right count and type.
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'tasks',
+            conditions: [new Condition(
+                Expression::field('status', ['todo', 'doing']),
+                '=',
+                Expression::of('ELT(?, 1, 2)', [7]),
+            )],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `tasks` WHERE FIELD(`status`, ?, ?) = ELT(?, 1, 2)',
+            $compiled->sql,
+        );
+        $this->assertSame(['todo', 'doing', 7], $compiled->bindings);
+    }
+
+    public function testConstructorRejectsAPrefixEndingInANewline(): void
+    {
+        // PCRE's $ also matches before a trailing newline, so an anchor of ^...$
+        // lets "app_\n" through while the message says otherwise.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(
+            'Table prefix must contain only alphanumeric and underscore characters, got "app_' . "\n" . '".',
+        );
+
+        new Grammar("app_\n");
     }
 
     public function testSelectKeepsTheBindingsOfEveryExpressionColumn(): void
@@ -377,9 +423,11 @@ final class GrammarTest extends TestCase
                 return new CompiledSql('/*columns*/' . $compiled->sql, $compiled->bindings);
             }
 
-            protected function compileFrom(string $table): string
+            protected function compileFrom(string $table): CompiledSql
             {
-                return parent::compileFrom($table) . '/*from*/';
+                $compiled = parent::compileFrom($table);
+
+                return new CompiledSql($compiled->sql . '/*from*/', $compiled->bindings);
             }
 
             protected function compileWhere(array $conditions): CompiledSql
@@ -396,9 +444,11 @@ final class GrammarTest extends TestCase
                 return new CompiledSql($compiled->sql . '/*order*/', $compiled->bindings);
             }
 
-            protected function compileLimit(?int $limit, ?int $offset): string
+            protected function compileLimit(?int $limit, ?int $offset): CompiledSql
             {
-                return parent::compileLimit($limit, $offset) . '/*limit*/';
+                $compiled = parent::compileLimit($limit, $offset);
+
+                return new CompiledSql($compiled->sql . '/*limit*/', $compiled->bindings);
             }
 
             protected function compileColumnReference(string|Expression $column): CompiledSql
@@ -436,14 +486,17 @@ final class GrammarTest extends TestCase
     public function testSubclassCanReplaceASingleClause(): void
     {
         $grammar = new class () extends Grammar {
-            protected function compileLimit(?int $limit, ?int $offset): string
+            protected function compileLimit(?int $limit, ?int $offset): CompiledSql
             {
-                return $limit === null ? '' : ' FETCH FIRST ' . $limit . ' ROWS ONLY';
+                return $limit === null
+                    ? new CompiledSql('')
+                    : new CompiledSql(' FETCH FIRST ? ROWS ONLY', [$limit]);
             }
         };
 
         $compiled = $grammar->compileSelect(new SelectSpec(from: 'users', limit: 5));
 
-        $this->assertSame('SELECT * FROM `users` FETCH FIRST 5 ROWS ONLY', $compiled->sql);
+        $this->assertSame('SELECT * FROM `users` FETCH FIRST ? ROWS ONLY', $compiled->sql);
+        $this->assertSame([5], $compiled->bindings);
     }
 }

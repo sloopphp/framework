@@ -24,9 +24,12 @@ class Grammar
      * A table prefix goes straight into an identifier, so it is held to the
      * same shape as any other identifier the framework writes itself.
      *
+     * Anchored with \A and \z rather than ^ and $, because $ also matches
+     * before a trailing newline and would let one through.
+     *
      * @var string
      */
-    private const string PREFIX_PATTERN = '/^[A-Za-z0-9_]*$/';
+    private const string PREFIX_PATTERN = '/\A[A-Za-z0-9_]*\z/';
 
     /**
      * Build a grammar for a connection.
@@ -53,16 +56,20 @@ class Grammar
     public function compileSelect(SelectSpec $spec): CompiledSql
     {
         $columns = $this->compileColumns($spec->columns);
+        $from    = $this->compileFrom($spec->from);
         $where   = $this->compileWhere($spec->conditions);
         $orderBy = $this->compileOrderBy($spec->orders);
+        $limit   = $this->compileLimit($spec->limit, $spec->offset);
 
         return new CompiledSql(
-            'SELECT ' . $columns->sql
-            . $this->compileFrom($spec->from)
-            . $where->sql
-            . $orderBy->sql
-            . $this->compileLimit($spec->limit, $spec->offset),
-            array_merge($columns->bindings, $where->bindings, $orderBy->bindings),
+            'SELECT ' . $columns->sql . $from->sql . $where->sql . $orderBy->sql . $limit->sql,
+            array_merge(
+                $columns->bindings,
+                $from->bindings,
+                $where->bindings,
+                $orderBy->bindings,
+                $limit->bindings,
+            ),
         );
     }
 
@@ -86,7 +93,7 @@ class Grammar
             );
         }
 
-        return $this->quoteSegments($segments, \count($segments) - 1);
+        return $this->quoteSegments($segments, \count($segments) - 1, allowStar: false);
     }
 
     /**
@@ -110,7 +117,7 @@ class Grammar
             );
         }
 
-        return $this->quoteSegments($segments, \count($segments) - 2);
+        return $this->quoteSegments($segments, \count($segments) - 2, allowStar: true);
     }
 
     /**
@@ -142,12 +149,12 @@ class Grammar
      * Compile the FROM clause.
      *
      * @param  string                   $table Table to select from
-     * @return string                   FROM clause, led by a space
+     * @return CompiledSql              FROM clause, led by a space
      * @throws InvalidArgumentException When the table name is malformed
      */
-    protected function compileFrom(string $table): string
+    protected function compileFrom(string $table): CompiledSql
     {
-        return ' FROM ' . $this->quoteTable($table);
+        return new CompiledSql(' FROM ' . $this->quoteTable($table));
     }
 
     /**
@@ -207,19 +214,21 @@ class Grammar
      * Compile the row limit.
      *
      * Both numbers are written into the SQL rather than bound, because they are
-     * already integers by the time they get here.
+     * already integers by the time they get here. The return type still carries
+     * bindings so that a dialect writing a placeholder here has somewhere to put
+     * the value, instead of losing it silently.
      *
-     * @param  int|null $limit  Maximum number of rows, or null for no limit
-     * @param  int|null $offset Rows to skip, or null for none
-     * @return string   LIMIT clause led by a space, empty when there is no limit
+     * @param  int|null    $limit  Maximum number of rows, or null for no limit
+     * @param  int|null    $offset Rows to skip, or null for none
+     * @return CompiledSql LIMIT clause led by a space, empty when there is no limit
      */
-    protected function compileLimit(?int $limit, ?int $offset): string
+    protected function compileLimit(?int $limit, ?int $offset): CompiledSql
     {
         if ($limit === null) {
-            return '';
+            return new CompiledSql('');
         }
 
-        return ' LIMIT ' . $limit . ($offset === null ? '' : ' OFFSET ' . $offset);
+        return new CompiledSql(' LIMIT ' . $limit . ($offset === null ? '' : ' OFFSET ' . $offset));
     }
 
     /**
@@ -254,24 +263,27 @@ class Grammar
      *
      * `*` is left alone: it stands for every column rather than naming one, and
      * backticks around it would make it a column called `*`. It only means that
-     * in the last position, so anywhere else it is rejected rather than quoted
-     * into a name nobody asked for.
+     * as the last segment of a column reference, so a caller that is naming a
+     * table, or that puts it anywhere but last, is rejected rather than handed
+     * a name nobody asked for.
      *
      * @param  list<string>             $segments     Segments of an identifier, none of them empty
      * @param  int                      $tableSegment Index of the segment naming a table; out of range applies no prefix
+     * @param  bool                     $allowStar    Whether `*` may stand as the last segment
      * @return string                   Backtick-quoted identifier
-     * @throws InvalidArgumentException When `*` stands anywhere but last
+     * @throws InvalidArgumentException When `*` stands where it does not mean every column
      */
-    private function quoteSegments(array $segments, int $tableSegment): string
+    private function quoteSegments(array $segments, int $tableSegment, bool $allowStar): string
     {
         $lastIndex = \count($segments) - 1;
         $quoted    = [];
 
         foreach ($segments as $index => $segment) {
             if ($segment === '*') {
-                if ($index !== $lastIndex) {
+                if (!$allowStar || $index !== $lastIndex) {
                     throw new InvalidArgumentException(
-                        'An identifier may only end in *, got ' . implode('.', $segments) . '.',
+                        'A column reference may end in *, but nothing else may contain it, got '
+                        . implode('.', $segments) . '.',
                     );
                 }
 

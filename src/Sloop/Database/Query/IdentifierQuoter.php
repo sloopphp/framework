@@ -14,9 +14,12 @@ use InvalidArgumentException;
  * Grammar quotes everything a query builder names. Two implementations of the
  * same escaping would be two chances to get it wrong.
  *
- * Quoting by doubling backticks assumes the connection charset is ASCII
- * transparent, which ConnectionConfigResolver enforces by rejecting the
- * charsets whose multi-byte characters can end in a backtick byte.
+ * Doubling backticks is a byte for byte rewrite, so it only closes off an
+ * identifier while no multi-byte character of the connection charset can end in
+ * the byte 0x60. ConnectionConfigResolver keeps the `charset` config key to
+ * charsets where that holds, but a connection can still be handed a different
+ * client charset through a hand-written `options` entry, so this is a premise
+ * the caller can defeat rather than a guarantee.
  *
  * @internal
  */
