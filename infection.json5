@@ -48,6 +48,16 @@
                 "Sloop\\Container\\Container::autowire"
             ]
         },
+        "CastString": {
+            // Expression::elt casts an int position with `(string) $position`
+            // and then only concatenates it into the SQL. PHP coerces the int
+            // during concatenation anyway, so dropping the cast produces the
+            // same string. The cast states the intent that the branch and the
+            // Expression branch both yield SQL text, so it stays in the source.
+            "ignore": [
+                "Sloop\\Database\\Query\\Expression::elt::105"
+            ]
+        },
         "IncrementInteger": {
             // Str::randomHex computes the byte count as `intdiv($length + 1, 2)`
             // so that odd-length requests round up. Changing the `+ 1` to `+ 2`
@@ -72,7 +82,14 @@
                 // millisecond. Observing that requires timing the call. Pinned
                 // to the parameter's line because other integer literals in the
                 // same method are killable.
-                "Sloop\\Database\\Connection::transaction::393"
+                "Sloop\\Database\\Connection::transaction::393",
+                // Expression::placeholders builds the placeholder list with
+                // `array_fill(0, $count, '?')` and only ever implodes the
+                // result. The start index decides the array keys, which implode
+                // discards, so shifting it to 1 leaves the string identical.
+                // Pinned to the array_fill line rather than the method so that
+                // a future edit adding a killable literal here is not swallowed.
+                "Sloop\\Database\\Query\\Expression::placeholders::236"
             ]
         },
         "DecrementInteger": {
@@ -98,7 +115,10 @@
                 // zero, so 0 and -1 both mean "use the class default" — the
                 // documented contract. Pinned to the parameter's line because
                 // the `> 0` comparison in the same constructor is killable.
-                "Sloop\\Error\\SloopException::__construct::62"
+                "Sloop\\Error\\SloopException::__construct::62",
+                // Same array_fill start index as IncrementInteger above, in the
+                // opposite direction (0 → -1).
+                "Sloop\\Database\\Query\\Expression::placeholders::236"
             ]
         },
         "GreaterThan": {
