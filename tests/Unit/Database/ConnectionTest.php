@@ -1363,6 +1363,50 @@ final class ConnectionTest extends TestCase
         $connection->query('SELECT 2');
     }
 
+    /**
+     * @param string|int|float|bool|null $value    Value handed to the connection
+     * @param string                     $expected SQL text the value is written as
+     */
+    #[DataProvider('literalValues')]
+    public function testQuoteLiteralWritesTheValueAsSqlText(
+        string|int|float|bool|null $value,
+        string $expected,
+    ): void {
+        $this->assertSame($expected, $this->connection->quoteLiteral($value));
+    }
+
+    /**
+     * @return array<string, array{0: string|int|float|bool|null, 1: string}>
+     */
+    public static function literalValues(): array
+    {
+        return [
+            'null'                => [null, 'NULL'],
+            'true'                => [true, '1'],
+            'false'               => [false, '0'],
+            'int'                 => [42, '42'],
+            'negative int'        => [-7, '-7'],
+            'float'               => [1.5, '1.5'],
+            'float without a fraction' => [2.0, '2.0'],
+            'string'              => ['alice', "'alice'"],
+            'string with a quote' => ["O'Brien", "'O''Brien'"],
+        ];
+    }
+
+    public function testQuoteLiteralFailsWhenTheDriverDeclinesToQuote(): void
+    {
+        // PDO::quote returns false on a driver that has no quoting of its own.
+        // Returning the unquoted string would produce text that reads as SQL
+        // rather than as a value, so the call fails instead.
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('quote')->willReturn(false);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('does not support quoting a string');
+
+        new Connection($pdo, 'test')->quoteLiteral('alice');
+    }
+
     public function testQueryTimeoutDialectDetectionFailureLogsAndPropagates(): void
     {
         // Dialect detection runs `SELECT VERSION()` lazily; if that fails the

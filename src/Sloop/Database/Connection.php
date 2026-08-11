@@ -10,11 +10,15 @@ use PDO;
 use PDOException;
 use PDOStatement;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\Exception\ExceptionFactory;
 use Sloop\Database\Exception\LockWaitTimeoutException;
+use Sloop\Database\Query\Expression;
+use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Select;
 use Throwable;
 use UnexpectedValueException;
 
@@ -72,6 +76,16 @@ final class Connection
     private LoggingOptions $loggingOptions;
 
     /**
+     * Grammar handed to every query builder this connection starts.
+     *
+     * Defaults to one without a table prefix; ConnectionManager replaces it
+     * with one built from the pool configuration.
+     *
+     * @var Grammar
+     */
+    private Grammar $grammar;
+
+    /**
      * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
      *
      * @var int|null
@@ -100,6 +114,37 @@ final class Connection
         private readonly string $connectionName = '',
     ) {
         $this->loggingOptions = new LoggingOptions();
+        $this->grammar        = new Grammar();
+    }
+
+    /**
+     * Start a SELECT statement over this connection.
+     *
+     * The builder is handed this connection's grammar, so the table prefix and
+     * the dialect come from the pool the connection belongs to rather than from
+     * the builder.
+     *
+     * @param  string|Expression ...$columns Columns to select; none selects every column
+     * @return Select            Builder for the statement
+     */
+    public function select(string|Expression ...$columns): Select
+    {
+        return new Select($this, $this->grammar, ...$columns);
+    }
+
+    /**
+     * Replace the grammar handed to the query builders this connection starts.
+     *
+     * ConnectionManager calls this with a grammar carrying the pool's table
+     * prefix. A caller writing for a dialect of its own passes a subclass here,
+     * which is why the builders never build a grammar themselves.
+     *
+     * @param  Grammar $grammar Grammar to write the SQL of subsequent builders
+     * @return void
+     */
+    public function setGrammar(Grammar $grammar): void
+    {
+        $this->grammar = $grammar;
     }
 
     /**
@@ -284,6 +329,52 @@ final class Connection
         }
 
         return $stmt->rowCount();
+    }
+
+    /**
+     * Write a value the way SQL spells it, so a statement can be shown with its values in place.
+     *
+     * This is for reading a statement, not for building one. Text assembled
+     * this way never reaches the server: the values a statement runs with are
+     * bound, and binding is the boundary that keeps a value from being read as
+     * SQL. Strings are handed to the driver rather than quoted here, so the
+     * rendering follows the connection's own rules.
+     *
+     * @param  string|int|float|bool|null $value Value to write out
+     * @return string                     The value as SQL text
+     * @throws RuntimeException           When the driver declines to quote a string
+     *
+     * @internal Rendering for Query::toRawSql().
+     */
+    public function quoteLiteral(string|int|float|bool|null $value): string
+    {
+        if ($value === null) {
+            return 'NULL';
+        }
+
+        if (\is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (\is_int($value)) {
+            return (string) $value;
+        }
+
+        // var_export rather than a cast: it writes the shortest text that reads
+        // back as the same float, where a cast rounds to precision from php.ini.
+        if (\is_float($value)) {
+            return var_export($value, true);
+        }
+
+        $quoted = $this->pdo->quote($value);
+
+        if ($quoted === false) {
+            throw new RuntimeException(
+                'The database driver does not support quoting a string, so the statement cannot be shown with its values in place.',
+            );
+        }
+
+        return $quoted;
     }
 
     /**

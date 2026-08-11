@@ -82,7 +82,7 @@
                 // millisecond. Observing that requires timing the call. Pinned
                 // to the parameter's line because other integer literals in the
                 // same method are killable.
-                "Sloop\\Database\\Connection::transaction::393",
+                "Sloop\\Database\\Connection::transaction::484",
                 // Expression::placeholders builds the placeholder list with
                 // `array_fill(0, $count, '?')` and only ever implodes the
                 // result. The start index decides the array keys, which implode
