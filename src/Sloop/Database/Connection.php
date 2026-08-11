@@ -361,11 +361,14 @@ final class Connection
             return 'NULL';
         }
 
-        // A cast spells a value the way PDO does when it binds it as a string:
-        // a bool becomes '1' or the empty string, and a float the shortest text
-        // that reads back as the same number. INF and NAN are the exception —
-        // a cast warns on them and has no spelling to offer.
-        $text = \is_float($value) && !is_finite($value)
+        // A cast spells a value the way PDO does when it binds it as a string,
+        // which is the whole point here: a bool becomes '1' or the empty
+        // string, and a float follows the precision ini setting exactly as the
+        // driver's own conversion does. That is not the shortest text the float
+        // reads back from — var_export writes that one, and 0.1 + 0.2 shows the
+        // difference — but what the server receives is what this has to show.
+        // NAN is the single value a cast has no spelling for, and warns on.
+        $text = \is_float($value) && is_nan($value)
             ? var_export($value, true)
             : (string) $value;
 
