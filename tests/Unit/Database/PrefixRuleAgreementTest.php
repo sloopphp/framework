@@ -60,6 +60,24 @@ final class PrefixRuleAgreementTest extends TestCase
         return true;
     }
 
+    public function testGrammarAndConfigAgreeOnEveryAsciiCharacter(): void
+    {
+        // The table above is a sample, so it only catches drift that happens to
+        // land on one of its values: widening one side to accept '-' left it
+        // green. Sweeping the whole ASCII range makes any change to either
+        // character class show up here.
+        $disagreements = [];
+
+        for ($byte = 0; $byte < 128; $byte++) {
+            $prefix = \chr($byte);
+            if ($this->grammarAccepts($prefix) !== $this->configAccepts($prefix)) {
+                $disagreements[] = \sprintf('0x%02X', $byte);
+            }
+        }
+
+        $this->assertSame([], $disagreements, 'Bytes where the two prefix rules disagree');
+    }
+
     #[DataProvider('providePrefixes')]
     public function testGrammarAndConfigApplyTheSamePrefixRule(string $prefix, bool $expectedAccepted): void
     {

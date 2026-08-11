@@ -291,9 +291,16 @@ class Grammar
 
         foreach ($segments as $index => $segment) {
             if ($segment === '*') {
-                if (!$allowStar || $index !== $lastIndex) {
+                if (!$allowStar) {
                     throw new InvalidArgumentException(
-                        'A column reference may end in *, but nothing else may contain it, got '
+                        '* names every column, so it only stands where a list of columns does, got '
+                        . implode('.', $segments) . '.',
+                    );
+                }
+
+                if ($index !== $lastIndex) {
+                    throw new InvalidArgumentException(
+                        'Only the last part of a column reference may be *, got '
                         . implode('.', $segments) . '.',
                     );
                 }

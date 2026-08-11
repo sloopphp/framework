@@ -329,11 +329,9 @@ final class GrammarTest extends TestCase
     public function testQuoteIdentifierRejectsStarThatIsNotTheLastSegment(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
-            'A column reference may end in *, but nothing else may contain it, got *.id.',
-        );
+        $this->expectExceptionMessage('Only the last part of a column reference may be *, got *.id.');
 
-        new Grammar()->quoteIdentifier('*.id');
+        new Grammar()->quoteIdentifier('*.id', allowEveryColumn: true);
     }
 
     public function testQuoteIdentifierRejectsEveryColumnUnlessTheCallerAsksForIt(): void
@@ -342,7 +340,7 @@ final class GrammarTest extends TestCase
         // building a list of columns may pass *.
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage(
-            'A column reference may end in *, but nothing else may contain it, got users.*.',
+            '* names every column, so it only stands where a list of columns does, got users.*.',
         );
 
         new Grammar()->quoteIdentifier('users.*');
@@ -362,7 +360,7 @@ final class GrammarTest extends TestCase
         // through produced `FROM *`, which only fails once MySQL parses it.
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage(
-            'A column reference may end in *, but nothing else may contain it, got *.',
+            '* names every column, so it only stands where a list of columns does, got *.',
         );
 
         new Grammar()->quoteTable('*');
@@ -459,7 +457,7 @@ final class GrammarTest extends TestCase
         // * names a list of columns, so it cannot be one side of a comparison.
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage(
-            'A column reference may end in *, but nothing else may contain it, got *.',
+            '* names every column, so it only stands where a list of columns does, got *.',
         );
 
         new Grammar()->compileSelect(new SelectSpec(
@@ -472,7 +470,7 @@ final class GrammarTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage(
-            'A column reference may end in *, but nothing else may contain it, got users.*.',
+            '* names every column, so it only stands where a list of columns does, got users.*.',
         );
 
         new Grammar()->compileSelect(new SelectSpec(
