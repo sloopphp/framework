@@ -31,7 +31,8 @@ class Grammar
      * key. The check is repeated here because a Grammar can be built without
      * going through the config layer at all, and this is where the value
      * reaches an identifier. PrefixRuleAgreementTest holds the two to the same
-     * set of accepted and rejected values.
+     * answer for every ASCII character, so a change to either character class
+     * shows up there.
      *
      * @var string
      */
