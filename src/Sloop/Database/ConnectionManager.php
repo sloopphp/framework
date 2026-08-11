@@ -12,6 +12,7 @@ use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
+use Sloop\Database\Query\Grammar;
 use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 
@@ -145,6 +146,7 @@ final class ConnectionManager
             $connection = $this->factory->make($pool->primary, $name, $pool->persistent);
             $this->applyLogger($connection, $pool);
             $this->applyQueryTimeout($connection, $pool);
+            $this->applyGrammar($connection, $pool);
             $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
@@ -197,6 +199,7 @@ final class ConnectionManager
                 $connection = $this->factory->make($picked, $name, $pool->persistent);
                 $this->applyLogger($connection, $pool);
                 $this->applyQueryTimeout($connection, $pool);
+                $this->applyGrammar($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -318,6 +321,27 @@ final class ConnectionManager
         }
 
         $connection->setQueryTimeoutMs($pool->queryTimeoutMs);
+    }
+
+    /**
+     * Hand the Connection a grammar carrying the pool's table prefix.
+     *
+     * The prefix belongs to the pool rather than to a single server, so it is
+     * applied here instead of in the factory, and every connection of a pool —
+     * primary or replica — writes the same table names. Probe connections built
+     * by probeReplicas() are bypassed for the same reason as the logger: they
+     * only send a `DO 1` and never carry a query builder.
+     *
+     * The prefix has already been checked by the config layer, so the Grammar's
+     * own check cannot fail on the value arriving here.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config supplying the table prefix
+     * @return void
+     */
+    private function applyGrammar(Connection $connection, PoolConfig $pool): void
+    {
+        $connection->setGrammar(new Grammar($pool->prefix));
     }
 
     /**
