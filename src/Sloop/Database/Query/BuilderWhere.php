@@ -122,7 +122,7 @@ abstract class BuilderWhere extends Builder
      * @return static                   This builder
      * @throws InvalidArgumentException When the direction is neither ASC nor DESC
      */
-    public function orderBy(string|Expression $column, string $direction = Direction::Ascending->value): static
+    public function orderBy(string|Expression $column, string $direction = 'ASC'): static
     {
         $this->orders[] = new Order($column, self::toDirection($direction));
 

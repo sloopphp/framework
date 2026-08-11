@@ -1380,16 +1380,16 @@ final class ConnectionTest extends TestCase
      */
     public static function literalValues(): array
     {
+        // PDOStatement::execute() binds an array of values as strings, so every
+        // value but null is written as the string the server receives.
         return [
             'null'                     => [null, 'NULL'],
-            'int'                      => [42, '42'],
-            'negative int'             => [-7, '-7'],
-            'float'                    => [1.5, '1.5'],
-            'float without a fraction' => [2.0, '2.0'],
+            'int'                      => [42, "'42'"],
+            'negative int'             => [-7, "'-7'"],
+            'float'                    => [1.5, "'1.5'"],
+            'float without a fraction' => [2.0, "'2'"],
             'string'                   => ['alice', "'alice'"],
             'string with a quote'      => ["O'Brien", "'O''Brien'"],
-            // PDOStatement::execute() binds an array of values as strings, so
-            // these are the spellings that reach the server.
             'true'                     => [true, "'1'"],
             'false'                    => [false, "''"],
             'infinity'                 => [\INF, "'INF'"],
