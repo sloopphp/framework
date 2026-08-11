@@ -113,12 +113,16 @@ abstract class BuilderWhere extends Builder
     /**
      * Sort by a column, or by an expression producing the sort key.
      *
+     * The direction is taken as the SQL keyword rather than as the Direction
+     * enum: the enum names the values a Grammar writes and is internal to that
+     * seam, so it is not part of what a caller has to reach for.
+     *
      * @param  string|Expression        $column    Column to sort by, or an expression producing the sort key
-     * @param  Direction|string         $direction Sort direction, as the enum or the SQL keyword
+     * @param  string                   $direction Sort direction as the SQL keyword, in any case
      * @return static                   This builder
      * @throws InvalidArgumentException When the direction is neither ASC nor DESC
      */
-    public function orderBy(string|Expression $column, Direction|string $direction = Direction::Ascending): static
+    public function orderBy(string|Expression $column, string $direction = Direction::Ascending->value): static
     {
         $this->orders[] = new Order($column, self::toDirection($direction));
 
@@ -224,18 +228,14 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Read a sort direction from the enum or from the SQL keyword.
+     * Read a sort direction from the SQL keyword.
      *
-     * @param  Direction|string         $direction Direction as the enum or as ASC / DESC in any case
-     * @return Direction                The direction as the enum
+     * @param  string                   $direction Direction as ASC / DESC in any case
+     * @return Direction                The direction as the enum a Grammar reads
      * @throws InvalidArgumentException When the keyword names no direction
      */
-    private static function toDirection(Direction|string $direction): Direction
+    private static function toDirection(string $direction): Direction
     {
-        if ($direction instanceof Direction) {
-            return $direction;
-        }
-
         return Direction::tryFrom(strtoupper($direction))
             ?? throw new InvalidArgumentException(
                 'A sort direction is ASC or DESC, got "' . $direction . '".',

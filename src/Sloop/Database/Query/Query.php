@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Database\Query;
 
+use RuntimeException;
 use Sloop\Database\Connection;
 use Sloop\Database\Result;
 
@@ -74,27 +75,44 @@ abstract class Query
      * prepared statement, which is the boundary that keeps a value from being
      * read as SQL. Use toSql() and toBindings() for anything but looking.
      *
-     * A `?` written by hand inside an Expression cannot be told apart from a
-     * placeholder, so an expression carrying one in a string literal shifts the
-     * values that follow it in the rendering. The statement itself is unaffected,
-     * since it is the bindings and not this text that reach the server.
+     * A `?` between backticks is part of a column or table name rather than a
+     * placeholder, so those are stepped over. The SQL of an Expression is
+     * written by hand and can hold anything, including a `?` in a string
+     * literal or a backtick that opens nothing: either shifts the values that
+     * follow in the rendering. The statement itself is unaffected, since it is
+     * the bindings and not this text that reach the server.
      *
      * @return string
+     * @throws RuntimeException When the driver declines to quote a string
      */
     public function toRawSql(): string
     {
-        $compiled = $this->compile();
-        $bindings = $compiled->bindings;
-        $rendered = '';
+        $compiled     = $this->compile();
+        $sql          = $compiled->sql;
+        $length       = \strlen($sql);
+        $rendered     = '';
+        $consumed     = 0;
+        $inIdentifier = false;
 
-        foreach (explode('?', $compiled->sql) as $index => $segment) {
-            if ($index > 0) {
-                $rendered .= \array_key_exists($index - 1, $bindings)
-                    ? $this->connection->quoteLiteral($bindings[$index - 1])
-                    : '?';
+        for ($index = 0; $index < $length; $index++) {
+            $character = $sql[$index];
+
+            if ($character === '`') {
+                // A doubled backtick stands for one inside a name, and toggling
+                // twice lands back inside the name, which is where it belongs.
+                $inIdentifier = !$inIdentifier;
             }
 
-            $rendered .= $segment;
+            if ($character === '?'
+                && !$inIdentifier
+                && \array_key_exists($consumed, $compiled->bindings)) {
+                $rendered .= $this->connection->quoteLiteral($compiled->bindings[$consumed]);
+                $consumed++;
+
+                continue;
+            }
+
+            $rendered .= $character;
         }
 
         return $rendered;

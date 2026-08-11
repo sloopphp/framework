@@ -30,7 +30,9 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
  * - $writable === false → replica (dead-cache filter → ReplicaSelector → ping
  *                                  → record on failure → next → primary fallback
  *                                  → throw on max_connection_attempts exhaustion)
- * - $writable === null  → primary (Builder layer detects SELECT, not the manager)
+ * - $writable === null  → primary (the manager does not read the statement to
+ *                                  decide, so a read reaches a replica only by
+ *                                  asking for one)
  *
  * Empty `read` list collapses replica routing to the primary so single-pool
  * setups keep working without reconfiguration.
@@ -261,7 +263,7 @@ final class ConnectionManager
                 // Probe connections are short-lived and not reused across requests, so they
                 // never use ATTR_PERSISTENT — opening one would just leak a slot in the
                 // server-side persistent pool. Same rationale as skipping applyLogger /
-                // applyQueryTimeout below.
+                // applyQueryTimeout / applyGrammar below.
                 $connection = $this->factory->make($replica, $poolName, false);
                 $connection->ping();
                 $results[$key] = true;

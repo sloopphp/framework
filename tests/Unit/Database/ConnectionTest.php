@@ -1381,16 +1381,34 @@ final class ConnectionTest extends TestCase
     public static function literalValues(): array
     {
         return [
-            'null'                => [null, 'NULL'],
-            'true'                => [true, '1'],
-            'false'               => [false, '0'],
-            'int'                 => [42, '42'],
-            'negative int'        => [-7, '-7'],
-            'float'               => [1.5, '1.5'],
+            'null'                     => [null, 'NULL'],
+            'int'                      => [42, '42'],
+            'negative int'             => [-7, '-7'],
+            'float'                    => [1.5, '1.5'],
             'float without a fraction' => [2.0, '2.0'],
-            'string'              => ['alice', "'alice'"],
-            'string with a quote' => ["O'Brien", "'O''Brien'"],
+            'string'                   => ['alice', "'alice'"],
+            'string with a quote'      => ["O'Brien", "'O''Brien'"],
+            // PDOStatement::execute() binds an array of values as strings, so
+            // these are the spellings that reach the server.
+            'true'                     => [true, "'1'"],
+            'false'                    => [false, "''"],
+            'infinity'                 => [\INF, "'INF'"],
+            'not a number'             => [\NAN, "'NAN'"],
         ];
+    }
+
+    public function testQuoteLiteralOfABoolMatchesWhatTheStatementActuallyBinds(): void
+    {
+        // The rendering only earns its purpose if the value it shows is the one
+        // the server compares against. PDO binds the array it is given as
+        // strings, so a false has to read as the empty string here too.
+        $this->pdo->exec('CREATE TABLE flags (id INTEGER PRIMARY KEY, label TEXT NOT NULL)');
+        $this->pdo->exec('INSERT INTO flags (id, label) VALUES (1, \'\'), (2, \'1\')');
+
+        $matched = $this->connection->query('SELECT id FROM flags WHERE label = ?', [false])->asArray();
+
+        $this->assertSame([['id' => 1]], $matched);
+        $this->assertSame("''", $this->connection->quoteLiteral(false));
     }
 
     public function testQuoteLiteralFailsWhenTheDriverDeclinesToQuote(): void

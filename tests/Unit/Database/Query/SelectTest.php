@@ -11,7 +11,6 @@ use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
-use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
@@ -166,29 +165,27 @@ final class SelectTest extends TestCase
     }
 
     /**
-     * @param Direction|string $direction Direction as written by the caller
-     * @param string           $expected  Keyword expected in the SQL
+     * @param string $direction Direction as written by the caller
+     * @param string $expected  Keyword expected in the SQL
      */
     #[DataProvider('sortDirections')]
-    public function testOrderByAcceptsTheDirectionAsAKeywordOrAsTheEnum(
-        Direction|string $direction,
-        string $expected,
-    ): void {
+    public function testOrderByReadsTheDirectionKeywordInAnyCase(string $direction, string $expected): void
+    {
         $select = $this->connection->select()->from('users')->orderBy('name', $direction);
 
         $this->assertSame('SELECT * FROM `users` ORDER BY `name` ' . $expected, $select->toSql());
     }
 
     /**
-     * @return array<string, array{0: Direction|string, 1: string}>
+     * @return array<string, array{0: string, 1: string}>
      */
     public static function sortDirections(): array
     {
         return [
-            'uppercase keyword'  => ['DESC', 'DESC'],
-            'lowercase keyword'  => ['desc', 'DESC'],
-            'ascending keyword'  => ['asc', 'ASC'],
-            'descending enum'    => [Direction::Descending, 'DESC'],
+            'uppercase descending' => ['DESC', 'DESC'],
+            'lowercase descending' => ['desc', 'DESC'],
+            'lowercase ascending'  => ['asc', 'ASC'],
+            'mixed case'           => ['DeSc', 'DESC'],
         ];
     }
 
@@ -361,6 +358,36 @@ final class SelectTest extends TestCase
 
         $this->assertSame(
             'SELECT CONCAT(name, \'\'active\'\') FROM `users` WHERE `status` = ?',
+            $select->toRawSql(),
+        );
+    }
+
+    public function testRawSqlStepsOverAQuestionMarkInsideAColumnName(): void
+    {
+        // A `?` between backticks is part of the name, not a placeholder.
+        // Writing the value there would attach it to the wrong column and
+        // shift every value that follows.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('a?b', 'FIRST')
+            ->andWhere('status', 'SECOND');
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `a?b` = \'FIRST\' AND `status` = \'SECOND\'',
+            $select->toRawSql(),
+        );
+    }
+
+    public function testRawSqlStaysInsideANameThatContainsABacktick(): void
+    {
+        // The doubled backtick stands for one inside the name, so the name has
+        // not ended there and the `?` after it is still part of it.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('a`b?c', 'VALUE');
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `a``b?c` = \'VALUE\'',
             $select->toRawSql(),
         );
     }

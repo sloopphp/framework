@@ -32,9 +32,9 @@ class Select extends BuilderWhere
     /**
      * Columns to select; empty selects every column.
      *
-     * Keyed rather than a list because a variadic collects named arguments
-     * under their names. SelectSpec discards the keys when the statement is
-     * compiled, so they never reach the SQL.
+     * Keyed rather than a list because PHP hands a variadic whatever keys the
+     * call produced. SelectSpec discards them when the statement is compiled,
+     * so they never reach the SQL.
      *
      * @var array<array-key, string|Expression>
      */

@@ -136,8 +136,10 @@ final class Connection
      * Replace the grammar handed to the query builders this connection starts.
      *
      * ConnectionManager calls this with a grammar carrying the pool's table
-     * prefix. A caller writing for a dialect of its own passes a subclass here,
-     * which is why the builders never build a grammar themselves.
+     * prefix, which is why the builders never build a grammar themselves.
+     * The parts a Grammar reads and returns are internal to the seam between
+     * it and a query builder, so replacing it is a framework-side extension
+     * point rather than a supported way to write another dialect from outside.
      *
      * @param  Grammar $grammar Grammar to write the SQL of subsequent builders
      * @return void
@@ -340,6 +342,12 @@ final class Connection
      * SQL. Strings are handed to the driver rather than quoted here, so the
      * rendering follows the connection's own rules.
      *
+     * A bool is written the way the server receives it rather than as 0 or 1.
+     * Bindings are passed to PDOStatement::execute() as an array, which binds
+     * every one of them as a string, so a false arrives as the empty string.
+     * Showing 0 would describe a statement that selects different rows than
+     * the one that ran.
+     *
      * @param  string|int|float|bool|null $value Value to write out
      * @return string                     The value as SQL text
      * @throws RuntimeException           When the driver declines to quote a string
@@ -352,21 +360,26 @@ final class Connection
             return 'NULL';
         }
 
-        if (\is_bool($value)) {
-            return $value ? '1' : '0';
-        }
-
         if (\is_int($value)) {
             return (string) $value;
         }
 
         // var_export rather than a cast: it writes the shortest text that reads
         // back as the same float, where a cast rounds to precision from php.ini.
-        if (\is_float($value)) {
+        if (\is_float($value) && is_finite($value)) {
             return var_export($value, true);
         }
 
-        $quoted = $this->pdo->quote($value);
+        $text = match (true) {
+            \is_string($value) => $value,
+            // INF and NAN have no numeric spelling in SQL and would read as
+            // column names, so they are shown as text. Casting them warns.
+            \is_float($value)  => var_export($value, true),
+            // How PDOStatement::execute() binds a bool from the array it is given.
+            default            => $value ? '1' : '',
+        };
+
+        $quoted = $this->pdo->quote($text);
 
         if ($quoted === false) {
             throw new RuntimeException(
