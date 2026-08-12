@@ -372,6 +372,73 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame(['primary.internal:0'], $factory->invocations);
     }
 
+    public function testPrimaryWritesTableNamesWithThePoolsPrefix(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'prefix'   => 'app_',
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            'SELECT * FROM `app_users`',
+            $manager->connection()->select()->from('users')->toSql(),
+        );
+    }
+
+    public function testReplicaWritesTableNamesWithTheSamePrefixAsThePrimary(): void
+    {
+        // The prefix belongs to the pool, so a statement has to read the same
+        // table whichever route it takes; a replica writing unprefixed names
+        // would query a table that does not exist.
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'prefix'       => 'app_',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            'SELECT * FROM `app_users`',
+            $manager->connection(writable: false)->select()->from('users')->toSql(),
+        );
+    }
+
+    public function testATableNameIsWrittenAsGivenWhenThePoolHasNoPrefix(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            'SELECT * FROM `users`',
+            $manager->connection()->select()->from('users')->toSql(),
+        );
+    }
+
     public function testConnectionReusesPrimaryAcrossCalls(): void
     {
         $primary = $this->realConnection();

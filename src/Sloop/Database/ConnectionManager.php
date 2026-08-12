@@ -12,6 +12,7 @@ use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
+use Sloop\Database\Query\Grammar;
 use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 
@@ -29,7 +30,9 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
  * - $writable === false → replica (dead-cache filter → ReplicaSelector → ping
  *                                  → record on failure → next → primary fallback
  *                                  → throw on max_connection_attempts exhaustion)
- * - $writable === null  → primary (Builder layer detects SELECT, not the manager)
+ * - $writable === null  → primary (the manager does not read the statement to
+ *                                  decide, so a read reaches a replica only by
+ *                                  asking for one)
  *
  * Empty `read` list collapses replica routing to the primary so single-pool
  * setups keep working without reconfiguration.
@@ -145,6 +148,7 @@ final class ConnectionManager
             $connection = $this->factory->make($pool->primary, $name, $pool->persistent);
             $this->applyLogger($connection, $pool);
             $this->applyQueryTimeout($connection, $pool);
+            $this->applyGrammar($connection, $pool);
             $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
@@ -197,6 +201,7 @@ final class ConnectionManager
                 $connection = $this->factory->make($picked, $name, $pool->persistent);
                 $this->applyLogger($connection, $pool);
                 $this->applyQueryTimeout($connection, $pool);
+                $this->applyGrammar($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -258,7 +263,7 @@ final class ConnectionManager
                 // Probe connections are short-lived and not reused across requests, so they
                 // never use ATTR_PERSISTENT — opening one would just leak a slot in the
                 // server-side persistent pool. Same rationale as skipping applyLogger /
-                // applyQueryTimeout below.
+                // applyQueryTimeout / applyGrammar below.
                 $connection = $this->factory->make($replica, $poolName, false);
                 $connection->ping();
                 $results[$key] = true;
@@ -318,6 +323,27 @@ final class ConnectionManager
         }
 
         $connection->setQueryTimeoutMs($pool->queryTimeoutMs);
+    }
+
+    /**
+     * Hand the Connection a grammar carrying the pool's table prefix.
+     *
+     * The prefix belongs to the pool rather than to a single server, so it is
+     * applied here instead of in the factory, and every connection of a pool —
+     * primary or replica — writes the same table names. Probe connections built
+     * by probeReplicas() are bypassed for the same reason as the logger: they
+     * only send a `DO 1` and never carry a query builder.
+     *
+     * The prefix has already been checked by the config layer, so the Grammar's
+     * own check cannot fail on the value arriving here.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config supplying the table prefix
+     * @return void
+     */
+    private function applyGrammar(Connection $connection, PoolConfig $pool): void
+    {
+        $connection->setGrammar(new Grammar($pool->prefix));
     }
 
     /**

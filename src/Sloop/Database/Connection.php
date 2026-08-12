@@ -10,11 +10,15 @@ use PDO;
 use PDOException;
 use PDOStatement;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\Exception\ExceptionFactory;
 use Sloop\Database\Exception\LockWaitTimeoutException;
+use Sloop\Database\Query\Expression;
+use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Select;
 use Throwable;
 use UnexpectedValueException;
 
@@ -72,6 +76,16 @@ final class Connection
     private LoggingOptions $loggingOptions;
 
     /**
+     * Grammar handed to every query builder this connection starts.
+     *
+     * Defaults to one without a table prefix; ConnectionManager replaces it
+     * with one built from the pool configuration.
+     *
+     * @var Grammar
+     */
+    private Grammar $grammar;
+
+    /**
      * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
      *
      * @var int|null
@@ -100,6 +114,39 @@ final class Connection
         private readonly string $connectionName = '',
     ) {
         $this->loggingOptions = new LoggingOptions();
+        $this->grammar        = new Grammar();
+    }
+
+    /**
+     * Start a SELECT statement over this connection.
+     *
+     * The builder is handed this connection's grammar, so the table prefix and
+     * the dialect come from the pool the connection belongs to rather than from
+     * the builder.
+     *
+     * @param  string|Expression ...$columns Columns to select; none selects every column
+     * @return Select            Builder for the statement
+     */
+    public function select(string|Expression ...$columns): Select
+    {
+        return new Select($this, $this->grammar, ...$columns);
+    }
+
+    /**
+     * Replace the grammar handed to the query builders this connection starts.
+     *
+     * ConnectionManager calls this with a grammar carrying the pool's table
+     * prefix, which is why the builders never build a grammar themselves.
+     * The parts a Grammar reads and returns are internal to the seam between
+     * it and a query builder, so replacing it is a framework-side extension
+     * point rather than a supported way to write another dialect from outside.
+     *
+     * @param  Grammar $grammar Grammar to write the SQL of subsequent builders
+     * @return void
+     */
+    public function setGrammar(Grammar $grammar): void
+    {
+        $this->grammar = $grammar;
     }
 
     /**
@@ -284,6 +331,56 @@ final class Connection
         }
 
         return $stmt->rowCount();
+    }
+
+    /**
+     * Write a value the way SQL spells it, so a statement can be shown with its values in place.
+     *
+     * This is for reading a statement, not for building one. Text assembled
+     * this way never reaches the server: the values a statement runs with are
+     * bound, and binding is the boundary that keeps a value from being read as
+     * SQL. Strings are handed to the driver rather than quoted here, so the
+     * rendering follows the connection's own rules.
+     *
+     * Everything but null is written as a quoted string, because that is what
+     * the server receives: bindings are passed to PDOStatement::execute() as
+     * an array, which binds every one of them as a string. Writing a number
+     * bare would describe a statement that can select different rows than the
+     * one that ran — `code = 5` compares numerically and matches a stored
+     * '5.0', while the `code = '5'` that actually runs does not.
+     *
+     * @param  string|int|float|bool|null $value Value to write out
+     * @return string                     The value as SQL text
+     * @throws RuntimeException           When the driver declines to quote a string
+     *
+     * @internal Rendering for Query::toRawSql().
+     */
+    public function quoteLiteral(string|int|float|bool|null $value): string
+    {
+        if ($value === null) {
+            return 'NULL';
+        }
+
+        // A cast spells a value the way PDO does when it binds it as a string,
+        // which is the whole point here: a bool becomes '1' or the empty
+        // string, and a float follows the precision ini setting exactly as the
+        // driver's own conversion does. That is not the shortest text the float
+        // reads back from — var_export writes that one, and 0.1 + 0.2 shows the
+        // difference — but what the server receives is what this has to show.
+        // NAN is the single value a cast has no spelling for, and warns on.
+        $text = \is_float($value) && is_nan($value)
+            ? var_export($value, true)
+            : (string) $value;
+
+        $quoted = $this->pdo->quote($text);
+
+        if ($quoted === false) {
+            throw new RuntimeException(
+                'The database driver does not support quoting a string, so the statement cannot be shown with its values in place.',
+            );
+        }
+
+        return $quoted;
     }
 
     /**
