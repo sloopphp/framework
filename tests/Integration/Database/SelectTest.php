@@ -10,11 +10,6 @@ use Sloop\Tests\Support\TransactionalIntegrationTestCase;
 
 final class SelectTest extends TransactionalIntegrationTestCase
 {
-    /**
-     * Table the prefix test reads through the unprefixed name `widgets`.
-     *
-     * @var string
-     */
     private const string PREFIXED_TABLE = 'sloop_prefix_widgets';
 
     protected static function setUpSharedFixtures(): void

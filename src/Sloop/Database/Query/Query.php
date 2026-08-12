@@ -85,8 +85,10 @@ abstract class Query
      *
      * Telling the two apart needs the text to be parsed as SQL, and a parse
      * that is wrong in a way the reader cannot see is worse than a rule stated
-     * plainly: an earlier attempt at it read the backticks and lost every
-     * value after an Expression that wrote one inside a string literal.
+     * plainly. Reading the backticks to find the names looks like the fix and
+     * is not: the SQL of an Expression can carry one that opens nothing, and
+     * from there every following value is written in the wrong place or not
+     * at all.
      *
      * @return string
      * @throws RuntimeException When the driver declines to quote a string
