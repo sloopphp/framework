@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    executionOrder deliberately omits `defects`: Infection forces
+    recordTestRunHistory="false" in the config it generates, and PHPUnit 13 warns
+    when ordering by defects without that history. Under failOnWarning that warning
+    aborts Infection's initial test run.
+-->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
          cacheDirectory=".phpunit.cache"
-         executionOrder="depends,defects"
+         executionOrder="depends"
          requireCoverageMetadata="false"
          beStrictAboutCoverageMetadata="false"
          beStrictAboutOutputDuringTests="true"
