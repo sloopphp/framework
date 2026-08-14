@@ -12,7 +12,9 @@ use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
+use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Select;
 use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 
@@ -33,6 +35,11 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
  * - $writable === null  → primary (the manager does not read the statement to
  *                                  decide, so a read reaches a replica only by
  *                                  asking for one)
+ *
+ * select() starts a SELECT builder that asks connection(writable: false) when
+ * it runs, so a read can name its route without passing the flag. Which parts
+ * of the routing above are decided again per statement and which are settled
+ * once per pool is described on ReadConnectionRoute.
  *
  * Empty `read` list collapses replica routing to the primary so single-pool
  * setups keep working without reconfiguration.
@@ -63,6 +70,13 @@ final class ConnectionManager
      * @var list<int>
      */
     private const array POOL_SPECIFIC_ERROR_CODES = [1044, 1049];
+
+    /**
+     * Validated pool configs keyed by pool name.
+     *
+     * @var array<string, PoolConfig>
+     */
+    private array $pools = [];
 
     /**
      * Cached primary Connection instances keyed by pool name.
@@ -111,7 +125,8 @@ final class ConnectionManager
      * inTransaction() == false.
      *
      * @param  bool|null                   $writable true → primary; false → replica with primary fallback;
-     *                                               null → primary (Builder layer is responsible for SELECT detection)
+     *                                               null → primary (the manager does not read the statement, so a
+     *                                               read reaches a replica only by asking for one or via select())
      * @return Connection                  Lazy-created, cached Connection
      * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When max_connection_attempts is exhausted on the replica path
@@ -129,6 +144,32 @@ final class ConnectionManager
         }
 
         return $this->getPrimaryConnection($this->defaultName);
+    }
+
+    /**
+     * Start a SELECT on the default pool's read route.
+     *
+     * The route is resolved when the statement runs rather than here: execute()
+     * asks connection(writable: false) at that moment. A builder started before
+     * begin() and executed inside the transaction therefore runs on the primary
+     * and sees the transaction's own changes, and one started while the
+     * transaction was open goes back to the read route once it has ended.
+     * Nothing about where the builder came from decides where it runs.
+     *
+     * Compiling needs no connection, so toSql() and toBindings() answer without
+     * opening one. toRawSql() opens one, because the quoting is the driver's.
+     *
+     * @param  string|Expression      ...$columns Columns to select; none selects every column
+     * @return Select                 Builder for the statement
+     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     */
+    public function select(string|Expression ...$columns): Select
+    {
+        return new Select(
+            new ReadConnectionRoute($this),
+            $this->grammarFor($this->resolvePool($this->defaultName)),
+            ...$columns,
+        );
     }
 
     /**
@@ -334,16 +375,38 @@ final class ConnectionManager
      * by probeReplicas() are bypassed for the same reason as the logger: they
      * only send a `DO 1` and never carry a query builder.
      *
-     * The prefix has already been checked by the config layer, so the Grammar's
-     * own check cannot fail on the value arriving here.
-     *
      * @param  Connection $connection Newly built Connection that has not yet been cached
      * @param  PoolConfig $pool       Pool config supplying the table prefix
      * @return void
      */
     private function applyGrammar(Connection $connection, PoolConfig $pool): void
     {
-        $connection->setGrammar(new Grammar($pool->prefix));
+        $connection->setGrammar($this->grammarFor($pool));
+    }
+
+    /**
+     * Build the grammar a pool's statements are written with.
+     *
+     * The prefix is the only thing the grammar takes from the pool, so every
+     * connection of a pool would produce the same one. That is what lets
+     * select() hand a builder its grammar without connecting first.
+     *
+     * It also means select() no longer sees a grammar that setGrammar() put on
+     * a connection afterwards, where before it read the resolved connection's.
+     * Replacing a grammar is a framework-side extension point, so the two
+     * remaining ways in stay apart: through a connection for one connection,
+     * through the pool config for the pool.
+     *
+     * No @throws: Grammar checks the prefix it is handed, but the config layer
+     * has already checked it against the same pattern, and PrefixRuleAgreementTest
+     * holds the two patterns to each other.
+     *
+     * @param  PoolConfig $pool Pool config supplying the table prefix
+     * @return Grammar
+     */
+    private function grammarFor(PoolConfig $pool): Grammar
+    {
+        return new Grammar($pool->prefix);
     }
 
     /**
@@ -427,12 +490,22 @@ final class ConnectionManager
     /**
      * Resolve and validate the pool config for the given name.
      *
+     * The result is kept, because select() resolves a pool for every builder
+     * it starts and validation walks the primary and every replica entry.
+     * Nothing it reads can change afterwards: the configs are readonly, the
+     * validator is pure, and the selector registry is fixed at construction.
+     * A name that fails to resolve caches nothing and fails again next time.
+     *
      * @param  string                 $name Pool name
      * @return PoolConfig
      * @throws InvalidConfigException When the name is undefined or config is malformed
      */
     private function resolvePool(string $name): PoolConfig
     {
+        if (isset($this->pools[$name])) {
+            return $this->pools[$name];
+        }
+
         if (!\array_key_exists($name, $this->configs)) {
             throw new InvalidConfigException(
                 'Database connection [' . $name . '] is not defined.',
@@ -446,7 +519,7 @@ final class ConnectionManager
         // that the value is a string.
         $this->replicaSelectors->get($pool->replicaSelector);
 
-        return $pool;
+        return $this->pools[$name] = $pool;
     }
 
     /**

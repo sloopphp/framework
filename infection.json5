@@ -82,7 +82,7 @@
                 // millisecond. Observing that requires timing the call. Pinned
                 // to the parameter's line because other integer literals in the
                 // same method are killable.
-                "Sloop\\Database\\Connection::transaction::490",
+                "Sloop\\Database\\Connection::transaction::495",
                 // Expression::placeholders builds the placeholder list with
                 // `array_fill(0, $count, '?')` and only ever implodes the
                 // result. The start index decides the array keys, which implode
@@ -222,6 +222,13 @@
                 // whose applied flag is already false, so falling through to
                 // setQueryTimeoutMs(null) re-assigns the current state.
                 "Sloop\\Database\\ConnectionManager::applyQueryTimeout",
+                // ConnectionManager::resolvePool returns the pool it already
+                // validated. Falling through validates the same readonly config
+                // with the same pure validator and stores an equal PoolConfig,
+                // so only the work differs. Pinned to the line because the
+                // method's other return is killable. Same shape as the two
+                // Str cache hits above.
+                "Sloop\\Database\\ConnectionManager::resolvePool::506",
                 // Route::compilePattern returns early for patterns without a
                 // placeholder. Falling through compiles a regex that match()
                 // never consults, because it short-circuits on an empty
