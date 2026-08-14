@@ -234,7 +234,7 @@ final class MiddlewareDispatcherTest extends TestCase
         $dispatcher->pipe($middleware);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('boom');
+        $this->expectExceptionMessageIsOrContains('boom');
 
         $dispatcher->handle($this->createRequest());
     }

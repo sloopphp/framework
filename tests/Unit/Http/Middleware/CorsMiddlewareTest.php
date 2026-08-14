@@ -214,7 +214,7 @@ final class CorsMiddlewareTest extends TestCase
         // credentials; reflecting the origin instead would grant any site
         // credentialed cross-origin reads, so the config is rejected outright.
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('allowed_origins must not contain "*" when allow_credentials is true');
+        $this->expectExceptionMessageIsOrContains('allowed_origins must not contain "*" when allow_credentials is true');
 
         $this->createCors(['allowed_origins' => ['*'], 'allow_credentials' => true]);
     }

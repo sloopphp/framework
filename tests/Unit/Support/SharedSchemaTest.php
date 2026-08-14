@@ -132,7 +132,7 @@ final class SharedSchemaTest extends TestCase
     public function testTableNamesRejectsStatementsThatCreateNothing(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('creates a table');
+        $this->expectExceptionMessageIsOrContains('creates a table');
 
         SharedSchema::tableNames(['DROP TABLE IF EXISTS users']);
     }
@@ -174,7 +174,7 @@ final class SharedSchemaTest extends TestCase
         $path = $this->writeTemporaryFixture("-- only a comment\n\n");
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('contains no statements');
+        $this->expectExceptionMessageIsOrContains('contains no statements');
 
         SharedSchema::statements($path);
     }
@@ -182,7 +182,7 @@ final class SharedSchemaTest extends TestCase
     public function testUnreadableFileIsRejected(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Could not read the schema fixture');
+        $this->expectExceptionMessageIsOrContains('Could not read the schema fixture');
 
         SharedSchema::statements($this->nonExistentPath());
     }

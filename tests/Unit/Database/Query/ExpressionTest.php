@@ -41,7 +41,7 @@ final class ExpressionTest extends TestCase
     public function testOfRejectsListWithGapsAsBindings(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Bindings must be a list, so that their order matches the placeholders in the SQL.',
         );
 
@@ -51,7 +51,7 @@ final class ExpressionTest extends TestCase
     public function testOfRejectsStringKeyedBindings(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Bindings must be a list, so that their order matches the placeholders in the SQL.',
         );
 
@@ -68,7 +68,7 @@ final class ExpressionTest extends TestCase
     public function testOfRejectsObjectBinding(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Bindings must be scalar or null, got stdClass at index 1.');
+        $this->expectExceptionMessageIsOrContains('Bindings must be scalar or null, got stdClass at index 1.');
 
         Expression::of('GREATEST(?, ?)', [3, new stdClass()]);
     }
@@ -97,7 +97,7 @@ final class ExpressionTest extends TestCase
     public function testFieldRejectsArrayValue(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Values must be scalar or null, got array at index 1.');
+        $this->expectExceptionMessageIsOrContains('Values must be scalar or null, got array at index 1.');
 
         Expression::field('status', ['active', ['nested']]);
     }
@@ -105,7 +105,7 @@ final class ExpressionTest extends TestCase
     public function testFieldReportsThePlaceholderPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Values must be scalar or null, got stdClass at index 1.');
+        $this->expectExceptionMessageIsOrContains('Values must be scalar or null, got stdClass at index 1.');
 
         Expression::field('status', ['first' => 'active', 'second' => new stdClass()]);
     }
@@ -113,7 +113,7 @@ final class ExpressionTest extends TestCase
     public function testFieldRejectsEmptyValues(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('FIELD() requires at least one value.');
+        $this->expectExceptionMessageIsOrContains('FIELD() requires at least one value.');
 
         Expression::field('status', []);
     }
@@ -146,7 +146,7 @@ final class ExpressionTest extends TestCase
     public function testEltRejectsObjectValue(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Values must be scalar or null, got stdClass at index 0.');
+        $this->expectExceptionMessageIsOrContains('Values must be scalar or null, got stdClass at index 0.');
 
         Expression::elt(1, [new stdClass(), 'second']);
     }
@@ -162,7 +162,7 @@ final class ExpressionTest extends TestCase
     public function testEltRejectsEmptyValues(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('ELT() requires at least one value.');
+        $this->expectExceptionMessageIsOrContains('ELT() requires at least one value.');
 
         Expression::elt(1, []);
     }
@@ -229,7 +229,7 @@ final class ExpressionTest extends TestCase
     public function testColumnQuotingRejectsEmptySegments(string $column, string $expectedMessage): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage($expectedMessage);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
 
         Expression::increment($column);
     }
@@ -253,7 +253,7 @@ final class ExpressionTest extends TestCase
     public function testFieldRejectsEmptyColumn(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Identifier must not contain an empty segment, got .');
+        $this->expectExceptionMessageIsOrContains('Identifier must not contain an empty segment, got .');
 
         Expression::field('', ['active']);
     }

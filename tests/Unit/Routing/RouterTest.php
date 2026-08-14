@@ -177,7 +177,7 @@ final class RouterTest extends TestCase
     public function testFindByNameThrowsForUnknown(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Route not found: nonexistent');
+        $this->expectExceptionMessageIsOrContains('Route not found: nonexistent');
 
         $this->router->findByName('nonexistent');
     }

@@ -304,7 +304,7 @@ final class ContainerTest extends TestCase
     public function testAutowireUnionTypeWithoutDefaultThrows(): void
     {
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage('Cannot resolve parameter $value in ' . ClassWithUnionType::class . '::__construct().');
+        $this->expectExceptionMessageIsOrContains('Cannot resolve parameter $value in ' . ClassWithUnionType::class . '::__construct().');
 
         $this->container->get(ClassWithUnionType::class);
     }
@@ -312,7 +312,7 @@ final class ContainerTest extends TestCase
     public function testAutowireThrowsForUnboundInterfaceDependency(): void
     {
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessage('Entry not found: ' . SimpleInterface::class);
+        $this->expectExceptionMessageIsOrContains('Entry not found: ' . SimpleInterface::class);
 
         $this->container->get(ClassWithInterfaceDependency::class);
     }
@@ -331,7 +331,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForNonexistentEntry(): void
     {
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessage('Entry not found: Nonexistent\Class');
+        $this->expectExceptionMessageIsOrContains('Entry not found: Nonexistent\Class');
 
         $this->container->get('Nonexistent\\Class');
     }
@@ -339,7 +339,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForAbstractClass(): void
     {
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessage('Entry is not instantiable: ' . AbstractService::class);
+        $this->expectExceptionMessageIsOrContains('Entry is not instantiable: ' . AbstractService::class);
 
         $this->container->get(AbstractService::class);
     }
@@ -347,7 +347,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForCircularDependency(): void
     {
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage('Circular dependency detected while resolving: ' . CircularA::class);
+        $this->expectExceptionMessageIsOrContains('Circular dependency detected while resolving: ' . CircularA::class);
 
         $this->container->get(CircularA::class);
     }
@@ -355,7 +355,7 @@ final class ContainerTest extends TestCase
     public function testGetThrowsForUnresolvableParameter(): void
     {
         $this->expectException(ContainerException::class);
-        $this->expectExceptionMessage('Cannot resolve parameter $required in ' . ClassWithUnresolvableParam::class . '::__construct().');
+        $this->expectExceptionMessageIsOrContains('Cannot resolve parameter $required in ' . ClassWithUnresolvableParam::class . '::__construct().');
 
         $this->container->get(ClassWithUnresolvableParam::class);
     }

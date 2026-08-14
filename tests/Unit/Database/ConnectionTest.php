@@ -12,7 +12,7 @@ use PDO;
 use Pdo\Sqlite;
 use PDOStatement;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\Connection;
@@ -83,16 +83,21 @@ final class ConnectionTest extends TestCase
         return $handler;
     }
 
-    private function scriptVersionQuery(MockObject&PDO $pdo, string $versionString): void
+    private function scriptVersionQuery(Stub&PDO $pdo, string $versionString): void
     {
         $statement = $this->createStub(PDOStatement::class);
         $statement->method('fetchColumn')->willReturn($versionString);
 
-        // PDO::query is matched on its first argument because PHPUnit's strict
-        // method() expectation cannot mix `$this->any()` with a `with(...)`
-        // constraint; once method('query') is set up, every query() call falls
-        // through this rule.
-        $pdo->method('query')->with('SELECT VERSION()')->willReturn($statement);
+        // The SQL is asserted inside the callback rather than through
+        // `with(...)`: PHPUnit 13 deprecated `with*()` on the stub path, and
+        // `expects($this->any())` — the documented replacement — is deprecated
+        // as well. A callback keeps the argument assertion without tying the
+        // stub to an invocation count.
+        $pdo->method('query')->willReturnCallback(function (string $sql) use ($statement): PDOStatement {
+            $this->assertSame('SELECT VERSION()', $sql);
+
+            return $statement;
+        });
     }
 
     private function scriptedSelectStatement(): PDOStatement
@@ -560,7 +565,7 @@ final class ConnectionTest extends TestCase
         $connection = new Connection($pdo, 'test_conn');
 
         $this->expectException(DeadlockException::class);
-        $this->expectExceptionMessage('deadlock');
+        $this->expectExceptionMessageIsOrContains('deadlock');
 
         $connection->transaction(
             function (): void {
@@ -1242,7 +1247,7 @@ final class ConnectionTest extends TestCase
         // SET SESSION failure must surface to the caller (the timeout did not
         // apply, the connection is misconfigured). When a logger is wired in,
         // the failure also lands as `error` level so operators see it.
-        $pdo = $this->createMock(PDO::class);
+        $pdo = $this->createStub(PDO::class);
         $this->scriptVersionQuery($pdo, '8.0.37');
         $pdoException            = new \PDOException('access denied');
         $pdoException->errorInfo = ['42000', 1064, 'access denied'];
@@ -1315,7 +1320,7 @@ final class ConnectionTest extends TestCase
         // the failure; with no logger configured, the null-safe call must
         // simply do nothing and the DatabaseException must still propagate
         // cleanly — not crash with method-call-on-null.
-        $pdo = $this->createMock(PDO::class);
+        $pdo = $this->createStub(PDO::class);
         $this->scriptVersionQuery($pdo, '8.0.37');
         $pdo->method('exec')->willThrowException(new \PDOException('access denied'));
         $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
@@ -1420,7 +1425,7 @@ final class ConnectionTest extends TestCase
         $pdo->method('quote')->willReturn(false);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('does not support quoting a string');
+        $this->expectExceptionMessageIsOrContains('does not support quoting a string');
 
         new Connection($pdo, 'test')->quoteLiteral('alice');
     }
@@ -1434,8 +1439,11 @@ final class ConnectionTest extends TestCase
         // skip the timeout setup.
         $pdo = $this->createMock(PDO::class);
         $pdo->method('query')
-            ->with('SELECT VERSION()')
-            ->willThrowException(new \PDOException('server gone away'));
+            ->willReturnCallback(function (string $sql): never {
+                $this->assertSame('SELECT VERSION()', $sql);
+
+                throw new \PDOException('server gone away');
+            });
         $pdo->expects($this->never())->method('exec');
 
         $connection = new Connection($pdo, 'test');

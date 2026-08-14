@@ -139,7 +139,7 @@ final class SloopExceptionTest extends TestCase
         // InvalidArgumentException inside the logger while the exception
         // handler is processing this very exception, so fail at the throw site.
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid PSR-3 log level: warn');
+        $this->expectExceptionMessageIsOrContains('Invalid PSR-3 log level: warn');
 
         new DomainException('typo in level', 0, 'warn');
     }

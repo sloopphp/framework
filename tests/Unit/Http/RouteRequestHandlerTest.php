@@ -179,7 +179,7 @@ final class RouteRequestHandlerTest extends TestCase
     public function testThrowsWhenBuiltinRouteParameterMissingAndNoDefault(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Route parameter not found: id');
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
 
         $this->dispatch(DiController::class, 'requestAndInt', []);
     }
@@ -194,7 +194,7 @@ final class RouteRequestHandlerTest extends TestCase
     public function testThrowsOnNonNumericValueForIntParameter(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Route parameter "id" must be int, got: abc');
+        $this->expectExceptionMessageIsOrContains('Route parameter "id" must be int, got: abc');
 
         $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']);
     }
@@ -202,7 +202,7 @@ final class RouteRequestHandlerTest extends TestCase
     public function testThrowsOnNonNumericValueForFloatParameter(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Route parameter "price" must be float, got: xyz');
+        $this->expectExceptionMessageIsOrContains('Route parameter "price" must be float, got: xyz');
 
         $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']);
     }
@@ -212,7 +212,7 @@ final class RouteRequestHandlerTest extends TestCase
         $this->expectException(RuntimeException::class);
         // Naming the offending parameter is the point of the message, so assert
         // the whole sentence rather than the trailing explanation alone.
-        $this->expectExceptionMessage('Unsupported parameter type for id: only named types are supported in method DI.');
+        $this->expectExceptionMessageIsOrContains('Unsupported parameter type for id: only named types are supported in method DI.');
 
         $this->dispatch(DiController::class, 'unionTyped', ['id' => '42']);
     }

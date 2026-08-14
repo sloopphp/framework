@@ -122,7 +122,7 @@ final class GrammarTest extends TestCase
     public function testQuoteTableRejectsMoreThanTwoSegments(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'A table name may have at most two segments (schema.table), got reporting.public.users.',
         );
 
@@ -132,7 +132,7 @@ final class GrammarTest extends TestCase
     public function testQuoteIdentifierRejectsMoreThanThreeSegments(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'An identifier may have at most three segments (schema.table.column), got a.b.c.d.',
         );
 
@@ -143,7 +143,7 @@ final class GrammarTest extends TestCase
     public function testQuoteIdentifierRejectsEmptySegments(string $identifier): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Identifier must not contain an empty segment, got ' . $identifier . '.');
+        $this->expectExceptionMessageIsOrContains('Identifier must not contain an empty segment, got ' . $identifier . '.');
 
         new Grammar()->quoteIdentifier($identifier);
     }
@@ -166,7 +166,7 @@ final class GrammarTest extends TestCase
     public function testConstructorRejectsAPrefixThatIsNotAPlainIdentifier(string $prefix): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Table prefix must contain only alphanumeric and underscore characters, got "' . $prefix . '".',
         );
 
@@ -329,7 +329,7 @@ final class GrammarTest extends TestCase
     public function testQuoteIdentifierRejectsStarThatIsNotTheLastSegment(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Only the last part of a column reference may be *, got *.id.');
+        $this->expectExceptionMessageIsOrContains('Only the last part of a column reference may be *, got *.id.');
 
         new Grammar()->quoteIdentifier('*.id', allowEveryColumn: true);
     }
@@ -339,7 +339,7 @@ final class GrammarTest extends TestCase
         // The public default is the strict one: only a caller that knows it is
         // building a list of columns may pass *.
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             '* names every column, so it only stands where a list of columns does, got users.*.',
         );
 
@@ -359,7 +359,7 @@ final class GrammarTest extends TestCase
         // * names every column, so it can never name a table. Letting it
         // through produced `FROM *`, which only fails once MySQL parses it.
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             '* names every column, so it only stands where a list of columns does, got *.',
         );
 
@@ -391,7 +391,7 @@ final class GrammarTest extends TestCase
         // PCRE's $ also matches before a trailing newline, so an anchor of ^...$
         // lets "app_\n" through while the message says otherwise.
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Table prefix must contain only alphanumeric and underscore characters, got "app_' . "\n" . '".',
         );
 
@@ -456,7 +456,7 @@ final class GrammarTest extends TestCase
     {
         // * names a list of columns, so it cannot be one side of a comparison.
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             '* names every column, so it only stands where a list of columns does, got *.',
         );
 
@@ -469,7 +469,7 @@ final class GrammarTest extends TestCase
     public function testOrderByRejectsEveryColumn(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             '* names every column, so it only stands where a list of columns does, got users.*.',
         );
 

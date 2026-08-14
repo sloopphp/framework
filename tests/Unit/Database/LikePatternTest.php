@@ -98,7 +98,7 @@ final class LikePatternTest extends TestCase
     public function testEscapeThrowsOnInvalidEscapeLength(string $escape, string $expectedMessage): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage($expectedMessage);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
 
         LikePattern::escape('anything', $escape);
     }
@@ -119,7 +119,7 @@ final class LikePatternTest extends TestCase
     public function testEscapeThrowsWhenEscapeIsLikeWildcard(string $escape, string $expectedMessage): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage($expectedMessage);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
 
         LikePattern::escape('anything', $escape);
     }

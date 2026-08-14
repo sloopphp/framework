@@ -134,7 +134,7 @@ final class ResultTest extends TestCase
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Column "missing" is not in the result set.');
+        $this->expectExceptionMessageIsOrContains('Column "missing" is not in the result set.');
 
         $result->asArrayBy('missing');
     }
@@ -146,7 +146,7 @@ final class ResultTest extends TestCase
         $result = new Result([['id' => null, 'name' => 'alice']]);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Column "id" must hold an int or string to be used as a key, got null.',
         );
 
@@ -159,7 +159,7 @@ final class ResultTest extends TestCase
         $result = new Result([['id' => 1.5, 'name' => 'alice']]);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Column "id" must hold an int or string to be used as a key, got float.',
         );
 
@@ -201,7 +201,7 @@ final class ResultTest extends TestCase
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Column "email" is not in the result set.');
+        $this->expectExceptionMessageIsOrContains('Column "email" is not in the result set.');
 
         $result->asMap('id', 'email');
     }
@@ -233,7 +233,7 @@ final class ResultTest extends TestCase
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Column "status" is not in the result set.');
+        $this->expectExceptionMessageIsOrContains('Column "status" is not in the result set.');
 
         $result->groupBy('status');
     }

@@ -63,7 +63,7 @@ final class ConditionTest extends TestCase
     public function testRejectsAnythingOutsideTheSupportedOperators(string $operator): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Unsupported comparison operator "' . $operator . '".');
+        $this->expectExceptionMessageIsOrContains('Unsupported comparison operator "' . $operator . '".');
 
         new Condition('id', $operator, 1);
     }

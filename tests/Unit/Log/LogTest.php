@@ -56,7 +56,7 @@ final class LogTest extends TestCase
         $log = Log::channel('app');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Logger has not been initialized');
+        $this->expectExceptionMessageIsOrContains('Logger has not been initialized');
         $log->info('test');
     }
 
@@ -150,7 +150,7 @@ final class LogTest extends TestCase
         $log = Log::channel('app');
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid log level: unknown');
+        $this->expectExceptionMessageIsOrContains('Invalid log level: unknown');
         $log->log('unknown', 'Should fail');
     }
 
@@ -159,7 +159,7 @@ final class LogTest extends TestCase
         $log = Log::channel('app');
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid log level: int');
+        $this->expectExceptionMessageIsOrContains('Invalid log level: int');
         $log->log(999, 'Should fail');
     }
 
