@@ -124,12 +124,17 @@ final class Connection
      * the dialect come from the pool the connection belongs to rather than from
      * the builder.
      *
+     * A statement started here runs on this connection and has nothing left to
+     * route, which is what separates it from ConnectionManager::select(): that
+     * one leaves the choice between primary and replica until the statement
+     * runs.
+     *
      * @param  string|Expression ...$columns Columns to select; none selects every column
      * @return Select            Builder for the statement
      */
     public function select(string|Expression ...$columns): Select
     {
-        return new Select($this, $this->grammar, ...$columns);
+        return new Select(new FixedConnectionRoute($this), $this->grammar, ...$columns);
     }
 
     /**
