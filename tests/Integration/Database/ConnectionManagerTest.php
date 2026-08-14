@@ -9,6 +9,7 @@ use ReflectionProperty;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\Factory\PdoConnectionFactory;
+use Sloop\Database\Query\Expression;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
@@ -16,6 +17,10 @@ use Sloop\Tests\Support\IntegrationTestCase;
 
 final class ConnectionManagerTest extends IntegrationTestCase
 {
+    private const string READ_ROUTE_PREFIX = 'sloop_manager_';
+
+    private const string READ_ROUTE_TABLE = self::READ_ROUTE_PREFIX . 'widgets';
+
     private PdoConnectionFactory $factory;
 
     private RandomReplicaSelector $selector;
@@ -79,6 +84,21 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $this->assertInstanceOf(PDO::class, $pdo);
 
         return $pdo;
+    }
+
+    private function createReadRouteTable(Connection $connection): void
+    {
+        $connection->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        $connection->statement(
+            'CREATE TABLE ' . self::READ_ROUTE_TABLE . ' ('
+                . 'id INT UNSIGNED NOT NULL PRIMARY KEY, '
+                . 'label VARCHAR(50) NOT NULL'
+                . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $connection->statement(
+            'INSERT INTO ' . self::READ_ROUTE_TABLE . ' (id, label) VALUES (1, ?), (2, ?)',
+            ['first', 'second'],
+        );
     }
 
     public function testConnectionReturnsUsableConnection(): void
@@ -200,5 +220,162 @@ final class ConnectionManagerTest extends IntegrationTestCase
         $connection = $manager->connection();
 
         $this->assertTrue($this->extractPdo($connection)->getAttribute(PDO::ATTR_PERSISTENT));
+    }
+
+    public function testSelectReadsRowsThroughTheReadRoute(): void
+    {
+        // The pool declares a replica on the same server the suite runs against,
+        // so the statement travels the replica route and still reaches a real
+        // table. Routing itself is covered by the unit tests; what this asserts
+        // is that a statement started from the manager executes end to end.
+        $config         = self::defaultConfig();
+        $config['read'] = [['host' => $config['host']]];
+
+        $manager = $this->manager($config);
+        $this->createReadRouteTable($manager->connection(writable: true));
+
+        try {
+            // Pin the route: on primary fallback the replica lookup hands back
+            // the primary instance itself, so identity is what separates a real
+            // replica route from a silent degradation to the primary.
+            $this->assertNotSame(
+                $manager->connection(writable: true),
+                $manager->connection(writable: false),
+            );
+
+            $rows = $manager->select('label')
+                ->from(self::READ_ROUTE_TABLE)
+                ->where('id', 2)
+                ->execute();
+
+            $this->assertSame([['label' => 'second']], $rows->asArray());
+        } finally {
+            $manager->connection(writable: true)->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        }
+    }
+
+    public function testSelectAppliesThePoolsPrefixAgainstTheServer(): void
+    {
+        // from('widgets') has to reach the prefixed table, which only shows up
+        // against a real server: an unprefixed name would be a missing table
+        // rather than a wrong string.
+        $config           = self::defaultConfig();
+        $config['prefix'] = self::READ_ROUTE_PREFIX;
+
+        $manager = $this->manager($config);
+        $this->createReadRouteTable($manager->connection(writable: true));
+
+        try {
+            $rows = $manager->select('label')
+                ->from('widgets')
+                ->orderBy('id')
+                ->execute();
+
+            $this->assertSame([['label' => 'first'], ['label' => 'second']], $rows->asArray());
+        } finally {
+            $manager->connection(writable: true)->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        }
+    }
+
+    public function testOneBuilderMovesBetweenTheRoutesAsTheTransactionOpensAndCloses(): void
+    {
+        // Non-persistent, so the read entry lands on its own server session even
+        // though it names the same host. Both routes read the same rows, so a
+        // committed value cannot tell them apart; the server's own session id
+        // can, and that is what this asserts. One builder selecting
+        // CONNECTION_ID() is executed three times, so a connection remembered
+        // at any level — the route or the builder — would repeat an answer.
+        //
+        // The uncommitted read is asserted separately: only the primary's
+        // session can see 'rewritten' before the rollback.
+        $config         = self::defaultConfig();
+        $config['read'] = [['host' => $config['host']]];
+
+        $manager = $this->manager($config);
+        $primary = $manager->connection(writable: true);
+        $this->createReadRouteTable($primary);
+
+        try {
+            $replica = $manager->connection(writable: false);
+            $this->assertNotSame($primary, $replica);
+
+            $primarySessionId = $primary->query('SELECT CONNECTION_ID() AS id')->asArray()[0]['id'];
+            $replicaSessionId = $replica->query('SELECT CONNECTION_ID() AS id')->asArray()[0]['id'];
+            $this->assertNotSame($primarySessionId, $replicaSessionId);
+
+            $session = $manager->select(Expression::of('CONNECTION_ID() AS id'))
+                ->from(self::READ_ROUTE_TABLE)
+                ->where('id', 1);
+
+            $this->assertSame($replicaSessionId, $session->execute()->asArray()[0]['id']);
+
+            $rows = $manager->select('label')
+                ->from(self::READ_ROUTE_TABLE)
+                ->where('id', 1);
+
+            $primary->begin();
+            $primary->statement(
+                'UPDATE ' . self::READ_ROUTE_TABLE . ' SET label = ? WHERE id = 1',
+                ['rewritten'],
+            );
+
+            $this->assertSame($primarySessionId, $session->execute()->asArray()[0]['id']);
+            $this->assertSame([['label' => 'rewritten']], $rows->execute()->asArray());
+
+            $primary->rollback();
+
+            $this->assertSame($replicaSessionId, $session->execute()->asArray()[0]['id']);
+        } finally {
+            if ($primary->inTransaction()) {
+                $primary->rollback();
+            }
+
+            $primary->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        }
+    }
+
+    public function testAReplicaSharingThePrimarysSessionSeesItsOpenTransaction(): void
+    {
+        // The two routes are separate Connection objects, but persistent handles
+        // are shared per DSN, username and password, so a read entry that
+        // overrides none of them puts both on one server session. A statement
+        // pinned to the replica object then observes the primary's open
+        // transaction — the opposite of what separate sessions do, and the
+        // branch the unit suite cannot express.
+        //
+        // The builder is started from the replica Connection rather than from
+        // the manager on purpose: a manager-started builder asks for its route
+        // when it runs, and inside a transaction that answers the primary, so
+        // it would never reach the replica object this test is about.
+        $config               = self::defaultConfig();
+        $config['persistent'] = true;
+        $config['read']       = [[]];
+
+        $manager = $this->manager($config);
+        $primary = $manager->connection(writable: true);
+        $this->createReadRouteTable($primary);
+
+        try {
+            $replica = $manager->connection(writable: false);
+            $this->assertNotSame($primary, $replica);
+
+            $fixedToReadRoute = $replica->select('label')
+                ->from(self::READ_ROUTE_TABLE)
+                ->where('id', 1);
+
+            $primary->begin();
+            $primary->statement(
+                'UPDATE ' . self::READ_ROUTE_TABLE . ' SET label = ? WHERE id = 1',
+                ['rewritten'],
+            );
+
+            $this->assertSame([['label' => 'rewritten']], $fixedToReadRoute->execute()->asArray());
+        } finally {
+            if ($primary->inTransaction()) {
+                $primary->rollback();
+            }
+
+            $primary->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        }
     }
 }

@@ -6,17 +6,21 @@ namespace Sloop\Database\Query;
 
 use InvalidArgumentException;
 use LogicException;
-use Sloop\Database\Connection;
+use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
+use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Result;
 use UnexpectedValueException;
 
 /**
  * A SELECT statement being built.
  *
- * Obtained from Connection::select(), which hands over the connection to read
- * through and the grammar that writes the SQL. The columns are fixed when the
- * builder is made; everything after that is added by chaining.
+ * Obtained from Connection::select() to read through one connection, or from
+ * ConnectionManager::select() to read through a pool's read route; either way
+ * what is handed over is a route and the grammar that writes the SQL. The
+ * columns are fixed when the builder is made; everything after that is added
+ * by chaining.
  *
  * ```php
  * $rows = $connection->select('id', 'name')
@@ -50,13 +54,13 @@ class Select extends BuilderWhere
     /**
      * Start a SELECT over the given columns.
      *
-     * @param Connection        $connection Connection the statement runs on
+     * @param ConnectionRoute   $route      Route asked for a connection when the statement runs
      * @param Grammar           $grammar    Grammar that turns the collected parts into SQL
      * @param string|Expression ...$columns Columns to select; none selects every column
      */
-    public function __construct(Connection $connection, Grammar $grammar, string|Expression ...$columns)
+    public function __construct(ConnectionRoute $route, Grammar $grammar, string|Expression ...$columns)
     {
-        parent::__construct($connection, $grammar);
+        parent::__construct($route, $grammar);
 
         $this->columns = $columns;
     }
@@ -100,16 +104,23 @@ class Select extends BuilderWhere
     /**
      * Run this statement and return the rows it read.
      *
-     * @return Result                   Rows the statement read
-     * @throws LogicException           When no table has been named
-     * @throws InvalidArgumentException When an identifier is malformed or the row window is inconsistent
-     * @throws DatabaseException        When the statement fails
-     * @throws UnexpectedValueException When the driver returns a value outside the types it contracts to
+     * The connection is asked for here rather than when the builder was made,
+     * so where this runs is whatever the route answers now. A builder started
+     * from a connection stays on it; one started from ConnectionManager::select()
+     * can land on either route, which that method describes.
+     *
+     * @return Result                      Rows the statement read
+     * @throws LogicException              When no table has been named
+     * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
      */
     public function execute(): Result
     {
         $compiled = $this->compile();
 
-        return $this->connection->query($compiled->sql, $compiled->bindings);
+        return $this->route->connection()->query($compiled->sql, $compiled->bindings);
     }
 }
