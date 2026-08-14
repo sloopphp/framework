@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Sloop\Database\Query;
 
 use RuntimeException;
-use Sloop\Database\Connection;
+use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConnectionException;
+use Sloop\Database\Exception\DatabaseException;
+use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Result;
 
 /**
@@ -13,19 +16,23 @@ use Sloop\Database\Result;
  *
  * Collecting and writing are kept apart: a builder records what the caller
  * asked for, and a Grammar turns that into text for one dialect. The Grammar
- * arrives from the connection rather than being created here, so the same
- * builder writes for another dialect by handing it a different one.
+ * arrives from whatever started the statement rather than being created here,
+ * so the same builder writes for another dialect by handing it a different one.
  */
 abstract class Query
 {
     /**
-     * Bind a statement to the connection it runs on and the grammar that writes it.
+     * Bind a statement to the route it runs over and the grammar that writes it.
      *
-     * @param Connection $connection Connection the statement runs on
-     * @param Grammar    $grammar    Grammar that turns the collected parts into SQL
+     * The route rather than a connection, so that a pool decides between its
+     * primary and a replica when the statement runs. Building the statement
+     * and compiling it need no connection at all.
+     *
+     * @param ConnectionRoute $route   Route asked for a connection when the statement runs
+     * @param Grammar         $grammar Grammar that turns the collected parts into SQL
      */
     public function __construct(
-        protected readonly Connection $connection,
+        protected readonly ConnectionRoute $route,
         protected readonly Grammar $grammar,
     ) {
     }
@@ -90,18 +97,28 @@ abstract class Query
      * from there every following value is written in the wrong place or not
      * at all.
      *
+     * Quoting is the driver's, so this asks the route for a connection and
+     * opens one if the pool has not connected yet. Which makes it the wrong
+     * thing to call from the handler for a statement that just failed: if what
+     * failed was obtaining the connection, nothing was cached, and this runs
+     * the same lookup again and throws over the error being handled.
+     *
      * @return string
-     * @throws RuntimeException When the driver declines to quote a string
+     * @throws RuntimeException            When the driver declines to quote a string
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When a persistent connection carries a residual transaction that cannot be rolled back
      */
     public function toRawSql(): string
     {
-        $compiled = $this->compile();
-        $rendered = '';
+        $compiled   = $this->compile();
+        $connection = $this->route->connection();
+        $rendered   = '';
 
         foreach (explode('?', $compiled->sql) as $index => $segment) {
             if ($index > 0) {
                 $rendered .= \array_key_exists($index - 1, $compiled->bindings)
-                    ? $this->connection->quoteLiteral($compiled->bindings[$index - 1])
+                    ? $connection->quoteLiteral($compiled->bindings[$index - 1])
                     : '?';
             }
 
