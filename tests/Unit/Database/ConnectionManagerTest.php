@@ -11,14 +11,21 @@ use PDO;
 use PDOStatement;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
+use Sloop\Database\ConnectionRoute;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
+use Sloop\Database\FixedConnectionRoute;
+use Sloop\Database\Query\Expression;
+use Sloop\Database\Query\Query;
+use Sloop\Database\Query\Select;
+use Sloop\Database\ReadConnectionRoute;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Tests\Support\MutableClock;
@@ -55,6 +62,34 @@ final class ConnectionManagerTest extends TestCase
     private function realConnection(): Connection
     {
         return new Connection(new PDO('sqlite::memory:'), 'test');
+    }
+
+    private function pdoSeededWith(string $value): PDO
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE reads (v TEXT)');
+        $pdo->exec("INSERT INTO reads (v) VALUES ('" . $value . "')");
+
+        return $pdo;
+    }
+
+    private function routeBehind(Select $select): ConnectionRoute
+    {
+        $reflection = new ReflectionProperty(Query::class, 'route');
+        $route      = $reflection->getValue($select);
+        $this->assertInstanceOf(ConnectionRoute::class, $route);
+
+        return $route;
+    }
+
+    private function connectionResolvedBy(Select $select): Connection
+    {
+        // Asking the route the way execute() asks it. Which route arrived is a
+        // separate question, pinned by testSelectHandsTheBuilderTheReadRoute;
+        // that the statement itself goes through the route rather than a
+        // remembered connection is pinned by the three executes in
+        // testOneBuilderAnswersFromWhicheverRouteItsTransactionStateSelects.
+        return $this->routeBehind($select)->connection();
     }
 
     private function connectionInTransaction(): Connection
@@ -437,6 +472,288 @@ final class ConnectionManagerTest extends TestCase
             'SELECT * FROM `users`',
             $manager->connection()->select()->from('users')->toSql(),
         );
+    }
+
+    public function testSelectStartsTheStatementOnTheReplica(): void
+    {
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $select = $manager->select()->from('users');
+
+        // Building connects to nothing; the route is asked when the statement runs.
+        $this->assertSame([], $factory->invocations);
+
+        // The primary was never contacted: select() takes the read route.
+        $this->assertSame($replica, $this->connectionResolvedBy($select));
+        $this->assertSame(['replica.internal:0'], $factory->invocations);
+    }
+
+    public function testSelectHandsTheBuilderTheReadRoute(): void
+    {
+        // Which route object arrives decides whether the builder can move
+        // between the routes at all, so it is pinned apart from where any one
+        // statement lands. A builder started from a connection cannot move.
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertInstanceOf(ReadConnectionRoute::class, $this->routeBehind($manager->select()));
+        $this->assertInstanceOf(
+            FixedConnectionRoute::class,
+            $this->routeBehind($manager->connection(writable: false)->select()),
+        );
+    }
+
+    public function testSelectFallsBackToThePrimaryWhenThePoolDeclaresNoReplica(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $select = $manager->select()->from('users');
+
+        $this->assertSame($primary, $this->connectionResolvedBy($select));
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testSelectStaysOnThePrimaryWhileItIsInTransaction(): void
+    {
+        // A read issued inside a write transaction has to see that transaction's
+        // own changes, so select() follows the same rule connection() applies.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        // Cache the primary first so transaction-aware routing has a Connection to inspect.
+        $manager->connection();
+        $primary->begin();
+
+        try {
+            $select = $manager->select()->from('users');
+
+            $this->assertSame($primary, $this->connectionResolvedBy($select));
+            $this->assertSame(['primary.internal:0'], $factory->invocations);
+        } finally {
+            $primary->rollback();
+        }
+    }
+
+    public function testSelectAsksForItsRouteWhenTheStatementRunsSoALaterTransactionMovesItToThePrimary(): void
+    {
+        // The route is asked for when the statement runs, not when select() is
+        // called. A builder started before begin() therefore reaches the primary
+        // when it is executed inside the transaction and sees that transaction's
+        // own changes. Pinned here because the opposite — a builder holding the
+        // connection it was started on — is what a method handing a part-built
+        // Select back to its caller would otherwise expose.
+        $primary = $this->realConnection();
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $startedBeforeTransaction = $manager->select()->from('users');
+
+        $manager->connection(writable: true)->begin();
+
+        try {
+            $startedInsideTransaction = $manager->select()->from('users');
+
+            $this->assertSame($primary, $this->connectionResolvedBy($startedBeforeTransaction));
+            $this->assertSame($primary, $this->connectionResolvedBy($startedInsideTransaction));
+
+            // Neither of them reached the replica, so it was never connected.
+            $this->assertSame(['primary.internal:0'], $factory->invocations);
+        } finally {
+            $manager->connection(writable: true)->rollback();
+        }
+    }
+
+    public function testOneBuilderAnswersFromWhicheverRouteItsTransactionStateSelects(): void
+    {
+        // The test above pins which connection a builder resolves to; this one
+        // pins what that means for the rows it returns, and does it through
+        // execute() rather than the route. The two sqlite databases are
+        // separate, standing in for a replica on its own session, and they are
+        // seeded with different values so that every answer names the route it
+        // came from: 'replica-row' exists only on the replica, 'uncommitted'
+        // only on the primary inside its open transaction.
+        //
+        // One builder is executed three times around the transaction, so a
+        // connection remembered at any level — the route or the builder — would
+        // repeat an earlier answer and fail here.
+        $primaryPdo = $this->pdoSeededWith('primary-row');
+        $replicaPdo = $this->pdoSeededWith('replica-row');
+        $primary    = new Connection($primaryPdo, 'test');
+        $replica    = new Connection($replicaPdo, 'test');
+        $factory    = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $select = $manager->select('v')->from('reads');
+
+        // No transaction yet, so the read route answers.
+        $this->assertSame([['v' => 'replica-row']], $select->execute()->asArray());
+
+        // Cache the primary first so transaction-aware routing has a Connection to inspect.
+        $manager->connection(writable: true)->begin();
+
+        try {
+            $primaryPdo->exec("UPDATE reads SET v = 'uncommitted'");
+
+            // The same builder, now inside the transaction.
+            $this->assertSame([['v' => 'uncommitted']], $select->execute()->asArray());
+        } finally {
+            $manager->connection(writable: true)->rollback();
+        }
+
+        // And back to the read route once the transaction has ended. Answering
+        // 'primary-row' here would mean the statement stayed on the primary.
+        $this->assertSame([['v' => 'replica-row']], $select->execute()->asArray());
+    }
+
+    public function testSelectResumesTheReadRouteAfterTheTransactionEnds(): void
+    {
+        $primary = $this->realConnection();
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $manager->connection();
+        $primary->begin();
+
+        $startedInsideTransaction = $manager->select()->from('users');
+        $this->assertSame($primary, $this->connectionResolvedBy($startedInsideTransaction));
+
+        $primary->rollback();
+
+        // The same builder, asked again once the transaction has ended: a route
+        // that had remembered its first answer would still say the primary.
+        $this->assertSame($replica, $this->connectionResolvedBy($startedInsideTransaction));
+        $this->assertSame(['primary.internal:0', 'replica.internal:0'], $factory->invocations);
+    }
+
+    public function testSelectHandsEveryColumnToTheBuilder(): void
+    {
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            'SELECT `id`, `name`, COUNT(*) FROM `users`',
+            $manager->select('id', 'name', Expression::of('COUNT(*)'))->from('users')->toSql(),
+        );
+
+        // Writing the statement needed no connection.
+        $this->assertSame([], $factory->invocations);
+    }
+
+    public function testSelectWritesTableNamesWithThePoolsPrefix(): void
+    {
+        $replica = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $replica);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'prefix'       => 'app_',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            'SELECT * FROM `app_users`',
+            $manager->select()->from('users')->toSql(),
+        );
+
+        // The prefix reached the grammar from the pool config, so writing the
+        // statement needed no connection.
+        $this->assertSame([], $factory->invocations);
     }
 
     public function testConnectionReusesPrimaryAcrossCalls(): void
