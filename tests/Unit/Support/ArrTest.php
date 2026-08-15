@@ -324,7 +324,7 @@ final class ArrTest extends TestCase
     public function testPluckThrowsExceptionWhenKeyIsMissing(): void
     {
         $this->expectException(\UnexpectedValueException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Pluck key \'id\' must resolve to a string or integer, got null.'
         );
 
@@ -338,7 +338,7 @@ final class ArrTest extends TestCase
     public function testPluckThrowsExceptionWhenKeyIsArray(): void
     {
         $this->expectException(\UnexpectedValueException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Pluck key \'meta\' must resolve to a string or integer, got array.'
         );
 
@@ -851,7 +851,7 @@ final class ArrTest extends TestCase
     public function testFlattenThrowsExceptionForNegativeDepth(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Depth must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Depth must not be negative, got -1.');
 
         Arr::flatten([[1, 2]], -1);
     }
@@ -859,7 +859,7 @@ final class ArrTest extends TestCase
     public function testFlattenThrowsExceptionForNegativeDepthIncludesValue(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Depth must not be negative, got -5.');
+        $this->expectExceptionMessageIsOrContains('Depth must not be negative, got -5.');
 
         Arr::flatten([[1, 2]], -5);
     }

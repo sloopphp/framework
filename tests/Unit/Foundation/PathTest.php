@@ -39,7 +39,7 @@ final class PathTest extends TestCase
     public function testInitThrowsExceptionForNonExistentDirectory(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Base path does not exist: /nonexistent/path/that/does/not/exist');
+        $this->expectExceptionMessageIsOrContains('Base path does not exist: /nonexistent/path/that/does/not/exist');
 
         Path::init('/nonexistent/path/that/does/not/exist');
     }
@@ -74,7 +74,7 @@ final class PathTest extends TestCase
     public function testBaseThrowsExceptionWhenNotInitialized(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Path has not been initialized');
+        $this->expectExceptionMessageIsOrContains('Path has not been initialized');
 
         Path::base();
     }
@@ -225,7 +225,7 @@ final class PathTest extends TestCase
     public function testInitThrowsExceptionForEmptyString(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Base path must not be empty');
+        $this->expectExceptionMessageIsOrContains('Base path must not be empty');
 
         Path::init('');
     }

@@ -285,7 +285,7 @@ final class CollectionTest extends TestCase
     public function testSumThrowsOnNonNumericItem(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Collection aggregation without a key requires numeric items.');
+        $this->expectExceptionMessageIsOrContains('Collection aggregation without a key requires numeric items.');
 
         Collection::from(['a', 'b'])->sum();
     }
@@ -293,7 +293,7 @@ final class CollectionTest extends TestCase
     public function testSumThrowsOnMissingKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Aggregation key "price" must resolve to int or float.');
+        $this->expectExceptionMessageIsOrContains('Aggregation key "price" must resolve to int or float.');
 
         Collection::from([['name' => 'x']])->sum('price');
     }
@@ -301,7 +301,7 @@ final class CollectionTest extends TestCase
     public function testSumThrowsOnCallableReturningNonNumeric(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Aggregation callable must return int or float.');
+        $this->expectExceptionMessageIsOrContains('Aggregation callable must return int or float.');
 
         Collection::from([1, 2])->sum(fn (int $n): string => (string) $n);
     }
@@ -418,7 +418,7 @@ final class CollectionTest extends TestCase
     public function testKeyByThrowsForNonScalarKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('keyBy/groupBy key must resolve to int or string.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string.');
 
         Collection::from([['id' => null]])->keyBy('id');
     }
@@ -426,7 +426,7 @@ final class CollectionTest extends TestCase
     public function testKeyByThrowsForFloatKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('keyBy/groupBy key must resolve to int or string.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string.');
 
         Collection::from([['id' => 1.5]])->keyBy('id');
     }
@@ -520,7 +520,7 @@ final class CollectionTest extends TestCase
     public function testChunkThrowsForZeroSize(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Chunk size must be at least 1, got 0.');
+        $this->expectExceptionMessageIsOrContains('Chunk size must be at least 1, got 0.');
 
         Collection::from([1, 2, 3])->chunk(0);
     }
@@ -528,7 +528,7 @@ final class CollectionTest extends TestCase
     public function testChunkThrowsForNegativeSize(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Chunk size must be at least 1, got -1.');
+        $this->expectExceptionMessageIsOrContains('Chunk size must be at least 1, got -1.');
 
         Collection::from([1, 2, 3])->chunk(-1);
     }

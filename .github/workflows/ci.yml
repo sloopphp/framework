@@ -38,7 +38,7 @@ jobs:
 
       # CI runs tests in random order every time to detect order-dependent tests.
       # On failure, pass the Random Seed from the output header to --random-order-seed
-      # to reproduce. Local runs keep the executionOrder in phpunit.xml (defects first).
+      # to reproduce. Local runs keep the executionOrder in phpunit.xml (depends).
       - name: Run tests
         run: vendor/bin/phpunit --exclude-testsuite=Integration --order-by=random
 

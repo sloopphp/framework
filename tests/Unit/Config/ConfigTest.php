@@ -57,7 +57,7 @@ final class ConfigTest extends TestCase
         // The environment name becomes a path segment whose PHP files get
         // executed, so a tainted APP_ENV must not escape the config directory.
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Invalid environment name: ../evil (only [A-Za-z0-9_-] is allowed)');
+        $this->expectExceptionMessageIsOrContains('Invalid environment name: ../evil (only [A-Za-z0-9_-] is allowed)');
 
         Config::load($this->fixturesPath, '../evil');
     }
@@ -65,7 +65,7 @@ final class ConfigTest extends TestCase
     public function testLoadThrowsForEnvironmentNameWithDirectorySeparator(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Invalid environment name: sub/dir (only [A-Za-z0-9_-] is allowed)');
+        $this->expectExceptionMessageIsOrContains('Invalid environment name: sub/dir (only [A-Za-z0-9_-] is allowed)');
 
         Config::load($this->fixturesPath, 'sub/dir');
     }
@@ -73,7 +73,7 @@ final class ConfigTest extends TestCase
     public function testLoadThrowsForNonexistentDirectory(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Config directory does not exist: /nonexistent/path');
+        $this->expectExceptionMessageIsOrContains('Config directory does not exist: /nonexistent/path');
 
         Config::load('/nonexistent/path');
     }
@@ -83,7 +83,7 @@ final class ConfigTest extends TestCase
         Config::load($this->fixturesPath);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Configuration has already been loaded');
+        $this->expectExceptionMessageIsOrContains('Configuration has already been loaded');
 
         Config::load($this->fixturesPath);
     }
@@ -93,7 +93,7 @@ final class ConfigTest extends TestCase
         $invalidPath = $this->fixturesPath . '/invalid';
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Config file must return an array, got string: ' . $invalidPath . DIRECTORY_SEPARATOR . 'broken.php'
         );
 
@@ -324,7 +324,7 @@ final class ConfigTest extends TestCase
         Config::load($this->fixturesPath);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('error');
+        $this->expectExceptionMessageIsOrContains('error');
 
         try {
             Config::withConfig(['app.name' => 'Temp'], static function (): never {
@@ -340,7 +340,7 @@ final class ConfigTest extends TestCase
         Config::load($this->fixturesPath);
 
         $this->expectException(\Error::class);
-        $this->expectExceptionMessage('fatal');
+        $this->expectExceptionMessageIsOrContains('fatal');
 
         try {
             Config::withConfig(['app.name' => 'Temp'], static function (): never {

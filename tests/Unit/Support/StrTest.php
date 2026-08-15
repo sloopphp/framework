@@ -222,7 +222,7 @@ final class StrTest extends TestCase
     public function testRandomHexThrowsExceptionForNegativeLength(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Length must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Length must not be negative, got -1.');
 
         Str::randomHex(-1);
     }
@@ -445,7 +445,7 @@ final class StrTest extends TestCase
     public function testRandomThrowsExceptionForNegativeLength(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Length must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Length must not be negative, got -1.');
 
         Str::random(-1);
     }
@@ -453,7 +453,7 @@ final class StrTest extends TestCase
     public function testRandomThrowsExceptionIncludesActualValue(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Length must not be negative, got -10.');
+        $this->expectExceptionMessageIsOrContains('Length must not be negative, got -10.');
 
         Str::random(-10);
     }
@@ -461,7 +461,7 @@ final class StrTest extends TestCase
     public function testTruncateThrowsExceptionForNegativeLimit(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Limit must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Limit must not be negative, got -1.');
 
         Str::truncate('hello', -1);
     }
@@ -469,7 +469,7 @@ final class StrTest extends TestCase
     public function testTruncateThrowsExceptionIncludesActualValue(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Limit must not be negative, got -5.');
+        $this->expectExceptionMessageIsOrContains('Limit must not be negative, got -5.');
 
         Str::truncate('hello', -5);
     }

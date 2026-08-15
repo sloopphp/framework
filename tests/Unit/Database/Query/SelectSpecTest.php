@@ -52,7 +52,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsAColumnThatIsNeitherStringNorExpression(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Columns must be a string or an Expression, got int at index 1.');
+        $this->expectExceptionMessageIsOrContains('Columns must be a string or an Expression, got int at index 1.');
 
         new SelectSpec(from: 'users', columns: ['id', 42]);
     }
@@ -60,7 +60,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsAConditionOfTheWrongType(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Conditions must be a Condition, got string at index 0.');
+        $this->expectExceptionMessageIsOrContains('Conditions must be a Condition, got string at index 0.');
 
         new SelectSpec(from: 'users', conditions: ['id = 1']);
     }
@@ -68,7 +68,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsAnOrderOfTheWrongType(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Orders must be an Order, got string at index 0.');
+        $this->expectExceptionMessageIsOrContains('Orders must be an Order, got string at index 0.');
 
         new SelectSpec(from: 'users', orders: ['id ASC']);
     }
@@ -76,7 +76,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsANegativeLimit(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Limit must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Limit must not be negative, got -1.');
 
         new SelectSpec(from: 'users', limit: -1);
     }
@@ -84,7 +84,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsANegativeOffset(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Offset must not be negative, got -5.');
+        $this->expectExceptionMessageIsOrContains('Offset must not be negative, got -5.');
 
         new SelectSpec(from: 'users', limit: 10, offset: -5);
     }
@@ -102,7 +102,7 @@ final class SelectSpecTest extends TestCase
     public function testReportsTheColumnPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Columns must be a string or an Expression, got int at index 1.');
+        $this->expectExceptionMessageIsOrContains('Columns must be a string or an Expression, got int at index 1.');
 
         new SelectSpec(from: 'users', columns: [5 => 'id', 9 => 42]);
     }
@@ -110,7 +110,7 @@ final class SelectSpecTest extends TestCase
     public function testReportsTheConditionPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Conditions must be a Condition, got string at index 1.');
+        $this->expectExceptionMessageIsOrContains('Conditions must be a Condition, got string at index 1.');
 
         new SelectSpec(from: 'users', conditions: [5 => new Condition('id', '=', 1), 9 => 'id = 1']);
     }
@@ -118,7 +118,7 @@ final class SelectSpecTest extends TestCase
     public function testReportsTheOrderPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Orders must be an Order, got string at index 1.');
+        $this->expectExceptionMessageIsOrContains('Orders must be an Order, got string at index 1.');
 
         new SelectSpec(from: 'users', orders: [5 => new Order('id'), 9 => 'id ASC']);
     }
@@ -126,7 +126,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsAnOffsetWithoutALimit(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('An offset needs a limit, because MySQL has no OFFSET without LIMIT.');
+        $this->expectExceptionMessageIsOrContains('An offset needs a limit, because MySQL has no OFFSET without LIMIT.');
 
         new SelectSpec(from: 'users', offset: 20);
     }

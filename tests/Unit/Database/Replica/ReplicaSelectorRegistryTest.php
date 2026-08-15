@@ -47,7 +47,7 @@ final class ReplicaSelectorRegistryTest extends TestCase
         ]);
 
         $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'No replica selector is registered for "round_robin". Registered: random, first.'
         );
 
@@ -59,7 +59,7 @@ final class ReplicaSelectorRegistryTest extends TestCase
         $registry = new ReplicaSelectorRegistry([]);
 
         $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'No replica selector is registered for "random". Registered: (none).'
         );
 

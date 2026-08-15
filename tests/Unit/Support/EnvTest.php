@@ -64,7 +64,7 @@ final class EnvTest extends TestCase
     public function testGetRequiredThrowsExceptionWhenNotSet(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Required environment variable \'SLOOP_NONEXISTENT_VAR\' is not set.'
         );
 
@@ -74,7 +74,7 @@ final class EnvTest extends TestCase
     public function testGetRequiredThrowsExceptionIncludesKeyName(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Required environment variable \'ANOTHER_MISSING_KEY\' is not set.'
         );
 
@@ -84,7 +84,7 @@ final class EnvTest extends TestCase
     public function testGetThrowsExceptionWhenRequiredAndDefaultBothSpecified(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Cannot specify both \'required: true\' and \'default\' for env var \'SLOOP_TEST_VAR\'.'
         );
 
@@ -94,7 +94,7 @@ final class EnvTest extends TestCase
     public function testGetThrowsExceptionIncludesKeyInMessage(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Cannot specify both \'required: true\' and \'default\' for env var \'MY_CUSTOM_KEY\'.'
         );
 
@@ -185,7 +185,7 @@ final class EnvTest extends TestCase
         putenv('SLOOP_TEST_VAR=safe');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('test error');
+        $this->expectExceptionMessageIsOrContains('test error');
 
         try {
             Env::withEnv(['SLOOP_TEST_VAR' => 'danger'], static function (): never {

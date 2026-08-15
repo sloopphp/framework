@@ -161,10 +161,13 @@ final class ConnectionManagerTest extends TestCase
 
     private function pingableConnection(): Connection
     {
-        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock = $this->createStub(PDO::class);
         $pdoMock->method('exec')
-            ->with('DO 1')
-            ->willReturn(0);
+            ->willReturnCallback(function (string $sql): int {
+                $this->assertSame('DO 1', $sql);
+
+                return 0;
+            });
 
         return new Connection($pdoMock, 'replica');
     }
@@ -190,7 +193,11 @@ final class ConnectionManagerTest extends TestCase
         $userStmt->method('fetchAll')->willReturn([]);
 
         $pdo = $this->createMock(PDO::class);
-        $pdo->method('query')->with('SELECT VERSION()')->willReturn($versionStmt);
+        $pdo->method('query')->willReturnCallback(function (string $sql) use ($versionStmt): PDOStatement {
+            $this->assertSame('SELECT VERSION()', $sql);
+
+            return $versionStmt;
+        });
         $pdo->expects($this->once())
             ->method('exec')
             ->with($expectedSetSessionSql)
@@ -210,7 +217,7 @@ final class ConnectionManagerTest extends TestCase
         ]], new AlwaysFailConnectionFactory());
 
         $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'No replica selector is registered for "round_robin". Registered: random.'
         );
 
@@ -1264,10 +1271,13 @@ final class ConnectionManagerTest extends TestCase
     {
         // Use a PDO mock that throws on exec('DO 1') so the test reproduces a
         // server-side ping failure without depending on SQLite's `DO` rejection.
-        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock = $this->createStub(PDO::class);
         $pdoMock->method('exec')
-            ->with('DO 1')
-            ->willThrowException(new \PDOException('ping failed'));
+            ->willReturnCallback(function (string $sql): never {
+                $this->assertSame('DO 1', $sql);
+
+                throw new \PDOException('ping failed');
+            });
 
         $replicaConn = new Connection($pdoMock, 'replica');
         $factory     = new ScriptedConnectionFactory();
@@ -1608,10 +1618,13 @@ final class ConnectionManagerTest extends TestCase
     {
         // PDO::exec('DO 1') throws → ping() raises DatabaseException, which the
         // probe must record as a server-wide failure (matches request-time semantics).
-        $pdoMock = $this->createMock(PDO::class);
+        $pdoMock = $this->createStub(PDO::class);
         $pdoMock->method('exec')
-            ->with('DO 1')
-            ->willThrowException(new \PDOException('ping failed'));
+            ->willReturnCallback(function (string $sql): never {
+                $this->assertSame('DO 1', $sql);
+
+                throw new \PDOException('ping failed');
+            });
 
         $replicaConn = new Connection($pdoMock, 'replica');
         $factory     = new ScriptedConnectionFactory();

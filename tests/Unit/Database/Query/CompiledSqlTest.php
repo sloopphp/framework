@@ -30,7 +30,7 @@ final class CompiledSqlTest extends TestCase
     public function testRejectsBindingsThatAreNotAList(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIsOrContains(
             'Bindings must be a list, so that their order matches the placeholders in the SQL.',
         );
 
@@ -40,7 +40,7 @@ final class CompiledSqlTest extends TestCase
     public function testRejectsABindingPdoCannotSend(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Bindings must be scalar or null, got stdClass at index 1.');
+        $this->expectExceptionMessageIsOrContains('Bindings must be scalar or null, got stdClass at index 1.');
 
         new CompiledSql('SELECT ?, ?', [1, new stdClass()]);
     }

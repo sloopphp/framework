@@ -64,7 +64,7 @@ final class SelectTest extends TestCase
     public function testCompilingWithoutATableIsRejected(): void
     {
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessage('call from()');
+        $this->expectExceptionMessageIsOrContains('call from()');
 
         $this->connection->select('id')->toSql();
     }
@@ -128,7 +128,7 @@ final class SelectTest extends TestCase
     public function testComparingAgainstNullIsRejectedInTheTwoArgumentForm(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('never true');
+        $this->expectExceptionMessageIsOrContains('never true');
 
         $this->connection->select()->from('users')->where('deleted_at', null);
     }
@@ -136,7 +136,7 @@ final class SelectTest extends TestCase
     public function testComparingAgainstNullIsRejectedInTheThreeArgumentForm(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('never true');
+        $this->expectExceptionMessageIsOrContains('never true');
 
         $this->connection->select()->from('users')->where('deleted_at', '=', null);
     }
@@ -144,7 +144,7 @@ final class SelectTest extends TestCase
     public function testAnOperatorThatIsNotAStringIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('A comparison operator must be a string, got int.');
+        $this->expectExceptionMessageIsOrContains('A comparison operator must be a string, got int.');
 
         $this->connection->select()->from('users')->where('id', 10, 20);
     }
@@ -152,7 +152,7 @@ final class SelectTest extends TestCase
     public function testAnUnsupportedOperatorIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Unsupported comparison operator');
+        $this->expectExceptionMessageIsOrContains('Unsupported comparison operator');
 
         $this->connection->select()->from('users')->where('id', 'IS', 10);
     }
@@ -192,7 +192,7 @@ final class SelectTest extends TestCase
     public function testAnUnknownSortDirectionIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('A sort direction is ASC or DESC, got "sideways".');
+        $this->expectExceptionMessageIsOrContains('A sort direction is ASC or DESC, got "sideways".');
 
         $this->connection->select()->from('users')->orderBy('name', 'sideways');
     }
@@ -244,7 +244,7 @@ final class SelectTest extends TestCase
     public function testANegativeLimitIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Limit must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Limit must not be negative, got -1.');
 
         $this->connection->select()->from('users')->limit(-1);
     }
@@ -252,7 +252,7 @@ final class SelectTest extends TestCase
     public function testANegativeOffsetIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Offset must not be negative, got -1.');
+        $this->expectExceptionMessageIsOrContains('Offset must not be negative, got -1.');
 
         $this->connection->select()->from('users')->offset(-1);
     }
@@ -260,7 +260,7 @@ final class SelectTest extends TestCase
     public function testAnOffsetWithoutALimitIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('offset needs a limit');
+        $this->expectExceptionMessageIsOrContains('offset needs a limit');
 
         $this->connection->select()->from('users')->offset(10)->toSql();
     }

@@ -708,7 +708,7 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(LogManager::class, $manager);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Custom log factory must implement ChannelFactoryInterface: ' . InvalidChannelFactory::class);
+        $this->expectExceptionMessageIsOrContains('Custom log factory must implement ChannelFactoryInterface: ' . InvalidChannelFactory::class);
 
         $manager->channel('bad');
     }
