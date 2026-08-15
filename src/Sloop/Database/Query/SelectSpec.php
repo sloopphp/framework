@@ -29,9 +29,9 @@ final readonly class SelectSpec
     public array $columns;
 
     /**
-     * Conditions of the WHERE clause, in the order they were added.
+     * Parts of the WHERE clause, in the order they were added.
      *
-     * @var list<Condition>
+     * @var list<WherePart>
      */
     public array $conditions;
 
@@ -47,7 +47,7 @@ final readonly class SelectSpec
      *
      * @param  string                   $from       Table to select from, optionally schema qualified
      * @param  array<int|string, mixed> $columns    Column names or Expressions; empty selects everything
-     * @param  array<int|string, mixed> $conditions Condition instances for the WHERE clause
+     * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
      * @param  array<int|string, mixed> $orders     Order instances for the ORDER BY clause
      * @param  int|null                 $limit      Maximum number of rows, or null for no limit
      * @param  int|null                 $offset     Rows to skip; needs a limit
@@ -103,20 +103,20 @@ final readonly class SelectSpec
     }
 
     /**
-     * Reindex the conditions as a list and reject anything that is not a Condition.
+     * Reindex the conditions as a list and reject anything that is not a WherePart.
      *
-     * @param  array<int|string, mixed> $conditions Condition instances
-     * @return list<Condition>          Conditions as a list
-     * @throws InvalidArgumentException When an element is not a Condition
+     * @param  array<int|string, mixed> $conditions WherePart instances
+     * @return list<WherePart>          Parts of the WHERE clause as a list
+     * @throws InvalidArgumentException When an element is not a WherePart
      */
     private static function toConditions(array $conditions): array
     {
         $comparisons = [];
 
         foreach (array_values($conditions) as $index => $condition) {
-            if (!$condition instanceof Condition) {
+            if (!$condition instanceof WherePart) {
                 throw new InvalidArgumentException(
-                    'Conditions must be a Condition, got ' . get_debug_type($condition) . ' at index ' . $index . '.',
+                    'Conditions must be a WherePart, got ' . get_debug_type($condition) . ' at index ' . $index . '.',
                 );
             }
 

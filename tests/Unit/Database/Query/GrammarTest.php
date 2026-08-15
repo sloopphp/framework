@@ -7,14 +7,17 @@ namespace Sloop\Tests\Unit\Database\Query;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\Query\BetweenCondition;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Condition;
 use Sloop\Database\Query\Conjunction;
 use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\InCondition;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\SelectSpec;
+use Sloop\Database\Query\WherePart;
 
 final class GrammarTest extends TestCase
 {
@@ -528,7 +531,7 @@ final class GrammarTest extends TestCase
                 return new CompiledSql('/*reference*/' . $compiled->sql, $compiled->bindings);
             }
 
-            protected function compileValue(string|int|float|bool|Expression $value): CompiledSql
+            protected function compileValue(string|int|float|bool|Expression|null $value): CompiledSql
             {
                 $compiled = parent::compileValue($value);
 
@@ -551,6 +554,69 @@ final class GrammarTest extends TestCase
             . ' LIMIT 5/*limit*/',
             $compiled->sql,
         );
+    }
+
+    public function testEveryKindOfConditionIsOpenToASubclass(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileComparison(Condition $condition): CompiledSql
+            {
+                $compiled = parent::compileComparison($condition);
+
+                return new CompiledSql('/*comparison*/' . $compiled->sql, $compiled->bindings);
+            }
+
+            protected function compileIn(InCondition $condition): CompiledSql
+            {
+                $compiled = parent::compileIn($condition);
+
+                return new CompiledSql('/*in*/' . $compiled->sql, $compiled->bindings);
+            }
+
+            protected function compileBetween(BetweenCondition $condition): CompiledSql
+            {
+                $compiled = parent::compileBetween($condition);
+
+                return new CompiledSql('/*between*/' . $compiled->sql, $compiled->bindings);
+            }
+
+            protected function compileWherePart(WherePart $part): CompiledSql
+            {
+                $compiled = parent::compileWherePart($part);
+
+                return new CompiledSql('/*part*/' . $compiled->sql, $compiled->bindings);
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [
+                new Condition('status', '=', 'active'),
+                new InCondition('id', [1, 2]),
+                new BetweenCondition('age', 18, 65),
+            ],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE /*part*//*comparison*/`status` = ?'
+            . ' AND /*part*//*in*/`id` IN (?, ?)'
+            . ' AND /*part*//*between*/`age` BETWEEN ? AND ?',
+            $compiled->sql,
+        );
+        $this->assertSame(['active', 1, 2, 18, 65], $compiled->bindings);
+    }
+
+    public function testAPartOfTheClauseWithNoCompilingRuleIsRejected(): void
+    {
+        $unknown = new readonly class () extends WherePart {
+        };
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'No rule for compiling ' . get_debug_type($unknown) . ' as part of a WHERE clause.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(from: 'users', conditions: [$unknown]));
     }
 
     public function testSubclassCanReplaceASingleClause(): void
