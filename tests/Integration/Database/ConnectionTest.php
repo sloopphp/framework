@@ -12,9 +12,12 @@ use Sloop\Database\Exception\SyntaxErrorException;
 use Sloop\Database\Exception\UniqueConstraintViolationException;
 use Sloop\Database\IsolationLevel;
 use Sloop\Tests\Support\IntegrationTestCase;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class ConnectionTest extends IntegrationTestCase
 {
+    use ThrowsAssertions;
+
     private Connection $connection;
 
     protected function setUp(): void
@@ -157,8 +160,11 @@ final class ConnectionTest extends IntegrationTestCase
             ['alice'],
         );
 
-        try {
-            $this->connection->transaction(function (Connection $db): void {
+        // The throw is the point of this test; the exception's field
+        // mapping is verified by testUniqueConstraintViolationIsMapped.
+        $this->assertThrows(
+            UniqueConstraintViolationException::class,
+            fn () => $this->connection->transaction(function (Connection $db): void {
                 $db->statement(
                     'INSERT INTO sloop_connection_test (name) VALUES (?)',
                     ['bob'],
@@ -167,12 +173,8 @@ final class ConnectionTest extends IntegrationTestCase
                     'INSERT INTO sloop_connection_test (name) VALUES (?)',
                     ['alice'],
                 );
-            });
-            $this->fail('Expected UniqueConstraintViolationException');
-        } catch (UniqueConstraintViolationException) {
-            // The throw is the point of this test; the exception's field
-            // mapping is verified by testUniqueConstraintViolationIsMapped.
-        }
+            }),
+        );
 
         $this->assertFalse($this->connection->inTransaction());
         $rows = $this->connection->query(

@@ -18,9 +18,12 @@ use Sloop\Database\Exception\SyntaxErrorException;
 use Sloop\Database\Exception\UniqueConstraintViolationException;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class DatabaseExceptionTest extends TestCase
 {
+    use ThrowsAssertions;
+
     // -------------------------------------------------------
     // DatabaseException
     // -------------------------------------------------------
@@ -238,11 +241,8 @@ final class DatabaseExceptionTest extends TestCase
         $caught = [];
 
         foreach ([new DeadlockException(), new LockWaitTimeoutException()] as $e) {
-            try {
-                throw $e;
-            } catch (QueryException $caught_e) {
-                $caught[] = $caught_e::class;
-            }
+            $caught_e = $this->assertThrows(QueryException::class, static fn () => throw $e);
+            $caught[] = $caught_e::class;
         }
 
         $this->assertSame([
@@ -256,11 +256,8 @@ final class DatabaseExceptionTest extends TestCase
         $caught = [];
 
         foreach ([new UniqueConstraintViolationException(), new ForeignKeyViolationException()] as $e) {
-            try {
-                throw $e;
-            } catch (ConstraintViolationException $caught_e) {
-                $caught[] = $caught_e::class;
-            }
+            $caught_e = $this->assertThrows(ConstraintViolationException::class, static fn () => throw $e);
+            $caught[] = $caught_e::class;
         }
 
         $this->assertSame([

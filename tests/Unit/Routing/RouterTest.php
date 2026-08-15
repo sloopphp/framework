@@ -7,9 +7,12 @@ namespace Sloop\Tests\Unit\Routing;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Routing\Router;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class RouterTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private Router $router;
 
     protected function setUp(): void
@@ -247,14 +250,13 @@ final class RouterTest extends TestCase
     {
         $this->router->get('/before', 'BeforeController', 'index');
 
-        try {
-            $this->router->group(['middleware' => ['AuthMiddleware'], 'prefix' => '/admin'], function (Router $router): void {
+        $e = $this->assertThrows(
+            \RuntimeException::class,
+            fn () => $this->router->group(['middleware' => ['AuthMiddleware'], 'prefix' => '/admin'], function (Router $router): void {
                 throw new \RuntimeException('boom');
-            });
-            $this->fail('Expected RuntimeException was not thrown');
-        } catch (\RuntimeException $e) {
-            $this->assertSame('boom', $e->getMessage());
-        }
+            }),
+        );
+        $this->assertSame('boom', $e->getMessage());
 
         $this->router->get('/after', 'AfterController', 'index');
         $routes = $this->router->routes;

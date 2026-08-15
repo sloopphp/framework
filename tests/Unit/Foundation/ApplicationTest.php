@@ -34,6 +34,7 @@ use Sloop\Log\LogManager;
 use Sloop\Log\TraceContext;
 use Sloop\Routing\Router;
 use Sloop\Tests\Support\JsonBodyAssertions;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\HealthController;
 use Sloop\Tests\Unit\Foundation\Stub\InvalidChannelFactory;
 use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
@@ -66,6 +67,8 @@ use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
  */
 final class ApplicationTest extends TestCase
 {
+    use ThrowsAssertions;
+
     use JsonBodyAssertions;
 
     private string $tmpDir;
@@ -1078,12 +1081,8 @@ final class ApplicationTest extends TestCase
         $manager = $app->container->get(ConnectionManager::class);
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
-        try {
-            $manager->connection();
-            $this->fail('Expected LogicException from custom factory');
-        } catch (\LogicException $e) {
-            $this->assertSame('custom factory was used', $e->getMessage());
-        }
+        $e = $this->assertThrows(\LogicException::class, static fn () => $manager->connection());
+        $this->assertSame('custom factory was used', $e->getMessage());
     }
 
     public function testConnectionManagerThrowsWhenConnectionFactoryBindingIsInvalid(): void
@@ -1092,15 +1091,11 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(ConnectionFactory::class, new \stdClass());
 
-        try {
-            $app->container->get(ConnectionManager::class);
-            $this->fail('Expected RuntimeException');
-        } catch (\RuntimeException $e) {
-            $this->assertSame(
-                'Container binding for ' . ConnectionFactory::class . ' must implement ConnectionFactory.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $this->assertSame(
+            'Container binding for ' . ConnectionFactory::class . ' must implement ConnectionFactory.',
+            $e->getMessage(),
+        );
     }
 
     public function testReplicaSelectorRegistryIsRegisteredAsSingleton(): void
@@ -1155,15 +1150,11 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(ReplicaSelectorRegistry::class, new \stdClass());
 
-        try {
-            $app->container->get(ConnectionManager::class);
-            $this->fail('Expected RuntimeException');
-        } catch (\RuntimeException $e) {
-            $this->assertSame(
-                'Container binding for ' . ReplicaSelectorRegistry::class . ' must be a ReplicaSelectorRegistry.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $this->assertSame(
+            'Container binding for ' . ReplicaSelectorRegistry::class . ' must be a ReplicaSelectorRegistry.',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionManagerThrowsWhenDeadReplicaCacheBindingIsInvalid(): void
@@ -1172,15 +1163,11 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(DeadReplicaCache::class, new \stdClass());
 
-        try {
-            $app->container->get(ConnectionManager::class);
-            $this->fail('Expected RuntimeException');
-        } catch (\RuntimeException $e) {
-            $this->assertSame(
-                'Container binding for ' . DeadReplicaCache::class . ' must implement DeadReplicaCache.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $this->assertSame(
+            'Container binding for ' . DeadReplicaCache::class . ' must implement DeadReplicaCache.',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionManagerThrowsWhenLogManagerBindingIsInvalid(): void
@@ -1189,15 +1176,11 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(LogManager::class, new \stdClass());
 
-        try {
-            $app->container->get(ConnectionManager::class);
-            $this->fail('Expected RuntimeException');
-        } catch (\RuntimeException $e) {
-            $this->assertSame(
-                'Container binding for ' . LogManager::class . ' must be a LogManager.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $this->assertSame(
+            'Container binding for ' . LogManager::class . ' must be a LogManager.',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionManagerLoggerIsBoundToDatabaseChannel(): void
@@ -1237,11 +1220,8 @@ final class ApplicationTest extends TestCase
         $manager = $app->container->get(ConnectionManager::class);
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
-        try {
-            $manager->connection()->query('NOT VALID SQL');
-        } catch (QueryException) {
-            // expected — failure log should land on the database channel
-        }
+        // expected — failure log should land on the database channel
+        $this->assertThrows(QueryException::class, static fn () => $manager->connection()->query('NOT VALID SQL'));
 
         // Error landing on the `database` channel proves Application::createConnectionManager
         // resolved LogManager and passed channel('database') down to the manager,
@@ -1379,15 +1359,11 @@ final class ApplicationTest extends TestCase
 
         // If default = "primary" reached the ConnectionManager, the absence of
         // "primary" in connections must surface as "[primary] is not defined".
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [primary] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [primary] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseConnectionsAreInjected(): void
@@ -1408,15 +1384,11 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // If connections.primary reached the Resolver, its required-key check fires.
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [primary]: missing required config key "database".',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Connection [primary]: missing required config key "database".',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseConnectionsSkipsInvalidEntries(): void
@@ -1447,15 +1419,11 @@ final class ApplicationTest extends TestCase
 
         // audit appears after the invalid entries; reaching it via the validation
         // error confirms iteration continues (instead of breaking on the first invalid).
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [audit]: missing required config key "database".',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Connection [audit]: missing required config key "database".',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseConnectionsFiltersNumericKeysInsideConnection(): void
@@ -1479,15 +1447,11 @@ final class ApplicationTest extends TestCase
         // When int keys are stripped by filterStringKeys, the Resolver only
         // sees string keys and reports "missing required config key" instead
         // of "unsupported config key 0".
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [primary]: missing required config key "database".',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Connection [primary]: missing required config key "database".',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseDefaultFallsBackWhenNotString(): void
@@ -1508,15 +1472,11 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Non-string default falls back to "" — "[]" is not present in connections.
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseConnectionsIgnoredWhenNotArray(): void
@@ -1531,15 +1491,11 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Non-array connections fall back to []; "[primary]" is not present.
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [primary] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [primary] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseFallsBackWhenConfigNotLoaded(): void
@@ -1552,15 +1508,11 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Config::isLoaded() is false → defaultName='' and configs=[].
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testConfigDatabaseFallsBackWhenKeysAreMissing(): void
@@ -1574,14 +1526,10 @@ final class ApplicationTest extends TestCase
         // database.default and database.connections are both undefined.
         // Config::get returns null, and is_string(null) / is_array(null) both
         // fall through to the same defaults as the explicit non-string/non-array cases.
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [] is not defined.',
+            $e->getMessage(),
+        );
     }
 }

@@ -29,12 +29,15 @@ use Sloop\Database\ReadConnectionRoute;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Tests\Support\MutableClock;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Database\Stub\AlwaysFailConnectionFactory;
 use Sloop\Tests\Unit\Database\Stub\FixedReplicaSelector;
 use Sloop\Tests\Unit\Database\Stub\ScriptedConnectionFactory;
 
 final class ConnectionManagerTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private FixedReplicaSelector $selector;
 
     private InMemoryDeadReplicaCache $deadCache;
@@ -229,15 +232,11 @@ final class ConnectionManagerTest extends TestCase
     {
         $manager = $this->manager('master', [], new AlwaysFailConnectionFactory());
 
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [master] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [master] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionFailsWhenDefaultNameDiffersFromAvailableConfig(): void
@@ -250,15 +249,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [analytics] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Database connection [analytics] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionPropagatesValidationErrorsFromResolver(): void
@@ -270,15 +265,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [master]: missing required config key "host".',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Connection [master]: missing required config key "host".',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionRejectsUnsupportedDriver(): void
@@ -291,15 +282,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                "Connection [master]: unsupported driver \"sqlite\". Only 'mysql' is supported.",
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            "Connection [master]: unsupported driver \"sqlite\". Only 'mysql' is supported.",
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionRejectsUnknownConfigKey(): void
@@ -313,15 +300,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [master]: unsupported config key "foo".',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Connection [master]: unsupported config key "foo".',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionPropagatesPoolStructureValidationError(): void
@@ -337,15 +320,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        try {
-            $manager->connection();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [master]: "read[0]" has unsupported key "health_check". Pool-level keys must be set on the pool itself, not inside read[].',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $this->assertSame(
+            'Connection [master]: "read[0]" has unsupported key "health_check". Pool-level keys must be set on the pool itself, not inside read[].',
+            $e->getMessage(),
+        );
     }
 
     public function testConnectionPropagatesFactoryExceptions(): void
@@ -365,12 +344,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $throwingFactory);
 
-        try {
-            $manager->connection();
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException $e) {
-            $this->assertSame('simulated connect failure', $e->getMessage());
-        }
+        $e = $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection());
+        $this->assertSame('simulated connect failure', $e->getMessage());
     }
 
     // -------------------------------------------------------
@@ -826,12 +801,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException $e) {
-            $this->assertSame('refused', $e->getMessage());
-        }
+        $e = $this->assertThrows(
+            DatabaseConnectionException::class,
+            static fn () => $manager->connection(writable: false),
+        );
+        $this->assertSame('refused', $e->getMessage());
     }
 
     public function testReplicaRouteReturnsHealthyReplicaWithoutPing(): void
@@ -1001,17 +975,16 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException $e) {
-            // port is null in ValidatedConfig → formatAttemptError renders it as "?"
-            $message = $e->getMessage();
-            $this->assertStringContainsString('Failed to obtain a read connection for pool [master]', $message);
-            $this->assertStringContainsString('(replica + primary fallback exhausted)', $message);
-            $this->assertStringContainsString('replica.internal:? → refused', $message);
-            $this->assertStringContainsString('primary.internal:? → refused', $message);
-        }
+        $e = $this->assertThrows(
+            DatabaseConnectionException::class,
+            static fn () => $manager->connection(writable: false),
+        );
+        // port is null in ValidatedConfig → formatAttemptError renders it as "?"
+        $message = $e->getMessage();
+        $this->assertStringContainsString('Failed to obtain a read connection for pool [master]', $message);
+        $this->assertStringContainsString('(replica + primary fallback exhausted)', $message);
+        $this->assertStringContainsString('replica.internal:? → refused', $message);
+        $this->assertStringContainsString('primary.internal:? → refused', $message);
     }
 
     public function testReplicaRouteIncludesSkippedDeadCacheReplicasInErrorMessage(): void
@@ -1044,15 +1017,14 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException $e) {
-            $message = $e->getMessage();
-            $this->assertStringContainsString('replica1.internal:? → skipped (dead-cache)', $message);
-            $this->assertStringContainsString('replica2.internal:? → refused', $message);
-            $this->assertStringContainsString('primary.internal:? → refused', $message);
-        }
+        $e       = $this->assertThrows(
+            DatabaseConnectionException::class,
+            static fn () => $manager->connection(writable: false),
+        );
+        $message = $e->getMessage();
+        $this->assertStringContainsString('replica1.internal:? → skipped (dead-cache)', $message);
+        $this->assertStringContainsString('replica2.internal:? → refused', $message);
+        $this->assertStringContainsString('primary.internal:? → refused', $message);
     }
 
     public function testDiagnosticMessageRendersDeclaredPortsRatherThanThePlaceholder(): void
@@ -1090,15 +1062,14 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException $e) {
-            $message = $e->getMessage();
-            $this->assertStringContainsString('replica1.internal:3307 → skipped (dead-cache)', $message);
-            $this->assertStringContainsString('replica2.internal:3308 → refused', $message);
-            $this->assertStringContainsString('primary.internal:3309 → refused', $message);
-        }
+        $e       = $this->assertThrows(
+            DatabaseConnectionException::class,
+            static fn () => $manager->connection(writable: false),
+        );
+        $message = $e->getMessage();
+        $this->assertStringContainsString('replica1.internal:3307 → skipped (dead-cache)', $message);
+        $this->assertStringContainsString('replica2.internal:3308 → refused', $message);
+        $this->assertStringContainsString('primary.internal:3309 → refused', $message);
     }
 
     public function testReplicaRoutePassesReplicaPortToDeadCache(): void
@@ -1121,12 +1092,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // A non-default port is required here: the key falls back to 3306 when
         // `port` is omitted, so asserting with 3306 could not tell the
@@ -1159,12 +1126,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         $this->assertSame(['replica1.internal:0'], $factory->invocations);
     }
@@ -1189,12 +1152,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // server-wide dead → also dead in any other pool
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
@@ -1221,12 +1180,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // pool-specific dead → dead for 'master', alive for other pool
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
@@ -1256,12 +1211,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
         $this->assertFalse($this->deadCache->isDead('replica.internal', 3306, 'unrelated_pool'));
@@ -1294,12 +1245,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection(writable: false);
-            $this->fail('Expected DatabaseConnectionException');
-        } catch (DatabaseConnectionException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // ping failure → server-wide dead: live in master and any other pool
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
@@ -1870,15 +1817,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new ScriptedConnectionFactory());
 
-        try {
-            $manager->probeReplicas('analytics');
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Database connection [analytics] is not defined.',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->probeReplicas('analytics'));
+        $this->assertSame(
+            'Database connection [analytics] is not defined.',
+            $e->getMessage(),
+        );
     }
 
     public function testProbeReplicasPropagatesValidationErrorsFromResolver(): void
@@ -1890,15 +1833,11 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new ScriptedConnectionFactory());
 
-        try {
-            $manager->probeReplicas();
-            $this->fail('Expected InvalidConfigException');
-        } catch (InvalidConfigException $e) {
-            $this->assertSame(
-                'Connection [master]: missing required config key "host".',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->probeReplicas());
+        $this->assertSame(
+            'Connection [master]: missing required config key "host".',
+            $e->getMessage(),
+        );
     }
 
     // -------------------------------------------------------
@@ -1931,12 +1870,8 @@ final class ConnectionManagerTest extends TestCase
         $connection = $manager->connection();
 
         // Trigger an error to verify the logger is wired into the Connection.
-        try {
-            $connection->query('NOT VALID SQL');
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(QueryException::class, static fn () => $connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -1971,12 +1906,8 @@ final class ConnectionManagerTest extends TestCase
 
         $connection = $manager->connection(writable: false);
 
-        try {
-            $connection->query('NOT VALID SQL');
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        // empty
+        $this->assertThrows(QueryException::class, static fn () => $connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -2132,11 +2063,8 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        try {
-            $manager->connection()->query('NOT VALID SQL');
-        } catch (QueryException $e) {
-            $this->assertSame('master', $e->connectionName);
-        }
+        $e = $this->assertThrows(QueryException::class, static fn () => $manager->connection()->query('NOT VALID SQL'));
+        $this->assertSame('master', $e->connectionName);
     }
 
     // -------------------------------------------------------
@@ -2699,12 +2627,8 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         foreach ([1, 2] as $attempt) {
-            try {
-                $manager->connection();
-                $this->fail('Expected DatabaseException on attempt ' . $attempt);
-            } catch (DatabaseException) {
-                // empty
-            }
+            // empty
+            $this->assertThrows(DatabaseException::class, static fn () => $manager->connection());
         }
 
         // Two builds, not one cached failure replayed.

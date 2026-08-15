@@ -10,6 +10,7 @@ use RuntimeException;
 use Sloop\Database\Connection;
 use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\IsolationLevel;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Database\Stub\RecordingSqlite;
 
 /*
@@ -32,6 +33,8 @@ use Sloop\Tests\Unit\Database\Stub\RecordingSqlite;
  */
 final class ConnectionQueryEmissionTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private RecordingSqlite $pdo;
 
     private Connection $connection;
@@ -84,15 +87,15 @@ final class ConnectionQueryEmissionTest extends TestCase
 
     public function testFailedTransactionRollsBackWithoutCommitting(): void
     {
-        try {
-            $this->connection->transaction(function (): void {
+        // The rollback is the subject; the exception itself is covered elsewhere.
+        $this->assertThrows(
+            RuntimeException::class,
+            fn () => $this->connection->transaction(function (): void {
                 $this->connection->statement('INSERT INTO users (id, name) VALUES (?, ?)', [1, 'alice']);
 
                 throw new RuntimeException('boom');
-            });
-        } catch (RuntimeException) {
-            // The rollback is the subject; the exception itself is covered elsewhere.
-        }
+            }),
+        );
 
         $this->assertSame(
             [
