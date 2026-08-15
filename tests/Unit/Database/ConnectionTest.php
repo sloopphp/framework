@@ -753,7 +753,6 @@ final class ConnectionTest extends TestCase
     {
         $handler = $this->attachLogger($this->connection);
 
-        // empty
         $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
@@ -770,7 +769,6 @@ final class ConnectionTest extends TestCase
     {
         $handler = $this->attachLogger($this->connection);
 
-        // empty
         $this->assertThrows(QueryException::class, fn () => $this->connection->statement('NOT VALID SQL'));
 
         $records = $handler->getRecords();
@@ -799,7 +797,6 @@ final class ConnectionTest extends TestCase
             new LoggingOptions(logBindings: false),
         );
 
-        // empty
         $this->assertThrows(
             QueryException::class,
             fn () => $this->connection->statement('INSERT INTO unknown_table (name) VALUES (?)', ['secret']),
@@ -817,7 +814,6 @@ final class ConnectionTest extends TestCase
 
         $handler = $this->attachLogger($this->connection);
 
-        // empty
         $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
@@ -829,7 +825,6 @@ final class ConnectionTest extends TestCase
     {
         $handler = $this->attachLogger($this->connection);
 
-        // empty
         $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
@@ -1051,7 +1046,6 @@ final class ConnectionTest extends TestCase
         $connection = new Connection($pdo, 'rollback_test');
         $handler    = $this->attachLogger($connection);
 
-        // empty
         $this->assertThrows(
             RuntimeException::class,
             static fn () => $connection->transaction(static function (): void {

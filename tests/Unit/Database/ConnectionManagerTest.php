@@ -1092,7 +1092,6 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        // empty
         $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // A non-default port is required here: the key falls back to 3306 when
@@ -1126,7 +1125,6 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        // empty
         $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         $this->assertSame(['replica1.internal:0'], $factory->invocations);
@@ -1152,7 +1150,6 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        // empty
         $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // server-wide dead → also dead in any other pool
@@ -1180,7 +1177,6 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        // empty
         $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // pool-specific dead → dead for 'master', alive for other pool
@@ -1211,7 +1207,6 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        // empty
         $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         $this->assertTrue($this->deadCache->isDead('replica.internal', 3306, 'master'));
@@ -1245,7 +1240,6 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], $factory);
 
-        // empty
         $this->assertThrows(DatabaseConnectionException::class, static fn () => $manager->connection(writable: false));
 
         // ping failure → server-wide dead: live in master and any other pool
@@ -1870,7 +1864,6 @@ final class ConnectionManagerTest extends TestCase
         $connection = $manager->connection();
 
         // Trigger an error to verify the logger is wired into the Connection.
-        // empty
         $this->assertThrows(QueryException::class, static fn () => $connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
@@ -1906,7 +1899,6 @@ final class ConnectionManagerTest extends TestCase
 
         $connection = $manager->connection(writable: false);
 
-        // empty
         $this->assertThrows(QueryException::class, static fn () => $connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
@@ -2627,7 +2619,6 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         foreach ([1, 2] as $attempt) {
-            // empty
             $this->assertThrows(DatabaseException::class, static fn () => $manager->connection());
         }
 
