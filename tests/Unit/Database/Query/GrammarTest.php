@@ -556,6 +556,39 @@ final class GrammarTest extends TestCase
         );
     }
 
+    public function testAMembershipTestCarriesTheBindingsOfItsExpressionsInPlaceholderOrder(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [
+                new InCondition(
+                    Expression::of('IF(?, `a`, `b`)', [1]),
+                    ['x', Expression::of('GREATEST(?, ?)', [2, 3])],
+                ),
+            ],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE IF(?, `a`, `b`) IN (?, GREATEST(?, ?))',
+            $compiled->sql,
+        );
+        $this->assertSame([1, 'x', 2, 3], $compiled->bindings);
+    }
+
+    public function testARangeTestCarriesTheBindingsOfItsExpressionsInPlaceholderOrder(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new BetweenCondition('age', Expression::of('GREATEST(?, ?)', [1, 2]), 65)],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `age` BETWEEN GREATEST(?, ?) AND ?',
+            $compiled->sql,
+        );
+        $this->assertSame([1, 2, 65], $compiled->bindings);
+    }
+
     public function testEveryKindOfConditionIsOpenToASubclass(): void
     {
         $grammar = new class () extends Grammar {
