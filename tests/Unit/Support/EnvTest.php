@@ -8,9 +8,12 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Support\Env;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class EnvTest extends TestCase
 {
+    use ThrowsAssertions;
+
     protected function setUp(): void
     {
         Env::reset();
@@ -184,16 +187,15 @@ final class EnvTest extends TestCase
     {
         putenv('SLOOP_TEST_VAR=safe');
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageIsOrContains('test error');
-
-        try {
-            Env::withEnv(['SLOOP_TEST_VAR' => 'danger'], static function (): never {
+        $thrown = $this->assertThrows(
+            RuntimeException::class,
+            static fn (): mixed => Env::withEnv(['SLOOP_TEST_VAR' => 'danger'], static function (): never {
                 throw new RuntimeException('test error');
-            });
-        } finally {
-            $this->assertSame('safe', Env::get('SLOOP_TEST_VAR'));
-        }
+            }),
+        );
+
+        $this->assertSame('test error', $thrown->getMessage());
+        $this->assertSame('safe', Env::get('SLOOP_TEST_VAR'));
     }
 
     public function testWithEnvOverridesCacheInImmutableMode(): void

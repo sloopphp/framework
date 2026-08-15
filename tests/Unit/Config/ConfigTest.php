@@ -7,9 +7,12 @@ namespace Sloop\Tests\Unit\Config;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Config\Config;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class ConfigTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private string $fixturesPath;
 
     protected function setUp(): void
@@ -323,32 +326,30 @@ final class ConfigTest extends TestCase
     {
         Config::load($this->fixturesPath);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageIsOrContains('error');
-
-        try {
-            Config::withConfig(['app.name' => 'Temp'], static function (): never {
+        $thrown = $this->assertThrows(
+            RuntimeException::class,
+            static fn (): mixed => Config::withConfig(['app.name' => 'Temp'], static function (): never {
                 throw new RuntimeException('error');
-            });
-        } finally {
-            $this->assertSame('Sloop', Config::get('app.name'));
-        }
+            }),
+        );
+
+        $this->assertSame('error', $thrown->getMessage());
+        $this->assertSame('Sloop', Config::get('app.name'));
     }
 
     public function testWithConfigRestoresOnError(): void
     {
         Config::load($this->fixturesPath);
 
-        $this->expectException(\Error::class);
-        $this->expectExceptionMessageIsOrContains('fatal');
-
-        try {
-            Config::withConfig(['app.name' => 'Temp'], static function (): never {
+        $thrown = $this->assertThrows(
+            \Error::class,
+            static fn (): mixed => Config::withConfig(['app.name' => 'Temp'], static function (): never {
                 throw new \Error('fatal');
-            });
-        } finally {
-            $this->assertSame('Sloop', Config::get('app.name'));
-        }
+            }),
+        );
+
+        $this->assertSame('fatal', $thrown->getMessage());
+        $this->assertSame('Sloop', Config::get('app.name'));
     }
 
     public function testWithConfigReturnsCallbackResult(): void

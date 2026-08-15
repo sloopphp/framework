@@ -6,10 +6,13 @@ namespace Sloop\Tests\Integration\Support;
 
 use LogicException;
 use PHPUnit\Framework\Attributes\Depends;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Support\TransactionalIntegrationTestCase;
 
 final class TransactionalIntegrationTestCaseTest extends TransactionalIntegrationTestCase
 {
+    use ThrowsAssertions;
+
     private const string TABLE = 'sloop_transactional_fixture_test';
 
     #[\Override]
@@ -61,12 +64,8 @@ final class TransactionalIntegrationTestCaseTest extends TransactionalIntegratio
         // report it rather than roll back whatever happens to be open.
         $this->connection->commit();
 
-        try {
-            $this->tearDown();
-            $this->fail('Expected tearDown() to reject the committed fixture transaction.');
-        } catch (LogicException $e) {
-            $this->assertStringContainsString('committed its writes', $e->getMessage());
-        }
+        $e = $this->assertThrows(LogicException::class, fn () => $this->tearDown());
+        $this->assertStringContainsString('committed its writes', $e->getMessage());
 
         // Hand a live transaction back so the real teardown finds one.
         $this->connection->begin();

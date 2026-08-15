@@ -23,21 +23,13 @@ use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\IsolationLevel;
 use Sloop\Database\LoggingOptions;
+use Sloop\Tests\Support\ThrowsAssertions;
 use UnexpectedValueException;
 
-/*
- * Policy: several tests below omit a trailing $this->fail() inside the try
- * block. When the code under test always throws on a given path, PHPStan
- * infers the call as never-return and flags the fail() as
- * deadCode.unreachable. coding-standards.md bans phpstan-ignore comments,
- * so we rely on PHPUnit's failOnRisky=true (a catch-less path with zero
- * assertions fails the test) to guard the "exception was not thrown" case.
- * Applies to testCommitRequiresActiveTransaction,
- * testRollbackRequiresActiveTransaction, and all testTransaction*-throws
- * tests.
- */
 final class ConnectionTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private PDO $pdo;
 
     private Connection $connection;
@@ -205,15 +197,11 @@ final class ConnectionTest extends TestCase
 
         $connection = new Connection($pdo, 'test');
 
-        try {
-            $connection->query('SELECT 1');
-            $this->fail('Expected UnexpectedValueException');
-        } catch (UnexpectedValueException $e) {
-            $this->assertSame(
-                'PDO returned non-array row from FETCH_ASSOC',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(UnexpectedValueException::class, static fn () => $connection->query('SELECT 1'));
+        $this->assertSame(
+            'PDO returned non-array row from FETCH_ASSOC',
+            $e->getMessage(),
+        );
     }
 
     public function testQueryThrowsWhenPdoReturnsAValueOutsideTheDriverContract(): void
@@ -230,15 +218,11 @@ final class ConnectionTest extends TestCase
 
         $connection = new Connection($pdo, 'test');
 
-        try {
-            $connection->query('SELECT 1');
-            $this->fail('Expected UnexpectedValueException');
-        } catch (UnexpectedValueException $e) {
-            $this->assertSame(
-                'PDO returned an unsupported value type for column "flag": bool',
-                $e->getMessage(),
-            );
-        }
+        $e = $this->assertThrows(UnexpectedValueException::class, static fn () => $connection->query('SELECT 1'));
+        $this->assertSame(
+            'PDO returned an unsupported value type for column "flag": bool',
+            $e->getMessage(),
+        );
     }
 
     public function testQueryReturnsAnIntColumnNameForANumericColumnLabel(): void
@@ -328,13 +312,9 @@ final class ConnectionTest extends TestCase
 
     public function testWrappedExceptionCarriesConnectionName(): void
     {
-        try {
-            $this->connection->statement('NOT VALID SQL');
-            $this->fail('Expected QueryException was not thrown');
-        } catch (QueryException $e) {
-            $this->assertSame('test_conn', $e->connectionName);
-            $this->assertSame('NOT VALID SQL', $e->sql);
-        }
+        $e = $this->assertThrows(QueryException::class, fn () => $this->connection->statement('NOT VALID SQL'));
+        $this->assertSame('test_conn', $e->connectionName);
+        $this->assertSame('NOT VALID SQL', $e->sql);
     }
 
     // -------------------------------------------------------
@@ -389,20 +369,14 @@ final class ConnectionTest extends TestCase
 
     public function testCommitRequiresActiveTransaction(): void
     {
-        try {
-            $this->connection->commit();
-        } catch (LogicException $e) {
-            $this->assertSame('Cannot commit: no active transaction.', $e->getMessage());
-        }
+        $e = $this->assertThrows(LogicException::class, fn () => $this->connection->commit());
+        $this->assertSame('Cannot commit: no active transaction.', $e->getMessage());
     }
 
     public function testRollbackRequiresActiveTransaction(): void
     {
-        try {
-            $this->connection->rollback();
-        } catch (LogicException $e) {
-            $this->assertSame('Cannot rollback: no active transaction.', $e->getMessage());
-        }
+        $e = $this->assertThrows(LogicException::class, fn () => $this->connection->rollback());
+        $this->assertSame('Cannot rollback: no active transaction.', $e->getMessage());
     }
 
     // -------------------------------------------------------
@@ -439,17 +413,17 @@ final class ConnectionTest extends TestCase
 
     public function testTransactionRollsBackOnException(): void
     {
-        try {
-            $this->connection->transaction(function (Connection $db): void {
+        $e = $this->assertThrows(
+            RuntimeException::class,
+            fn () => $this->connection->transaction(function (Connection $db): void {
                 $db->statement("INSERT INTO users (id, name) VALUES (1, 'alice')");
 
                 throw new RuntimeException('boom');
-            });
-        } catch (RuntimeException $e) {
-            $this->assertSame('boom', $e->getMessage());
-            $this->assertFalse($this->connection->inTransaction());
-            $this->assertSame(0, $this->countUsers());
-        }
+            }),
+        );
+        $this->assertSame('boom', $e->getMessage());
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame(0, $this->countUsers());
     }
 
     public function testTransactionRetriesOnDeadlockUntilSuccess(): void
@@ -504,8 +478,9 @@ final class ConnectionTest extends TestCase
             public int $value = 0;
         };
 
-        try {
-            $this->connection->transaction(
+        $e = $this->assertThrows(
+            DeadlockException::class,
+            fn () => $this->connection->transaction(
                 function () use ($counter): void {
                     $counter->value++;
 
@@ -513,11 +488,10 @@ final class ConnectionTest extends TestCase
                 },
                 IsolationLevel::Default,
                 3,
-            );
-        } catch (DeadlockException $e) {
-            $this->assertSame('repeat', $e->getMessage());
-            $this->assertSame(3, $counter->value);
-        }
+            ),
+        );
+        $this->assertSame('repeat', $e->getMessage());
+        $this->assertSame(3, $counter->value);
     }
 
     public function testTransactionRetrySleepsForConfiguredBackoff(): void
@@ -583,18 +557,18 @@ final class ConnectionTest extends TestCase
             public int $value = 0;
         };
 
-        try {
-            $this->connection->transaction(
+        $e = $this->assertThrows(
+            DeadlockException::class,
+            fn () => $this->connection->transaction(
                 function () use ($counter): void {
                     $counter->value++;
 
                     throw new DeadlockException('once', '', [], 'test_conn', '40001', 1213);
                 },
-            );
-        } catch (DeadlockException $e) {
-            $this->assertSame('once', $e->getMessage());
-            $this->assertSame(1, $counter->value);
-        }
+            ),
+        );
+        $this->assertSame('once', $e->getMessage());
+        $this->assertSame(1, $counter->value);
     }
 
     public function testTransactionDoesNotRetryNonRetryableExceptions(): void
@@ -603,8 +577,9 @@ final class ConnectionTest extends TestCase
             public int $value = 0;
         };
 
-        try {
-            $this->connection->transaction(
+        $e = $this->assertThrows(
+            RuntimeException::class,
+            fn () => $this->connection->transaction(
                 function () use ($counter): void {
                     $counter->value++;
 
@@ -612,38 +587,37 @@ final class ConnectionTest extends TestCase
                 },
                 IsolationLevel::Default,
                 5,
-            );
-        } catch (RuntimeException $e) {
-            $this->assertSame('once', $e->getMessage());
-            $this->assertSame(1, $counter->value);
-        }
+            ),
+        );
+        $this->assertSame('once', $e->getMessage());
+        $this->assertSame(1, $counter->value);
     }
 
     public function testTransactionRejectsNonPositiveMaxAttempts(): void
     {
-        try {
-            $this->connection->transaction(
+        $e = $this->assertThrows(
+            LogicException::class,
+            fn () => $this->connection->transaction(
                 static fn (): string => 'ok',
                 IsolationLevel::Default,
                 0,
-            );
-        } catch (LogicException $e) {
-            $this->assertSame('maxAttempts must be at least 1, got 0.', $e->getMessage());
-        }
+            ),
+        );
+        $this->assertSame('maxAttempts must be at least 1, got 0.', $e->getMessage());
     }
 
     public function testTransactionRejectsNegativeBackoff(): void
     {
-        try {
-            $this->connection->transaction(
+        $e = $this->assertThrows(
+            LogicException::class,
+            fn () => $this->connection->transaction(
                 static fn (): string => 'ok',
                 IsolationLevel::Default,
                 1,
                 -5,
-            );
-        } catch (LogicException $e) {
-            $this->assertSame('backoffMs must not be negative, got -5.', $e->getMessage());
-        }
+            ),
+        );
+        $this->assertSame('backoffMs must not be negative, got -5.', $e->getMessage());
     }
 
     public function testTransactionRejectsNestedCall(): void
@@ -766,13 +740,9 @@ final class ConnectionTest extends TestCase
 
     public function testPingFailureCarriesConnectionNameAndSql(): void
     {
-        try {
-            $this->connection->ping();
-            $this->fail('Expected QueryException was not thrown');
-        } catch (QueryException $e) {
-            $this->assertSame('test_conn', $e->connectionName);
-            $this->assertSame('DO 1', $e->sql);
-        }
+        $e = $this->assertThrows(QueryException::class, fn () => $this->connection->ping());
+        $this->assertSame('test_conn', $e->connectionName);
+        $this->assertSame('DO 1', $e->sql);
     }
 
     // -------------------------------------------------------
@@ -783,12 +753,7 @@ final class ConnectionTest extends TestCase
     {
         $handler = $this->attachLogger($this->connection);
 
-        try {
-            $this->connection->query('NOT VALID SQL');
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -804,12 +769,7 @@ final class ConnectionTest extends TestCase
     {
         $handler = $this->attachLogger($this->connection);
 
-        try {
-            $this->connection->statement('NOT VALID SQL');
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        $this->assertThrows(QueryException::class, fn () => $this->connection->statement('NOT VALID SQL'));
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -824,13 +784,10 @@ final class ConnectionTest extends TestCase
         // wrapper text).
         $handler = $this->attachLogger($this->connection);
 
-        try {
-            $this->connection->query('NOT VALID SQL');
-        } catch (QueryException $e) {
-            $records = $handler->getRecords();
-            $this->assertCount(1, $records);
-            $this->assertSame($e->getMessage(), $records[0]->message);
-        }
+        $e       = $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
+        $records = $handler->getRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame($e->getMessage(), $records[0]->message);
     }
 
     public function testFailureLogRedactsBindingsWhenLogBindingsFalse(): void
@@ -840,12 +797,10 @@ final class ConnectionTest extends TestCase
             new LoggingOptions(logBindings: false),
         );
 
-        try {
-            $this->connection->statement('INSERT INTO unknown_table (name) VALUES (?)', ['secret']);
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        $this->assertThrows(
+            QueryException::class,
+            fn () => $this->connection->statement('INSERT INTO unknown_table (name) VALUES (?)', ['secret']),
+        );
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -859,12 +814,7 @@ final class ConnectionTest extends TestCase
 
         $handler = $this->attachLogger($this->connection);
 
-        try {
-            $this->connection->query('NOT VALID SQL');
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -875,12 +825,7 @@ final class ConnectionTest extends TestCase
     {
         $handler = $this->attachLogger($this->connection);
 
-        try {
-            $this->connection->query('NOT VALID SQL');
-            $this->fail('Expected QueryException');
-        } catch (QueryException) {
-            // empty
-        }
+        $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -1069,11 +1014,8 @@ final class ConnectionTest extends TestCase
         // Regression: Connection without setLogger() must not crash on the log path.
         // The catch-block assertion confirms QueryException was raised (and no other
         // exception slipped through from a logger reference on a null logger).
-        try {
-            $this->connection->query('NOT VALID SQL');
-        } catch (QueryException $e) {
-            $this->assertSame('test_conn', $e->connectionName);
-        }
+        $e = $this->assertThrows(QueryException::class, fn () => $this->connection->query('NOT VALID SQL'));
+        $this->assertSame('test_conn', $e->connectionName);
     }
 
     public function testSlowWarningOverridesLogAllQueriesWhenBothApply(): void
@@ -1104,13 +1046,12 @@ final class ConnectionTest extends TestCase
         $connection = new Connection($pdo, 'rollback_test');
         $handler    = $this->attachLogger($connection);
 
-        try {
-            $connection->transaction(static function (): void {
+        $this->assertThrows(
+            RuntimeException::class,
+            static fn () => $connection->transaction(static function (): void {
                 throw new RuntimeException('callback boom');
-            });
-        } catch (RuntimeException) {
-            // empty
-        }
+            }),
+        );
 
         $warnings = array_filter(
             $handler->getRecords(),
@@ -1258,12 +1199,8 @@ final class ConnectionTest extends TestCase
         $handler    = $this->attachLogger($connection);
         $connection->setQueryTimeoutMs(5000);
 
-        try {
-            $connection->query('SELECT 1');
-            $this->fail('Expected DatabaseException');
-        } catch (DatabaseException $e) {
-            $this->assertStringContainsString('access denied', $e->getMessage());
-        }
+        $e = $this->assertThrows(DatabaseException::class, static fn () => $connection->query('SELECT 1'));
+        $this->assertStringContainsString('access denied', $e->getMessage());
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
@@ -1307,11 +1244,8 @@ final class ConnectionTest extends TestCase
         $connection->setQueryTimeoutMs(5000);
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
-            try {
-                $connection->query('SELECT 1');
-            } catch (DatabaseException) {
-                // expected — both attempts must surface as DatabaseException
-            }
+            // expected — both attempts must surface as DatabaseException
+            $this->assertThrows(DatabaseException::class, static fn () => $connection->query('SELECT 1'));
         }
     }
 
@@ -1329,12 +1263,8 @@ final class ConnectionTest extends TestCase
         $connection = new Connection($pdo, 'test');
         $connection->setQueryTimeoutMs(5000);
 
-        try {
-            $connection->query('SELECT 1');
-            $this->fail('Expected DatabaseException');
-        } catch (DatabaseException $e) {
-            $this->assertStringContainsString('access denied', $e->getMessage());
-        }
+        $e = $this->assertThrows(DatabaseException::class, static fn () => $connection->query('SELECT 1'));
+        $this->assertStringContainsString('access denied', $e->getMessage());
     }
 
     public function testQueryTimeoutResetsAppliedFlagWhenSetterCalledAgain(): void
@@ -1451,12 +1381,8 @@ final class ConnectionTest extends TestCase
         $handler    = $this->attachLogger($connection);
         $connection->setQueryTimeoutMs(5000);
 
-        try {
-            $connection->query('SELECT 1');
-            $this->fail('Expected DatabaseException');
-        } catch (DatabaseException $e) {
-            $this->assertStringContainsString('server gone away', $e->getMessage());
-        }
+        $e = $this->assertThrows(DatabaseException::class, static fn () => $connection->query('SELECT 1'));
+        $this->assertStringContainsString('server gone away', $e->getMessage());
 
         $records = $handler->getRecords();
         $this->assertCount(1, $records);
