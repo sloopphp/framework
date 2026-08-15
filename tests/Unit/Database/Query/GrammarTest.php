@@ -579,14 +579,18 @@ final class GrammarTest extends TestCase
     {
         $compiled = new Grammar()->compileSelect(new SelectSpec(
             from:       'users',
-            conditions: [new BetweenCondition('age', Expression::of('GREATEST(?, ?)', [1, 2]), 65)],
+            conditions: [new BetweenCondition(
+                Expression::of('IF(?, `a`, `b`)', [0]),
+                Expression::of('GREATEST(?, ?)', [1, 2]),
+                65,
+            )],
         ));
 
         $this->assertSame(
-            'SELECT * FROM `users` WHERE `age` BETWEEN GREATEST(?, ?) AND ?',
+            'SELECT * FROM `users` WHERE IF(?, `a`, `b`) BETWEEN GREATEST(?, ?) AND ?',
             $compiled->sql,
         );
-        $this->assertSame([1, 2, 65], $compiled->bindings);
+        $this->assertSame([0, 1, 2, 65], $compiled->bindings);
     }
 
     public function testEveryKindOfConditionIsOpenToASubclass(): void
