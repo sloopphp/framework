@@ -89,10 +89,11 @@ final class ConnectionTest extends TestCase
         $statement->method('fetchColumn')->willReturn($versionString);
 
         // The SQL is asserted inside the callback rather than through
-        // `with(...)`: PHPUnit 13 deprecated `with*()` on the stub path, and
-        // `expects($this->any())` — the documented replacement — is deprecated
-        // as well. A callback keeps the argument assertion without tying the
-        // stub to an invocation count.
+        // `with(...)`: PHPUnit 13 deprecates `with*()` unless it is paired with
+        // `expects(...)`, and the only invocation count that does not constrain
+        // how often the stub is called — `any()` — is deprecated as well. A
+        // callback keeps the argument assertion without tying the stub to an
+        // invocation count.
         $pdo->method('query')->willReturnCallback(function (string $sql) use ($statement): PDOStatement {
             $this->assertSame('SELECT VERSION()', $sql);
 

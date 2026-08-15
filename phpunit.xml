@@ -18,6 +18,7 @@
          failOnWarning="true"
          failOnNotice="true"
          failOnDeprecation="true"
+         failOnPhpunitDeprecation="true"
          failOnEmptyTestSuite="true"
          beStrictAboutChangesToGlobalState="true">
     <testsuites>
