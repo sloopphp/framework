@@ -583,6 +583,14 @@ abstract class BuilderWhere extends Builder
      * catches the failure and carries on is not left holding a builder whose
      * parentheses no longer balance.
      *
+     * What is closed is the group opened here, and only while it is still open.
+     * A closure that closed it itself leaves nothing to do, and closing again
+     * would raise an error of its own — which, where the closure was failing
+     * anyway, would replace the failure the caller needs to see. A closure that
+     * opened further groups and left them open is not tidied up either: that is
+     * a mistake in the chain, and it is reported where the statement is
+     * compiled rather than being hidden here.
+     *
      * @param  Conjunction              $conjunction How the group joins to what precedes it
      * @param  Closure                  $callback    Applied to this builder inside the group
      * @return static                   This builder
@@ -590,12 +598,16 @@ abstract class BuilderWhere extends Builder
      */
     private function group(Conjunction $conjunction, Closure $callback): static
     {
+        $depth = $this->openGroups;
+
         $this->openGroup($conjunction);
 
         try {
             $callback($this);
         } finally {
-            $this->closeGroup();
+            if ($this->openGroups > $depth) {
+                $this->closeGroup();
+            }
         }
 
         return $this;

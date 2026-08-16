@@ -528,6 +528,52 @@ final class SelectTest extends TestCase
         );
     }
 
+    public function testAClosureThatClosesTheGroupItselfDoesNotHideItsOwnFailure(): void
+    {
+        // Closing again in the finally would raise a LogicException of its own
+        // and replace the failure the caller needs to see.
+        $select = $this->connection->select()->from('users')->where('status', 'active');
+
+        try {
+            $select->where(static function (Select $query): void {
+                $query->whereClose();
+
+                throw new RuntimeException('the failure that matters');
+            });
+            $this->fail('The failure inside the closure should reach the caller.');
+        } catch (RuntimeException $failure) {
+            $this->assertSame('the failure that matters', $failure->getMessage());
+        }
+    }
+
+    public function testAClosureMayCloseTheGroupItself(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static function (Select $query): void {
+                $query->where('id', 1)->whereClose();
+            });
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAGroupLeftOpenInsideAClosureIsStillReported(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('call whereClose() 1 more time.');
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('id', 1);
+            })
+            ->toSql();
+    }
+
     public function testAListAndACallableCombine(): void
     {
         $select = $this->connection->select()
