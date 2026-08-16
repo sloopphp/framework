@@ -590,6 +590,48 @@ final class SelectTest extends TestCase
         );
     }
 
+    public function testWhatAClosureWritesAfterClosingItsOwnGroupStaysInsideTheOneItWasHanded(): void
+    {
+        // The direct converse of closing the handed group: everything the
+        // closure writes belongs inside its parentheses, before and after a
+        // group of its own.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('id', 1)->whereClose();
+                $query->orWhere('status', 'active');
+            });
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE ((`id` = ?) OR `status` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAClosureInsideAGroupOpenedByHandNests(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+                ->where(static fn (Select $query): Select => $query->where('id', 1))
+            ->whereClose();
+
+        $this->assertSame('SELECT * FROM `users` WHERE ((`id` = ?))', $select->toSql());
+    }
+
+    public function testAClosureInsideAGroupOpenedByAnotherClosureNests(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $outer): void {
+                $outer->whereOpen()
+                    ->where(static fn (Select $inner): Select => $inner->where('id', 1))
+                    ->whereClose();
+            });
+
+        $this->assertSame('SELECT * FROM `users` WHERE (((`id` = ?)))', $select->toSql());
+    }
+
     public function testAClosureCannotCloseAGroupItDidNotOpen(): void
     {
         $this->expectException(LogicException::class);
