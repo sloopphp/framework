@@ -520,8 +520,8 @@ final class SelectTest extends TestCase
             $this->assertSame('from inside the group', $failure->getMessage());
         }
 
-        // 括弧が閉じているので、そのまま組み立てられる。閉じていなければ
-        // compile() が LogicException になる。
+        // The parentheses balance, so this still compiles; if they did not,
+        // compile() would raise a LogicException.
         $this->assertSame(
             'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ?)',
             $select->toSql(),
@@ -544,6 +544,8 @@ final class SelectTest extends TestCase
         } catch (RuntimeException $failure) {
             $this->assertSame('the failure that matters', $failure->getMessage());
         }
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
     }
 
     public function testAClosureMayCloseTheGroupItself(): void
@@ -559,6 +561,50 @@ final class SelectTest extends TestCase
             'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ?)',
             $select->toSql(),
         );
+    }
+
+    public function testAClosureCannotCloseAGroupItDidNotOpen(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group was opened outside the closure, so the closure cannot close it.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where(static function (Select $query): void {
+                $query->whereClose();   // its own
+                $query->whereClose();   // one too many
+            });
+    }
+
+    public function testANestedClosureCannotCloseTheGroupOfTheOneAroundIt(): void
+    {
+        // Without the floor this closed the outer group, and the conditions the
+        // outer closure added afterwards landed outside its parentheses — which
+        // changes the rows that come back, silently.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group was opened outside the closure, so the closure cannot close it.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $outer): void {
+                $outer->where(static function (Select $inner): void {
+                    $inner->whereClose();
+                    $inner->whereClose();
+                });
+            });
+    }
+
+    public function testClosingWithNothingOpenStillSaysThereIsNothingToClose(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
+
+        $this->connection->select()->from('users')->whereClose();
     }
 
     public function testAGroupLeftOpenInsideAClosureIsStillReported(): void
@@ -591,7 +637,7 @@ final class SelectTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains(
-            'A comparison needs something to compare against; where() was given only a column.'
+            'A comparison needs something to compare against, but only a column was given.'
             . ' Pass a value, or an operator and a value.',
         );
 
@@ -639,6 +685,14 @@ final class SelectTest extends TestCase
             'value cannot be compared' => [
                 [['status', ['nested']]],
                 'compares against a scalar, null or an Expression, got array at index 0.',
+            ],
+            'value of a condition of three cannot be compared' => [
+                [['status', '=', ['nested']]],
+                'compares against a scalar, null or an Expression, got array at index 0.',
+            ],
+            'operator is not a string' => [
+                [['status', 10, 'active']],
+                'The middle part of a condition of three is the operator, so it must be a string, got int at index 0.',
             ],
         ];
     }

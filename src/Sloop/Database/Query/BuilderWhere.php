@@ -38,6 +38,20 @@ abstract class BuilderWhere extends Builder
     private int $openGroups = 0;
 
     /**
+     * Depth below which the code running now may not close.
+     *
+     * A closure handed to where() is given this builder, so nothing stops it
+     * calling whereClose() more times than it opened. Without a floor those
+     * extra calls would close groups belonging to whoever called it, and the
+     * conditions the closure adds afterwards would land outside the parentheses
+     * it appears to be writing inside — silently, and with a different set of
+     * rows coming back.
+     *
+     * @var int
+     */
+    private int $groupFloor = 0;
+
+    /**
      * Terms of the ORDER BY clause, in the order they were added.
      *
      * @var list<Order>
@@ -462,13 +476,23 @@ abstract class BuilderWhere extends Builder
      * nothing to close is a mistake in the chain, and the line that made it is
      * still the line being executed.
      *
+     * Inside a closure the same refusal applies one level up: the group the
+     * closure was given is the deepest it may close. Closing past it would take
+     * a group belonging to the caller, and the refusal has to happen here
+     * rather than where the group is left, because by then the conditions have
+     * already been written into the wrong place.
+     *
      * @return static         This builder
-     * @throws LogicException When no group is open
+     * @throws LogicException When no group is open, or the open group belongs to the caller
      */
     private function closeGroup(): static
     {
-        if ($this->openGroups === 0) {
-            throw new LogicException('No group of conditions is open, so there is nothing to close.');
+        if ($this->openGroups <= $this->groupFloor) {
+            throw new LogicException(
+                $this->openGroups === 0
+                    ? 'No group of conditions is open, so there is nothing to close.'
+                    : 'This group was opened outside the closure, so the closure cannot close it.',
+            );
         }
 
         $this->conditions[] = new GroupBoundary(GroupEdge::Close);
@@ -505,7 +529,7 @@ abstract class BuilderWhere extends Builder
 
         if ($argumentCount < 2) {
             throw new InvalidArgumentException(
-                'A comparison needs something to compare against; where() was given only a column.'
+                'A comparison needs something to compare against, but only a column was given.'
                 . ' Pass a value, or an operator and a value.',
             );
         }
@@ -555,6 +579,13 @@ abstract class BuilderWhere extends Builder
 
             $column = $parts[0];
 
+            if ($count === 3 && !\is_string($parts[1])) {
+                throw new InvalidArgumentException(
+                    'The middle part of a condition of three is the operator, so it must be a string, got '
+                    . get_debug_type($parts[1]) . ' at index ' . $index . '.',
+                );
+            }
+
             if (!\is_string($column) && !$column instanceof Expression) {
                 throw new InvalidArgumentException(
                     'The first part of a condition names a column, so it must be a string or an Expression, got '
@@ -591,6 +622,12 @@ abstract class BuilderWhere extends Builder
      * a mistake in the chain, and it is reported where the statement is
      * compiled rather than being hidden here.
      *
+     * Closing too many times is refused as it happens rather than here, by the
+     * floor this raises for the duration of the closure. Catching it in the
+     * finally would be too late — the conditions written after the extra close
+     * are already outside the parentheses — and would replace the closure's own
+     * failure where it had one.
+     *
      * @param  Conjunction              $conjunction How the group joins to what precedes it
      * @param  Closure                  $callback    Applied to this builder inside the group
      * @return static                   This builder
@@ -599,12 +636,16 @@ abstract class BuilderWhere extends Builder
     private function group(Conjunction $conjunction, Closure $callback): static
     {
         $depth = $this->openGroups;
+        $floor = $this->groupFloor;
 
         $this->openGroup($conjunction);
+        $this->groupFloor = $depth;
 
         try {
             $callback($this);
         } finally {
+            $this->groupFloor = $floor;
+
             if ($this->openGroups > $depth) {
                 $this->closeGroup();
             }
