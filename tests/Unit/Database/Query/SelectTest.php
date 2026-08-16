@@ -548,7 +548,10 @@ final class SelectTest extends TestCase
         // The group the closure left open is reported where the statement is
         // compiled, not swallowed here.
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains('call whereClose() 1 more time.');
+        $this->expectExceptionMessageIsOrContains(
+            'A closure opened a group of conditions and returned without closing it.'
+            . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+        );
 
         $select->toSql();
     }
@@ -632,6 +635,61 @@ final class SelectTest extends TestCase
         $this->assertSame('SELECT * FROM `users` WHERE (((`id` = ?)))', $select->toSql());
     }
 
+    public function testAClosureThatLeavesAGroupOpenIsReportedEvenWhereALaterCloseWouldBalanceIt(): void
+    {
+        // Two mistakes in one chain used to cancel: the group the closure left
+        // open absorbed the stray close, and the condition in between landed in
+        // parentheses nobody wrote. The depth on the way out of a closure is now
+        // the depth on the way in, so the stray close has nothing to take.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('status', 'active');
+            })
+            ->orWhere('name', 'bob')
+            ->whereClose();
+    }
+
+    #[DataProvider('provideCallsWithArgumentsThatWouldBeIgnored')]
+    public function testAListOrClosureGivenOtherArgumentsIsRejected(callable $call, string $expectedMessage): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
+
+        $call($this->connection->select()->from('users'));
+    }
+
+    /**
+     * @return array<string, array{callable(Select): mixed, string}>
+     */
+    public static function provideCallsWithArgumentsThatWouldBeIgnored(): array
+    {
+        return [
+            'list with one more' => [
+                static fn (Select $query): Select => $query->where([['status', 'active']], 'EXTRA'),
+                'A list of conditions says everything on its own, so the other 1 argument(s) would be ignored.',
+            ],
+            'empty list with one more' => [
+                static fn (Select $query): Select => $query->where([], 'EXTRA'),
+                'A list of conditions says everything on its own, so the other 1 argument(s) would be ignored.',
+            ],
+            'list with two more' => [
+                static fn (Select $query): Select => $query->where([['status', 'active']], '=', 'EXTRA'),
+                'A list of conditions says everything on its own, so the other 2 argument(s) would be ignored.',
+            ],
+            'closure with one more' => [
+                static fn (Select $query): Select => $query->where(
+                    static fn (Select $inner): Select => $inner->where('id', 1),
+                    'EXTRA',
+                ),
+                'A closure says everything on its own, so the other 1 argument(s) would be ignored.',
+            ],
+        ];
+    }
+
     public function testAClosureCannotCloseAGroupItDidNotOpen(): void
     {
         $this->expectException(LogicException::class);
@@ -677,7 +735,10 @@ final class SelectTest extends TestCase
     public function testAGroupLeftOpenInsideAClosureIsStillReported(): void
     {
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains('call whereClose() 1 more time.');
+        $this->expectExceptionMessageIsOrContains(
+            'A closure opened a group of conditions and returned without closing it.'
+            . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+        );
 
         $this->connection->select()
             ->from('users')
@@ -969,14 +1030,6 @@ final class SelectTest extends TestCase
         $this->expectExceptionMessageIsOrContains('call whereClose() 2 more times.');
 
         $this->connection->select()->from('users')->whereOpen()->whereOpen()->where('id', 1)->toSql();
-    }
-
-    public function testClosingAGroupThatWasNeverOpenedIsRejectedWhereItIsWritten(): void
-    {
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains('nothing to close');
-
-        $this->connection->select()->from('users')->whereClose();
     }
 
     public function testAGroupLeftEmptyIsDroppedRatherThanWrittenAsEmptyParentheses(): void

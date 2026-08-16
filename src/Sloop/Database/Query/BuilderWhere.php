@@ -52,6 +52,19 @@ abstract class BuilderWhere extends Builder
     private int $groupFloor = 0;
 
     /**
+     * Whether a closure returned with a group of its own still open.
+     *
+     * The group is closed for it so that the depth is what it was before the
+     * closure ran, which keeps a later close from taking a group it did not
+     * open. The mistake itself is remembered here and reported when the
+     * statement is compiled, because raising it from the finally would replace
+     * whatever failure the closure was already carrying.
+     *
+     * @var bool
+     */
+    private bool $groupLeftOpenInClosure = false;
+
+    /**
      * Terms of the ORDER BY clause, in the order they were added.
      *
      * @var list<Order>
@@ -450,6 +463,13 @@ abstract class BuilderWhere extends Builder
      */
     protected function requireGroupsClosed(): void
     {
+        if ($this->groupLeftOpenInClosure) {
+            throw new LogicException(
+                'A closure opened a group of conditions and returned without closing it.'
+                . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+            );
+        }
+
         if ($this->openGroups > 0) {
             throw new LogicException(
                 'A group of conditions was opened and not closed; call whereClose() '
@@ -525,12 +545,18 @@ abstract class BuilderWhere extends Builder
         string|int|float|bool|Expression|null $value,
         int $argumentCount,
     ): static {
-        if ($column instanceof Closure) {
-            return $this->group($conjunction, $column);
-        }
+        if ($column instanceof Closure || \is_array($column)) {
+            if ($argumentCount > 1) {
+                throw new InvalidArgumentException(
+                    'A ' . ($column instanceof Closure ? 'closure' : 'list of conditions')
+                    . ' says everything on its own, so the other ' . ($argumentCount - 1)
+                    . ' argument(s) would be ignored. Pass it alone.',
+                );
+            }
 
-        if (\is_array($column)) {
-            return $this->addConditions($conjunction, $column);
+            return $column instanceof Closure
+                ? $this->group($conjunction, $column)
+                : $this->addConditions($conjunction, $column);
         }
 
         if ($argumentCount < 2) {
@@ -626,12 +652,14 @@ abstract class BuilderWhere extends Builder
      * too late, because whatever the closure wrote after closing has already
      * been recorded outside the parentheses.
      *
-     * A closure that opened further groups and left them open is not tidied up
-     * either: that is a mistake in the chain, and it is reported where the
-     * statement is compiled rather than being hidden here. Exactly one group is
-     * closed, which is always the one opened here — the floor guarantees the
-     * closure cannot have closed it, so this cannot raise an error of its own
-     * and replace a failure the closure was already carrying.
+     * A closure that opened further groups and left them open has them closed
+     * here as well, so that the depth on the way out is the depth on the way
+     * in. Leaving them open instead would let a later close take a group it
+     * never opened, which is how two mistakes in one chain used to cancel out
+     * and put conditions in parentheses nobody wrote. The mistake is not
+     * forgiven by the tidying up: it is remembered and reported when the
+     * statement is compiled, which is late enough not to replace a failure the
+     * closure was already carrying.
      *
      * @param  Conjunction              $conjunction How the group joins to what precedes it
      * @param  Closure                  $callback    Applied to this builder inside the group
@@ -645,12 +673,17 @@ abstract class BuilderWhere extends Builder
 
         $this->openGroup($conjunction);
         $this->groupFloor = $this->openGroups;
+        $depth            = $this->openGroups;
 
         try {
             $callback($this);
         } finally {
-            $this->groupFloor = $floor;
-            $this->closeGroup();
+            $this->groupLeftOpenInClosure = $this->groupLeftOpenInClosure || $this->openGroups !== $depth;
+            $this->groupFloor             = $floor;
+
+            while ($this->openGroups >= $depth) {
+                $this->closeGroup();
+            }
         }
 
         return $this;
