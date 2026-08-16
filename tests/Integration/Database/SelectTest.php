@@ -6,6 +6,7 @@ namespace Sloop\Tests\Integration\Database;
 
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\TransactionalIntegrationTestCase;
 
 final class SelectTest extends TransactionalIntegrationTestCase
@@ -158,6 +159,56 @@ final class SelectTest extends TransactionalIntegrationTestCase
         $rows = $this->connection->select('label')->from('widgets')->execute();
 
         $this->assertSame([['label' => 'first']], $rows->asArray());
+    }
+
+    public function testAListOfConditionsNarrowsTheResultOnTheServer(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where([
+                ['status', 'active'],
+                ['score', '>=', 20],
+                ['deleted_at', 'IS', null],
+            ])
+            ->execute();
+
+        $this->assertSame([['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testAnEmptyListReadsEveryRow(): void
+    {
+        $rows = $this->connection->select('name')->from('users')->where([])->orderBy('name')->execute();
+
+        $this->assertSame(
+            [['name' => 'alice'], ['name' => 'bob'], ['name' => 'carol']],
+            $rows->asArray(),
+        );
+    }
+
+    public function testAListGivenToOrWhereReadsAsOneAlternative(): void
+    {
+        // `id = 1 OR status = 'active' AND score >= 30` selects alice by the
+        // first test and carol by the pair, and MySQL's precedence is what makes
+        // the pair bind together without parentheses. bob matches neither.
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('id', 1)
+            ->orWhere([['status', 'active'], ['score', '>=', 30]])
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testACallableGroupsTheRowsItSelects(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static fn (Select $query): Select => $query->where('name', 'alice')->orWhere('name', 'bob'))
+            ->execute();
+
+        $this->assertSame([['name' => 'alice']], $rows->asArray());
     }
 
     public function testTestingForNullReadsTheRowsThatHoldNoValue(): void

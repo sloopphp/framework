@@ -10,6 +10,7 @@ use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Sloop\Database\Connection;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
@@ -385,6 +386,241 @@ final class SelectTest extends TestCase
         $select = $this->connection->select()->from('users');
 
         $this->assertSame($select->toSql(), $select->toRawSql());
+    }
+
+    public function testAListOfConditionsAddsEachOfThem(): void
+    {
+        $select = $this->connection->select()->from('users')->where([
+            ['status', 'active'],
+            ['score', '>=', 10],
+            ['deleted_at', 'IS', null],
+        ]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND `score` >= ? AND `deleted_at` IS NULL',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 10], $select->toBindings());
+    }
+
+    public function testAConditionOfTwoComparesForEquality(): void
+    {
+        $listed     = $this->connection->select()->from('users')->where([['status', 'active']]);
+        $spelledOut = $this->connection->select()->from('users')->where('status', 'active');
+
+        $this->assertSame($spelledOut->toSql(), $listed->toSql());
+        $this->assertSame($spelledOut->toBindings(), $listed->toBindings());
+    }
+
+    public function testAnEmptyListAddsNothing(): void
+    {
+        $select = $this->connection->select()->from('users')->where([]);
+
+        $this->assertSame('SELECT * FROM `users`', $select->toSql());
+    }
+
+    public function testAnEmptyListLeavesTheConditionsAlreadyAdded(): void
+    {
+        $select = $this->connection->select()->from('users')->where('status', 'active')->where([]);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testAListJoinsToWhatPrecedesItWithTheConjunctionOfTheCall(): void
+    {
+        // The OR joins the first of the listed conditions and the rest follow
+        // with AND, so the set reads as one alternative. MySQL binds AND tighter
+        // than OR, which is what makes the parentheses unnecessary.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('id', 1)
+            ->orWhere([['status', 'active'], ['score', '>=', 10]]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `id` = ? OR `status` = ? AND `score` >= ?',
+            $select->toSql(),
+        );
+    }
+
+    public function testAListAcceptsAnExpressionAsAColumnAndAsAValue(): void
+    {
+        $select = $this->connection->select()->from('users')->where([
+            [Expression::of('LOWER(`name`)'), 'alice'],
+            ['created_at', '<', Expression::of('NOW()')],
+        ]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE LOWER(`name`) = ? AND `created_at` < NOW()',
+            $select->toSql(),
+        );
+        $this->assertSame(['alice'], $select->toBindings());
+    }
+
+    public function testACallableOpensAGroupAroundWhatItAdds(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static fn (Select $query): Select => $query->where('id', 1)->orWhere('id', 2));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ? OR `id` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testACallableGivenToOrWhereJoinsItsGroupWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhere(static fn (Select $query): Select => $query->where('id', 1)->andWhere('score', '>', 10));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? OR (`id` = ? AND `score` > ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testACallableWritesTheSameStatementAsTheOpenAndCloseCalls(): void
+    {
+        $withCallable = $this->connection->select()
+            ->from('users')
+            ->where(static fn (Select $query): Select => $query->where('id', 1)->orWhere('id', 2));
+
+        $withOpenClose = $this->connection->select()
+            ->from('users')
+            ->whereOpen()->where('id', 1)->orWhere('id', 2)->whereClose();
+
+        $this->assertSame($withOpenClose->toSql(), $withCallable->toSql());
+    }
+
+    public function testACallableThatAddsNothingLeavesNoEmptyParentheses(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static fn (Select $query): Select => $query);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testAGroupIsClosedEvenWhereTheClosureFails(): void
+    {
+        $select = $this->connection->select()->from('users')->where('status', 'active');
+
+        try {
+            $select->where(static function (Select $query): void {
+                $query->where('id', 1);
+
+                throw new RuntimeException('from inside the group');
+            });
+            $this->fail('The failure inside the closure should reach the caller.');
+        } catch (RuntimeException $failure) {
+            $this->assertSame('from inside the group', $failure->getMessage());
+        }
+
+        // 括弧が閉じているので、そのまま組み立てられる。閉じていなければ
+        // compile() が LogicException になる。
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAListAndACallableCombine(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where([['status', 'active'], ['score', '>=', 10]])
+            ->where(static fn (Select $query): Select => $query->where('role', 'admin')->orWhere('role', 'editor'));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND `score` >= ? AND (`role` = ? OR `role` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAColumnOnItsOwnIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A comparison needs something to compare against; where() was given only a column.'
+            . ' Pass a value, or an operator and a value.',
+        );
+
+        $this->connection->select()->from('users')->where('status');
+    }
+
+    /**
+     * @param array<int|string, mixed> $conditions
+     */
+    #[DataProvider('provideMalformedConditionLists')]
+    public function testAMalformedListIsRejected(array $conditions, string $expectedMessage): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
+
+        $this->connection->select()->from('users')->where($conditions);
+    }
+
+    /**
+     * @return array<string, array{array<int|string, mixed>, string}>
+     */
+    public static function provideMalformedConditionLists(): array
+    {
+        return [
+            'condition is not a list' => [
+                ['junk'],
+                'Each condition must be a list of two or three, got string at index 0.',
+            ],
+            'condition of one' => [
+                [['status']],
+                'got 1 at index 0.',
+            ],
+            'condition of four' => [
+                [['status', '=', 'active', 'or']],
+                'got 4 at index 0.',
+            ],
+            'the reported index is the position' => [
+                [['status', 'active'], ['score']],
+                'got 1 at index 1.',
+            ],
+            'column is not a column' => [
+                [[10, '=', 1]],
+                'so it must be a string or an Expression, got int at index 0.',
+            ],
+            'value cannot be compared' => [
+                [['status', ['nested']]],
+                'compares against a scalar, null or an Expression, got array at index 0.',
+            ],
+        ];
+    }
+
+    public function testTheReportedPositionIsThePositionInTheListNotTheOriginalKey(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('got 1 at index 0.');
+
+        $this->connection->select()->from('users')->where([7 => ['status']]);
+    }
+
+    public function testAConditionIsReadByPositionRatherThanByKey(): void
+    {
+        $select = $this->connection->select()->from('users')->where([
+            ['column' => 'status', 'value' => 'active'],
+        ]);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+        $this->assertSame(['active'], $select->toBindings());
+    }
+
+    public function testAListRejectsNullTheSameWayTheArgumentsDo(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Write IS or IS NOT to test for NULL.');
+
+        $this->connection->select()->from('users')->where([['deleted_at', '=', null]]);
     }
 
     public function testTestingForNullWritesTheKeywordRatherThanAPlaceholder(): void
