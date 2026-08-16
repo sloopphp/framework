@@ -87,6 +87,7 @@ abstract class BuilderWhere extends Builder
      * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, the operator is not a supported comparison, or null stands where the operator cannot read it
+     * @throws LogicException                                     When a closure closes the group it was handed, or closes one it never opened
      */
     public function where(
         string|Expression|array|Closure $column,
@@ -107,6 +108,7 @@ abstract class BuilderWhere extends Builder
      * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, the operator is not a supported comparison, or null stands where the operator cannot read it
+     * @throws LogicException                                     When a closure closes the group it was handed, or closes one it never opened
      */
     public function andWhere(
         string|Expression|array|Closure $column,
@@ -129,6 +131,7 @@ abstract class BuilderWhere extends Builder
      * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, the operator is not a supported comparison, or null stands where the operator cannot read it
+     * @throws LogicException                                     When a closure closes the group it was handed, or closes one it never opened
      */
     public function orWhere(
         string|Expression|array|Closure $column,
@@ -291,7 +294,7 @@ abstract class BuilderWhere extends Builder
      * Close the group opened last.
      *
      * @return static         This builder
-     * @throws LogicException When no group is open
+     * @throws LogicException When no group is open, or a closure is closing the group it was handed
      */
     public function whereClose(): static
     {
@@ -302,7 +305,7 @@ abstract class BuilderWhere extends Builder
      * Close the group opened last.
      *
      * @return static         This builder
-     * @throws LogicException When no group is open
+     * @throws LogicException When no group is open, or a closure is closing the group it was handed
      */
     public function andWhereClose(): static
     {
@@ -317,7 +320,7 @@ abstract class BuilderWhere extends Builder
      * orWhereOpen() in the matching spelling.
      *
      * @return static         This builder
-     * @throws LogicException When no group is open
+     * @throws LogicException When no group is open, or a closure is closing the group it was handed
      */
     public function orWhereClose(): static
     {
@@ -476,14 +479,16 @@ abstract class BuilderWhere extends Builder
      * nothing to close is a mistake in the chain, and the line that made it is
      * still the line being executed.
      *
-     * Inside a closure the same refusal applies one level up: the group the
-     * closure was given is the deepest it may close. Closing past it would take
-     * a group belonging to the caller, and the refusal has to happen here
-     * rather than where the group is left, because by then the conditions have
-     * already been written into the wrong place.
+     * Inside a closure the refusal starts one level higher: the group the
+     * closure was handed is closed for it when the closure returns, so the
+     * closure may only close groups it opened itself. Closing the one it was
+     * given would put every condition it writes afterwards outside the
+     * parentheses it appears to be writing inside, and the refusal has to
+     * happen here rather than where the group is left, because by then those
+     * conditions have already been recorded in the wrong place.
      *
      * @return static         This builder
-     * @throws LogicException When no group is open, or the open group belongs to the caller
+     * @throws LogicException When no group is open, or the open group is the one a closure was handed
      */
     private function closeGroup(): static
     {
@@ -491,7 +496,7 @@ abstract class BuilderWhere extends Builder
             throw new LogicException(
                 $this->openGroups === 0
                     ? 'No group of conditions is open, so there is nothing to close.'
-                    : 'This group was opened outside the closure, so the closure cannot close it.',
+                    : 'This group is closed when the closure returns, so the closure cannot close it itself.',
             );
         }
 
@@ -511,6 +516,7 @@ abstract class BuilderWhere extends Builder
      * @param  int                                                $argumentCount Number of arguments the caller passed
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, or a column stands alone
+     * @throws LogicException                                     When a closure closes a group it may not close
      */
     private function addWhere(
         Conjunction $conjunction,
@@ -614,41 +620,37 @@ abstract class BuilderWhere extends Builder
      * catches the failure and carries on is not left holding a builder whose
      * parentheses no longer balance.
      *
-     * What is closed is the group opened here, and only while it is still open.
-     * A closure that closed it itself leaves nothing to do, and closing again
-     * would raise an error of its own — which, where the closure was failing
-     * anyway, would replace the failure the caller needs to see. A closure that
-     * opened further groups and left them open is not tidied up either: that is
-     * a mistake in the chain, and it is reported where the statement is
-     * compiled rather than being hidden here.
+     * The closure cannot close this group itself: the floor raised here puts it
+     * out of reach for as long as the closure runs, so an attempt fails at the
+     * line that made it. Letting it through and tidying up afterwards would be
+     * too late, because whatever the closure wrote after closing has already
+     * been recorded outside the parentheses.
      *
-     * Closing too many times is refused as it happens rather than here, by the
-     * floor this raises for the duration of the closure. Catching it in the
-     * finally would be too late — the conditions written after the extra close
-     * are already outside the parentheses — and would replace the closure's own
-     * failure where it had one.
+     * A closure that opened further groups and left them open is not tidied up
+     * either: that is a mistake in the chain, and it is reported where the
+     * statement is compiled rather than being hidden here. Exactly one group is
+     * closed, which is always the one opened here — the floor guarantees the
+     * closure cannot have closed it, so this cannot raise an error of its own
+     * and replace a failure the closure was already carrying.
      *
      * @param  Conjunction              $conjunction How the group joins to what precedes it
      * @param  Closure                  $callback    Applied to this builder inside the group
      * @return static                   This builder
      * @throws InvalidArgumentException When a condition added inside the group is malformed
+     * @throws LogicException           When the closure closes the group it was handed, or one it never opened
      */
     private function group(Conjunction $conjunction, Closure $callback): static
     {
-        $depth = $this->openGroups;
         $floor = $this->groupFloor;
 
         $this->openGroup($conjunction);
-        $this->groupFloor = $depth;
+        $this->groupFloor = $this->openGroups;
 
         try {
             $callback($this);
         } finally {
             $this->groupFloor = $floor;
-
-            if ($this->openGroups > $depth) {
-                $this->closeGroup();
-            }
+            $this->closeGroup();
         }
 
         return $this;

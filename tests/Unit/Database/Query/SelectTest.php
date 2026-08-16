@@ -528,15 +528,15 @@ final class SelectTest extends TestCase
         );
     }
 
-    public function testAClosureThatClosesTheGroupItselfDoesNotHideItsOwnFailure(): void
+    public function testAClosureThatFailsWithAGroupOpenDoesNotHaveItsFailureReplaced(): void
     {
-        // Closing again in the finally would raise a LogicException of its own
-        // and replace the failure the caller needs to see.
+        // Closing unconditionally in the finally would raise a LogicException of
+        // its own here and replace the failure the caller needs to see.
         $select = $this->connection->select()->from('users')->where('status', 'active');
 
         try {
             $select->where(static function (Select $query): void {
-                $query->whereClose();
+                $query->whereOpen()->where('id', 1);
 
                 throw new RuntimeException('the failure that matters');
             });
@@ -545,20 +545,47 @@ final class SelectTest extends TestCase
             $this->assertSame('the failure that matters', $failure->getMessage());
         }
 
-        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+        // The group the closure left open is reported where the statement is
+        // compiled, not swallowed here.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('call whereClose() 1 more time.');
+
+        $select->toSql();
     }
 
-    public function testAClosureMayCloseTheGroupItself(): void
+    public function testAClosureCannotCloseTheGroupItWasHanded(): void
     {
-        $select = $this->connection->select()
+        // Letting it through would put everything the closure writes afterwards
+        // outside the parentheses it appears to be writing inside, which changes
+        // the rows that come back without raising anything.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group is closed when the closure returns, so the closure cannot close it itself.',
+        );
+
+        $this->connection->select()
             ->from('users')
             ->where('status', 'active')
             ->where(static function (Select $query): void {
                 $query->where('id', 1)->whereClose();
             });
+    }
+
+    public function testAClosureMayOpenAndCloseGroupsOfItsOwn(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static function (Select $query): void {
+                $query->where('id', 1)
+                    ->andWhereOpen()
+                        ->where('name', 'alice')
+                        ->orWhere('name', 'bob')
+                    ->andWhereClose();
+            });
 
         $this->assertSame(
-            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ?)',
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ? AND (`name` = ? OR `name` = ?))',
             $select->toSql(),
         );
     }
@@ -567,15 +594,14 @@ final class SelectTest extends TestCase
     {
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'This group was opened outside the closure, so the closure cannot close it.',
+            'This group is closed when the closure returns, so the closure cannot close it itself.',
         );
 
         $this->connection->select()
             ->from('users')
             ->whereOpen()
             ->where(static function (Select $query): void {
-                $query->whereClose();   // its own
-                $query->whereClose();   // one too many
+                $query->whereClose();
             });
     }
 
@@ -586,14 +612,13 @@ final class SelectTest extends TestCase
         // changes the rows that come back, silently.
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'This group was opened outside the closure, so the closure cannot close it.',
+            'This group is closed when the closure returns, so the closure cannot close it itself.',
         );
 
         $this->connection->select()
             ->from('users')
             ->where(static function (Select $outer): void {
                 $outer->where(static function (Select $inner): void {
-                    $inner->whereClose();
                     $inner->whereClose();
                 });
             });
@@ -707,12 +732,14 @@ final class SelectTest extends TestCase
 
     public function testAConditionIsReadByPositionRatherThanByKey(): void
     {
+        // The keys are deliberately in the wrong order: were they consulted,
+        // the column and the value would come out swapped.
         $select = $this->connection->select()->from('users')->where([
-            ['column' => 'status', 'value' => 'active'],
+            ['value' => 'active', 'column' => 'status'],
         ]);
 
-        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
-        $this->assertSame(['active'], $select->toBindings());
+        $this->assertSame('SELECT * FROM `users` WHERE `active` = ?', $select->toSql());
+        $this->assertSame(['status'], $select->toBindings());
     }
 
     public function testAListRejectsNullTheSameWayTheArgumentsDo(): void
