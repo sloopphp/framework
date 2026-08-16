@@ -46,6 +46,11 @@ final class SelectTest extends TransactionalIntegrationTestCase
         );
     }
 
+    private function markBobDeleted(): void
+    {
+        $this->connection->statement('UPDATE users SET deleted_at = NOW() WHERE name = ?', ['bob']);
+    }
+
     public function testSelectReadsTheRowsItAsksFor(): void
     {
         $rows = $this->connection->select('name', 'score')
@@ -153,6 +158,139 @@ final class SelectTest extends TransactionalIntegrationTestCase
         $rows = $this->connection->select('label')->from('widgets')->execute();
 
         $this->assertSame([['label' => 'first']], $rows->asArray());
+    }
+
+    public function testTestingForNullReadsTheRowsThatHoldNoValue(): void
+    {
+        $this->markBobDeleted();
+
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('deleted_at', 'IS', null)
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testTestingForNotNullReadsTheRowsThatHoldOne(): void
+    {
+        $this->markBobDeleted();
+
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('deleted_at', 'IS NOT', null)
+            ->execute();
+
+        $this->assertSame([['name' => 'bob']], $rows->asArray());
+    }
+
+    public function testTheNullSafeEqualComparesTwoNullsAsEqual(): void
+    {
+        $this->markBobDeleted();
+
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('deleted_at', '<=>', null)
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testMembershipReadsEveryRowInTheSet(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->whereIn('name', ['alice', 'carol'])
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testNonMembershipReadsEveryRowOutsideTheSet(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->whereNotIn('name', ['alice', 'carol'])
+            ->execute();
+
+        $this->assertSame([['name' => 'bob']], $rows->asArray());
+    }
+
+    public function testARangeIncludesBothBounds(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->whereBetween('score', 10, 20)
+            ->orderBy('score')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'bob']], $rows->asArray());
+    }
+
+    public function testAGroupChangesWhichRowsAreRead(): void
+    {
+        // Without the parentheses MySQL binds AND tighter than OR, and the
+        // statement reads every active row plus bob. The group is what makes
+        // the two name tests apply together with the status one, so this is
+        // the assertion that grouping is more than punctuation.
+        $grouped = $this->connection->select('name')
+            ->from('users')
+            ->where('status', 'active')
+            ->whereOpen()
+                ->where('name', 'alice')
+                ->orWhere('name', 'bob')
+            ->whereClose()
+            ->orderBy('name')
+            ->execute();
+
+        $ungrouped = $this->connection->select('name')
+            ->from('users')
+            ->where('status', 'active')
+            ->andWhere('name', 'alice')
+            ->orWhere('name', 'bob')
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice']], $grouped->asArray());
+        $this->assertSame([['name' => 'alice'], ['name' => 'bob']], $ungrouped->asArray());
+    }
+
+    public function testAConditionWrittenAsSqlRunsOnTheServer(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->whereRaw('CHAR_LENGTH(name) > ?', [4])
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testASortTermWrittenAsSqlOrdersTheRows(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->orderByRaw('FIELD(name, ?, ?, ?)', ['carol', 'alice', 'bob'])
+            ->execute();
+
+        $this->assertSame(
+            [['name' => 'carol'], ['name' => 'alice'], ['name' => 'bob']],
+            $rows->asArray(),
+        );
+    }
+
+    public function testAColumnWrittenAsSqlIsReadBack(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->selectRaw('CONCAT(name, ?) AS greeting', ['!'])
+            ->where('name', 'alice')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice', 'greeting' => 'alice!']], $rows->asArray());
     }
 
     public function testRawSqlShowsTheValuesTheServerWouldReceive(): void

@@ -60,7 +60,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsAConditionOfTheWrongType(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Conditions must be a Condition, got string at index 0.');
+        $this->expectExceptionMessageIsOrContains('Conditions must be a WherePart, got string at index 0.');
 
         new SelectSpec(from: 'users', conditions: ['id = 1']);
     }
@@ -110,7 +110,7 @@ final class SelectSpecTest extends TestCase
     public function testReportsTheConditionPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Conditions must be a Condition, got string at index 1.');
+        $this->expectExceptionMessageIsOrContains('Conditions must be a WherePart, got string at index 1.');
 
         new SelectSpec(from: 'users', conditions: [5 => new Condition('id', '=', 1), 9 => 'id = 1']);
     }

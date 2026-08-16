@@ -59,6 +59,83 @@ final class ConditionTest extends TestCase
         ];
     }
 
+    #[DataProvider('provideNullTests')]
+    public function testAcceptsNullWhereTheOperatorReadsIt(string $operator, string $expectedCanonical): void
+    {
+        $condition = new Condition('deleted_at', $operator, null);
+
+        $this->assertSame($expectedCanonical, $condition->operator);
+        $this->assertNull($condition->value);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function provideNullTests(): array
+    {
+        return [
+            'is'              => ['IS', 'IS'],
+            'is not'          => ['IS NOT', 'IS NOT'],
+            'lowercase is'    => ['is', 'IS'],
+            'mixed case'      => ['Is Not', 'IS NOT'],
+            'null safe equal' => ['<=>', '<=>'],
+        ];
+    }
+
+    #[DataProvider('provideOperatorsThatCannotReadNull')]
+    public function testRejectsNullWhereTheOperatorCannotReadIt(string $operator): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A comparison against null is never true, so it is rejected rather than matching no rows.'
+            . ' Write IS or IS NOT to test for NULL.',
+        );
+
+        new Condition('deleted_at', $operator, null);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function provideOperatorsThatCannotReadNull(): array
+    {
+        return [
+            'equal'          => ['='],
+            'not equal'      => ['!='],
+            'ansi not equal' => ['<>'],
+            'greater'        => ['>'],
+            'like'           => ['LIKE'],
+        ];
+    }
+
+    #[DataProvider('provideKeywordOperators')]
+    public function testRejectsAValueWhereTheOperatorExpectsTheNullKeyword(string $operator): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            $operator . ' tests for NULL, so null is the only right-hand side it takes; got int.'
+            . ' Use = to compare against a value.',
+        );
+
+        new Condition('deleted_at', $operator, 10);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function provideKeywordOperators(): array
+    {
+        return [
+            'is'     => ['IS'],
+            'is not' => ['IS NOT'],
+        ];
+    }
+
+    public function testTheNullSafeEqualStillTakesAValue(): void
+    {
+        $this->assertSame(1, (new Condition('id', '<=>', 1))->value);
+    }
+
     #[DataProvider('provideRejectedOperators')]
     public function testRejectsAnythingOutsideTheSupportedOperators(string $operator): void
     {

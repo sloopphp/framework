@@ -154,7 +154,7 @@ final class SelectTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Unsupported comparison operator');
 
-        $this->connection->select()->from('users')->where('id', 'IS', 10);
+        $this->connection->select()->from('users')->where('id', 'BETWEEN', 10);
     }
 
     public function testOrderBySortsAscendingByDefault(): void
@@ -385,5 +385,333 @@ final class SelectTest extends TestCase
         $select = $this->connection->select()->from('users');
 
         $this->assertSame($select->toSql(), $select->toRawSql());
+    }
+
+    public function testTestingForNullWritesTheKeywordRatherThanAPlaceholder(): void
+    {
+        $select = $this->connection->select()->from('users')->where('deleted_at', 'IS', null);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `deleted_at` IS NULL', $select->toSql());
+        $this->assertSame([], $select->toBindings());
+    }
+
+    public function testTestingForNotNullWritesTheKeywordRatherThanAPlaceholder(): void
+    {
+        $select = $this->connection->select()->from('users')->where('deleted_at', 'IS NOT', null);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `deleted_at` IS NOT NULL', $select->toSql());
+        $this->assertSame([], $select->toBindings());
+    }
+
+    public function testWhereNullIsTheSameStatementAsTheIsOperator(): void
+    {
+        $spelledOut = $this->connection->select()->from('users')->where('deleted_at', 'IS', null);
+        $named      = $this->connection->select()->from('users')->whereNull('deleted_at');
+
+        $this->assertSame($spelledOut->toSql(), $named->toSql());
+    }
+
+    public function testWhereNotNullIsTheSameStatementAsTheIsNotOperator(): void
+    {
+        $spelledOut = $this->connection->select()->from('users')->where('deleted_at', 'IS NOT', null);
+        $named      = $this->connection->select()->from('users')->whereNotNull('deleted_at');
+
+        $this->assertSame($spelledOut->toSql(), $named->toSql());
+    }
+
+    public function testTheNullSafeEqualBindsNullRatherThanWritingTheKeyword(): void
+    {
+        // <=> compares values and answers true for two nulls, so null reaches
+        // it as a bound value like any other rather than as a keyword.
+        $select = $this->connection->select()->from('users')->where('deleted_at', '<=>', null);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `deleted_at` <=> ?', $select->toSql());
+        $this->assertSame([null], $select->toBindings());
+    }
+
+    public function testTheIsOperatorRefusesAValue(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Use = to compare against a value.');
+
+        $this->connection->select()->from('users')->where('id', 'IS', 10);
+    }
+
+    public function testRejectingNullPointsAtTheOperatorThatTestsForIt(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Write IS or IS NOT to test for NULL.');
+
+        $this->connection->select()->from('users')->where('deleted_at', '=', null);
+    }
+
+    public function testWhereInWritesOnePlaceholderPerValue(): void
+    {
+        $select = $this->connection->select()->from('users')->whereIn('status', ['active', 'pending']);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` IN (?, ?)', $select->toSql());
+        $this->assertSame(['active', 'pending'], $select->toBindings());
+    }
+
+    public function testWhereNotInNegatesTheMembershipTest(): void
+    {
+        $select = $this->connection->select()->from('users')->whereNotIn('status', ['blocked']);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` NOT IN (?)', $select->toSql());
+        $this->assertSame(['blocked'], $select->toBindings());
+    }
+
+    public function testNullAmongTheValuesOfAMembershipTestIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('makes NOT IN match no rows at all');
+
+        $this->connection->select()->from('users')->whereNotIn('status', ['blocked', null]);
+    }
+
+    public function testWhereBetweenWritesBothBounds(): void
+    {
+        $select = $this->connection->select()->from('users')->whereBetween('id', 10, 20);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `id` BETWEEN ? AND ?', $select->toSql());
+        $this->assertSame([10, 20], $select->toBindings());
+    }
+
+    public function testAGroupOfConditionsIsParenthesised(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->whereOpen()
+                ->where('id', '<', 10)
+                ->orWhere('name', 'alice')
+            ->whereClose();
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` < ? OR `name` = ?)',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 10, 'alice'], $select->toBindings());
+    }
+
+    public function testAGroupCarriesTheConjunctionItWasOpenedWith(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhereOpen()
+                ->where('id', '<', 10)
+            ->orWhereClose();
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? OR (`id` < ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAGroupOpeningTheClauseCarriesNoConjunction(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+                ->where('id', '<', 10)
+            ->whereClose()
+            ->andWhere('status', 'active');
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE (`id` < ?) AND `status` = ?',
+            $select->toSql(),
+        );
+    }
+
+    public function testGroupsNestOneInsideAnother(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+                ->where('id', '<', 10)
+                ->orWhereOpen()
+                    ->where('name', 'alice')
+                    ->andWhere('status', 'active')
+                ->orWhereClose()
+            ->whereClose();
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE (`id` < ? OR (`name` = ? AND `status` = ?))',
+            $select->toSql(),
+        );
+    }
+
+    public function testAndWhereOpenReadsTheSameAsWhereOpen(): void
+    {
+        $plain   = $this->connection->select()->from('users')->where('id', 1)->whereOpen()->where('id', 2)->whereClose();
+        $spelled = $this->connection->select()->from('users')->where('id', 1)->andWhereOpen()->where('id', 2)->andWhereClose();
+
+        $this->assertSame($plain->toSql(), $spelled->toSql());
+    }
+
+    public function testLeavingAGroupOpenIsRejectedWhenTheStatementIsCompiled(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('call whereClose() 1 more time.');
+
+        $this->connection->select()->from('users')->whereOpen()->where('id', 1)->toSql();
+    }
+
+    public function testTheNumberOfGroupsLeftOpenIsReported(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('call whereClose() 2 more times.');
+
+        $this->connection->select()->from('users')->whereOpen()->whereOpen()->where('id', 1)->toSql();
+    }
+
+    public function testClosingAGroupThatWasNeverOpenedIsRejectedWhereItIsWritten(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('nothing to close');
+
+        $this->connection->select()->from('users')->whereClose();
+    }
+
+    public function testAGroupLeftEmptyIsDroppedRatherThanWrittenAsEmptyParentheses(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->whereOpen()
+            ->whereClose();
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testAStatementWhoseOnlyGroupIsEmptyHasNoWhereClause(): void
+    {
+        $select = $this->connection->select()->from('users')->whereOpen()->whereClose();
+
+        $this->assertSame('SELECT * FROM `users`', $select->toSql());
+    }
+
+    public function testNestedEmptyGroupsAreDroppedTogether(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->whereOpen()
+                ->whereOpen()
+                ->whereClose()
+            ->whereClose();
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testWhenAppliesTheCallbackWhileTheConditionHolds(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->when(true, static fn (Select $query): Select => $query->where('status', 'active'));
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testWhenLeavesTheStatementAloneWhileTheConditionDoesNotHold(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->when(false, static fn (Select $query): Select => $query->where('status', 'active'));
+
+        $this->assertSame('SELECT * FROM `users`', $select->toSql());
+    }
+
+    public function testWhenFallsBackToTheSecondCallback(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->when(
+                false,
+                static fn (Select $query): Select => $query->where('status', 'active'),
+                static fn (Select $query): Select => $query->where('status', 'blocked'),
+            );
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+        $this->assertSame(['blocked'], $select->toBindings());
+    }
+
+    public function testWhenLeavesTheSecondCallbackAloneWhileTheConditionHolds(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->when(
+                true,
+                static fn (Select $query): Select => $query->where('status', 'active'),
+                static fn (Select $query): Select => $query->where('status', 'blocked'),
+            );
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+        $this->assertSame(['active'], $select->toBindings());
+    }
+
+    public function testWhereRawWritesTheConditionAsGiven(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereRaw('LENGTH(name) > ?', [3]);
+
+        $this->assertSame('SELECT * FROM `users` WHERE LENGTH(name) > ?', $select->toSql());
+        $this->assertSame([3], $select->toBindings());
+    }
+
+    public function testWhereRawJoinsToWhatPrecedesIt(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->whereRaw('LENGTH(name) > ?', [3]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND LENGTH(name) > ?',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 3], $select->toBindings());
+    }
+
+    public function testOrWhereRawJoinsWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhereRaw('LENGTH(name) > ?', [3]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? OR LENGTH(name) > ?',
+            $select->toSql(),
+        );
+    }
+
+    public function testSelectRawAddsAColumnWrittenAsSql(): void
+    {
+        $select = $this->connection->select('id')->from('users')->selectRaw('LENGTH(name) AS len');
+
+        $this->assertSame('SELECT `id`, LENGTH(name) AS len FROM `users`', $select->toSql());
+    }
+
+    public function testOrderByRawWritesTheTermWithoutADirection(): void
+    {
+        $select = $this->connection->select()->from('users')->orderByRaw('FIELD(status, ?, ?)', ['active', 'blocked']);
+
+        $this->assertSame('SELECT * FROM `users` ORDER BY FIELD(status, ?, ?)', $select->toSql());
+        $this->assertSame(['active', 'blocked'], $select->toBindings());
+    }
+
+    public function testBindingsFollowThePlaceholdersAcrossEveryClause(): void
+    {
+        $select = $this->connection->select('id')
+            ->from('users')
+            ->selectRaw('IF(status = ?, 1, 0) AS flag', ['active'])
+            ->where('id', '>', 1)
+            ->whereIn('status', ['active', 'pending'])
+            ->orderByRaw('FIELD(name, ?)', ['alice']);
+
+        $this->assertSame(['active', 1, 'active', 'pending', 'alice'], $select->toBindings());
     }
 }

@@ -171,29 +171,185 @@ class Grammar
     /**
      * Compile the WHERE clause.
      *
-     * The conjunction of the first condition is ignored: there is nothing
-     * before it to join to.
+     * The conjunction of the first part is ignored, and so is that of the first
+     * part inside a group: in both places there is nothing before it to join to.
      *
-     * @param  list<Condition>          $conditions Conditions in the order they were added
+     * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @return CompiledSql              WHERE clause led by a space, empty when there are no conditions
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileWhere(array $conditions): CompiledSql
     {
-        $sql      = '';
-        $bindings = [];
+        $parts = self::withoutEmptyGroups($conditions);
 
-        foreach ($conditions as $index => $condition) {
-            $column = $this->compileColumnReference($condition->column);
-            $value  = $this->compileValue($condition->value);
+        if ($parts === []) {
+            return new CompiledSql('');
+        }
 
-            $sql .= ($index === 0 ? ' WHERE ' : ' ' . $condition->conjunction->value . ' ')
-                . $column->sql . ' ' . $condition->operator . ' ' . $value->sql;
+        $sql           = ' WHERE ';
+        $bindings      = [];
+        $atClauseStart = true;
 
-            $bindings = array_merge($bindings, $column->bindings, $value->bindings);
+        foreach ($parts as $part) {
+            if ($part instanceof GroupBoundary && $part->edge === GroupEdge::Close) {
+                $sql          .= ')';
+                $atClauseStart = false;
+
+                continue;
+            }
+
+            if (!$atClauseStart) {
+                $sql .= ' ' . $part->conjunction->value . ' ';
+            }
+
+            if ($part instanceof GroupBoundary) {
+                $sql          .= '(';
+                $atClauseStart = true;
+
+                continue;
+            }
+
+            $compiled      = $this->compileWherePart($part);
+            $sql          .= $compiled->sql;
+            $bindings      = array_merge($bindings, $compiled->bindings);
+            $atClauseStart = false;
         }
 
         return new CompiledSql($sql, $bindings);
+    }
+
+    /**
+     * Compile one part of a WHERE clause other than a parenthesis.
+     *
+     * @param  WherePart                $part Part to compile
+     * @return CompiledSql              The part as SQL, with the bindings it needs
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileWherePart(WherePart $part): CompiledSql
+    {
+        return match (true) {
+            $part instanceof Condition        => $this->compileComparison($part),
+            $part instanceof InCondition      => $this->compileIn($part),
+            $part instanceof BetweenCondition => $this->compileBetween($part),
+            $part instanceof RawCondition     => new CompiledSql(
+                $part->expression->sql(),
+                $part->expression->bindings(),
+            ),
+            default                           => throw new InvalidArgumentException(
+                'No rule for compiling ' . get_debug_type($part) . ' as part of a WHERE clause.',
+            ),
+        };
+    }
+
+    /**
+     * Compile one comparison.
+     *
+     * A test for NULL writes the keyword rather than a placeholder: what follows
+     * IS is read by the server as a keyword and not as an expression, so a bound
+     * value there is a syntax error rather than a comparison.
+     *
+     * @param  Condition                $condition Comparison to compile
+     * @return CompiledSql              The comparison as SQL, with the bindings it needs
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileComparison(Condition $condition): CompiledSql
+    {
+        $column = $this->compileColumnReference($condition->column);
+
+        if ($condition->value === null && ($condition->operator === 'IS' || $condition->operator === 'IS NOT')) {
+            return new CompiledSql($column->sql . ' ' . $condition->operator . ' NULL', $column->bindings);
+        }
+
+        $value = $this->compileValue($condition->value);
+
+        return new CompiledSql(
+            $column->sql . ' ' . $condition->operator . ' ' . $value->sql,
+            array_merge($column->bindings, $value->bindings),
+        );
+    }
+
+    /**
+     * Compile a test for membership in a set of values.
+     *
+     * @param  InCondition              $condition Membership test to compile
+     * @return CompiledSql              The test as SQL, with the bindings it needs
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileIn(InCondition $condition): CompiledSql
+    {
+        $column   = $this->compileColumnReference($condition->column);
+        $parts    = [];
+        $bindings = $column->bindings;
+
+        foreach ($condition->values as $value) {
+            $compiled = $this->compileValue($value);
+            $parts[]  = $compiled->sql;
+            $bindings = array_merge($bindings, $compiled->bindings);
+        }
+
+        return new CompiledSql(
+            $column->sql . ($condition->negated ? ' NOT IN (' : ' IN (') . implode(', ', $parts) . ')',
+            $bindings,
+        );
+    }
+
+    /**
+     * Compile a test that a column falls within a range.
+     *
+     * @param  BetweenCondition         $condition Range test to compile
+     * @return CompiledSql              The test as SQL, with the bindings it needs
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileBetween(BetweenCondition $condition): CompiledSql
+    {
+        $column = $this->compileColumnReference($condition->column);
+        $min    = $this->compileValue($condition->min);
+        $max    = $this->compileValue($condition->max);
+
+        return new CompiledSql(
+            $column->sql . ' BETWEEN ' . $min->sql . ' AND ' . $max->sql,
+            array_merge($column->bindings, $min->bindings, $max->bindings),
+        );
+    }
+
+    /**
+     * Drop groups that ended up holding nothing.
+     *
+     * A group can be left empty by a when() that did not fire, and `()` is not
+     * valid SQL. Dropping the pair keeps the rest of the clause as written,
+     * which is what the caller who wrote the group would have got had the
+     * condition inside been added.
+     *
+     * @param  list<WherePart> $conditions Parts of the clause in the order they were added
+     * @return list<WherePart> The same parts, without any empty pair of parentheses
+     */
+    private static function withoutEmptyGroups(array $conditions): array
+    {
+        do {
+            $kept    = [];
+            $dropped = false;
+
+            for ($index = 0, $total = \count($conditions); $index < $total; $index++) {
+                $part = $conditions[$index];
+                $next = $conditions[$index + 1] ?? null;
+
+                if (
+                    $part instanceof GroupBoundary && $part->edge === GroupEdge::Open
+                    && $next instanceof GroupBoundary && $next->edge === GroupEdge::Close
+                ) {
+                    $index++;
+                    $dropped = true;
+
+                    continue;
+                }
+
+                $kept[] = $part;
+            }
+
+            $conditions = $kept;
+        } while ($dropped);
+
+        return $conditions;
     }
 
     /**
@@ -214,7 +370,7 @@ class Grammar
 
         foreach ($orders as $order) {
             $column   = $this->compileColumnReference($order->column);
-            $parts[]  = $column->sql . ' ' . $order->direction->value;
+            $parts[]  = $column->sql . ($order->direction === null ? '' : ' ' . $order->direction->value);
             $bindings = array_merge($bindings, $column->bindings);
         }
 
@@ -260,10 +416,10 @@ class Grammar
     /**
      * Compile the right-hand side of a comparison.
      *
-     * @param  string|int|float|bool|Expression $value Value to compare against
-     * @return CompiledSql                      A placeholder with the value bound, or the SQL of the Expression
+     * @param  string|int|float|bool|Expression|null $value Value to compare against
+     * @return CompiledSql                           A placeholder with the value bound, or the SQL of the Expression
      */
-    protected function compileValue(string|int|float|bool|Expression $value): CompiledSql
+    protected function compileValue(string|int|float|bool|Expression|null $value): CompiledSql
     {
         return $value instanceof Expression
             ? new CompiledSql($value->sql(), $value->bindings())
