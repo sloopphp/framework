@@ -670,22 +670,22 @@ final class SelectTest extends TestCase
         return [
             'list with one more' => [
                 static fn (Select $query): Select => $query->where([['status', 'active']], 'EXTRA'),
-                'A list of conditions says everything on its own, so the other 1 argument(s) would be ignored.',
+                'A list of conditions says everything on its own, so the other 1 argument would be ignored.',
             ],
             'empty list with one more' => [
                 static fn (Select $query): Select => $query->where([], 'EXTRA'),
-                'A list of conditions says everything on its own, so the other 1 argument(s) would be ignored.',
+                'A list of conditions says everything on its own, so the other 1 argument would be ignored.',
             ],
             'list with two more' => [
                 static fn (Select $query): Select => $query->where([['status', 'active']], '=', 'EXTRA'),
-                'A list of conditions says everything on its own, so the other 2 argument(s) would be ignored.',
+                'A list of conditions says everything on its own, so the other 2 arguments would be ignored.',
             ],
             'closure with one more' => [
                 static fn (Select $query): Select => $query->where(
                     static fn (Select $inner): Select => $inner->where('id', 1),
                     'EXTRA',
                 ),
-                'A closure says everything on its own, so the other 1 argument(s) would be ignored.',
+                'A closure says everything on its own, so the other 1 argument would be ignored.',
             ],
         ];
     }

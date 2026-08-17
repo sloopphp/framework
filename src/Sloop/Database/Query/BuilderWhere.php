@@ -139,6 +139,12 @@ abstract class BuilderWhere extends Builder
      * it. MySQL binds AND tighter than OR, so that is what the SQL says without
      * parentheses being added.
      *
+     * That reading holds for what is written up to this point, not for what
+     * follows: a condition added afterwards joins with AND and so binds to this
+     * set rather than to the statement as a whole. Where the set has to stay
+     * one alternative whatever comes later, pass a closure and let it have its
+     * own parentheses.
+     *
      * @param  string|Expression|array<int|string, mixed>|Closure $column   Column to compare, an expression standing in for one, a list of conditions, or a closure receiving this builder
      * @param  string|int|float|bool|Expression|null              $operator Operator when a value follows, otherwise the value itself
      * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
@@ -459,7 +465,7 @@ abstract class BuilderWhere extends Builder
      * middle of a parenthesis.
      *
      * @return void
-     * @throws LogicException When a group is still open
+     * @throws LogicException When a group is still open, or a closure left one open
      */
     protected function requireGroupsClosed(): void
     {
@@ -550,7 +556,7 @@ abstract class BuilderWhere extends Builder
                 throw new InvalidArgumentException(
                     'A ' . ($column instanceof Closure ? 'closure' : 'list of conditions')
                     . ' says everything on its own, so the other ' . ($argumentCount - 1)
-                    . ' argument(s) would be ignored. Pass it alone.',
+                    . ' argument' . ($argumentCount === 2 ? '' : 's') . ' would be ignored. Pass it alone.',
                 );
             }
 
