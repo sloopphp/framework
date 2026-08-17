@@ -10,6 +10,7 @@ use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Sloop\Database\Connection;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
@@ -387,6 +388,471 @@ final class SelectTest extends TestCase
         $this->assertSame($select->toSql(), $select->toRawSql());
     }
 
+    public function testAListOfConditionsAddsEachOfThem(): void
+    {
+        $select = $this->connection->select()->from('users')->where([
+            ['status', 'active'],
+            ['score', '>=', 10],
+            ['deleted_at', 'IS', null],
+        ]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND `score` >= ? AND `deleted_at` IS NULL',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 10], $select->toBindings());
+    }
+
+    public function testAConditionOfTwoComparesForEquality(): void
+    {
+        $listed     = $this->connection->select()->from('users')->where([['status', 'active']]);
+        $spelledOut = $this->connection->select()->from('users')->where('status', 'active');
+
+        $this->assertSame($spelledOut->toSql(), $listed->toSql());
+        $this->assertSame($spelledOut->toBindings(), $listed->toBindings());
+    }
+
+    public function testAnEmptyListAddsNothing(): void
+    {
+        $select = $this->connection->select()->from('users')->where([]);
+
+        $this->assertSame('SELECT * FROM `users`', $select->toSql());
+    }
+
+    public function testAnEmptyListLeavesTheConditionsAlreadyAdded(): void
+    {
+        $select = $this->connection->select()->from('users')->where('status', 'active')->where([]);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testAListJoinsToWhatPrecedesItWithTheConjunctionOfTheCall(): void
+    {
+        // The OR joins the first of the listed conditions and the rest follow
+        // with AND, so the set reads as one alternative. MySQL binds AND tighter
+        // than OR, which is what makes the parentheses unnecessary.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('id', 1)
+            ->orWhere([['status', 'active'], ['score', '>=', 10]]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `id` = ? OR `status` = ? AND `score` >= ?',
+            $select->toSql(),
+        );
+    }
+
+    public function testAListAcceptsAnExpressionAsAColumnAndAsAValue(): void
+    {
+        $select = $this->connection->select()->from('users')->where([
+            [Expression::of('LOWER(`name`)'), 'alice'],
+            ['created_at', '<', Expression::of('NOW()')],
+        ]);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE LOWER(`name`) = ? AND `created_at` < NOW()',
+            $select->toSql(),
+        );
+        $this->assertSame(['alice'], $select->toBindings());
+    }
+
+    public function testACallableOpensAGroupAroundWhatItAdds(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static fn (Select $query): Select => $query->where('id', 1)->orWhere('id', 2));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ? OR `id` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testACallableGivenToOrWhereJoinsItsGroupWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhere(static fn (Select $query): Select => $query->where('id', 1)->andWhere('score', '>', 10));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? OR (`id` = ? AND `score` > ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testACallableWritesTheSameStatementAsTheOpenAndCloseCalls(): void
+    {
+        $withCallable = $this->connection->select()
+            ->from('users')
+            ->where(static fn (Select $query): Select => $query->where('id', 1)->orWhere('id', 2));
+
+        $withOpenClose = $this->connection->select()
+            ->from('users')
+            ->whereOpen()->where('id', 1)->orWhere('id', 2)->whereClose();
+
+        $this->assertSame($withOpenClose->toSql(), $withCallable->toSql());
+    }
+
+    public function testACallableThatAddsNothingLeavesNoEmptyParentheses(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static fn (Select $query): Select => $query);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
+    public function testAGroupIsClosedEvenWhereTheClosureFails(): void
+    {
+        $select = $this->connection->select()->from('users')->where('status', 'active');
+
+        try {
+            $select->where(static function (Select $query): void {
+                $query->where('id', 1);
+
+                throw new RuntimeException('from inside the group');
+            });
+            $this->fail('The failure inside the closure should reach the caller.');
+        } catch (RuntimeException $failure) {
+            $this->assertSame('from inside the group', $failure->getMessage());
+        }
+
+        // The parentheses balance, so this still compiles; if they did not,
+        // compile() would raise a LogicException.
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAClosureThatFailsWithAGroupOpenDoesNotHaveItsFailureReplaced(): void
+    {
+        // Closing unconditionally in the finally would raise a LogicException of
+        // its own here and replace the failure the caller needs to see.
+        $select = $this->connection->select()->from('users')->where('status', 'active');
+
+        try {
+            $select->where(static function (Select $query): void {
+                $query->whereOpen()->where('id', 1);
+
+                throw new RuntimeException('the failure that matters');
+            });
+            $this->fail('The failure inside the closure should reach the caller.');
+        } catch (RuntimeException $failure) {
+            $this->assertSame('the failure that matters', $failure->getMessage());
+        }
+
+        // The group the closure left open is reported where the statement is
+        // compiled, not swallowed here.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A closure opened a group of conditions and returned without closing it.'
+            . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+        );
+
+        $select->toSql();
+    }
+
+    public function testAClosureCannotCloseTheGroupItWasHanded(): void
+    {
+        // Letting it through would put everything the closure writes afterwards
+        // outside the parentheses it appears to be writing inside, which changes
+        // the rows that come back without raising anything.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group is closed when the closure returns, so the closure cannot close it itself.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static function (Select $query): void {
+                $query->where('id', 1)->whereClose();
+            });
+    }
+
+    public function testAClosureMayOpenAndCloseGroupsOfItsOwn(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->where(static function (Select $query): void {
+                $query->where('id', 1)
+                    ->andWhereOpen()
+                        ->where('name', 'alice')
+                        ->orWhere('name', 'bob')
+                    ->andWhereClose();
+            });
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`id` = ? AND (`name` = ? OR `name` = ?))',
+            $select->toSql(),
+        );
+    }
+
+    public function testWhatAClosureWritesAfterClosingItsOwnGroupStaysInsideTheOneItWasHanded(): void
+    {
+        // The direct converse of closing the handed group: everything the
+        // closure writes belongs inside its parentheses, before and after a
+        // group of its own.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('id', 1)->whereClose();
+                $query->orWhere('status', 'active');
+            });
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE ((`id` = ?) OR `status` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAClosureInsideAGroupOpenedByHandNests(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+                ->where(static fn (Select $query): Select => $query->where('id', 1))
+            ->whereClose();
+
+        $this->assertSame('SELECT * FROM `users` WHERE ((`id` = ?))', $select->toSql());
+    }
+
+    public function testAClosureInsideAGroupOpenedByAnotherClosureNests(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $outer): void {
+                $outer->whereOpen()
+                    ->where(static fn (Select $inner): Select => $inner->where('id', 1))
+                    ->whereClose();
+            });
+
+        $this->assertSame('SELECT * FROM `users` WHERE (((`id` = ?)))', $select->toSql());
+    }
+
+    public function testAClosureThatLeavesAGroupOpenIsReportedEvenWhereALaterCloseWouldBalanceIt(): void
+    {
+        // Two mistakes in one chain used to cancel: the group the closure left
+        // open absorbed the stray close, and the condition in between landed in
+        // parentheses nobody wrote. The depth on the way out of a closure is now
+        // the depth on the way in, so the stray close has nothing to take.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('status', 'active');
+            })
+            ->orWhere('name', 'bob')
+            ->whereClose();
+    }
+
+    #[DataProvider('provideCallsWithArgumentsThatWouldBeIgnored')]
+    public function testAListOrClosureGivenOtherArgumentsIsRejected(callable $call, string $expectedMessage): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
+
+        $call($this->connection->select()->from('users'));
+    }
+
+    /**
+     * @return array<string, array{callable(Select): mixed, string}>
+     */
+    public static function provideCallsWithArgumentsThatWouldBeIgnored(): array
+    {
+        return [
+            'list with one more' => [
+                static fn (Select $query): Select => $query->where([['status', 'active']], 'EXTRA'),
+                'A list of conditions says everything on its own, so the other 1 argument would be ignored.',
+            ],
+            'empty list with one more' => [
+                static fn (Select $query): Select => $query->where([], 'EXTRA'),
+                'A list of conditions says everything on its own, so the other 1 argument would be ignored.',
+            ],
+            'list with two more' => [
+                static fn (Select $query): Select => $query->where([['status', 'active']], '=', 'EXTRA'),
+                'A list of conditions says everything on its own, so the other 2 arguments would be ignored.',
+            ],
+            'closure with one more' => [
+                static fn (Select $query): Select => $query->where(
+                    static fn (Select $inner): Select => $inner->where('id', 1),
+                    'EXTRA',
+                ),
+                'A closure says everything on its own, so the other 1 argument would be ignored.',
+            ],
+        ];
+    }
+
+    public function testAClosureCannotCloseAGroupItDidNotOpen(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group is closed when the closure returns, so the closure cannot close it itself.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where(static function (Select $query): void {
+                $query->whereClose();
+            });
+    }
+
+    public function testANestedClosureCannotCloseTheGroupOfTheOneAroundIt(): void
+    {
+        // Without the floor this closed the outer group, and the conditions the
+        // outer closure added afterwards landed outside its parentheses — which
+        // changes the rows that come back, silently.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group is closed when the closure returns, so the closure cannot close it itself.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $outer): void {
+                $outer->where(static function (Select $inner): void {
+                    $inner->whereClose();
+                });
+            });
+    }
+
+    public function testClosingWithNothingOpenStillSaysThereIsNothingToClose(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
+
+        $this->connection->select()->from('users')->whereClose();
+    }
+
+    public function testAGroupLeftOpenInsideAClosureIsStillReported(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A closure opened a group of conditions and returned without closing it.'
+            . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('id', 1);
+            })
+            ->toSql();
+    }
+
+    public function testAListAndACallableCombine(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where([['status', 'active'], ['score', '>=', 10]])
+            ->where(static fn (Select $query): Select => $query->where('role', 'admin')->orWhere('role', 'editor'));
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND `score` >= ? AND (`role` = ? OR `role` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAColumnOnItsOwnIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A comparison needs something to compare against, but only a column was given.'
+            . ' Pass a value, or an operator and a value.',
+        );
+
+        $this->connection->select()->from('users')->where('status');
+    }
+
+    /**
+     * @param array<int|string, mixed> $conditions
+     */
+    #[DataProvider('provideMalformedConditionLists')]
+    public function testAMalformedListIsRejected(array $conditions, string $expectedMessage): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
+
+        $this->connection->select()->from('users')->where($conditions);
+    }
+
+    /**
+     * @return array<string, array{array<int|string, mixed>, string}>
+     */
+    public static function provideMalformedConditionLists(): array
+    {
+        return [
+            'condition is not a list' => [
+                ['junk'],
+                'Each condition must be a list of two or three, got string at index 0.',
+            ],
+            'condition of one' => [
+                [['status']],
+                'got 1 at index 0.',
+            ],
+            'condition of four' => [
+                [['status', '=', 'active', 'or']],
+                'got 4 at index 0.',
+            ],
+            'the reported index is the position' => [
+                [['status', 'active'], ['score']],
+                'got 1 at index 1.',
+            ],
+            'column is not a column' => [
+                [[10, '=', 1]],
+                'so it must be a string or an Expression, got int at index 0.',
+            ],
+            'value cannot be compared' => [
+                [['status', ['nested']]],
+                'compares against a scalar, null or an Expression, got array at index 0.',
+            ],
+            'value of a condition of three cannot be compared' => [
+                [['status', '=', ['nested']]],
+                'compares against a scalar, null or an Expression, got array at index 0.',
+            ],
+            'operator is not a string' => [
+                [['status', 10, 'active']],
+                'The middle part of a condition of three is the operator, so it must be a string, got int at index 0.',
+            ],
+        ];
+    }
+
+    public function testTheReportedPositionIsThePositionInTheListNotTheOriginalKey(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('got 1 at index 0.');
+
+        $this->connection->select()->from('users')->where([7 => ['status']]);
+    }
+
+    public function testAConditionIsReadByPositionRatherThanByKey(): void
+    {
+        // The keys are deliberately in the wrong order: were they consulted,
+        // the column and the value would come out swapped.
+        $select = $this->connection->select()->from('users')->where([
+            ['value' => 'active', 'column' => 'status'],
+        ]);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `active` = ?', $select->toSql());
+        $this->assertSame(['status'], $select->toBindings());
+    }
+
+    public function testAListRejectsNullTheSameWayTheArgumentsDo(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Write IS or IS NOT to test for NULL.');
+
+        $this->connection->select()->from('users')->where([['deleted_at', '=', null]]);
+    }
+
     public function testTestingForNullWritesTheKeywordRatherThanAPlaceholder(): void
     {
         $select = $this->connection->select()->from('users')->where('deleted_at', 'IS', null);
@@ -564,14 +1030,6 @@ final class SelectTest extends TestCase
         $this->expectExceptionMessageIsOrContains('call whereClose() 2 more times.');
 
         $this->connection->select()->from('users')->whereOpen()->whereOpen()->where('id', 1)->toSql();
-    }
-
-    public function testClosingAGroupThatWasNeverOpenedIsRejectedWhereItIsWritten(): void
-    {
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains('nothing to close');
-
-        $this->connection->select()->from('users')->whereClose();
     }
 
     public function testAGroupLeftEmptyIsDroppedRatherThanWrittenAsEmptyParentheses(): void
