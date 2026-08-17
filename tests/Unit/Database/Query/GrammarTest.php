@@ -15,6 +15,7 @@ use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\InCondition;
+use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\SelectSpec;
 use Sloop\Database\Query\WherePart;
@@ -654,6 +655,250 @@ final class GrammarTest extends TestCase
         );
 
         new Grammar()->compileSelect(new SelectSpec(from: 'users', conditions: [$unknown]));
+    }
+
+    #[DataProvider('provideSupportedOperators')]
+    public function testComparisonAcceptsTheOperatorsTheGrammarWrites(string $operator, string $expected): void
+    {
+        $this->assertSame($expected, new Grammar()->comparison('id', $operator, 1)->operator);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function provideSupportedOperators(): array
+    {
+        return [
+            'equal'               => ['=', '='],
+            'null safe equal'     => ['<=>', '<=>'],
+            'not equal'           => ['!=', '!='],
+            'ansi not equal'      => ['<>', '<>'],
+            'less'                => ['<', '<'],
+            'less or equal'       => ['<=', '<='],
+            'greater'             => ['>', '>'],
+            'greater or equal'    => ['>=', '>='],
+            'like'                => ['LIKE', 'LIKE'],
+            'not like'            => ['NOT LIKE', 'NOT LIKE'],
+            'regexp'              => ['REGEXP', 'REGEXP'],
+            'not regexp'          => ['NOT REGEXP', 'NOT REGEXP'],
+            'rlike'               => ['RLIKE', 'RLIKE'],
+            'sounds like'         => ['SOUNDS LIKE', 'SOUNDS LIKE'],
+            'lowercase like'      => ['like', 'LIKE'],
+            'lowercase not like'  => ['not like', 'NOT LIKE'],
+            'lowercase regexp'    => ['regexp', 'REGEXP'],
+            'mixed case rlike'    => ['RLike', 'RLIKE'],
+            'lowercase sounds'    => ['sounds like', 'SOUNDS LIKE'],
+        ];
+    }
+
+    #[DataProvider('provideRejectedOperators')]
+    public function testComparisonRejectsAnOperatorTheGrammarDoesNotWrite(string $operator): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Unsupported comparison operator "' . $operator . '".');
+
+        new Grammar()->comparison('id', $operator, 1);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function provideRejectedOperators(): array
+    {
+        return [
+            'sql fragment'      => ['= 1 OR 1'],
+            'comment'           => ['= ? --'],
+            'empty'             => [''],
+            'leading space'     => [' ='],
+            'trailing newline'  => ["=\n"],
+            'doubled space'     => ['NOT  LIKE'],
+            'not yet supported' => ['BETWEEN'],
+        ];
+    }
+
+    #[DataProvider('provideNullTests')]
+    public function testComparisonAcceptsNullWhereTheOperatorReadsIt(string $operator, string $expected): void
+    {
+        $condition = new Grammar()->comparison('deleted_at', $operator, null);
+
+        $this->assertSame($expected, $condition->operator);
+        $this->assertNull($condition->value);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function provideNullTests(): array
+    {
+        return [
+            'is'              => ['IS', 'IS'],
+            'is not'          => ['IS NOT', 'IS NOT'],
+            'lowercase is'    => ['is', 'IS'],
+            'mixed case'      => ['Is Not', 'IS NOT'],
+            'null safe equal' => ['<=>', '<=>'],
+        ];
+    }
+
+    #[DataProvider('provideOperatorsThatCannotReadNull')]
+    public function testComparisonRejectsNullWhereTheOperatorCannotReadIt(string $operator): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A comparison against null is never true, so it is rejected rather than matching no rows.'
+            . ' Write IS or IS NOT to test for NULL.',
+        );
+
+        new Grammar()->comparison('deleted_at', $operator, null);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function provideOperatorsThatCannotReadNull(): array
+    {
+        return [
+            'equal'          => ['='],
+            'not equal'      => ['!='],
+            'ansi not equal' => ['<>'],
+            'greater'        => ['>'],
+            'like'           => ['LIKE'],
+            'regexp'         => ['REGEXP'],
+        ];
+    }
+
+    #[DataProvider('provideKeywordOperators')]
+    public function testComparisonAcceptsABooleanWhereTheOperatorReadsAKeyword(string $operator): void
+    {
+        $this->assertTrue(new Grammar()->comparison('active', $operator, true)->value);
+        $this->assertFalse(new Grammar()->comparison('active', $operator, false)->value);
+    }
+
+    #[DataProvider('provideKeywordOperators')]
+    public function testComparisonRejectsAValueWhereTheOperatorReadsAKeyword(string $operator): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            $operator . ' tests against a keyword, so null, true and false are the only right-hand sides'
+            . ' it takes; got int. Use = to compare against a value.',
+        );
+
+        new Grammar()->comparison('deleted_at', $operator, 10);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function provideKeywordOperators(): array
+    {
+        return [
+            'is'     => ['IS'],
+            'is not' => ['IS NOT'],
+        ];
+    }
+
+    public function testComparisonKeepsTheNullSafeEqualTakingAValue(): void
+    {
+        $this->assertSame(1, new Grammar()->comparison('id', '<=>', 1)->value);
+    }
+
+    public function testComparisonDefaultsToAnd(): void
+    {
+        $this->assertSame(Conjunction::And, new Grammar()->comparison('id', '=', 1)->conjunction);
+    }
+
+    public function testComparisonKeepsTheGivenConjunction(): void
+    {
+        $condition = new Grammar()->comparison('id', '=', 1, Conjunction::Or);
+
+        $this->assertSame(Conjunction::Or, $condition->conjunction);
+    }
+
+    public function testComparisonKeepsTheColumnAsGiven(): void
+    {
+        $column = Expression::of('LOWER(name)');
+
+        $this->assertSame($column, new Grammar()->comparison($column, 'LIKE', '%a%')->column);
+    }
+
+    #[DataProvider('provideKeywordComparisons')]
+    public function testAKeywordOperatorWritesTheKeywordRatherThanAPlaceholder(
+        string $operator,
+        string|bool|null $value,
+        string $expected,
+    ): void {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('active', $operator, $value)],
+        ));
+
+        $this->assertSame('SELECT * FROM `users` WHERE `active` ' . $expected, $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    /**
+     * @return array<string, array{string, string|bool|null, string}>
+     */
+    public static function provideKeywordComparisons(): array
+    {
+        return [
+            'is null'      => ['IS', null, 'IS NULL'],
+            'is not null'  => ['IS NOT', null, 'IS NOT NULL'],
+            'is true'      => ['IS', true, 'IS TRUE'],
+            'is false'     => ['IS', false, 'IS FALSE'],
+            'is not true'  => ['IS NOT', true, 'IS NOT TRUE'],
+            'is not false' => ['IS NOT', false, 'IS NOT FALSE'],
+        ];
+    }
+
+    public function testARegularExpressionMatchBindsItsPatternLikeAnyOtherValue(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('name', 'REGEXP', '^a')],
+        ));
+
+        $this->assertSame('SELECT * FROM `users` WHERE `name` REGEXP ?', $compiled->sql);
+        $this->assertSame(['^a'], $compiled->bindings);
+    }
+
+    public function testCompilingRejectsAnOperatorTheGrammarDoesNotWrite(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Unsupported comparison operator "MEMBER OF".');
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('id', 'MEMBER OF', 1)],
+        ));
+    }
+
+    public function testCompilingRejectsAValueWhereTheOperatorReadsAKeyword(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'An operator testing against a keyword reads null, true or false on the right, got string.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('active', 'IS', 'yes')],
+        ));
+    }
+
+    public function testSubclassCanAddAnOperator(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function comparisonOperators(): array
+            {
+                return parent::comparisonOperators() + ['MEMBER OF' => Operand::Value];
+            }
+        };
+
+        $condition = $grammar->comparison('tags', 'member of', 'a');
+        $compiled  = $grammar->compileSelect(new SelectSpec(from: 'users', conditions: [$condition]));
+
+        $this->assertSame('SELECT * FROM `users` WHERE `tags` MEMBER OF ?', $compiled->sql);
+        $this->assertSame(['a'], $compiled->bindings);
     }
 
     public function testSubclassCanReplaceASingleClause(): void

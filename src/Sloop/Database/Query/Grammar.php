@@ -39,6 +39,34 @@ class Grammar
     private const string PREFIX_PATTERN = '/\A[a-zA-Z0-9_]*\z/';
 
     /**
+     * Comparison operators this grammar writes, and what each takes on the right.
+     *
+     * An operator ends up in the SQL as it is spelled here, so the set is fixed
+     * rather than taken from the caller: a comparison built from outside the
+     * application cannot carry a fragment of SQL in its operator.
+     *
+     * @var array<string, Operand>
+     */
+    private const array COMPARISON_OPERATORS = [
+        '='           => Operand::Value,
+        '<=>'         => Operand::ValueOrNull,
+        '!='          => Operand::Value,
+        '<>'          => Operand::Value,
+        '<'           => Operand::Value,
+        '<='          => Operand::Value,
+        '>'           => Operand::Value,
+        '>='          => Operand::Value,
+        'LIKE'        => Operand::Value,
+        'NOT LIKE'    => Operand::Value,
+        'REGEXP'      => Operand::Value,
+        'NOT REGEXP'  => Operand::Value,
+        'RLIKE'       => Operand::Value,
+        'SOUNDS LIKE' => Operand::Value,
+        'IS'          => Operand::Keyword,
+        'IS NOT'      => Operand::Keyword,
+    ];
+
+    /**
      * Build a grammar for a connection.
      *
      * @param  string                   $prefix Prepended to every table name; empty for none
@@ -242,22 +270,86 @@ class Grammar
     }
 
     /**
+     * Comparison operators this grammar accepts, and what each takes on the right.
+     *
+     * A subclass adds an operator by returning it alongside these. What it adds
+     * is written into the SQL as spelled, so it is trusted the same way as the
+     * operators the framework writes itself; a value taken from a request
+     * belongs on the right-hand side, never here.
+     *
+     * @return array<string, Operand> Operators in the spelling they are written with
+     */
+    protected function comparisonOperators(): array
+    {
+        return self::COMPARISON_OPERATORS;
+    }
+
+    /**
+     * Build one comparison, refusing an operator this grammar does not write.
+     *
+     * The operator is matched without regard to case and kept in the spelling
+     * listed by comparisonOperators(), so the SQL reads the same however the
+     * caller spelled it.
+     *
+     * @param  string|Expression                     $column      Column to compare, or an expression standing in for one
+     * @param  string                                $operator    Comparison operator; matched case-insensitively
+     * @param  string|int|float|bool|Expression|null $value       Value to compare against; bound unless the operator reads it as a keyword
+     * @param  Conjunction                           $conjunction How this joins to the preceding condition
+     * @return Condition                             The comparison, ready for a builder to collect
+     * @throws InvalidArgumentException              When the operator is not one this grammar writes, or the operator and the value do not go together
+     */
+    public function comparison(
+        string|Expression $column,
+        string $operator,
+        string|int|float|bool|Expression|null $value,
+        Conjunction $conjunction = Conjunction::And,
+    ): Condition {
+        $canonical = strtoupper($operator);
+        $operand   = $this->comparisonOperators()[$canonical]
+            ?? throw new InvalidArgumentException('Unsupported comparison operator "' . $operator . '".');
+
+        if ($operand === Operand::Keyword) {
+            if ($value !== null && !\is_bool($value)) {
+                throw new InvalidArgumentException(
+                    $canonical . ' tests against a keyword, so null, true and false are the only right-hand sides'
+                    . ' it takes; got ' . get_debug_type($value) . '. Use = to compare against a value.',
+                );
+            }
+        } elseif ($value === null && $operand !== Operand::ValueOrNull) {
+            throw new InvalidArgumentException(
+                'A comparison against null is never true, so it is rejected rather than matching no rows.'
+                . ' Write IS or IS NOT to test for NULL.',
+            );
+        }
+
+        return new Condition($column, $canonical, $value, $conjunction);
+    }
+
+    /**
      * Compile one comparison.
      *
-     * A test for NULL writes the keyword rather than a placeholder: what follows
-     * IS is read by the server as a keyword and not as an expression, so a bound
-     * value there is a syntax error rather than a comparison.
+     * A test against a keyword writes the keyword rather than a placeholder:
+     * what follows IS is read by the server as a keyword and not as an
+     * expression, so a bound value there is a syntax error rather than a
+     * comparison.
      *
      * @param  Condition                $condition Comparison to compile
      * @return CompiledSql              The comparison as SQL, with the bindings it needs
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @throws InvalidArgumentException When an identifier is malformed, or the operator is not one this grammar writes
      */
     protected function compileComparison(Condition $condition): CompiledSql
     {
-        $column = $this->compileColumnReference($condition->column);
+        $column  = $this->compileColumnReference($condition->column);
+        $operand = $this->comparisonOperators()[$condition->operator]
+            ?? throw new InvalidArgumentException(
+                'Unsupported comparison operator "' . $condition->operator . '".',
+            );
 
-        if ($condition->value === null && ($condition->operator === 'IS' || $condition->operator === 'IS NOT')) {
-            return new CompiledSql($column->sql . ' ' . $condition->operator . ' NULL', $column->bindings);
+        if ($operand === Operand::Keyword) {
+            return new CompiledSql(
+                $column->sql . ' ' . $condition->operator . ' ' . self::keyword($condition->value),
+                $column->bindings,
+            );
         }
 
         $value = $this->compileValue($condition->value);
@@ -266,6 +358,26 @@ class Grammar
             $column->sql . ' ' . $condition->operator . ' ' . $value->sql,
             array_merge($column->bindings, $value->bindings),
         );
+    }
+
+    /**
+     * Write the keyword an operator reads on its right-hand side.
+     *
+     * @param  string|int|float|bool|Expression|null $value Right-hand side of the comparison
+     * @return string                                NULL, TRUE or FALSE
+     * @throws InvalidArgumentException              When the value is not one the keyword operators read
+     */
+    private static function keyword(string|int|float|bool|Expression|null $value): string
+    {
+        return match ($value) {
+            null    => 'NULL',
+            true    => 'TRUE',
+            false   => 'FALSE',
+            default => throw new InvalidArgumentException(
+                'An operator testing against a keyword reads null, true or false on the right, got '
+                . get_debug_type($value) . '.',
+            ),
+        };
     }
 
     /**

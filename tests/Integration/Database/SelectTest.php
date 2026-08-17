@@ -47,6 +47,16 @@ final class SelectTest extends TransactionalIntegrationTestCase
         );
     }
 
+    private function seedPosts(): void
+    {
+        $this->connection->statement(
+            'INSERT INTO posts (id, user_id, title, published, created_at) VALUES'
+                . ' (1, 1, ?, 1, NOW()),'
+                . ' (2, 1, ?, 0, NOW())',
+            ['out', 'draft'],
+        );
+    }
+
     private function markBobDeleted(): void
     {
         $this->connection->statement('UPDATE users SET deleted_at = NOW() WHERE name = ?', ['bob']);
@@ -247,6 +257,78 @@ final class SelectTest extends TransactionalIntegrationTestCase
             ->execute();
 
         $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testTestingForTrueReadsTheRowsTheServerCallsTrue(): void
+    {
+        $this->seedPosts();
+
+        $rows = $this->connection->select('title')
+            ->from('posts')
+            ->where('published', 'IS', true)
+            ->orderBy('title')
+            ->execute();
+
+        $this->assertSame([['title' => 'out']], $rows->asArray());
+    }
+
+    public function testTestingForFalseReadsTheRowsTheServerCallsFalse(): void
+    {
+        $this->seedPosts();
+
+        $rows = $this->connection->select('title')
+            ->from('posts')
+            ->where('published', 'IS', false)
+            ->orderBy('title')
+            ->execute();
+
+        $this->assertSame([['title' => 'draft']], $rows->asArray());
+    }
+
+    public function testTestingForNotTrueAlsoReadsTheRowsThatHoldNoValue(): void
+    {
+        $this->seedPosts();
+
+        // Unlike `published = 0`, the keyword form answers for NULL as well:
+        // NULL IS NOT TRUE is true, while NULL = 0 is unknown.
+        $rows = $this->connection->select('title')
+            ->from('posts')
+            ->where(Expression::of('NULLIF(published, 0)'), 'IS NOT', true)
+            ->orderBy('title')
+            ->execute();
+
+        $this->assertSame([['title' => 'draft']], $rows->asArray());
+    }
+
+    public function testARegularExpressionMatchRunsOnTheServer(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('name', 'REGEXP', '^[ab]')
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'bob']], $rows->asArray());
+    }
+
+    public function testANegatedRegularExpressionMatchRunsOnTheServer(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('name', 'NOT REGEXP', '^[ab]')
+            ->execute();
+
+        $this->assertSame([['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testASoundsLikeMatchRunsOnTheServer(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('name', 'SOUNDS LIKE', 'allice')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice']], $rows->asArray());
     }
 
     public function testMembershipReadsEveryRowInTheSet(): void
