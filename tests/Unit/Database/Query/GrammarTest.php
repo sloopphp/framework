@@ -890,15 +890,15 @@ final class GrammarTest extends TestCase
         $grammar = new class () extends Grammar {
             protected function comparisonOperators(): array
             {
-                return parent::comparisonOperators() + ['MEMBER OF' => Operand::Value];
+                return parent::comparisonOperators() + ['NOT RLIKE' => Operand::Value];
             }
         };
 
-        $condition = $grammar->comparison('tags', 'member of', 'a');
+        $condition = $grammar->comparison('name', 'not rlike', '^a');
         $compiled  = $grammar->compileSelect(new SelectSpec(from: 'users', conditions: [$condition]));
 
-        $this->assertSame('SELECT * FROM `users` WHERE `tags` MEMBER OF ?', $compiled->sql);
-        $this->assertSame(['a'], $compiled->bindings);
+        $this->assertSame('SELECT * FROM `users` WHERE `name` NOT RLIKE ?', $compiled->sql);
+        $this->assertSame(['^a'], $compiled->bindings);
     }
 
     public function testSubclassCanReplaceASingleClause(): void
