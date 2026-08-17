@@ -277,6 +277,10 @@ class Grammar
      * operators the framework writes itself; a value taken from a request
      * belongs on the right-hand side, never here.
      *
+     * Keys are matched as they are written when a comparison is compiled, and
+     * a comparison is looked up by its operator upper-cased, so keep them
+     * upper-case: an operator listed in any other case cannot be reached.
+     *
      * @return array<string, Operand> Operators in the spelling they are written with
      */
     protected function comparisonOperators(): array
@@ -315,11 +319,8 @@ class Grammar
                     . ' it takes; got ' . get_debug_type($value) . '. Use = to compare against a value.',
                 );
             }
-        } elseif ($value === null && $operand !== Operand::ValueOrNull) {
-            throw new InvalidArgumentException(
-                'A comparison against null is never true, so it is rejected rather than matching no rows.'
-                . ' Write IS or IS NOT to test for NULL.',
-            );
+        } else {
+            self::refuseNullValue($operand, $value);
         }
 
         return new Condition($column, $canonical, $value, $conjunction);
@@ -352,12 +353,39 @@ class Grammar
             );
         }
 
+        self::refuseNullValue($operand, $condition->value);
+
         $value = $this->compileValue($condition->value);
 
         return new CompiledSql(
             $column->sql . ' ' . $condition->operator . ' ' . $value->sql,
             array_merge($column->bindings, $value->bindings),
         );
+    }
+
+    /**
+     * Refuse null on the right of an operator that compares values.
+     *
+     * Checked where a comparison is built and again where it is compiled: a
+     * Condition can be built without passing through comparison(), and letting
+     * one through here would write a predicate that quietly matches no rows
+     * rather than saying so.
+     *
+     * @param  Operand                               $operand What the operator reads on its right
+     * @param  string|int|float|bool|Expression|null $value   Right-hand side of the comparison
+     * @return void
+     * @throws InvalidArgumentException              When null stands where the operator cannot read it
+     */
+    private static function refuseNullValue(
+        Operand $operand,
+        string|int|float|bool|Expression|null $value,
+    ): void {
+        if ($value === null && $operand === Operand::Value) {
+            throw new InvalidArgumentException(
+                'A comparison against null is never true, so it is rejected rather than matching no rows.'
+                . ' Write IS or IS NOT to test for NULL.',
+            );
+        }
     }
 
     /**

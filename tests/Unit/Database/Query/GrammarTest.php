@@ -885,6 +885,35 @@ final class GrammarTest extends TestCase
         ));
     }
 
+    #[DataProvider('provideOperatorsThatCannotReadNull')]
+    public function testCompilingRefusesNullWhereTheOperatorCannotReadIt(string $operator): void
+    {
+        // A Condition can be built without passing through comparison(), so the
+        // refusal is repeated here: `id = ?` bound to null matches no rows, and
+        // saying so beats returning an empty result.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A comparison against null is never true, so it is rejected rather than matching no rows.'
+            . ' Write IS or IS NOT to test for NULL.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('id', $operator, null)],
+        ));
+    }
+
+    public function testCompilingKeepsTheNullSafeEqualReadingNull(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('deleted_at', '<=>', null)],
+        ));
+
+        $this->assertSame('SELECT * FROM `users` WHERE `deleted_at` <=> ?', $compiled->sql);
+        $this->assertSame([null], $compiled->bindings);
+    }
+
     public function testSubclassCanAddAnOperator(): void
     {
         $grammar = new class () extends Grammar {
