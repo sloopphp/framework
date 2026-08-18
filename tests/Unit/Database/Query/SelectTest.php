@@ -903,6 +903,54 @@ final class SelectTest extends TestCase
         $this->connection->select()->from('users')->where('id', 'IS', 10);
     }
 
+    public function testTestingForTrueWritesTheKeywordRatherThanAPlaceholder(): void
+    {
+        $select = $this->connection->select()->from('users')->where('active', 'IS', true);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `active` IS TRUE', $select->toSql());
+        $this->assertSame([], $select->toBindings());
+    }
+
+    public function testTestingForNotFalseWritesTheKeywordRatherThanAPlaceholder(): void
+    {
+        $select = $this->connection->select()->from('users')->where('active', 'IS NOT', false);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `active` IS NOT FALSE', $select->toSql());
+        $this->assertSame([], $select->toBindings());
+    }
+
+    public function testComparingAgainstTrueWithEqualsBindsItRatherThanWritingTheKeyword(): void
+    {
+        // = compares values, so true is bound like any other value; only the
+        // keyword operators answer for the three-valued logic IS reads.
+        $select = $this->connection->select()->from('users')->where('active', '=', true);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `active` = ?', $select->toSql());
+        $this->assertSame([true], $select->toBindings());
+    }
+
+    #[DataProvider('providePatternOperators')]
+    public function testAPatternMatchBindsItsPatternLikeAnyOtherValue(string $operator, string $expected): void
+    {
+        $select = $this->connection->select()->from('users')->where('name', $operator, '^a');
+
+        $this->assertSame('SELECT * FROM `users` WHERE `name` ' . $expected . ' ?', $select->toSql());
+        $this->assertSame(['^a'], $select->toBindings());
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function providePatternOperators(): array
+    {
+        return [
+            'regexp'      => ['REGEXP', 'REGEXP'],
+            'not regexp'  => ['NOT REGEXP', 'NOT REGEXP'],
+            'rlike'       => ['rlike', 'RLIKE'],
+            'sounds like' => ['sounds like', 'SOUNDS LIKE'],
+        ];
+    }
+
     public function testRejectingNullPointsAtTheOperatorThatTestsForIt(): void
     {
         $this->expectException(InvalidArgumentException::class);

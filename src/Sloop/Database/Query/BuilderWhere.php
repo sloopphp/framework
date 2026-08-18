@@ -572,7 +572,7 @@ abstract class BuilderWhere extends Builder
             );
         }
 
-        $this->conditions[] = self::toCondition($conjunction, $column, $operator, $value, $argumentCount);
+        $this->conditions[] = $this->toCondition($conjunction, $column, $operator, $value, $argumentCount);
 
         return $this;
     }
@@ -631,7 +631,7 @@ abstract class BuilderWhere extends Builder
                 );
             }
 
-            $this->conditions[] = self::toCondition(
+            $this->conditions[] = $this->toCondition(
                 $joinsToPrevious,
                 $column,
                 self::toComparable($parts[1], $index),
@@ -734,7 +734,7 @@ abstract class BuilderWhere extends Builder
      * @return Condition                             The condition to add
      * @throws InvalidArgumentException              When the operator is not a string or not a supported comparison, or null stands where the operator cannot read it
      */
-    private static function toCondition(
+    private function toCondition(
         Conjunction $conjunction,
         string|Expression $column,
         string|int|float|bool|Expression|null $operator,
@@ -742,7 +742,7 @@ abstract class BuilderWhere extends Builder
         int $argumentCount,
     ): Condition {
         if ($argumentCount < 3) {
-            return new Condition($column, '=', $operator, $conjunction);
+            return $this->grammar->comparison($column, '=', $operator, $conjunction);
         }
 
         if (!\is_string($operator)) {
@@ -751,7 +751,7 @@ abstract class BuilderWhere extends Builder
             );
         }
 
-        return new Condition($column, $operator, $value, $conjunction);
+        return $this->grammar->comparison($column, $operator, $value, $conjunction);
     }
 
     /**
