@@ -279,7 +279,8 @@ class Grammar
      *
      * Keys are matched as they are written when a comparison is compiled, and
      * a comparison is looked up by its operator upper-cased, so keep them
-     * upper-case: an operator listed in any other case cannot be reached.
+     * upper-case: an operator listed in any other case cannot be reached
+     * through a builder.
      *
      * @return array<string, Operand> Operators in the spelling they are written with
      */
@@ -371,6 +372,10 @@ class Grammar
      * one through here would write a predicate that quietly matches no rows
      * rather than saying so.
      *
+     * Written as "anything but the operand that reads null" rather than naming
+     * the ones that refuse it, so that an operand added later refuses null
+     * until it says otherwise.
+     *
      * @param  Operand                               $operand What the operator reads on its right
      * @param  string|int|float|bool|Expression|null $value   Right-hand side of the comparison
      * @return void
@@ -380,7 +385,7 @@ class Grammar
         Operand $operand,
         string|int|float|bool|Expression|null $value,
     ): void {
-        if ($value === null && $operand === Operand::Value) {
+        if ($value === null && $operand !== Operand::ValueOrNull) {
             throw new InvalidArgumentException(
                 'A comparison against null is never true, so it is rejected rather than matching no rows.'
                 . ' Write IS or IS NOT to test for NULL.',
