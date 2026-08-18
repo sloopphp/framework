@@ -40,29 +40,29 @@ abstract class BuilderWhere extends Builder
     /**
      * Depth below which the code running now may not close.
      *
-     * A closure handed to where() is given this builder, so nothing stops it
-     * calling whereClose() more times than it opened. Without a floor those
-     * extra calls would close groups belonging to whoever called it, and the
-     * conditions the closure adds afterwards would land outside the parentheses
-     * it appears to be writing inside — silently, and with a different set of
-     * rows coming back.
+     * A callback handed this builder — by where() or by when() — can call
+     * whereClose() more times than it opened. Without a floor those extra calls
+     * would close groups belonging to whoever called it, and the conditions the
+     * callback adds afterwards would land outside the parentheses it appears to
+     * be writing inside — silently, and with a different set of rows coming
+     * back.
      *
      * @var int
      */
     private int $groupFloor = 0;
 
     /**
-     * Whether a closure returned with a group of its own still open.
+     * Whether a callback returned with a group of its own still open.
      *
      * The group is closed for it so that the depth is what it was before the
-     * closure ran, which keeps a later close from taking a group it did not
+     * callback ran, which keeps a later close from taking a group it did not
      * open. The mistake itself is remembered here and reported when the
      * statement is compiled, because raising it from the finally would replace
-     * whatever failure the closure was already carrying.
+     * whatever failure the callback was already carrying.
      *
      * @var bool
      */
-    private bool $groupLeftOpenInClosure = false;
+    private bool $groupLeftOpenInCallback = false;
 
     /**
      * Terms of the ORDER BY clause, in the order they were added.
@@ -359,21 +359,26 @@ abstract class BuilderWhere extends Builder
      * filter happened to be the number zero is the kind of surprise the rest of
      * this builder refuses.
      *
-     * @param  bool          $condition Whether to apply the first callback
-     * @param  callable      $callback  Applied to this builder when the condition holds
-     * @param  callable|null $default   Applied to this builder when it does not
-     * @return static        This builder
+     * No parentheses are opened here, so a callback writes at the depth the
+     * chain had reached. It may open groups of its own and close them again,
+     * but not close one it found already open: that group belongs to the chain
+     * that called it, and taking it would move every condition written after it
+     * out of the parentheses it appears to be in. A group left open is closed
+     * on the way out and reported when the statement is compiled, the same as
+     * for a closure handed to where().
+     *
+     * @param  bool           $condition Whether to apply the first callback
+     * @param  callable       $callback  Applied to this builder when the condition holds
+     * @param  callable|null  $default   Applied to this builder when it does not
+     * @return static         This builder
+     * @throws LogicException When the callback closes a group it did not open
      */
     public function when(bool $condition, callable $callback, ?callable $default = null): static
     {
-        if ($condition) {
-            $callback($this);
+        $chosen = $condition ? $callback : $default;
 
-            return $this;
-        }
-
-        if ($default !== null) {
-            $default($this);
+        if ($chosen !== null) {
+            $this->handToCallback($chosen, $this->openGroups);
         }
 
         return $this;
@@ -465,14 +470,14 @@ abstract class BuilderWhere extends Builder
      * middle of a parenthesis.
      *
      * @return void
-     * @throws LogicException When a group is still open, or a closure left one open
+     * @throws LogicException When a group is still open, or a callback left one open
      */
     protected function requireGroupsClosed(): void
     {
-        if ($this->groupLeftOpenInClosure) {
+        if ($this->groupLeftOpenInCallback) {
             throw new LogicException(
-                'A closure opened a group of conditions and returned without closing it.'
-                . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+                'A callback opened a group of conditions and returned without closing it.'
+                . ' Close it inside the callback, or leave the parentheses it was handed to close themselves.',
             );
         }
 
@@ -505,16 +510,16 @@ abstract class BuilderWhere extends Builder
      * nothing to close is a mistake in the chain, and the line that made it is
      * still the line being executed.
      *
-     * Inside a closure the refusal starts one level higher: the group the
-     * closure was handed is closed for it when the closure returns, so the
-     * closure may only close groups it opened itself. Closing the one it was
-     * given would put every condition it writes afterwards outside the
-     * parentheses it appears to be writing inside, and the refusal has to
-     * happen here rather than where the group is left, because by then those
-     * conditions have already been recorded in the wrong place.
+     * Inside a callback handed this builder the refusal starts one level
+     * higher, at the depth the callback found: it may only close groups it
+     * opened itself. Closing one that was already open would put every
+     * condition it writes afterwards outside the parentheses it appears to be
+     * writing inside, and the refusal has to happen here rather than where the
+     * group is left, because by then those conditions have already been
+     * recorded in the wrong place.
      *
      * @return static         This builder
-     * @throws LogicException When no group is open, or the open group is the one a closure was handed
+     * @throws LogicException When no group is open, or the open group was not opened by the code closing it
      */
     private function closeGroup(): static
     {
@@ -522,7 +527,7 @@ abstract class BuilderWhere extends Builder
             throw new LogicException(
                 $this->openGroups === 0
                     ? 'No group of conditions is open, so there is nothing to close.'
-                    : 'This group is closed when the closure returns, so the closure cannot close it itself.',
+                    : 'This group was opened outside the callback holding the builder, so the callback cannot close it.',
             );
         }
 
@@ -652,20 +657,10 @@ abstract class BuilderWhere extends Builder
      * catches the failure and carries on is not left holding a builder whose
      * parentheses no longer balance.
      *
-     * The closure cannot close this group itself: the floor raised here puts it
-     * out of reach for as long as the closure runs, so an attempt fails at the
-     * line that made it. Letting it through and tidying up afterwards would be
-     * too late, because whatever the closure wrote after closing has already
-     * been recorded outside the parentheses.
-     *
-     * A closure that opened further groups and left them open has them closed
-     * here as well, so that the depth on the way out is the depth on the way
-     * in. Leaving them open instead would let a later close take a group it
-     * never opened, which is how two mistakes in one chain used to cancel out
-     * and put conditions in parentheses nobody wrote. The mistake is not
-     * forgiven by the tidying up: it is remembered and reported when the
-     * statement is compiled, which is late enough not to replace a failure the
-     * closure was already carrying.
+     * The closure cannot close this group itself, and anything it opens and
+     * leaves open is closed for it. Both follow from the group being opened
+     * before the closure is handed the builder; handToCallback() describes what
+     * that costs and why.
      *
      * @param  Conjunction              $conjunction How the group joins to what precedes it
      * @param  Closure                  $callback    Applied to this builder inside the group
@@ -675,24 +670,58 @@ abstract class BuilderWhere extends Builder
      */
     private function group(Conjunction $conjunction, Closure $callback): static
     {
-        $floor = $this->groupFloor;
-
         $this->openGroup($conjunction);
-        $this->groupFloor = $this->openGroups;
-        $depth            = $this->openGroups;
+        $depth = $this->openGroups;
+
+        try {
+            $this->handToCallback($callback, $depth);
+        } finally {
+            $this->closeGroup();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Run a callback that has been handed this builder, and leave the depth as
+     * it was found.
+     *
+     * The floor raised here is what keeps the callback to the parentheses it
+     * opens itself: anything already open belongs to whoever called it, and
+     * closing one of those would put the conditions the callback writes
+     * afterwards outside the parentheses it appears to be writing inside. The
+     * refusal happens at the line that closes, because by the time the callback
+     * returns those conditions have already been recorded in the wrong place.
+     *
+     * A callback that opened further groups and left them open has them closed
+     * here, so that the depth on the way out is the depth on the way in.
+     * Leaving them open instead would let a later close take a group it never
+     * opened, which is how two mistakes in one chain cancel out and put
+     * conditions in parentheses nobody wrote. The mistake is not forgiven by
+     * the tidying up: it is remembered and reported when the statement is
+     * compiled, which is late enough not to replace a failure the callback was
+     * already carrying.
+     *
+     * @param  callable       $callback Applied to this builder
+     * @param  int            $depth    Number of open groups the callback is expected to leave behind
+     * @return void
+     * @throws LogicException When the callback closes a group it did not open
+     */
+    private function handToCallback(callable $callback, int $depth): void
+    {
+        $floor            = $this->groupFloor;
+        $this->groupFloor = $depth;
 
         try {
             $callback($this);
         } finally {
-            $this->groupLeftOpenInClosure = $this->groupLeftOpenInClosure || $this->openGroups !== $depth;
-            $this->groupFloor             = $floor;
+            $this->groupLeftOpenInCallback = $this->groupLeftOpenInCallback || $this->openGroups !== $depth;
+            $this->groupFloor              = $floor;
 
-            while ($this->openGroups >= $depth) {
+            while ($this->openGroups > $depth) {
                 $this->closeGroup();
             }
         }
-
-        return $this;
     }
 
     /**

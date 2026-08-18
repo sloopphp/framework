@@ -549,8 +549,8 @@ final class SelectTest extends TestCase
         // compiled, not swallowed here.
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'A closure opened a group of conditions and returned without closing it.'
-            . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+            'A callback opened a group of conditions and returned without closing it.'
+            . ' Close it inside the callback, or leave the parentheses it was handed to close themselves.',
         );
 
         $select->toSql();
@@ -563,7 +563,7 @@ final class SelectTest extends TestCase
         // the rows that come back without raising anything.
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'This group is closed when the closure returns, so the closure cannot close it itself.',
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
         );
 
         $this->connection->select()
@@ -694,7 +694,7 @@ final class SelectTest extends TestCase
     {
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'This group is closed when the closure returns, so the closure cannot close it itself.',
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
         );
 
         $this->connection->select()
@@ -712,7 +712,7 @@ final class SelectTest extends TestCase
         // changes the rows that come back, silently.
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'This group is closed when the closure returns, so the closure cannot close it itself.',
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
         );
 
         $this->connection->select()
@@ -736,8 +736,8 @@ final class SelectTest extends TestCase
     {
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains(
-            'A closure opened a group of conditions and returned without closing it.'
-            . ' Close it inside the closure, or leave the parentheses it was handed to close themselves.',
+            'A callback opened a group of conditions and returned without closing it.'
+            . ' Close it inside the callback, or leave the parentheses it was handed to close themselves.',
         );
 
         $this->connection->select()
@@ -1155,6 +1155,161 @@ final class SelectTest extends TestCase
 
         $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
         $this->assertSame(['active'], $select->toBindings());
+    }
+
+    public function testAWhenCallbackCannotCloseAGroupOpenedBeforeIt(): void
+    {
+        // Closing it would put everything the callback writes afterwards
+        // outside the parentheses the chain is holding open.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where('role', 'admin')
+            ->when(true, static fn (Select $query): Select => $query->whereClose()->where('status', 'active'));
+    }
+
+    public function testAWhenCallbackCannotCloseAGroupWhenNoneIsOpen(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
+
+        $this->connection->select()
+            ->from('users')
+            ->when(true, static fn (Select $query): Select => $query->whereClose());
+    }
+
+    public function testAWhenCallbackMayOpenAndCloseItsOwnGroup(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->when(true, static fn (Select $query): Select => $query
+                ->whereOpen()
+                ->where('role', 'admin')
+                ->orWhere('role', 'editor')
+                ->whereClose());
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`role` = ? OR `role` = ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAWhenCallbackWritesInsideAGroupTheChainOpened(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where('role', 'admin')
+            ->when(true, static fn (Select $query): Select => $query->orWhere('role', 'editor'))
+            ->whereClose();
+
+        $this->assertSame('SELECT * FROM `users` WHERE (`role` = ? OR `role` = ?)', $select->toSql());
+    }
+
+    public function testAGroupLeftOpenInAWhenCallbackIsReported(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->when(true, static fn (Select $query): Select => $query->whereOpen()->where('role', 'admin'));
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A callback opened a group of conditions and returned without closing it.',
+        );
+
+        $select->toSql();
+    }
+
+    public function testAGroupLeftOpenInAWhenCallbackDoesNotMoveLaterConditions(): void
+    {
+        // The group is closed on the way out, so the close that follows cannot
+        // take it and leave the last condition in parentheses nobody wrote.
+        // The mistake is still reported when the statement is compiled.
+        $select = $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where('role', 'admin')
+            ->when(true, static fn (Select $query): Select => $query->whereOpen()->where('status', 'active'))
+            ->whereClose();
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'A callback opened a group of conditions and returned without closing it.',
+        );
+
+        $select->toSql();
+    }
+
+    public function testAWhenDefaultCallbackIsHeldToTheSameGroups(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where('role', 'admin')
+            ->when(
+                false,
+                static fn (Select $query): Select => $query->where('status', 'active'),
+                static fn (Select $query): Select => $query->whereClose(),
+            );
+    }
+
+    public function testNestedWhenCallbacksEachKeepTheirOwnGroup(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->when(true, static fn (Select $query): Select => $query
+                ->whereOpen()
+                ->where('role', 'admin')
+                ->when(true, static fn (Select $inner): Select => $inner
+                    ->whereOpen()
+                    ->where('status', 'active')
+                    ->whereClose())
+                ->whereClose());
+
+        $this->assertSame('SELECT * FROM `users` WHERE (`role` = ? AND (`status` = ?))', $select->toSql());
+    }
+
+    public function testAWhenCallbackCannotCloseMoreGroupsThanItOpened(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->whereOpen()
+            ->where('role', 'admin')
+            ->when(true, static fn (Select $query): Select => $query
+                ->whereOpen()
+                ->where('status', 'active')
+                ->whereClose()
+                ->whereClose());
+    }
+
+    public function testAWhenCallbackInsideAClosureCannotCloseTheClosuresGroup(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'This group was opened outside the callback holding the builder, so the callback cannot close it.',
+        );
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static fn (Select $query): Select => $query
+                ->where('role', 'admin')
+                ->when(true, static fn (Select $inner): Select => $inner->whereClose()));
     }
 
     public function testWhereRawWritesTheConditionAsGiven(): void
