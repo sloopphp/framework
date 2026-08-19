@@ -325,11 +325,9 @@ final class ConnectionConfigResolver
             PdoMysql::ATTR_INIT_COMMAND => self::buildInitCommand($config),
         ];
 
-        foreach ($config->options as $key => $value) {
-            $options[$key] = $value;
-        }
-
-        return $options;
+        // array_replace, not array_merge: merge renumbers integer keys from 0,
+        // which would turn a PDO attribute constant into a different attribute.
+        return array_replace($options, $config->options);
     }
 
     /**
