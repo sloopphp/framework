@@ -105,42 +105,46 @@ final class ConnectionConfigResolver
      * Names are compared without regard to case, because the server accepts
      * `UTF8MB4` as readily as `utf8mb4`.
      *
-     * @var list<string>
+     * Held as a set so that membership is one lookup, and kept in the order
+     * `SHOW CHARACTER SET` prints so that a later diff against that output
+     * still shows whether anything was dropped or slipped in.
+     *
+     * @var array<string, true>
      */
     private const array ALLOWED_CHARSETS = [
-        'armscii8',
-        'ascii',
-        'binary',
-        'cp1250',
-        'cp1251',
-        'cp1256',
-        'cp1257',
-        'cp850',
-        'cp852',
-        'cp866',
-        'dec8',
-        'eucjpms',
-        'euckr',
-        'gb2312',
-        'geostd8',
-        'greek',
-        'hebrew',
-        'hp8',
-        'keybcs2',
-        'koi8r',
-        'koi8u',
-        'latin1',
-        'latin2',
-        'latin5',
-        'latin7',
-        'macce',
-        'macroman',
-        'swe7',
-        'tis620',
-        'ujis',
-        'utf8',
-        'utf8mb3',
-        'utf8mb4',
+        'armscii8' => true,
+        'ascii' => true,
+        'binary' => true,
+        'cp1250' => true,
+        'cp1251' => true,
+        'cp1256' => true,
+        'cp1257' => true,
+        'cp850' => true,
+        'cp852' => true,
+        'cp866' => true,
+        'dec8' => true,
+        'eucjpms' => true,
+        'euckr' => true,
+        'gb2312' => true,
+        'geostd8' => true,
+        'greek' => true,
+        'hebrew' => true,
+        'hp8' => true,
+        'keybcs2' => true,
+        'koi8r' => true,
+        'koi8u' => true,
+        'latin1' => true,
+        'latin2' => true,
+        'latin5' => true,
+        'latin7' => true,
+        'macce' => true,
+        'macroman' => true,
+        'swe7' => true,
+        'tis620' => true,
+        'ujis' => true,
+        'utf8' => true,
+        'utf8mb3' => true,
+        'utf8mb4' => true,
     ];
 
     /**
@@ -549,7 +553,7 @@ final class ConnectionConfigResolver
     {
         $charset = self::extractOptionalIdentifier($name, $config, 'charset');
 
-        if ($charset !== null && !\in_array(strtolower($charset), self::ALLOWED_CHARSETS, true)) {
+        if ($charset !== null && !isset(self::ALLOWED_CHARSETS[strtolower($charset)])) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: unsupported charset "' . $charset . '". Only charsets that the server accepts as a client charset, '
                 . 'and whose multi-byte characters cannot end in a backtick byte, are allowed.',
