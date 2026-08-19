@@ -367,18 +367,19 @@ abstract class BuilderWhere extends Builder
      * on the way out and reported when the statement is compiled, the same as
      * for a closure handed to where().
      *
-     * @param  bool           $condition Whether to apply the first callback
-     * @param  callable       $callback  Applied to this builder when the condition holds
-     * @param  callable|null  $default   Applied to this builder when it does not
-     * @return static         This builder
-     * @throws LogicException When the callback closes a group it did not open
+     * @param  bool                     $condition Whether to apply the first callback
+     * @param  callable                 $callback  Applied to this builder when the condition holds
+     * @param  callable|null            $default   Applied to this builder when it does not
+     * @return static                   This builder
+     * @throws InvalidArgumentException When a condition added by the callback is malformed
+     * @throws LogicException           When the callback closes a group it did not open
      */
     public function when(bool $condition, callable $callback, ?callable $default = null): static
     {
         $chosen = $condition ? $callback : $default;
 
         if ($chosen !== null) {
-            $this->handToCallback($chosen, $this->openGroups);
+            $this->handToCallback($chosen);
         }
 
         return $this;
@@ -671,10 +672,9 @@ abstract class BuilderWhere extends Builder
     private function group(Conjunction $conjunction, Closure $callback): static
     {
         $this->openGroup($conjunction);
-        $depth = $this->openGroups;
 
         try {
-            $this->handToCallback($callback, $depth);
+            $this->handToCallback($callback);
         } finally {
             $this->closeGroup();
         }
@@ -702,13 +702,18 @@ abstract class BuilderWhere extends Builder
      * compiled, which is late enough not to replace a failure the callback was
      * already carrying.
      *
+     * The depth to return to is read here rather than taken as an argument, so
+     * that a caller cannot name one the chain has not reached: a floor above
+     * the real depth would refuse closes that are the callback's to make, and
+     * leave the tidying up with nothing to do.
+     *
      * @param  callable       $callback Applied to this builder
-     * @param  int            $depth    Number of open groups the callback is expected to leave behind
      * @return void
      * @throws LogicException When the callback closes a group it did not open
      */
-    private function handToCallback(callable $callback, int $depth): void
+    private function handToCallback(callable $callback): void
     {
+        $depth            = $this->openGroups;
         $floor            = $this->groupFloor;
         $this->groupFloor = $depth;
 

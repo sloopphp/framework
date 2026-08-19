@@ -1226,24 +1226,21 @@ final class SelectTest extends TestCase
         $select->toSql();
     }
 
-    public function testAGroupLeftOpenInAWhenCallbackDoesNotMoveLaterConditions(): void
+    public function testAGroupLeftOpenInAWhenCallbackDoesNotAbsorbAStrayClose(): void
     {
-        // The group is closed on the way out, so the close that follows cannot
-        // take it and leave the last condition in parentheses nobody wrote.
-        // The mistake is still reported when the statement is compiled.
-        $select = $this->connection->select()
-            ->from('users')
-            ->whereOpen()
-            ->where('role', 'admin')
-            ->when(true, static fn (Select $query): Select => $query->whereOpen()->where('status', 'active'))
-            ->whereClose();
-
+        // Two mistakes in one chain would cancel out: the group the callback
+        // left open would absorb the close that follows, and the condition in
+        // between would land in parentheses nobody wrote. The depth on the way
+        // out of a callback is the depth on the way in, so that close has
+        // nothing to take and fails at the line that made it.
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains(
-            'A callback opened a group of conditions and returned without closing it.',
-        );
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
 
-        $select->toSql();
+        $this->connection->select()
+            ->from('users')
+            ->when(true, static fn (Select $query): Select => $query->whereOpen()->where('status', 'active'))
+            ->orWhere('name', 'bob')
+            ->whereClose();
     }
 
     public function testAWhenDefaultCallbackIsHeldToTheSameGroups(): void
