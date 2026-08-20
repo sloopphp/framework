@@ -18,11 +18,11 @@ use InvalidArgumentException;
  * identifier while no multi-byte character of the connection charset can end in
  * the byte 0x60. ConnectionConfigResolver keeps the `charset` config key to
  * charsets where that holds, and refuses ATTR_INIT_COMMAND in the `options`
- * config key, so a connection built from config never lands outside that set.
- * Connection::open() is not held to this: its $options argument and the raw DSN
- * it is handed both reach the session charset, and `SET NAMES` through
- * Connection::statement() changes it after the fact. That is why the premise is
- * stated rather than assumed.
+ * config key. What that buys is narrower than the premise: the `SET NAMES` that
+ * PdoConnectionFactory assembles from config never names a charset outside the
+ * set. Which charset a session actually runs on is decided elsewhere — by
+ * whoever hands a Connection its PDO or its DSN, and by any `SET NAMES` issued
+ * afterwards. That is why the premise is stated rather than assumed.
  *
  * @internal
  */

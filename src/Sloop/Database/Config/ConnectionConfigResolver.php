@@ -108,8 +108,8 @@ final class ConnectionConfigResolver
      * Held as a set so that membership is one lookup, and kept in the order
      * MySQL's `SHOW CHARACTER SET` prints, so that a later diff against that
      * output still shows whether anything was dropped or slipped in. MariaDB
-     * prints the same rows in charset id order, so sort both sides first when
-     * diffing against it.
+     * prints the same rows minus gb18030, in charset id order, so sort both
+     * sides first when diffing against it.
      *
      * @var array<string, true>
      */
