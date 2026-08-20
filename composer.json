@@ -29,7 +29,7 @@
         "ext-pdo_sqlite": "*",
         "ext-tokenizer": "*",
         "friendsofphp/php-cs-fixer": "^3.0",
-        "infection/infection": "^0.34.2",
+        "infection/infection": "^0.34.2 || ^0.35.0",
         "jetbrains/phpstorm-stubs": "^2026.1",
         "phpcompatibility/php-compatibility": "^10.0@alpha",
         "phpstan/extension-installer": "^1.4",
