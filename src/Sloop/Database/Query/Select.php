@@ -105,6 +105,25 @@ class Select extends BuilderWhere
      */
     public function compile(): CompiledSql
     {
+        return $this->compileReading($this->columns, $this->limit);
+    }
+
+    /**
+     * Write this statement as SQL, reading the given columns and row count.
+     *
+     * The shortcuts below each want a statement that differs from the one the
+     * builder describes — fewer columns, or one row instead of all of them.
+     * They pass what they need here rather than changing the builder, so
+     * calling a shortcut leaves the builder able to run its own statement.
+     *
+     * @param  array<array-key, string|Expression> $columns Columns to read
+     * @param  int|null                            $limit   Most rows to read, or null for all of them
+     * @return CompiledSql
+     * @throws LogicException                      When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
+     */
+    private function compileReading(array $columns, ?int $limit): CompiledSql
+    {
         if ($this->from === null) {
             throw new LogicException('A SELECT reads from a table; call from() before compiling the statement.');
         }
@@ -113,12 +132,32 @@ class Select extends BuilderWhere
 
         return $this->grammar->compileSelect(new SelectSpec(
             from:       $this->from,
-            columns:    $this->columns,
+            columns:    $columns,
             conditions: $this->conditions,
             orders:     $this->orders,
-            limit:      $this->limit,
+            limit:      $limit,
             offset:     $this->offset,
         ));
+    }
+
+    /**
+     * Run a statement that reads the given columns and row count.
+     *
+     * @param  array<array-key, string|Expression> $columns Columns to read
+     * @param  int|null                            $limit   Most rows to read, or null for all of them
+     * @return Result                              Rows the statement read
+     * @throws LogicException                      When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException              When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException         When the connection cannot be obtained
+     * @throws DatabaseException                   When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
+     * @throws UnexpectedValueException            When the driver returns a value outside the types it contracts to
+     */
+    private function runReading(array $columns, ?int $limit): Result
+    {
+        $compiled = $this->compileReading($columns, $limit);
+
+        return $this->route->connection()->query($compiled->sql, $compiled->bindings);
     }
 
     /**
@@ -139,8 +178,189 @@ class Select extends BuilderWhere
      */
     public function execute(): Result
     {
-        $compiled = $this->compile();
+        return $this->runReading($this->columns, $this->limit);
+    }
+    /**
+     * Read the first row this statement matches.
+     *
+     * Asks the server for one row rather than reading every match and keeping
+     * the first, so an unbounded statement stays cheap here. Any row window
+     * already set is narrowed to that one row; the offset is kept, so
+     * offset(1)->first() reads the second row.
+     *
+     * @return array<array-key, int|float|string|null>|null The row, or null when nothing matched
+     * @throws LogicException                               When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     */
+    public function first(): ?array
+    {
+        return $this->runReading($this->columns, 1)->first();
+    }
 
-        return $this->route->connection()->query($compiled->sql, $compiled->bindings);
+    /**
+     * Read one column of the first row this statement matches.
+     *
+     * The select list is replaced by the named column, so nothing else is sent
+     * back over the wire.
+     *
+     * @param  string                      $column Column to read
+     * @return int|float|string|null       Its value, or null when nothing matched
+     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When the statement fails
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
+     */
+    public function value(string $column): int|float|string|null
+    {
+        $row = $this->runReading([$column], 1)->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        // The select list held one column, so the row holds one value. Reading
+        // it by position rather than by name keeps this working for a column
+        // written as `users`.`name`, which comes back keyed as name.
+        return array_values($row)[0] ?? null;
+    }
+
+    /**
+     * Read every row this statement matches, as an array.
+     *
+     * The same rows execute() would return, without going through Result.
+     *
+     * @return list<array<array-key, int|float|string|null>> Rows in the order they were read
+     * @throws LogicException                                When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                      When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                        When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                   When the connection cannot be obtained
+     * @throws DatabaseException                             When the statement fails
+     * @throws UnexpectedValueException                      When the driver returns a value outside the types it contracts to
+     */
+    public function get(): array
+    {
+        return $this->execute()->asArray();
+    }
+
+    /**
+     * Count the rows this statement matches.
+     *
+     * The select list is replaced by COUNT(*), so the server counts rather
+     * than sending the rows back. The row window is left as it is: LIMIT
+     * applies to the single row COUNT(*) produces, not to the rows counted,
+     * so limit(10)->count() reports every match rather than at most ten.
+     *
+     * @return int                         How many rows matched
+     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When the statement fails
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to, or a count that is not an integer
+     */
+    public function count(): int
+    {
+        $row = $this->runReading([Expression::of('COUNT(*)')], $this->limit)->first();
+
+        $count = $row === null ? null : (array_values($row)[0] ?? null);
+
+        if (!\is_int($count)) {
+            throw new UnexpectedValueException(
+                'COUNT(*) returned ' . get_debug_type($count) . ' where an integer was expected.',
+            );
+        }
+
+        return $count;
+    }
+
+    /**
+     * Tell whether this statement matches any row.
+     *
+     * Asks for a single constant row rather than the columns the builder
+     * names, so neither the row contents nor the remaining matches are sent.
+     *
+     * @return bool                        True when at least one row matched
+     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When the statement fails
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
+     */
+    public function exists(): bool
+    {
+        return !$this->runReading([Expression::of('1')], 1)->isEmpty();
+    }
+
+    /**
+     * Tell whether this statement matches no row.
+     *
+     * @return bool                        True when nothing matched
+     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When the statement fails
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
+     */
+    public function doesntExist(): bool
+    {
+        return !$this->exists();
+    }
+
+    /**
+     * Read one column across every matching row.
+     *
+     * With a key column, the two columns are read together and the first keys
+     * the second; later rows overwrite earlier ones on a repeated key, as
+     * Result::asMap() does. The select list is replaced by the columns named
+     * here, so a builder that names other columns does not send them.
+     *
+     * @param  string                                  $valueColumn Column whose values are returned
+     * @param  string|null                             $keyColumn   Column whose values key them, or null for a list
+     * @return array<array-key, int|float|string|null> Values, keyed when a key column was given
+     * @throws LogicException                          When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                When an identifier is malformed, the row window is inconsistent, or a key cannot be an array key
+     * @throws InvalidConfigException                  When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException             When the connection cannot be obtained
+     * @throws DatabaseException                       When the statement fails
+     * @throws UnexpectedValueException                When the driver returns a value outside the types it contracts to
+     */
+    public function pluck(string $valueColumn, ?string $keyColumn = null): array
+    {
+        $columns = $keyColumn === null ? [$valueColumn] : [$keyColumn, $valueColumn];
+        $rows    = $this->runReading($columns, $this->limit)->asArray();
+
+        $plucked = [];
+
+        foreach ($rows as $row) {
+            // Read by position for the same reason value() does: a column
+            // written as `users`.`name` comes back keyed as name.
+            $values = array_values($row);
+
+            if ($keyColumn === null) {
+                $plucked[] = $values[0] ?? null;
+
+                continue;
+            }
+
+            $key = $values[0] ?? null;
+
+            if (!\is_int($key) && !\is_string($key)) {
+                throw new InvalidArgumentException(
+                    'Column "' . $keyColumn . '" holds ' . get_debug_type($key) . ', which cannot key an array.',
+                );
+            }
+
+            $plucked[$key] = $values[1] ?? null;
+        }
+
+        return $plucked;
     }
 }
