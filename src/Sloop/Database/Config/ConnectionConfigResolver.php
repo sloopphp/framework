@@ -105,6 +105,11 @@ final class ConnectionConfigResolver
      * Names are compared without regard to case, because the server accepts
      * `UTF8MB4` as readily as `utf8mb4`.
      *
+     * Kept in the order MySQL's `SHOW CHARACTER SET` prints, so that a later
+     * diff against that output still shows whether anything was dropped or
+     * slipped in. MariaDB prints the same rows minus gb18030, in charset id
+     * order, so sort both sides first when diffing against it.
+     *
      * @var list<string>
      */
     private const array ALLOWED_CHARSETS = [
@@ -311,9 +316,9 @@ final class ConnectionConfigResolver
     /**
      * Build the PDO options array from a validated config.
      *
-     * Caller-supplied `options` entries win over the defaults assembled here
-     * (TCP timeout and INIT_COMMAND). Connection::open() then merges sloop's
-     * own PDO defaults below everything.
+     * Caller-supplied `options` entries win over the defaults assembled here,
+     * except for INIT_COMMAND, which extractOptions() refuses outright.
+     * Connection::open() then merges sloop's own PDO defaults below everything.
      *
      * @param  ValidatedConfig   $config Validated config (constructed via validate())
      * @return array<int, mixed> PDO attribute keys → values
@@ -325,11 +330,9 @@ final class ConnectionConfigResolver
             PdoMysql::ATTR_INIT_COMMAND => self::buildInitCommand($config),
         ];
 
-        foreach ($config->options as $key => $value) {
-            $options[$key] = $value;
-        }
-
-        return $options;
+        // array_replace, not array_merge: merge renumbers integer keys from 0,
+        // which would turn a PDO attribute constant into a different attribute.
+        return array_replace($options, $config->options);
     }
 
     /**
@@ -603,10 +606,16 @@ final class ConnectionConfigResolver
      * (PDO::ATTR_* constants), so the check is specialized rather than
      * parameterized by key name.
      *
+     * ATTR_INIT_COMMAND is refused here. It is the statement the framework
+     * assembles from `charset` and `collation`, and letting it be overwritten
+     * would put the connection on a charset the allow list never saw, which is
+     * the premise identifier quoting rests on. It is also the only route by
+     * which arbitrary SQL runs at connect time.
+     *
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Config array
      * @return array<int, mixed>       Caller-supplied PDO attribute overrides
-     * @throws InvalidConfigException  When `options` is present but not an int-keyed array
+     * @throws InvalidConfigException  When `options` is present but not an int-keyed array, or sets ATTR_INIT_COMMAND
      */
     private static function extractOptions(string $name, array $config): array
     {
@@ -626,6 +635,12 @@ final class ConnectionConfigResolver
             if (!\is_int($key)) {
                 throw new InvalidConfigException(
                     'Connection [' . $name . ']: config key "options" must be an array with integer (PDO::ATTR_*) keys.',
+                );
+            }
+            if ($key === PdoMysql::ATTR_INIT_COMMAND) {
+                throw new InvalidConfigException(
+                    'Connection [' . $name . ']: config key "options" must not set Pdo\\Mysql::ATTR_INIT_COMMAND. '
+                    . 'Use the "charset" and "collation" keys instead.',
                 );
             }
             $extracted[$key] = $element;

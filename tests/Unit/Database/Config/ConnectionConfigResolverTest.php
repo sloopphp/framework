@@ -345,6 +345,38 @@ final class ConnectionConfigResolverTest extends TestCase
         );
     }
 
+    public function testValidateRejectsInitCommandInOptions(): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validate('master', [
+                'driver'   => 'mysql',
+                'host'     => 'localhost',
+                'database' => 'app',
+                'options'  => [PdoMysql::ATTR_INIT_COMMAND => 'SET NAMES gbk'],
+            ]),
+        );
+        $this->assertSame(
+            'Connection [master]: config key "options" must not set Pdo\Mysql::ATTR_INIT_COMMAND. '
+            . 'Use the "charset" and "collation" keys instead.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidateAcceptsOtherOptionsAlongsideRejectedInitCommand(): void
+    {
+        // The rejection must be keyed on ATTR_INIT_COMMAND alone, not on the
+        // presence of any option (kills mutations that reject unconditionally).
+        $validated = ConnectionConfigResolver::validate('master', [
+            'driver'   => 'mysql',
+            'host'     => 'localhost',
+            'database' => 'app',
+            'options'  => [PDO::ATTR_PERSISTENT => true],
+        ]);
+
+        $this->assertSame([PDO::ATTR_PERSISTENT => true], $validated->options);
+    }
+
     public function testValidateRejectsIntegerKey(): void
     {
         // Application::filterStringKeys removes int keys before the config
