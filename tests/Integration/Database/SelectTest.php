@@ -520,6 +520,20 @@ final class SelectTest extends TransactionalIntegrationTestCase
         $this->assertSame(['alice', 'carol'], $names);
     }
 
+    public function testPluckReadsQualifiedColumnsTheServerKeysByTheirShortNames(): void
+    {
+        // Same reason value() reads by position: the server labels
+        // `users`.`name` as name, so reading by the name that was asked for
+        // would miss.
+        $names = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('score')
+            ->pluck('users.name', 'users.id');
+
+        $this->assertSame([1 => 'alice', 3 => 'carol'], $names);
+    }
+
     public function testPluckKeysTheValuesWhenGivenAKeyColumn(): void
     {
         $names = $this->connection->select()

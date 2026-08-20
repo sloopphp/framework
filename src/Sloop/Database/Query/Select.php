@@ -105,7 +105,7 @@ class Select extends BuilderWhere
      */
     public function compile(): CompiledSql
     {
-        return $this->compileReading($this->columns, $this->limit);
+        return $this->compileReading($this->columns, $this->limit, $this->offset);
     }
 
     /**
@@ -118,11 +118,12 @@ class Select extends BuilderWhere
      *
      * @param  array<array-key, string|Expression> $columns Columns to read
      * @param  int|null                            $limit   Most rows to read, or null for all of them
+     * @param  int|null                            $offset  Rows to skip first, or null to start at the top
      * @return CompiledSql
      * @throws LogicException                      When no table has been named, or a group of conditions was left open
      * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
      */
-    private function compileReading(array $columns, ?int $limit): CompiledSql
+    private function compileReading(array $columns, ?int $limit, ?int $offset): CompiledSql
     {
         if ($this->from === null) {
             throw new LogicException('A SELECT reads from a table; call from() before compiling the statement.');
@@ -136,7 +137,7 @@ class Select extends BuilderWhere
             conditions: $this->conditions,
             orders:     $this->orders,
             limit:      $limit,
-            offset:     $this->offset,
+            offset:     $offset,
         ));
     }
 
@@ -145,6 +146,7 @@ class Select extends BuilderWhere
      *
      * @param  array<array-key, string|Expression> $columns Columns to read
      * @param  int|null                            $limit   Most rows to read, or null for all of them
+     * @param  int|null                            $offset  Rows to skip first, or null to start at the top
      * @return Result                              Rows the statement read
      * @throws LogicException                      When no table has been named, or a group of conditions was left open
      * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
@@ -153,9 +155,9 @@ class Select extends BuilderWhere
      * @throws DatabaseException                   When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      * @throws UnexpectedValueException            When the driver returns a value outside the types it contracts to
      */
-    private function runReading(array $columns, ?int $limit): Result
+    private function runReading(array $columns, ?int $limit, ?int $offset): Result
     {
-        $compiled = $this->compileReading($columns, $limit);
+        $compiled = $this->compileReading($columns, $limit, $offset);
 
         return $this->route->connection()->query($compiled->sql, $compiled->bindings);
     }
@@ -178,8 +180,9 @@ class Select extends BuilderWhere
      */
     public function execute(): Result
     {
-        return $this->runReading($this->columns, $this->limit);
+        return $this->runReading($this->columns, $this->limit, $this->offset);
     }
+
     /**
      * Read the first row this statement matches.
      *
@@ -198,7 +201,7 @@ class Select extends BuilderWhere
      */
     public function first(): ?array
     {
-        return $this->runReading($this->columns, 1)->first();
+        return $this->runReading($this->columns, 1, $this->offset)->first();
     }
 
     /**
@@ -218,7 +221,7 @@ class Select extends BuilderWhere
      */
     public function value(string $column): int|float|string|null
     {
-        $row = $this->runReading([$column], 1)->first();
+        $row = $this->runReading([$column], 1, $this->offset)->first();
 
         if ($row === null) {
             return null;
@@ -252,9 +255,12 @@ class Select extends BuilderWhere
      * Count the rows this statement matches.
      *
      * The select list is replaced by COUNT(*), so the server counts rather
-     * than sending the rows back. The row window is left as it is: LIMIT
-     * applies to the single row COUNT(*) produces, not to the rows counted,
-     * so limit(10)->count() reports every match rather than at most ten.
+     * than sending the rows back, and the row window is dropped. LIMIT and
+     * OFFSET apply to the single row COUNT(*) produces rather than to the rows
+     * counted, so they can only throw that row away: limit(10)->count() would
+     * still report every match, while offset(1)->count() would read no row at
+     * all. Counting what the conditions match is the only reading of count()
+     * the window can serve.
      *
      * @return int                         How many rows matched
      * @throws LogicException              When no table has been named, or a group of conditions was left open
@@ -266,7 +272,7 @@ class Select extends BuilderWhere
      */
     public function count(): int
     {
-        $row = $this->runReading([Expression::of('COUNT(*)')], $this->limit)->first();
+        $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
 
         $count = $row === null ? null : (array_values($row)[0] ?? null);
 
@@ -284,6 +290,9 @@ class Select extends BuilderWhere
      *
      * Asks for a single constant row rather than the columns the builder
      * names, so neither the row contents nor the remaining matches are sent.
+     * The row window is dropped for the same reason count() drops it: whether
+     * the conditions match anything does not depend on which slice of the
+     * matches would have been returned.
      *
      * @return bool                        True when at least one row matched
      * @throws LogicException              When no table has been named, or a group of conditions was left open
@@ -295,7 +304,7 @@ class Select extends BuilderWhere
      */
     public function exists(): bool
     {
-        return !$this->runReading([Expression::of('1')], 1)->isEmpty();
+        return !$this->runReading([Expression::of('1')], 1, null)->isEmpty();
     }
 
     /**
@@ -335,7 +344,7 @@ class Select extends BuilderWhere
     public function pluck(string $valueColumn, ?string $keyColumn = null): array
     {
         $columns = $keyColumn === null ? [$valueColumn] : [$keyColumn, $valueColumn];
-        $rows    = $this->runReading($columns, $this->limit)->asArray();
+        $rows    = $this->runReading($columns, $this->limit, $this->offset)->asArray();
 
         $plucked = [];
 
@@ -350,7 +359,16 @@ class Select extends BuilderWhere
                 continue;
             }
 
-            $key = $values[0] ?? null;
+            if (!\array_key_exists(1, $values)) {
+                // The server labelled both columns the same, so the driver
+                // folded them into one and there is no value left to key.
+                throw new InvalidArgumentException(
+                    'Columns "' . $keyColumn . '" and "' . $valueColumn
+                        . '" came back under one name, so there is no value to key.',
+                );
+            }
+
+            $key = $values[0];
 
             if (!\is_int($key) && !\is_string($key)) {
                 throw new InvalidArgumentException(
@@ -358,7 +376,7 @@ class Select extends BuilderWhere
                 );
             }
 
-            $plucked[$key] = $values[1] ?? null;
+            $plucked[$key] = $values[1];
         }
 
         return $plucked;
