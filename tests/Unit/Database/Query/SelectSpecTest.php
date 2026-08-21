@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Query\Condition;
 use Sloop\Database\Query\Order;
+use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\SelectSpec;
 
 final class SelectSpecTest extends TestCase
@@ -22,6 +23,7 @@ final class SelectSpecTest extends TestCase
         $this->assertSame([], $spec->orders);
         $this->assertNull($spec->limit);
         $this->assertNull($spec->offset);
+        $this->assertNull($spec->lock);
     }
 
     public function testColumnsAreReindexedAsAList(): void
@@ -129,5 +131,12 @@ final class SelectSpecTest extends TestCase
         $this->expectExceptionMessageIsOrContains('An offset needs a limit, because MySQL has no OFFSET without LIMIT.');
 
         new SelectSpec(from: 'users', offset: 20);
+    }
+
+    public function testHoldsTheLockItWasGiven(): void
+    {
+        $spec = new SelectSpec(from: 'users', lock: RowLock::UpdateSkipLocked);
+
+        $this->assertSame(RowLock::UpdateSkipLocked, $spec->lock);
     }
 }

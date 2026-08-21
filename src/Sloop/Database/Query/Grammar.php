@@ -95,15 +95,17 @@ class Grammar
         $where   = $this->compileWhere($spec->conditions);
         $orderBy = $this->compileOrderBy($spec->orders);
         $limit   = $this->compileLimit($spec->limit, $spec->offset);
+        $lock    = $this->compileLock($spec->lock);
 
         return new CompiledSql(
-            'SELECT ' . $columns->sql . $from->sql . $where->sql . $orderBy->sql . $limit->sql,
+            'SELECT ' . $columns->sql . $from->sql . $where->sql . $orderBy->sql . $limit->sql . $lock->sql,
             array_merge(
                 $columns->bindings,
                 $from->bindings,
                 $where->bindings,
                 $orderBy->bindings,
                 $limit->bindings,
+                $lock->bindings,
             ),
         );
     }
@@ -541,6 +543,33 @@ class Grammar
         }
 
         return new CompiledSql(' LIMIT ' . $limit . ($offset === null ? '' : ' OFFSET ' . $offset));
+    }
+
+    /**
+     * Compile the locking read clause.
+     *
+     * The shared case is written as LOCK IN SHARE MODE rather than FOR SHARE
+     * because MariaDB 10.11 rejects the latter as a syntax error, while both
+     * servers take this spelling.
+     *
+     * SKIP LOCKED and NOWAIT have a case each rather than being flags, because
+     * the servers take one or the other and reject a statement carrying both.
+     *
+     * @param  RowLock|null $lock How to hold the rows read, or null to hold nothing
+     * @return CompiledSql  Locking clause led by a space, empty when no lock was asked for
+     */
+    protected function compileLock(?RowLock $lock): CompiledSql
+    {
+        if ($lock === null) {
+            return new CompiledSql('');
+        }
+
+        return new CompiledSql(' ' . match ($lock) {
+            RowLock::Update           => 'FOR UPDATE',
+            RowLock::UpdateSkipLocked => 'FOR UPDATE SKIP LOCKED',
+            RowLock::UpdateNoWait     => 'FOR UPDATE NOWAIT',
+            RowLock::Shared           => 'LOCK IN SHARE MODE',
+        });
     }
 
     /**

@@ -51,6 +51,7 @@ final readonly class SelectSpec
      * @param  array<int|string, mixed> $orders     Order instances for the ORDER BY clause
      * @param  int|null                 $limit      Maximum number of rows, or null for no limit
      * @param  int|null                 $offset     Rows to skip; needs a limit
+     * @param  RowLock|null             $lock       How to hold the rows read, or null to hold nothing
      * @throws InvalidArgumentException When a clause holds the wrong type, a bound is negative, or an offset has no limit
      */
     public function __construct(
@@ -60,6 +61,7 @@ final readonly class SelectSpec
         array $orders = [],
         public ?int $limit = null,
         public ?int $offset = null,
+        public ?RowLock $lock = null,
     ) {
         $this->columns    = self::toColumns($columns);
         $this->conditions = self::toConditions($conditions);

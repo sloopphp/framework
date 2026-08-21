@@ -17,6 +17,7 @@ use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\InCondition;
 use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
+use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\SelectSpec;
 use Sloop\Database\Query\WherePart;
 
@@ -945,5 +946,47 @@ final class GrammarTest extends TestCase
 
         $this->assertSame('SELECT * FROM `users` FETCH FIRST ? ROWS ONLY', $compiled->sql);
         $this->assertSame([5], $compiled->bindings);
+    }
+
+    #[DataProvider('provideLocks')]
+    public function testSelectWritesTheLockItWasAskedFor(RowLock $lock, string $expected): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(from: 'users', lock: $lock));
+
+        $this->assertSame('SELECT * FROM `users` ' . $expected, $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    /**
+     * @return array<string, array{RowLock, string}>
+     */
+    public static function provideLocks(): array
+    {
+        return [
+            'for update'             => [RowLock::Update, 'FOR UPDATE'],
+            'for update skip locked' => [RowLock::UpdateSkipLocked, 'FOR UPDATE SKIP LOCKED'],
+            'for update nowait'      => [RowLock::UpdateNoWait, 'FOR UPDATE NOWAIT'],
+            // LOCK IN SHARE MODE rather than FOR SHARE: MariaDB 10.11 rejects
+            // FOR SHARE as a syntax error, and both servers take this spelling.
+            'shared'                 => [RowLock::Shared, 'LOCK IN SHARE MODE'],
+        ];
+    }
+
+    public function testSelectWritesTheLockLast(): void
+    {
+        // The lock closes the statement, so it goes after the row window
+        // rather than anywhere it happens to compile.
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:   'users',
+            orders: [new Order('id', Direction::Ascending)],
+            limit:  10,
+            offset: 5,
+            lock:   RowLock::Update,
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` ORDER BY `id` ASC LIMIT 10 OFFSET 5 FOR UPDATE',
+            $compiled->sql,
+        );
     }
 }
