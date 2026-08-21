@@ -225,14 +225,11 @@ class Select extends BuilderWhere
     {
         $row = $this->runReading([$column], 1, $this->offset)->first();
 
-        if ($row === null) {
-            return null;
-        }
-
         // The select list held one column, so the row holds one value. Reading
         // it by position rather than by name keeps this working for a column
-        // written as `users`.`name`, which comes back keyed as name.
-        return array_values($row)[0] ?? null;
+        // written as `users`.`name`, which comes back keyed as name. A row that
+        // was never read stands in as an empty one and falls through to null.
+        return array_values($row ?? [])[0] ?? null;
     }
 
     /**
@@ -276,7 +273,7 @@ class Select extends BuilderWhere
     {
         $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
 
-        $count = $row === null ? null : (array_values($row)[0] ?? null);
+        $count = array_values($row ?? [])[0] ?? null;
 
         if (!\is_int($count)) {
             throw new UnexpectedValueException(

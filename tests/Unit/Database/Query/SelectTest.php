@@ -15,9 +15,11 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\Connection;
 use Sloop\Database\LoggingOptions;
+use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
+use Sloop\Database\Query\SelectSpec;
 use UnexpectedValueException;
 
 final class SelectTest extends TestCase
@@ -1815,6 +1817,26 @@ final class SelectTest extends TestCase
         $this->expectExceptionMessageIsOrContains('COUNT(*) returned string where an integer was expected.');
 
         $connection->select()->from('users')->count();
+    }
+
+    public function testCountRefusesAStatementThatReadNoRow(): void
+    {
+        // Grammar is an extension point: a subclass can replace compileSelect
+        // outright, so the statement count() runs is not guaranteed to be the
+        // COUNT(*) it asked for. Without the fallback the row would reach
+        // array_values() as null and raise a TypeError instead of saying which
+        // contract was broken.
+        $this->connection->setGrammar(new class () extends Grammar {
+            public function compileSelect(SelectSpec $spec): CompiledSql
+            {
+                return new CompiledSql('SELECT 1 WHERE 1 = 0', []);
+            }
+        });
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('COUNT(*) returned null where an integer was expected.');
+
+        $this->connection->select()->from('users')->count();
     }
 
     public function testShortcutsRefuseAStatementWithNoTable(): void
