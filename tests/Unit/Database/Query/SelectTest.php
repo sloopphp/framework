@@ -1492,6 +1492,28 @@ final class SelectTest extends TestCase
         $this->assertNull($this->connection->select()->from('users')->where('id', 99)->value('name'));
     }
 
+    public function testValueNarrowsTheRowWindowThatWasAlreadySet(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id', 'name')->from('users')->orderBy('id')->limit(10)->offset(1)->value('name');
+
+        $this->assertSame(
+            'SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 1 OFFSET 1',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testValueReadsThroughAnOffset(): void
+    {
+        $this->seedUsers();
+
+        $name = $this->connection->select()->from('users')->orderBy('id')->offset(1)->value('name');
+
+        $this->assertSame('bob', $name);
+    }
+
     public function testValueAsksOnlyForTheColumnItReturns(): void
     {
         $this->seedUsers();
@@ -1580,9 +1602,12 @@ final class SelectTest extends TestCase
         $this->seedUsers();
         $handler = $this->attachLogger();
 
-        $this->connection->select()->from('users')->orderBy('id')->limit(2)->pluck('name');
+        $this->connection->select()->from('users')->orderBy('id')->limit(2)->offset(1)->pluck('name');
 
-        $this->assertSame('SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 2', $this->loggedSql($handler));
+        $this->assertSame(
+            'SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 2 OFFSET 1',
+            $this->loggedSql($handler),
+        );
     }
 
     public function testPluckRefusesTwoColumnsThatComeBackUnderOneName(): void
@@ -1610,7 +1635,7 @@ final class SelectTest extends TestCase
 
     public function testCountLeavesTheBuilderAsItWas(): void
     {
-        $select = $this->connection->select('id', 'name')->from('users')->limit(10);
+        $select = $this->connection->select('id', 'name')->from('users')->limit(10)->offset(1);
         $before = $select->toSql();
 
         $select->count();

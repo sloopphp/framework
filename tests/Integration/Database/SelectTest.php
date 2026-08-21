@@ -441,6 +441,7 @@ final class SelectTest extends TransactionalIntegrationTestCase
             'SELECT `name` FROM `users` WHERE `name` = \'O\'\'Brien\'',
         ]);
     }
+
     public function testFirstReadsOneRowFromTheServer(): void
     {
         $row = $this->connection->select('name', 'score')

@@ -208,7 +208,9 @@ class Select extends BuilderWhere
      * Read one column of the first row this statement matches.
      *
      * The select list is replaced by the named column, so nothing else is sent
-     * back over the wire.
+     * back over the wire. The row window is treated as first() treats it: the
+     * limit is narrowed to one row and the offset is kept, so
+     * offset(1)->value('name') reads the second row's name.
      *
      * @param  string                      $column Column to read
      * @return int|float|string|null       Its value, or null when nothing matched
