@@ -6,15 +6,21 @@ namespace Sloop\Tests\Unit\Database\Query;
 
 use InvalidArgumentException;
 use LogicException;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
 use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\Connection;
+use Sloop\Database\LoggingOptions;
+use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
+use Sloop\Database\Query\SelectSpec;
+use UnexpectedValueException;
 
 final class SelectTest extends TestCase
 {
@@ -27,16 +33,57 @@ final class SelectTest extends TestCase
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
-        $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL)');
+        $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, nickname TEXT, weight REAL)');
 
         $this->connection = new Connection($sqlite, 'select_test');
+    }
+
+    private function attachLogger(): TestHandler
+    {
+        $handler = new TestHandler();
+        $this->connection->setLogger(new Logger('database', [$handler]), new LoggingOptions(logAllQueries: true));
+
+        return $handler;
+    }
+
+    private function loggedSql(TestHandler $handler): string
+    {
+        $records = $handler->getRecords();
+        $this->assertNotSame([], $records, 'the connection logged no query');
+
+        $last = end($records);
+        $this->assertNotFalse($last);
+
+        $sql = $last->context['sql'] ?? null;
+        $this->assertIsString($sql);
+
+        return $sql;
+    }
+
+    /**
+     * Run the callable and return the InvalidArgumentException it throws.
+     *
+     * @param  callable():mixed         $run Code expected to throw
+     * @return InvalidArgumentException
+     */
+    private function assertThrowsInvalidArgument(callable $run): InvalidArgumentException
+    {
+        try {
+            $run();
+        } catch (InvalidArgumentException $e) {
+            return $e;
+        }
+
+        $this->fail('Expected an InvalidArgumentException, none was thrown.');
     }
 
     private function seedUsers(): void
     {
         $this->connection->statement(
-            'INSERT INTO users (id, name, status) VALUES (1, \'alice\', \'active\'),'
-                . ' (2, \'bob\', \'blocked\'), (3, \'carol\', \'active\')',
+            'INSERT INTO users (id, name, status, nickname, weight) VALUES'
+                . ' (1, \'alice\', \'active\', NULL, 1.5),'
+                . ' (2, \'bob\', \'blocked\', NULL, 2.5),'
+                . ' (3, \'carol\', \'active\', NULL, 3.5)',
         );
     }
 
@@ -1371,5 +1418,438 @@ final class SelectTest extends TestCase
             ->orderByRaw('FIELD(name, ?)', ['alice']);
 
         $this->assertSame(['active', 1, 'active', 'pending', 'alice'], $select->toBindings());
+    }
+
+    public function testFirstReturnsTheFirstRowThatMatches(): void
+    {
+        $this->seedUsers();
+
+        $row = $this->connection->select('id', 'name')
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        $this->assertSame(['id' => 3, 'name' => 'carol'], $row);
+    }
+
+    public function testFirstReturnsNullWhenNothingMatches(): void
+    {
+        $this->seedUsers();
+
+        $row = $this->connection->select()->from('users')->where('status', 'gone')->first();
+
+        $this->assertNull($row);
+    }
+
+    public function testFirstAsksTheServerForOneRowOnly(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('name')->from('users')->orderBy('id')->first();
+
+        $this->assertSame('SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 1', $this->loggedSql($handler));
+    }
+
+    public function testFirstNarrowsTheRowWindowThatWasAlreadySet(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('name')->from('users')->orderBy('id')->limit(10)->offset(1)->first();
+
+        $this->assertSame(
+            'SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 1 OFFSET 1',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testFirstLeavesTheBuilderAsItWas(): void
+    {
+        $select = $this->connection->select('name')->from('users')->limit(10);
+        $before = $select->toSql();
+
+        $select->first();
+
+        $this->assertSame($before, $select->toSql());
+    }
+
+    public function testValueReturnsOneColumnOfTheFirstRow(): void
+    {
+        $this->seedUsers();
+
+        $name = $this->connection->select()
+            ->from('users')
+            ->where('id', 2)
+            ->value('name');
+
+        $this->assertSame('bob', $name);
+    }
+
+    public function testValueReturnsNullWhenNothingMatches(): void
+    {
+        $this->seedUsers();
+
+        $this->assertNull($this->connection->select()->from('users')->where('id', 99)->value('name'));
+    }
+
+    public function testValueNarrowsTheRowWindowThatWasAlreadySet(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id', 'name')->from('users')->orderBy('id')->limit(10)->offset(1)->value('name');
+
+        $this->assertSame(
+            'SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 1 OFFSET 1',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testValueReadsThroughAnOffset(): void
+    {
+        $this->seedUsers();
+
+        $name = $this->connection->select()->from('users')->orderBy('id')->offset(1)->value('name');
+
+        $this->assertSame('bob', $name);
+    }
+
+    public function testValueAsksOnlyForTheColumnItReturns(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id', 'name', 'status')->from('users')->orderBy('id')->value('name');
+
+        $this->assertSame('SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 1', $this->loggedSql($handler));
+    }
+
+    public function testGetReturnsEveryRowThatMatches(): void
+    {
+        $this->seedUsers();
+
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows);
+    }
+
+    public function testCountReturnsHowManyRowsMatch(): void
+    {
+        $this->seedUsers();
+
+        $count = $this->connection->select('id', 'name')
+            ->from('users')
+            ->where('status', 'active')
+            ->count();
+
+        $this->assertSame(2, $count);
+    }
+
+    public function testCountAsksTheServerToCountRatherThanReadingTheRows(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id', 'name')->from('users')->where('status', 'active')->count();
+
+        $this->assertSame('SELECT COUNT(*) FROM `users` WHERE `status` = ?', $this->loggedSql($handler));
+    }
+
+    public function testCountDropsTheRowWindow(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->limit(2)->offset(1)->count();
+
+        $this->assertSame('SELECT COUNT(*) FROM `users`', $this->loggedSql($handler));
+    }
+
+    public function testCountReportsEveryMatchThroughARowWindow(): void
+    {
+        // The window would have applied to the single row COUNT(*) produces,
+        // throwing it away rather than limiting what was counted.
+        $this->seedUsers();
+
+        $count = $this->connection->select()->from('users')->limit(2)->offset(1)->count();
+
+        $this->assertSame(3, $count);
+    }
+
+    public function testExistsDropsTheRowWindow(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->limit(2)->offset(1)->exists();
+
+        $this->assertSame('SELECT 1 FROM `users` LIMIT 1', $this->loggedSql($handler));
+    }
+
+    public function testExistsIsTrueThroughAnOffsetThatWouldSkipTheOnlyMatch(): void
+    {
+        $this->seedUsers();
+
+        $this->assertTrue($this->connection->select()->from('users')->where('id', 1)->offset(1)->exists());
+    }
+
+    public function testPluckKeepsTheRowWindow(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->orderBy('id')->limit(2)->offset(1)->pluck('name');
+
+        $this->assertSame(
+            'SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 2 OFFSET 1',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testPluckKeepsALimitThatHasNoOffset(): void
+    {
+        // Without this case the limit would only be held by the offset test,
+        // where dropping it leaves a bare OFFSET that SelectSpec refuses. The
+        // failure would then come from that constraint rather than from an
+        // assertion about what pluck() sends.
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->orderBy('id')->limit(2)->pluck('name');
+
+        $this->assertSame('SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 2', $this->loggedSql($handler));
+    }
+
+    public function testPluckRefusesTwoColumnsThatComeBackUnderOneName(): void
+    {
+        $this->seedUsers();
+
+        $e = $this->assertThrowsInvalidArgument(
+            fn () => $this->connection->select()->from('users')->pluck('name', 'name'),
+        );
+        $this->assertSame(
+            'Columns "name" and "name" came back under one name, so there is no value to key.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValueLeavesTheBuilderAsItWas(): void
+    {
+        $select = $this->connection->select('id', 'name')->from('users')->limit(10);
+        $before = $select->toSql();
+
+        $select->value('name');
+
+        $this->assertSame($before, $select->toSql());
+    }
+
+    public function testCountLeavesTheBuilderAsItWas(): void
+    {
+        $select = $this->connection->select('id', 'name')->from('users')->limit(10)->offset(1);
+        $before = $select->toSql();
+
+        $select->count();
+
+        $this->assertSame($before, $select->toSql());
+    }
+
+    public function testPluckLeavesTheBuilderAsItWas(): void
+    {
+        // The columns pluck() reads must differ from the ones the builder
+        // names, or writing them back would leave toSql() looking unchanged.
+        $select = $this->connection->select('id', 'name', 'status')->from('users')->limit(10);
+        $before = $select->toSql();
+
+        $select->pluck('name');
+
+        $this->assertSame($before, $select->toSql());
+    }
+
+    public function testExistsLeavesTheBuilderAsItWas(): void
+    {
+        $select = $this->connection->select('id', 'name')->from('users')->limit(10)->offset(1);
+        $before = $select->toSql();
+
+        $select->exists();
+
+        $this->assertSame($before, $select->toSql());
+    }
+
+    public function testExistsIsTrueWhenARowMatches(): void
+    {
+        $this->seedUsers();
+
+        $this->assertTrue($this->connection->select()->from('users')->where('status', 'active')->exists());
+    }
+
+    public function testExistsIsFalseWhenNothingMatches(): void
+    {
+        $this->seedUsers();
+
+        $this->assertFalse($this->connection->select()->from('users')->where('status', 'gone')->exists());
+    }
+
+    public function testExistsAsksForASingleConstantRow(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id', 'name')->from('users')->where('status', 'active')->exists();
+
+        $this->assertSame('SELECT 1 FROM `users` WHERE `status` = ? LIMIT 1', $this->loggedSql($handler));
+    }
+
+    public function testDoesntExistIsTrueWhenNothingMatches(): void
+    {
+        $this->seedUsers();
+
+        $this->assertTrue($this->connection->select()->from('users')->where('status', 'gone')->doesntExist());
+    }
+
+    public function testDoesntExistIsFalseWhenARowMatches(): void
+    {
+        $this->seedUsers();
+
+        $this->assertFalse($this->connection->select()->from('users')->where('status', 'active')->doesntExist());
+    }
+
+    public function testPluckReturnsTheValuesOfOneColumn(): void
+    {
+        $this->seedUsers();
+
+        $names = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('id')
+            ->pluck('name');
+
+        $this->assertSame(['alice', 'carol'], $names);
+    }
+
+    public function testPluckReturnsAMapWhenGivenAKeyColumn(): void
+    {
+        $this->seedUsers();
+
+        $names = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('id')
+            ->pluck('name', 'id');
+
+        $this->assertSame([1 => 'alice', 3 => 'carol'], $names);
+    }
+
+    public function testPluckAsksOnlyForTheColumnsItNeeds(): void
+    {
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id', 'name', 'status')->from('users')->orderBy('id')->pluck('name', 'id');
+
+        $this->assertSame('SELECT `id`, `name` FROM `users` ORDER BY `id` ASC', $this->loggedSql($handler));
+    }
+
+    public function testPluckReturnsAnEmptyArrayWhenNothingMatches(): void
+    {
+        $this->seedUsers();
+
+        $this->assertSame([], $this->connection->select()->from('users')->where('status', 'gone')->pluck('name'));
+    }
+
+    public function testPluckRefusesAKeyColumnHoldingNull(): void
+    {
+        $this->seedUsers();
+
+        $e = $this->assertThrowsInvalidArgument(
+            fn () => $this->connection->select()->from('users')->pluck('name', 'nickname'),
+        );
+        $this->assertSame(
+            'Column "nickname" holds null, which cannot key an array.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testPluckRefusesAKeyColumnHoldingAFloat(): void
+    {
+        $this->seedUsers();
+
+        $e = $this->assertThrowsInvalidArgument(
+            fn () => $this->connection->select()->from('users')->pluck('name', 'weight'),
+        );
+        $this->assertSame(
+            'Column "weight" holds float, which cannot key an array.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testPluckAcceptsAStringKeyColumn(): void
+    {
+        $this->seedUsers();
+
+        $byName = $this->connection->select()->from('users')->orderBy('id')->pluck('status', 'name');
+
+        $this->assertSame(['alice' => 'active', 'bob' => 'blocked', 'carol' => 'active'], $byName);
+    }
+
+    public function testCountRefusesACountThatIsNotAnInteger(): void
+    {
+        // Connection::open() lets a caller keep PDO::ATTR_STRINGIFY_FETCHES on,
+        // which hands COUNT(*) back as a string. count() contracts to int, so
+        // it says so rather than casting something it did not expect.
+        $sqlite = new Sqlite('sqlite::memory:', null, null, [
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_STRINGIFY_FETCHES  => true,
+        ]);
+        $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY)');
+        $sqlite->exec('INSERT INTO users (id) VALUES (1)');
+
+        $connection = new Connection($sqlite, 'stringify_test');
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('COUNT(*) returned string where an integer was expected.');
+
+        $connection->select()->from('users')->count();
+    }
+
+    public function testCountRefusesAStatementThatReadNoRow(): void
+    {
+        // Grammar is an extension point: a subclass can replace compileSelect
+        // outright, so the statement count() runs is not guaranteed to be the
+        // COUNT(*) it asked for. Without the fallback the row would reach
+        // array_values() as null and raise a TypeError instead of saying which
+        // contract was broken.
+        $this->connection->setGrammar(new class () extends Grammar {
+            public function compileSelect(SelectSpec $spec): CompiledSql
+            {
+                return new CompiledSql('SELECT 1 WHERE 1 = 0', []);
+            }
+        });
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('COUNT(*) returned null where an integer was expected.');
+
+        $this->connection->select()->from('users')->count();
+    }
+
+    public function testShortcutsRefuseAStatementWithNoTable(): void
+    {
+        $this->expectException(LogicException::class);
+
+        $this->connection->select()->first();
+    }
+
+    public function testShortcutsRefuseAGroupLeftOpen(): void
+    {
+        $this->expectException(LogicException::class);
+
+        $this->connection->select()->from('users')->whereOpen()->where('id', 1)->count();
     }
 }

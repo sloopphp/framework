@@ -441,4 +441,108 @@ final class SelectTest extends TransactionalIntegrationTestCase
             'SELECT `name` FROM `users` WHERE `name` = \'O\'\'Brien\'',
         ]);
     }
+
+    public function testFirstReadsOneRowFromTheServer(): void
+    {
+        $row = $this->connection->select('name', 'score')
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('score', 'DESC')
+            ->first();
+
+        $this->assertSame(['name' => 'carol', 'score' => 30], $row);
+    }
+
+    public function testValueReadsOneColumnOfOneRow(): void
+    {
+        $email = $this->connection->select()
+            ->from('users')
+            ->where('name', 'bob')
+            ->value('email');
+
+        $this->assertSame('bob@example.com', $email);
+    }
+
+    public function testValueReadsAQualifiedColumnTheServerKeysByItsShortName(): void
+    {
+        // The server labels `users`.`email` as email, so reading the value by
+        // position rather than by the name that was asked for matters here.
+        $email = $this->connection->select()
+            ->from('users')
+            ->where('name', 'bob')
+            ->value('users.email');
+
+        $this->assertSame('bob@example.com', $email);
+    }
+
+    public function testGetReadsEveryMatchingRow(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('score')
+            ->get();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows);
+    }
+
+    public function testCountIsAnIntegerFromTheServer(): void
+    {
+        // The driver hands COUNT(*) back as a string on some builds; the
+        // shortcut contracts to int, so this is the assertion that matters.
+        $count = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->count();
+
+        $this->assertSame(2, $count);
+    }
+
+    public function testExistsShortCircuitsOnTheServer(): void
+    {
+        $this->assertTrue($this->connection->select()->from('users')->where('status', 'active')->exists());
+        $this->assertFalse($this->connection->select()->from('users')->where('status', 'gone')->exists());
+    }
+
+    public function testDoesntExistIsTheOppositeOfExists(): void
+    {
+        $this->assertFalse($this->connection->select()->from('users')->where('status', 'active')->doesntExist());
+        $this->assertTrue($this->connection->select()->from('users')->where('status', 'gone')->doesntExist());
+    }
+
+    public function testPluckReadsOneColumnAcrossTheMatchingRows(): void
+    {
+        $names = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('score')
+            ->pluck('name');
+
+        $this->assertSame(['alice', 'carol'], $names);
+    }
+
+    public function testPluckReadsQualifiedColumnsTheServerKeysByTheirShortNames(): void
+    {
+        // Same reason value() reads by position: the server labels
+        // `users`.`name` as name, so reading by the name that was asked for
+        // would miss.
+        $names = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('score')
+            ->pluck('users.name', 'users.id');
+
+        $this->assertSame([1 => 'alice', 3 => 'carol'], $names);
+    }
+
+    public function testPluckKeysTheValuesWhenGivenAKeyColumn(): void
+    {
+        $names = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('score')
+            ->pluck('name', 'id');
+
+        $this->assertSame([1 => 'alice', 3 => 'carol'], $names);
+    }
 }
