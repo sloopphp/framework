@@ -1610,6 +1610,20 @@ final class SelectTest extends TestCase
         );
     }
 
+    public function testPluckKeepsALimitThatHasNoOffset(): void
+    {
+        // Without this case the limit would only be held by the offset test,
+        // where dropping it leaves a bare OFFSET that SelectSpec refuses. The
+        // failure would then come from that constraint rather than from an
+        // assertion about what pluck() sends.
+        $this->seedUsers();
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->orderBy('id')->limit(2)->pluck('name');
+
+        $this->assertSame('SELECT `name` FROM `users` ORDER BY `id` ASC LIMIT 2', $this->loggedSql($handler));
+    }
+
     public function testPluckRefusesTwoColumnsThatComeBackUnderOneName(): void
     {
         $this->seedUsers();
