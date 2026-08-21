@@ -52,6 +52,13 @@ class Select extends BuilderWhere
     private ?string $from = null;
 
     /**
+     * How to hold the rows read, or null to hold nothing.
+     *
+     * @var RowLock|null
+     */
+    private ?RowLock $lock = null;
+
+    /**
      * Start a SELECT over the given columns.
      *
      * @param ConnectionRoute   $route      Route asked for a connection when the statement runs
@@ -92,6 +99,59 @@ class Select extends BuilderWhere
     public function selectRaw(string $sql, array $bindings = []): static
     {
         $this->columns[] = Expression::of($sql, $bindings);
+
+        return $this;
+    }
+
+    /**
+     * Hold every row this statement reads against reading and writing by others.
+     *
+     * The lock lasts as long as the transaction that took it, so this only
+     * holds anything when the statement runs inside one; outside a transaction
+     * the statement commits as it finishes and the lock goes with it. What
+     * counts is whether the server has a transaction open, which is not always
+     * what Connection::inTransaction() reports — a connection configured with
+     * PDO::ATTR_AUTOCOMMIT off is in one from the start — so this is left to
+     * the caller rather than checked here.
+     *
+     * The two arguments say what to do about a row someone else already holds.
+     * They are alternatives rather than a pair: MySQL and MariaDB both reject a
+     * statement asking for both.
+     *
+     * @param  bool                     $skipLocked Leave out the rows already held instead of waiting
+     * @param  bool                     $noWait     Fail instead of waiting when a row is already held
+     * @return static                   This builder
+     * @throws InvalidArgumentException When both alternatives are asked for
+     */
+    public function forUpdate(bool $skipLocked = false, bool $noWait = false): static
+    {
+        if ($skipLocked && $noWait) {
+            throw new InvalidArgumentException(
+                'SKIP LOCKED and NOWAIT each say what to do about a row that is already locked, '
+                    . 'so a statement takes one or the other.',
+            );
+        }
+
+        $this->lock = match (true) {
+            $skipLocked => RowLock::UpdateSkipLocked,
+            $noWait     => RowLock::UpdateNoWait,
+            default     => RowLock::Update,
+        };
+
+        return $this;
+    }
+
+    /**
+     * Hold every row this statement reads against writing by others.
+     *
+     * Others can still read the rows and take the same lock. As with
+     * forUpdate(), the lock lasts as long as the transaction that took it.
+     *
+     * @return static This builder
+     */
+    public function sharedLock(): static
+    {
+        $this->lock = RowLock::Shared;
 
         return $this;
     }
@@ -138,6 +198,7 @@ class Select extends BuilderWhere
             orders:     $this->orders,
             limit:      $limit,
             offset:     $offset,
+            lock:       $this->lock,
         ));
     }
 

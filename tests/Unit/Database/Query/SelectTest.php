@@ -18,6 +18,7 @@ use Sloop\Database\LoggingOptions;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Query\SelectSpec;
 use UnexpectedValueException;
@@ -1851,5 +1852,116 @@ final class SelectTest extends TestCase
         $this->expectException(LogicException::class);
 
         $this->connection->select()->from('users')->whereOpen()->where('id', 1)->count();
+    }
+
+    public function testForUpdateWritesALockClause(): void
+    {
+        $sql = $this->connection->select()->from('users')->forUpdate()->compile()->sql;
+
+        $this->assertSame('SELECT * FROM `users` FOR UPDATE', $sql);
+    }
+
+    public function testForUpdateSkipLockedWritesALockClause(): void
+    {
+        $sql = $this->connection->select()->from('users')->forUpdate(skipLocked: true)->compile()->sql;
+
+        $this->assertSame('SELECT * FROM `users` FOR UPDATE SKIP LOCKED', $sql);
+    }
+
+    public function testForUpdateNoWaitWritesALockClause(): void
+    {
+        $sql = $this->connection->select()->from('users')->forUpdate(noWait: true)->compile()->sql;
+
+        $this->assertSame('SELECT * FROM `users` FOR UPDATE NOWAIT', $sql);
+    }
+
+    public function testSharedLockWritesALockClause(): void
+    {
+        $sql = $this->connection->select()->from('users')->sharedLock()->compile()->sql;
+
+        $this->assertSame('SELECT * FROM `users` LOCK IN SHARE MODE', $sql);
+    }
+
+    public function testAStatementCarriesNoLockUntilOneIsAskedFor(): void
+    {
+        $sql = $this->connection->select()->from('users')->where('id', 1)->compile()->sql;
+
+        $this->assertSame('SELECT * FROM `users` WHERE `id` = ?', $sql);
+    }
+
+    public function testForUpdateRefusesSkipLockedAndNoWaitTogether(): void
+    {
+        $e = $this->assertThrowsInvalidArgument(
+            fn () => $this->connection->select()->from('users')->forUpdate(skipLocked: true, noWait: true),
+        );
+        $this->assertSame(
+            'SKIP LOCKED and NOWAIT each say what to do about a row that is already locked, so a statement takes one or the other.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testTheLastLockAskedForIsTheOneWritten(): void
+    {
+        $sql = $this->connection->select()->from('users')->forUpdate()->sharedLock()->compile()->sql;
+
+        $this->assertSame('SELECT * FROM `users` LOCK IN SHARE MODE', $sql);
+    }
+
+    /**
+     * @param 'count'|'doesntExist'|'exists'|'first'|'get'|'pluck'|'value' $shortcut Shortcut to call
+     */
+    #[DataProvider('provideShortcuts')]
+    public function testShortcutsKeepTheLock(string $shortcut): void
+    {
+        // A lock says how the rows this statement reaches should be held, which
+        // is independent of how many of them come back. The shortcuts narrow or
+        // drop the row window, so this holds them to leaving the lock alone.
+        //
+        // SQLite cannot parse a lock clause, so the grammar records what it was
+        // handed and writes nothing, letting the statement itself still run.
+        $this->seedUsers();
+
+        $grammar = new class () extends Grammar {
+            public ?RowLock $seen = null;
+
+            protected function compileLock(?RowLock $lock): CompiledSql
+            {
+                $this->seen = $lock;
+
+                return new CompiledSql('');
+            }
+        };
+
+        $this->connection->setGrammar($grammar);
+
+        $select = $this->connection->select()->from('users')->limit(2)->offset(1)->forUpdate();
+
+        match ($shortcut) {
+            'first'       => $select->first(),
+            'value'       => $select->value('name'),
+            'get'         => $select->get(),
+            'count'       => $select->count(),
+            'exists'      => $select->exists(),
+            'doesntExist' => $select->doesntExist(),
+            'pluck'       => $select->pluck('name'),
+        };
+
+        $this->assertSame(RowLock::Update, $grammar->seen);
+    }
+
+    /**
+     * @return array<string, array{'count'|'doesntExist'|'exists'|'first'|'get'|'pluck'|'value'}>
+     */
+    public static function provideShortcuts(): array
+    {
+        return [
+            'first'       => ['first'],
+            'value'       => ['value'],
+            'get'         => ['get'],
+            'count'       => ['count'],
+            'exists'      => ['exists'],
+            'doesntExist' => ['doesntExist'],
+            'pluck'       => ['pluck'],
+        ];
     }
 }
