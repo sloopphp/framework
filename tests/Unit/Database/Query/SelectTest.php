@@ -21,10 +21,13 @@ use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Query\SelectSpec;
+use Sloop\Tests\Support\ThrowsAssertions;
 use UnexpectedValueException;
 
 final class SelectTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private Connection $connection;
 
     protected function setUp(): void
@@ -1963,5 +1966,72 @@ final class SelectTest extends TestCase
             'doesntExist' => ['doesntExist'],
             'pluck'       => ['pluck'],
         ];
+    }
+
+    public function testCountRefusesANoWaitLock(): void
+    {
+        $this->seedUsers();
+
+        $e = $this->assertThrows(
+            LogicException::class,
+            fn () => $this->connection->select()->from('users')->forUpdate(noWait: true)->count(),
+        );
+
+        // The whole message, not a leading fragment: it is assembled from four
+        // concatenated pieces, and matching only the first would let the rest
+        // be reordered or dropped without a test noticing.
+        $this->assertSame(
+            'count() cannot be taken with NOWAIT. MySQL answers COUNT(*) with 0 instead of failing '
+                . 'when another session holds a row, so the count would be wrong rather than the read '
+                . 'refused, and which plan it picks decides that. Count the rows of get(), or take the '
+                . 'lock without NOWAIT.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testCountAcceptsTheOtherLocks(): void
+    {
+        // Only NOWAIT is refused. The server answers the other two properly, so
+        // narrowing the refusal any further would close working combinations.
+        $this->seedUsers();
+
+        $grammar = new class () extends Grammar {
+            protected function compileLock(?RowLock $lock): CompiledSql
+            {
+                return new CompiledSql('');
+            }
+        };
+
+        $this->connection->setGrammar($grammar);
+
+        $this->assertSame(3, $this->connection->select()->from('users')->forUpdate()->count());
+        $this->assertSame(3, $this->connection->select()->from('users')->forUpdate(skipLocked: true)->count());
+        $this->assertSame(3, $this->connection->select()->from('users')->sharedLock()->count());
+    }
+
+    public function testShortcutsOtherThanCountAcceptANoWaitLock(): void
+    {
+        // count() is refused because MySQL answers COUNT(*) with a number
+        // instead of failing. The shortcuts that return rows are reported
+        // properly by both servers, so they are left alone.
+        $this->seedUsers();
+
+        $grammar = new class () extends Grammar {
+            protected function compileLock(?RowLock $lock): CompiledSql
+            {
+                return new CompiledSql('');
+            }
+        };
+
+        $this->connection->setGrammar($grammar);
+
+        $select = fn (): Select => $this->connection->select()->from('users')->forUpdate(noWait: true);
+
+        $this->assertNotNull($select()->first());
+        $this->assertNotNull($select()->value('name'));
+        $this->assertNotSame([], $select()->get());
+        $this->assertTrue($select()->exists());
+        $this->assertFalse($select()->doesntExist());
+        $this->assertNotSame([], $select()->pluck('name'));
     }
 }

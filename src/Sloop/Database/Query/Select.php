@@ -322,8 +322,15 @@ class Select extends BuilderWhere
      * all. Counting what the conditions match is the only reading of count()
      * the window can serve.
      *
+     * A NOWAIT lock is refused here rather than counted. MySQL answers
+     * COUNT(*) with 0 rather than failing when another session holds a row,
+     * and whether it does so depends on the plan it picks, so the count cannot
+     * be trusted and the builder cannot tell in advance. The other locks are
+     * left alone: a plain FOR UPDATE waits and then reports the wait, and SKIP
+     * LOCKED counts what it could take.
+     *
      * @return int                         How many rows matched
-     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws LogicException              When no table has been named, a group of conditions was left open, or the lock is NOWAIT
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -332,6 +339,15 @@ class Select extends BuilderWhere
      */
     public function count(): int
     {
+        if ($this->lock === RowLock::UpdateNoWait) {
+            throw new LogicException(
+                'count() cannot be taken with NOWAIT. MySQL answers COUNT(*) with 0 instead of failing '
+                    . 'when another session holds a row, so the count would be wrong rather than the read '
+                    . 'refused, and which plan it picks decides that. Count the rows of get(), or take the '
+                    . 'lock without NOWAIT.',
+            );
+        }
+
         $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
 
         $count = array_values($row ?? [])[0] ?? null;

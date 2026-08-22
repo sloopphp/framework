@@ -40,7 +40,10 @@ enum RowLock
      * Connection::query() maps MySQL's code 3572 to LockNotAvailableException;
      * MariaDB has no code of its own for this and reports code 1205, which
      * arrives as LockWaitTimeoutException and so is retried by
-     * Connection::transaction(). docs/ja/database.md sets this out.
+     * Connection::transaction().
+     *
+     * Select::count() refuses this case outright, because MySQL answers
+     * COUNT(*) with 0 rather than failing when a row is held.
      */
     case UpdateNoWait;
 
