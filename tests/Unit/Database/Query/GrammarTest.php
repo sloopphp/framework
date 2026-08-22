@@ -989,4 +989,23 @@ final class GrammarTest extends TestCase
             $compiled->sql,
         );
     }
+
+    public function testSelectCarriesTheBindingsOfAReplacedLockClause(): void
+    {
+        // compileLock() returns a CompiledSql rather than a string for the same
+        // reason compileLimit() does: a dialect that writes a placeholder here
+        // needs somewhere to put the value. Without this the bindings could stop
+        // being merged and every other test would stay green.
+        $grammar = new class () extends Grammar {
+            protected function compileLock(?RowLock $lock): CompiledSql
+            {
+                return new CompiledSql(' FOR UPDATE WAIT ?', [5]);
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(from: 'users', lock: RowLock::Update));
+
+        $this->assertSame('SELECT * FROM `users` FOR UPDATE WAIT ?', $compiled->sql);
+        $this->assertSame([5], $compiled->bindings);
+    }
 }

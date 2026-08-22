@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Integration\Database;
 
+use LogicException;
 use Sloop\Database\Connection;
 use Sloop\Database\Dialect;
 use Sloop\Database\Exception\LockNotAvailableException;
 use Sloop\Database\Exception\LockWaitTimeoutException;
-use Sloop\Database\Exception\QueryException;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 /**
@@ -86,9 +86,10 @@ final class SelectLockTest extends IntegrationTestCase
 
     public function testForUpdateLeavesRowsItDidNotReadAlone(): void
     {
-        // NOWAIT rather than a plain lock, so a held row fails here at once
-        // instead of the read succeeding for want of anything to wait for.
-        // Without it the test would pass even with no lock taken at all.
+        // A negative control: it reads the rows the holder did not take, so it
+        // passes with no lock written at all. NOWAIT is here to keep it from
+        // waiting out the timeout if the holder ever over-locks. That the lock
+        // is written at all is held by the other cases in this class.
         $this->holdRow(1);
         $this->reader->begin();
 
@@ -149,7 +150,7 @@ final class SelectLockTest extends IntegrationTestCase
         $writer->begin();
 
         try {
-            $this->expectException(QueryException::class);
+            $this->expectException(LockWaitTimeoutException::class);
 
             $writer->statement('UPDATE ' . self::TABLE . ' SET label = ? WHERE id = 1', ['written']);
         } finally {
@@ -164,7 +165,7 @@ final class SelectLockTest extends IntegrationTestCase
 
         $this->reader->begin();
 
-        $this->expectException(QueryException::class);
+        $this->expectException(LockWaitTimeoutException::class);
 
         $this->reader->statement('UPDATE ' . self::TABLE . ' SET label = ? WHERE id = 1', ['written']);
     }
@@ -177,5 +178,44 @@ final class SelectLockTest extends IntegrationTestCase
         $this->expectException(LockWaitTimeoutException::class);
 
         $this->reader->select('id')->from(self::TABLE)->where('id', 1)->sharedLock()->get();
+    }
+
+    public function testCountRefusesANoWaitLockRatherThanReturningAWrongNumber(): void
+    {
+        // MySQL answers COUNT(*) with 0 instead of failing when another session
+        // holds a row, and which plan it picks decides whether it does, so the
+        // builder cannot tell a trustworthy count from a wrong one. This holds
+        // the refusal against a live server, where the wrong number would come
+        // from.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $this->expectException(LogicException::class);
+
+        $this->reader->select()->from(self::TABLE)->forUpdate(noWait: true)->count();
+    }
+
+    public function testCountUnderAPlainLockReportsTheWaitInsteadOfANumber(): void
+    {
+        // The other locks are left alone because the server answers them
+        // properly: a plain FOR UPDATE waits for the held row and then reports
+        // the wait.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $this->expectException(LockWaitTimeoutException::class);
+
+        $this->reader->select()->from(self::TABLE)->forUpdate()->count();
+    }
+
+    public function testCountUnderSkipLockedCountsWhatItCouldTake(): void
+    {
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $this->assertSame(
+            2,
+            $this->reader->select()->from(self::TABLE)->forUpdate(skipLocked: true)->count(),
+        );
     }
 }
