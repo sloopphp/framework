@@ -10,6 +10,7 @@ use Sloop\Database\Connection;
 use Sloop\Database\Dialect;
 use Sloop\Database\Exception\LockNotAvailableException;
 use Sloop\Database\Exception\LockWaitTimeoutException;
+use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 /**
@@ -67,9 +68,6 @@ final class SelectLockTest extends IntegrationTestCase
 
     /**
      * Take an exclusive lock on one row and leave the transaction open.
-     *
-     * @param  int  $id Row to hold
-     * @return void
      */
     private function holdRow(int $id): void
     {
@@ -283,5 +281,20 @@ final class SelectLockTest extends IntegrationTestCase
         } catch (LockWaitTimeoutException) {
             $this->assertSame(3, $this->attempts, 'MariaDB reuses the wait code, so the callback runs again.');
         }
+    }
+
+    public function testASkipLockedExistsReadsAHeldRowAsAbsent(): void
+    {
+        // exists() answers whether a row is there for the taking, not whether
+        // one is there. Pinned against the server for the same reason the
+        // miscount is: the shortcut reads false while the row is plainly
+        // present, so the day that changes it should not pass unnoticed.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $query = fn (): Select => $this->reader->select('id')->from(self::TABLE)->where('id', 1);
+
+        $this->assertFalse($query()->forUpdate(skipLocked: true)->exists());
+        $this->assertTrue($query()->exists());
     }
 }
