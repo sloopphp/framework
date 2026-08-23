@@ -42,8 +42,8 @@ enum RowLock
      * arrives as LockWaitTimeoutException and so is retried by
      * Connection::transaction().
      *
-     * Select::count() refuses this case outright, because MySQL answers
-     * COUNT(*) with 0 rather than failing when a row is held.
+     * Select::count() refuses this case outright; the reason is set out there
+     * rather than repeated here.
      */
     case UpdateNoWait;
 

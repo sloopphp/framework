@@ -1981,10 +1981,10 @@ final class SelectTest extends TestCase
         // concatenated pieces, and matching only the first would let the rest
         // be reordered or dropped without a test noticing.
         $this->assertSame(
-            'count() cannot be taken with NOWAIT. MySQL answers COUNT(*) with 0 instead of failing '
-                . 'when another session holds a row, so the count would be wrong rather than the read '
-                . 'refused, and which plan it picks decides that. Count the rows of get(), or take the '
-                . 'lock without NOWAIT.',
+            'count() cannot be taken with NOWAIT. MySQL swallows the abort inside a COUNT and '
+                . 'answers with the rows it reached before the held one, so the number looks ordinary '
+                . 'and nothing says it is short. Count the rows of get(), or take the lock without '
+                . 'NOWAIT.',
             $e->getMessage(),
         );
     }
@@ -2011,9 +2011,10 @@ final class SelectTest extends TestCase
 
     public function testShortcutsOtherThanCountAcceptANoWaitLock(): void
     {
-        // count() is refused because MySQL answers COUNT(*) with a number
-        // instead of failing. The shortcuts that return rows are reported
-        // properly by both servers, so they are left alone.
+        // Only that the builder does not refuse these; what the servers do with
+        // the clause is not reachable from here, because the stub grammar
+        // writes no lock and SQLite could not parse one anyway.
+        // SelectLockTest pins the server side.
         $this->seedUsers();
 
         $grammar = new class () extends Grammar {

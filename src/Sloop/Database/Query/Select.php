@@ -114,9 +114,20 @@ class Select extends BuilderWhere
      * PDO::ATTR_AUTOCOMMIT off is in one from the start — so this is left to
      * the caller rather than checked here.
      *
+     * Where the statement runs is the route's answer, so a builder started from
+     * ConnectionManager::select() can take its lock on a replica when no
+     * transaction is open on the primary; execute() describes that routing.
+     *
      * The two arguments say what to do about a row someone else already holds.
      * They are alternatives rather than a pair: MySQL and MariaDB both reject a
      * statement asking for both.
+     *
+     * NOWAIT reaches the caller as a different exception on each server, and on
+     * MariaDB that difference changes control flow: it reports the failure with
+     * the code it uses for an ordinary lock wait, so transaction() counts it as
+     * retryable and runs the callback again. Asking not to wait and then being
+     * retried is the opposite of the intent, so pair NOWAIT with maxAttempts 1.
+     * count() refuses NOWAIT outright, for the reason given there.
      *
      * @param  bool                     $skipLocked Leave out the rows already held instead of waiting
      * @param  bool                     $noWait     Fail instead of waiting when a row is already held
@@ -322,12 +333,18 @@ class Select extends BuilderWhere
      * all. Counting what the conditions match is the only reading of count()
      * the window can serve.
      *
-     * A NOWAIT lock is refused here rather than counted. MySQL answers
-     * COUNT(*) with 0 rather than failing when another session holds a row,
-     * and whether it does so depends on the plan it picks, so the count cannot
-     * be trusted and the builder cannot tell in advance. The other locks are
-     * left alone: a plain FOR UPDATE waits and then reports the wait, and SKIP
-     * LOCKED counts what it could take.
+     * A NOWAIT lock is refused here rather than counted. MySQL swallows the
+     * NOWAIT abort inside a COUNT and answers with the rows it had counted
+     * before it reached the held one, so what comes back is a plausible number
+     * rather than an error: holding the first row of the scan answers 0, and
+     * holding the last answers one less than the true count. Whether the
+     * statement takes that path depends on the plan, and a SUM over the same
+     * scan does fail, so this is COUNT keeping its own tally rather than
+     * aggregates in general. MariaDB reports the failure properly, but the
+     * refusal covers both so the same code means the same thing on either.
+     *
+     * The other locks are left alone: a plain FOR UPDATE waits and then
+     * reports the wait, and SKIP LOCKED counts what it could take.
      *
      * @return int                         How many rows matched
      * @throws LogicException              When no table has been named, a group of conditions was left open, or the lock is NOWAIT
@@ -341,10 +358,10 @@ class Select extends BuilderWhere
     {
         if ($this->lock === RowLock::UpdateNoWait) {
             throw new LogicException(
-                'count() cannot be taken with NOWAIT. MySQL answers COUNT(*) with 0 instead of failing '
-                    . 'when another session holds a row, so the count would be wrong rather than the read '
-                    . 'refused, and which plan it picks decides that. Count the rows of get(), or take the '
-                    . 'lock without NOWAIT.',
+                'count() cannot be taken with NOWAIT. MySQL swallows the abort inside a COUNT and '
+                    . 'answers with the rows it reached before the held one, so the number looks ordinary '
+                    . 'and nothing says it is short. Count the rows of get(), or take the lock without '
+                    . 'NOWAIT.',
             );
         }
 
@@ -370,6 +387,10 @@ class Select extends BuilderWhere
      * the conditions match anything does not depend on which slice of the
      * matches would have been returned.
      *
+     * Under SKIP LOCKED this answers whether a row is there for the taking
+     * rather than whether one exists: a match another session holds is passed
+     * over, so a row that is present reads as absent while it is held.
+     *
      * @return bool                        True when at least one row matched
      * @throws LogicException              When no table has been named, or a group of conditions was left open
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
@@ -385,6 +406,8 @@ class Select extends BuilderWhere
 
     /**
      * Tell whether this statement matches no row.
+     *
+     * The negation of exists(), including its reading under SKIP LOCKED.
      *
      * @return bool                        True when nothing matched
      * @throws LogicException              When no table has been named, or a group of conditions was left open
