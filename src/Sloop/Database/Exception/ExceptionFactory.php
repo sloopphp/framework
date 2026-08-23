@@ -42,7 +42,7 @@ final class ExceptionFactory
     private const array DRIVER_CODE_MAP = [
         1213 => DeadlockException::class,                  // deadlock detected (SQLSTATE 40001)
         1205 => LockWaitTimeoutException::class,           // innodb_lock_wait_timeout exceeded
-        3572 => LockNotAvailableException::class,          // FOR UPDATE NOWAIT / SKIP LOCKED failure
+        3572 => LockNotAvailableException::class,          // FOR UPDATE NOWAIT could not take the lock
         1062 => UniqueConstraintViolationException::class, // duplicate key
         1451 => ForeignKeyViolationException::class,       // foreign key constraint (on delete/update)
         1452 => ForeignKeyViolationException::class,       // foreign key constraint (parent missing)

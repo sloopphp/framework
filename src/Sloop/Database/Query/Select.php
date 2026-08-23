@@ -52,6 +52,13 @@ class Select extends BuilderWhere
     private ?string $from = null;
 
     /**
+     * How to hold the rows read, or null to hold nothing.
+     *
+     * @var RowLock|null
+     */
+    private ?RowLock $lock = null;
+
+    /**
      * Start a SELECT over the given columns.
      *
      * @param ConnectionRoute   $route      Route asked for a connection when the statement runs
@@ -92,6 +99,84 @@ class Select extends BuilderWhere
     public function selectRaw(string $sql, array $bindings = []): static
     {
         $this->columns[] = Expression::of($sql, $bindings);
+
+        return $this;
+    }
+
+    /**
+     * Hold every row this statement reads against reading and writing by others.
+     *
+     * The lock lasts as long as the transaction that took it, so this only
+     * holds anything when the statement runs inside one; outside a transaction
+     * the statement commits as it finishes and the lock goes with it. What
+     * counts is whether the server has a transaction open, which is not always
+     * what Connection::inTransaction() reports — a connection configured with
+     * PDO::ATTR_AUTOCOMMIT off is in one from the start — so this is left to
+     * the caller rather than checked here.
+     *
+     * Where the statement runs is the route's answer, so a builder started from
+     * ConnectionManager::select() can take its lock on a replica when no
+     * transaction is open on the primary; execute() describes that routing.
+     *
+     * The two arguments say what to do about a row someone else already holds.
+     * They are alternatives rather than a pair: MySQL and MariaDB both reject a
+     * statement asking for both.
+     *
+     * NOWAIT reaches the caller as a different exception on each server, and on
+     * MariaDB that difference changes control flow: it reports the failure with
+     * the code it uses for an ordinary lock wait, so transaction() counts it as
+     * retryable and runs the callback again. Asking not to wait and then being
+     * retried is the opposite of the intent, so pair NOWAIT with maxAttempts 1.
+     * count() refuses NOWAIT outright, for the reason given there. That refusal
+     * covers the statement count() writes, not the server behaviour behind it:
+     * a COUNT written by hand through selectRaw() can reach the same swallowed
+     * abort with nothing in the way. Which select lists do so is a property of
+     * the server rather than of this class, and count() writes only one of
+     * them, so the refusal is no wider than count().
+     *
+     * @param  bool                     $skipLocked Leave out the rows already held instead of waiting
+     * @param  bool                     $noWait     Fail instead of waiting when a row is already held
+     * @return static                   This builder
+     * @throws InvalidArgumentException When both alternatives are asked for
+     */
+    public function forUpdate(bool $skipLocked = false, bool $noWait = false): static
+    {
+        if ($skipLocked && $noWait) {
+            throw new InvalidArgumentException(
+                'SKIP LOCKED and NOWAIT each say what to do about a row that is already locked, '
+                    . 'so a statement takes one or the other.',
+            );
+        }
+
+        $this->lock = match (true) {
+            $skipLocked => RowLock::UpdateSkipLocked,
+            $noWait     => RowLock::UpdateNoWait,
+            default     => RowLock::Update,
+        };
+
+        return $this;
+    }
+
+    /**
+     * Hold every row this statement reads against writing by others.
+     *
+     * Others can still read the rows and take the same lock. As with
+     * forUpdate(), the lock lasts as long as the transaction that took it, and
+     * where it runs is the route's answer rather than where the builder was
+     * made.
+     *
+     * Landing on a replica matters more here than it does for forUpdate(). A
+     * server kept read only refuses FOR UPDATE outright, so a misrouted
+     * exclusive lock says so; it accepts LOCK IN SHARE MODE, so a misrouted
+     * shared lock is taken on the wrong server and nothing reports it. Start
+     * from Connection::select() when the lock has to be held where the writes
+     * go.
+     *
+     * @return static This builder
+     */
+    public function sharedLock(): static
+    {
+        $this->lock = RowLock::Shared;
 
         return $this;
     }
@@ -138,6 +223,7 @@ class Select extends BuilderWhere
             orders:     $this->orders,
             limit:      $limit,
             offset:     $offset,
+            lock:       $this->lock,
         ));
     }
 
@@ -261,8 +347,21 @@ class Select extends BuilderWhere
      * all. Counting what the conditions match is the only reading of count()
      * the window can serve.
      *
+     * A NOWAIT lock is refused here rather than counted. MySQL swallows the
+     * NOWAIT abort inside a COUNT and answers with the rows it had counted
+     * before it reached the held one, so what comes back is a plausible number
+     * rather than an error: holding the first row of the scan answers 0, and
+     * holding the last answers one less than the true count. Whether the
+     * statement takes that path depends on the plan, and a SUM over the same
+     * scan does fail, so this is COUNT keeping its own tally rather than
+     * aggregates in general. MariaDB reports the failure properly, but the
+     * refusal covers both so the same code means the same thing on either.
+     *
+     * The other locks are left alone: a plain FOR UPDATE waits and then
+     * reports the wait, and SKIP LOCKED counts what it could take.
+     *
      * @return int                         How many rows matched
-     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws LogicException              When no table has been named, a group of conditions was left open, or the lock is NOWAIT
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -271,6 +370,15 @@ class Select extends BuilderWhere
      */
     public function count(): int
     {
+        if ($this->lock === RowLock::UpdateNoWait) {
+            throw new LogicException(
+                'count() cannot be taken with NOWAIT. MySQL swallows the abort inside a COUNT and '
+                    . 'answers with the rows it reached before the held one, so the number looks ordinary '
+                    . 'and nothing says it is short. Count the rows of get(), or take the lock without '
+                    . 'NOWAIT.',
+            );
+        }
+
         $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
 
         $count = array_values($row ?? [])[0] ?? null;
@@ -293,6 +401,10 @@ class Select extends BuilderWhere
      * the conditions match anything does not depend on which slice of the
      * matches would have been returned.
      *
+     * Under SKIP LOCKED this answers whether a row is there for the taking
+     * rather than whether one exists: a match another session holds is passed
+     * over, so a row that is present reads as absent while it is held.
+     *
      * @return bool                        True when at least one row matched
      * @throws LogicException              When no table has been named, or a group of conditions was left open
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
@@ -308,6 +420,8 @@ class Select extends BuilderWhere
 
     /**
      * Tell whether this statement matches no row.
+     *
+     * The negation of exists(), including its reading under SKIP LOCKED.
      *
      * @return bool                        True when nothing matched
      * @throws LogicException              When no table has been named, or a group of conditions was left open

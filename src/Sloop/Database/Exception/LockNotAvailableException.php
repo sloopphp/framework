@@ -7,7 +7,7 @@ namespace Sloop\Database\Exception;
 /**
  * Thrown when a lock cannot be acquired immediately.
  *
- * MySQL error code 3572 (FOR UPDATE NOWAIT / SKIP LOCKED failure).
+ * MySQL error code 3572 (FOR UPDATE NOWAIT could not take the lock).
  * Not automatically retried — the caller must decide the strategy.
  */
 final class LockNotAvailableException extends QueryException
