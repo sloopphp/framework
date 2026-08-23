@@ -27,6 +27,8 @@ final class SelectLockTest extends IntegrationTestCase
 
     private Connection $reader;
 
+    private int $attempts = 0;
+
     public static function setUpBeforeClass(): void
     {
         $connection = static::openConnection();
@@ -180,16 +182,36 @@ final class SelectLockTest extends IntegrationTestCase
         $this->reader->select('id')->from(self::TABLE)->where('id', 1)->sharedLock()->get();
     }
 
-    public function testCountRefusesANoWaitLockRatherThanReturningAWrongNumber(): void
+    public function testTheServerStillMiscountsUnderANoWaitLock(): void
     {
-        // MySQL answers COUNT(*) with 0 instead of failing when another session
-        // holds a row, and which plan it picks decides whether it does, so the
-        // builder cannot tell a trustworthy count from a wrong one. This holds
-        // the refusal against a live server, where the wrong number would come
-        // from.
+        // The premise count() refuses on. Written against the server rather
+        // than the builder, so that the day MySQL starts reporting this
+        // failure, the refusal is known to have become unnecessary instead of
+        // outliving its reason. SelectTest pins the refusal itself, which is
+        // decided before a connection is asked for.
+        if ($this->reader->dialect() !== Dialect::MySQL) {
+            $this->markTestSkipped('MariaDB reports this failure rather than answering with a number.');
+        }
+
         $this->holdRow(1);
         $this->reader->begin();
 
+        $counted = $this->reader->query(
+            'SELECT COUNT(*) AS c FROM ' . self::TABLE . ' FOR UPDATE NOWAIT',
+        )->first();
+
+        // Three rows match. The scan meets the held one first and stops there,
+        // and the count of what it had reached comes back as though it were the
+        // answer. Holding a later row shortens the count by less, so there is no
+        // value a caller could watch for.
+        $this->assertSame(0, $counted['c'] ?? null);
+    }
+
+    public function testCountRefusesANoWaitLock(): void
+    {
+        // Refused before a connection is asked for, so this reaches no server;
+        // it is here beside the case above to keep the refusal and its premise
+        // in one place.
         $this->expectException(LogicException::class);
 
         $this->reader->select()->from(self::TABLE)->forUpdate(noWait: true)->count();
@@ -217,5 +239,32 @@ final class SelectLockTest extends IntegrationTestCase
             2,
             $this->reader->select()->from(self::TABLE)->forUpdate(skipLocked: true)->count(),
         );
+    }
+
+    public function testNoWaitIsRetriedOnTheServerThatCannotTellItApartFromAWait(): void
+    {
+        // Asking not to wait and then being run again is the opposite of what
+        // NOWAIT is for, and it happens because MariaDB reports the failure
+        // with the code it uses for an ordinary lock wait, which
+        // Connection::shouldRetry() treats as worth retrying. Pinned here so
+        // that a change to that list, or to the code MariaDB returns, is not
+        // silent.
+        $this->holdRow(1);
+
+        $this->attempts = 0;
+
+        try {
+            $this->reader->transaction(function (Connection $connection): void {
+                $this->attempts++;
+
+                $connection->select('id')->from(self::TABLE)->where('id', 1)->forUpdate(noWait: true)->get();
+            }, maxAttempts: 3);
+
+            $this->fail('The held row should have refused the lock.');
+        } catch (LockNotAvailableException) {
+            $this->assertSame(1, $this->attempts, 'MySQL names this failure, so it is not retried.');
+        } catch (LockWaitTimeoutException) {
+            $this->assertSame(3, $this->attempts, 'MariaDB reuses the wait code, so the callback runs again.');
+        }
     }
 }
