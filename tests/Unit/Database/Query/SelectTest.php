@@ -2014,11 +2014,10 @@ final class SelectTest extends TestCase
         // Only that the builder does not refuse these; what the servers do with
         // the clause is not reachable from here, because the stub grammar
         // writes no lock and SQLite could not parse one anyway.
-        // SelectLockTest pins the server side for get(). The others narrow the
-        // row window or put a constant in the select list, and both servers
-        // were measured to report a held row for every one of those shapes;
-        // count() is refused precisely because its select list is the one
-        // shape they do not.
+        // SelectLockTest pins the server side for get(). All six were measured
+        // against both servers and every one reports a held row; the select
+        // list count() writes is the only one among the shortcuts that the
+        // servers answer with a number instead.
         $this->seedUsers();
 
         $grammar = new class () extends Grammar {

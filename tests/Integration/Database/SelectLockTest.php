@@ -13,14 +13,10 @@ use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\IntegrationTestCase;
 
-/**
- * What the locking clauses do to a second session reading the same rows.
- *
- * Two sessions are needed to see a lock at all, and the rows have to be
- * committed for the second one to reach them, so these tests open their own
- * connections rather than running inside TransactionalIntegrationTestCase's
- * per-test transaction.
- */
+// Two sessions are needed to see a lock at all, and the rows have to be
+// committed for the second one to reach them, so these tests open their own
+// connections rather than running inside TransactionalIntegrationTestCase's
+// per-test transaction.
 final class SelectLockTest extends IntegrationTestCase
 {
     private const string TABLE = 'sloop_lock_rows';
@@ -66,9 +62,7 @@ final class SelectLockTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Take an exclusive lock on one row and leave the transaction open.
-     */
+    // Take an exclusive lock on one row and leave the transaction open.
     private function holdRow(int $id): void
     {
         $this->holder->begin();

@@ -35,8 +35,9 @@ enum RowLock
     /**
      * As Update, but fail instead of waiting when a row is already held.
      *
-     * Which exception that failure arrives as differs by server, and neither
-     * server distinguishes it from an unrelated wait on the table's metadata.
+     * Which exception that failure arrives as differs by server. MySQL keeps
+     * this failure apart from an unrelated wait on the table's metadata, 3572
+     * against 1205; MariaDB answers 1205 to both and so cannot.
      * Connection::query() maps MySQL's code 3572 to LockNotAvailableException;
      * MariaDB has no code of its own for this and reports code 1205, which
      * arrives as LockWaitTimeoutException and so is retried by

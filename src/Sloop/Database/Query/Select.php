@@ -129,10 +129,10 @@ class Select extends BuilderWhere
      * retried is the opposite of the intent, so pair NOWAIT with maxAttempts 1.
      * count() refuses NOWAIT outright, for the reason given there. That refusal
      * covers the statement count() writes, not the server behaviour behind it:
-     * a COUNT written by hand through selectRaw() reaches the same swallowed
-     * abort with nothing in the way. It has to be the only aggregate in the
-     * select list to do so — put a second one beside it and the statement
-     * fails as it should — which is why the refusal is no wider than count().
+     * a COUNT written by hand through selectRaw() can reach the same swallowed
+     * abort with nothing in the way. Which select lists do so is a property of
+     * the server rather than of this class, and count() writes only one of
+     * them, so the refusal is no wider than count().
      *
      * @param  bool                     $skipLocked Leave out the rows already held instead of waiting
      * @param  bool                     $noWait     Fail instead of waiting when a row is already held
