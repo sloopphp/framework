@@ -1991,8 +1991,8 @@ final class SelectTest extends TestCase
 
     public function testCountAcceptsTheOtherLocks(): void
     {
-        // Only NOWAIT is refused. The server answers the other two properly, so
-        // narrowing the refusal any further would close working combinations.
+        // Only NOWAIT is refused. The server answers the other three properly,
+        // so narrowing the refusal any further would close working combinations.
         $this->seedUsers();
 
         $grammar = new class () extends Grammar {
@@ -2014,7 +2014,9 @@ final class SelectTest extends TestCase
         // Only that the builder does not refuse these; what the servers do with
         // the clause is not reachable from here, because the stub grammar
         // writes no lock and SQLite could not parse one anyway.
-        // SelectLockTest pins the server side.
+        // SelectLockTest pins the server side for get(); the others send the
+        // same statement with a narrower row window, and the servers answer a
+        // held row the same way whichever of them asks.
         $this->seedUsers();
 
         $grammar = new class () extends Grammar {

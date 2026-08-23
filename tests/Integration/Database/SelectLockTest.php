@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Integration\Database;
 
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Sloop\Database\Connection;
 use Sloop\Database\Dialect;
 use Sloop\Database\Exception\LockNotAvailableException;
@@ -118,9 +119,10 @@ final class SelectLockTest extends IntegrationTestCase
         $this->reader->begin();
 
         // Which exception this arrives as is the server's to decide. MySQL has
-        // a code of its own for a NOWAIT that could not take the lock (3572);
-        // MariaDB reports the same code it uses for an ordinary lock wait
-        // (1205), so the failure reads as a timeout even though nothing waited.
+        // a code of its own for a NOWAIT that could not take the lock; MariaDB
+        // reuses the one it returns for an ordinary lock wait, so the failure
+        // reads as a timeout even though nothing waited. What that costs is
+        // pinned by testNoWaitIsRetriedOnTheServerThatCannotTellItApartFromAWait.
         $expected = $this->reader->dialect() === Dialect::MySQL
             ? LockNotAvailableException::class
             : LockWaitTimeoutException::class;
@@ -182,29 +184,46 @@ final class SelectLockTest extends IntegrationTestCase
         $this->reader->select('id')->from(self::TABLE)->where('id', 1)->sharedLock()->get();
     }
 
-    public function testTheServerStillMiscountsUnderANoWaitLock(): void
+    #[DataProvider('provideHeldRows')]
+    public function testTheServerStillMiscountsUnderANoWaitLock(int $held, int $counted): void
     {
         // The premise count() refuses on. Written against the server rather
         // than the builder, so that the day MySQL starts reporting this
         // failure, the refusal is known to have become unnecessary instead of
         // outliving its reason. SelectTest pins the refusal itself, which is
         // decided before a connection is asked for.
+        //
+        // Both ends of the scan are here on purpose. Holding the first row
+        // answers 0, which a caller might think to distrust; holding the last
+        // answers one short of the truth, which is the reading nothing marks as
+        // wrong and the reason the refusal has to be unconditional. Measuring
+        // only the first row is what produced a wrong description of this
+        // behaviour once already.
         if ($this->reader->dialect() !== Dialect::MySQL) {
             $this->markTestSkipped('MariaDB reports this failure rather than answering with a number.');
         }
 
-        $this->holdRow(1);
+        $this->holdRow($held);
         $this->reader->begin();
 
-        $counted = $this->reader->query(
+        $row = $this->reader->query(
             'SELECT COUNT(*) AS c FROM ' . self::TABLE . ' FOR UPDATE NOWAIT',
         )->first();
 
-        // Three rows match. The scan meets the held one first and stops there,
-        // and the count of what it had reached comes back as though it were the
-        // answer. Holding a later row shortens the count by less, so there is no
-        // value a caller could watch for.
-        $this->assertSame(0, $counted['c'] ?? null);
+        $this->assertSame($counted, $row['c'] ?? null);
+    }
+
+    /**
+     * @return array<string, array{int, int}>
+     */
+    public static function provideHeldRows(): array
+    {
+        // Three rows match in every case.
+        return [
+            'the first row of the scan' => [1, 0],
+            'the middle row'            => [2, 1],
+            'the last row'              => [3, 2],
+        ];
     }
 
     public function testCountRefusesANoWaitLock(): void
@@ -250,8 +269,6 @@ final class SelectLockTest extends IntegrationTestCase
         // that a change to that list, or to the code MariaDB returns, is not
         // silent.
         $this->holdRow(1);
-
-        $this->attempts = 0;
 
         try {
             $this->reader->transaction(function (Connection $connection): void {

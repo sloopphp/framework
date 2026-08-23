@@ -127,7 +127,10 @@ class Select extends BuilderWhere
      * the code it uses for an ordinary lock wait, so transaction() counts it as
      * retryable and runs the callback again. Asking not to wait and then being
      * retried is the opposite of the intent, so pair NOWAIT with maxAttempts 1.
-     * count() refuses NOWAIT outright, for the reason given there.
+     * count() refuses NOWAIT outright, for the reason given there. That refusal
+     * covers the statement count() writes, not the server behaviour behind it:
+     * an aggregate written by hand through selectRaw() reaches the same
+     * swallowed abort with nothing in the way.
      *
      * @param  bool                     $skipLocked Leave out the rows already held instead of waiting
      * @param  bool                     $noWait     Fail instead of waiting when a row is already held
@@ -156,7 +159,16 @@ class Select extends BuilderWhere
      * Hold every row this statement reads against writing by others.
      *
      * Others can still read the rows and take the same lock. As with
-     * forUpdate(), the lock lasts as long as the transaction that took it.
+     * forUpdate(), the lock lasts as long as the transaction that took it, and
+     * where it runs is the route's answer rather than where the builder was
+     * made.
+     *
+     * Landing on a replica matters more here than it does for forUpdate(). A
+     * server kept read only refuses FOR UPDATE outright, so a misrouted
+     * exclusive lock says so; it accepts LOCK IN SHARE MODE, so a misrouted
+     * shared lock is taken on the wrong server and nothing reports it. Start
+     * from Connection::select() when the lock has to be held where the writes
+     * go.
      *
      * @return static This builder
      */
