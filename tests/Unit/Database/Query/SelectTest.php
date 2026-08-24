@@ -39,6 +39,12 @@ final class SelectTest extends TestCase
         ]);
         $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, nickname TEXT, weight REAL)');
 
+        // A timeout is written in for the dialect the connection detected, so
+        // the statements below need one to report. MySQL's form is the only
+        // one SQLite can still run: it is a comment there, where MariaDB's
+        // prefix is a statement SQLite has no idea about.
+        $sqlite->createFunction('version', static fn (): string => '8.0.37');
+
         $this->connection = new Connection($sqlite, 'select_test');
     }
 
@@ -2037,5 +2043,103 @@ final class SelectTest extends TestCase
         $this->assertTrue($select()->exists());
         $this->assertFalse($select()->doesntExist());
         $this->assertNotSame([], $select()->pluck('name'));
+    }
+
+    public function testTimeoutIsWrittenInWhenTheStatementIsHandedToAConnection(): void
+    {
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id')->from('users')->timeout(400)->execute();
+
+        $this->assertSame(
+            'SELECT /*+ MAX_EXECUTION_TIME(400) */ `id` FROM `users`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testTimeoutIsAbsentFromTheCompiledStatement(): void
+    {
+        // Which server the statement is going to is not known while it is
+        // being written, and the two servers ask for the limit differently,
+        // so compiling cannot carry it.
+        $select = $this->connection->select('id')->from('users')->timeout(400);
+
+        $this->assertSame('SELECT `id` FROM `users`', $select->toSql());
+        $this->assertSame('SELECT `id` FROM `users`', $select->toRawSql());
+    }
+
+    public function testTimeoutIsCarriedByTheShortcutsToo(): void
+    {
+        // The timeout is builder state, as the lock is, so asking for a count
+        // or a first row does not drop it.
+        $this->seedUsers();
+
+        $handler = $this->attachLogger();
+        $select  = fn (): Select => $this->connection->select('id')->from('users')->timeout(400);
+
+        $select()->count();
+        $this->assertStringContainsString('MAX_EXECUTION_TIME(400)', $this->loggedSql($handler));
+
+        $select()->first();
+        $this->assertStringContainsString('MAX_EXECUTION_TIME(400)', $this->loggedSql($handler));
+
+        $select()->exists();
+        $this->assertStringContainsString('MAX_EXECUTION_TIME(400)', $this->loggedSql($handler));
+
+        $select()->pluck('id');
+        $this->assertStringContainsString('MAX_EXECUTION_TIME(400)', $this->loggedSql($handler));
+    }
+
+    public function testTimeoutKeepsTheLastCountAsked(): void
+    {
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id')->from('users')->timeout(400)->timeout(900)->execute();
+
+        $this->assertSame(
+            'SELECT /*+ MAX_EXECUTION_TIME(900) */ `id` FROM `users`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    /**
+     * @return array<string, array{0: int}>
+     */
+    public static function nonPositiveTimeoutProvider(): array
+    {
+        return [
+            'zero'     => [0],
+            'negative' => [-400],
+        ];
+    }
+
+    #[DataProvider('nonPositiveTimeoutProvider')]
+    public function testTimeoutRejectsANonPositiveCount(int $ms): void
+    {
+        // Both servers read a zero as no limit at all, so accepting one would
+        // make asking for a timeout the same as asking for none.
+        $e = $this->assertThrowsInvalidArgument(
+            fn (): Select => $this->connection->select()->from('users')->timeout($ms),
+        );
+
+        $this->assertSame(
+            'A timeout is a count of milliseconds to run for, so it starts at 1; got ' . $ms
+                . '. Both servers read a zero as no limit at all, which is what leaving it unset already says.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testTimeoutAcceptsASingleMillisecond(): void
+    {
+        // One is the smallest count that means anything, and the boundary is
+        // where a limit of none would slip through.
+        $handler = $this->attachLogger();
+
+        $this->connection->select('id')->from('users')->timeout(1)->execute();
+
+        $this->assertSame(
+            'SELECT /*+ MAX_EXECUTION_TIME(1) */ `id` FROM `users`',
+            $this->loggedSql($handler),
+        );
     }
 }
