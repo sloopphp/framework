@@ -194,10 +194,10 @@ class Select extends BuilderWhere
      * Where the pool is configured with a timeout of its own, the one given
      * here is what applies to this statement. The limit is on the server's
      * side of the call, so it is the server that gives up. Whether it also
-     * reports having done so is not something to rely on: it varies with the
-     * shape of the statement on both flavors, and a statement that was cut
-     * short can come back as though it had finished. The database guide has
-     * the measurements, and what to do instead.
+     * reports having done so is not something to rely on: both flavors were
+     * measured staying silent, and a statement that was cut short can come
+     * back as though it had finished. The database guide has the
+     * measurements, and what to do instead.
      *
      * The limit belongs to the builder rather than to one way of running it,
      * so the shortcuts carry it too: count() and first() are limited by a

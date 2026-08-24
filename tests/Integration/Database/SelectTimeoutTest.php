@@ -165,9 +165,7 @@ final class SelectTimeoutTest extends IntegrationTestCase
     {
         // Everything else here compiles to a statement with no placeholders,
         // so nothing would notice if the rewriting stopped surviving the
-        // prepare. It matters most on MariaDB, where the limit is a prefix
-        // that makes the whole thing two statements to the parser, and the
-        // connections sloop opens never emulate prepares.
+        // prepare.
         $rows = $this->connection
             ->select('id')
             ->from(self::TABLE)
