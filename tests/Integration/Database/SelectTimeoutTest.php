@@ -161,6 +161,23 @@ final class SelectTimeoutTest extends IntegrationTestCase
         );
     }
 
+    public function testTimeoutRidesAlongWithBoundValues(): void
+    {
+        // Everything else here compiles to a statement with no placeholders,
+        // so nothing would notice if the rewriting stopped surviving the
+        // prepare. It matters most on MariaDB, where the limit is a prefix
+        // that makes the whole thing two statements to the parser, and the
+        // connections sloop opens never emulate prepares.
+        $rows = $this->connection
+            ->select('id')
+            ->from(self::TABLE)
+            ->where('n', 2)
+            ->timeout(self::GENEROUS_MS)
+            ->get();
+
+        $this->assertSame([['id' => 2]], $rows);
+    }
+
     public function testTimeoutOnTheStatementOverridesAMoreGenerousSessionOne(): void
     {
         $this->connection->setQueryTimeoutMs(self::GENEROUS_MS);
