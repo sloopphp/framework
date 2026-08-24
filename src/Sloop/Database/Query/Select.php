@@ -59,6 +59,13 @@ class Select extends BuilderWhere
     private ?RowLock $lock = null;
 
     /**
+     * Milliseconds this statement may run for, or null to leave it to the session.
+     *
+     * @var int|null
+     */
+    private ?int $timeoutMs = null;
+
+    /**
      * Start a SELECT over the given columns.
      *
      * @param ConnectionRoute   $route      Route asked for a connection when the statement runs
@@ -182,6 +189,43 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Give the server a limit on how long to spend running this statement.
+     *
+     * Where the pool is configured with a timeout of its own, the one given
+     * here is what applies to this statement. The limit is on the server's
+     * side of the call, so it is the server that gives up. Whether it also
+     * reports having done so is not something to rely on: both flavors were
+     * measured staying silent, and a statement that was cut short can come
+     * back as though it had finished. The database guide has the
+     * measurements, and what to do instead.
+     *
+     * The limit belongs to the builder rather than to one way of running it,
+     * so the shortcuts carry it too: count() and first() are limited by a
+     * timeout set before them just as execute() is.
+     *
+     * Nothing about it appears in toSql() or toRawSql(). The limit is written
+     * in when the statement is handed to a connection, since only then is it
+     * known which server it is going to, and the two write it differently.
+     *
+     * @param  int                      $ms Milliseconds the statement may run for
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the count of milliseconds is not positive
+     */
+    public function timeout(int $ms): static
+    {
+        if ($ms < 1) {
+            throw new InvalidArgumentException(
+                'A timeout is a count of milliseconds to run for, so it starts at 1; got ' . $ms
+                    . '. Both servers read a zero as no limit at all, which is what leaving it unset already says.',
+            );
+        }
+
+        $this->timeoutMs = $ms;
+
+        return $this;
+    }
+
+    /**
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
@@ -245,7 +289,7 @@ class Select extends BuilderWhere
     {
         $compiled = $this->compileReading($columns, $limit, $offset);
 
-        return $this->route->connection()->query($compiled->sql, $compiled->bindings);
+        return $this->route->connection()->query($compiled->sql, $compiled->bindings, $this->timeoutMs);
     }
 
     /**
