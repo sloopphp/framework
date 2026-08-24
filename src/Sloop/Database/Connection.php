@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Database;
 
 use Closure;
+use InvalidArgumentException;
 use LogicException;
 use PDO;
 use PDOException;
@@ -235,15 +236,26 @@ final class Connection
     /**
      * Execute a SELECT-style statement and return the fetched rows.
      *
-     * @param  string                   $sql      SQL statement returning a result set
-     * @param  array<int|string, mixed> $bindings Parameters to bind
+     * A timeout given here applies to this statement alone. How it is written
+     * differs between the server flavors, so the statement is rewritten for
+     * the one this connection reached; what that rewriting looks like, and
+     * what the server does when the limit is hit, is in the database guide.
+     *
+     * @param  string                   $sql       SQL statement returning a result set
+     * @param  array<int|string, mixed> $bindings  Parameters to bind
+     * @param  int|null                 $timeoutMs Milliseconds this statement may run for, or null to leave it to the session
      * @return Result                   Fetched rows
+     * @throws InvalidArgumentException When the timeout is not positive, or the statement cannot carry one
      * @throws DatabaseException        When the statement fails
      * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
      */
-    public function query(string $sql, array $bindings = []): Result
+    public function query(string $sql, array $bindings = [], ?int $timeoutMs = null): Result
     {
         $this->applyQueryTimeoutIfPending();
+
+        if ($timeoutMs !== null) {
+            $sql = $this->withStatementTimeout($sql, $timeoutMs);
+        }
 
         $startTime = $this->shouldMeasureElapsed() ? microtime(true) : null;
 
@@ -714,6 +726,48 @@ final class Connection
 
             throw $e;
         }
+    }
+
+    /**
+     * Rewrite a SELECT so the server gives up on it after the given time.
+     *
+     * MySQL takes the limit as an optimizer hint written into the select list
+     * and counts in milliseconds; MariaDB takes it as a prefix that scopes a
+     * SET to one statement and counts in seconds. Neither form is understood
+     * by the other server, so which one is written depends on the dialect this
+     * connection detected.
+     *
+     * Both forms attach to a statement that opens with SELECT, which is what
+     * makes the demand for that opening a property of the rewriting rather
+     * than a rule about which statements deserve a limit. Anything else is
+     * refused here instead of on the server, so the same code is refused on
+     * both flavors rather than on whichever one cannot parse the result.
+     *
+     * @param  string                   $sql       SQL of the statement to limit
+     * @param  int                      $timeoutMs Milliseconds the statement may run for
+     * @return string                   The statement carrying the limit
+     * @throws InvalidArgumentException When the timeout is not positive, or the statement does not open with SELECT
+     * @throws DatabaseException        When dialect detection fails
+     */
+    private function withStatementTimeout(string $sql, int $timeoutMs): string
+    {
+        if ($timeoutMs < 1) {
+            throw new InvalidArgumentException(
+                'A statement timeout is a count of milliseconds to run for, so it starts at 1; got ' . $timeoutMs . '.',
+            );
+        }
+
+        if (!str_starts_with($sql, 'SELECT ')) {
+            throw new InvalidArgumentException(
+                'A statement timeout is written into the SELECT it limits, so the statement has to open with it.',
+            );
+        }
+
+        return match ($this->dialect()) {
+            Dialect::MySQL   => 'SELECT /*+ MAX_EXECUTION_TIME(' . $timeoutMs . ') */ ' . substr($sql, 7),
+            Dialect::MariaDB => 'SET STATEMENT max_statement_time = '
+                . \sprintf('%.3F', $timeoutMs / 1000) . ' FOR ' . $sql,
+        };
     }
 
     /**

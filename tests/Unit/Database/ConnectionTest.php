@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database;
 
+use ArrayObject;
+use InvalidArgumentException;
 use LogicException;
 use Monolog\Handler\TestHandler;
 use Monolog\Level;
@@ -1135,6 +1137,156 @@ final class ConnectionTest extends TestCase
         $connection->query('SELECT 1');
         $connection->query('SELECT 2');
         $connection->query('SELECT 3');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: int, 2: string}>
+     */
+    public static function statementTimeoutProvider(): array
+    {
+        return [
+            'MySQL writes a hint into the select list' => [
+                '8.0.37',
+                400,
+                'SELECT /*+ MAX_EXECUTION_TIME(400) */ `id` FROM `users`',
+            ],
+            'MariaDB scopes a SET to the statement' => [
+                '10.11.11-MariaDB',
+                400,
+                'SET STATEMENT max_statement_time = 0.400 FOR SELECT `id` FROM `users`',
+            ],
+            'MariaDB keeps a millisecond from truncating to zero' => [
+                '10.11.11-MariaDB',
+                1,
+                'SET STATEMENT max_statement_time = 0.001 FOR SELECT `id` FROM `users`',
+            ],
+            // Three decimals hide a divisor that is off by one at 400ms and at
+            // 1ms alike; at five seconds they do not.
+            'MariaDB divides milliseconds by exactly a thousand' => [
+                '10.11.11-MariaDB',
+                5000,
+                'SET STATEMENT max_statement_time = 5.000 FOR SELECT `id` FROM `users`',
+            ],
+        ];
+    }
+
+    #[DataProvider('statementTimeoutProvider')]
+    public function testStatementTimeoutIsWrittenForTheDetectedDialect(
+        string $versionString,
+        int $timeoutMs,
+        string $expectedSql,
+    ): void {
+        $pdo = $this->createStub(PDO::class);
+        $this->scriptVersionQuery($pdo, $versionString);
+
+        /** @var ArrayObject<int, string> $prepared */
+        $prepared = new ArrayObject();
+        $pdo->method('prepare')->willReturnCallback(
+            function (string $sql) use ($prepared): PDOStatement {
+                $prepared->append($sql);
+
+                return $this->scriptedSelectStatement();
+            },
+        );
+
+        $connection = new Connection($pdo, 'test');
+        $connection->query('SELECT `id` FROM `users`', [], $timeoutMs);
+
+        $this->assertSame([$expectedSql], $prepared->getArrayCopy());
+    }
+
+    public function testStatementTimeoutLeavesTheStatementAloneWhenNotGiven(): void
+    {
+        // Passing no timeout has to reach the server as the statement that was
+        // written, and must not send the connection looking for its dialect.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('query');
+
+        /** @var ArrayObject<int, string> $prepared */
+        $prepared = new ArrayObject();
+        $pdo->method('prepare')->willReturnCallback(
+            function (string $sql) use ($prepared): PDOStatement {
+                $prepared->append($sql);
+
+                return $this->scriptedSelectStatement();
+            },
+        );
+
+        $connection = new Connection($pdo, 'test');
+        $connection->query('SELECT `id` FROM `users`');
+
+        $this->assertSame(['SELECT `id` FROM `users`'], $prepared->getArrayCopy());
+    }
+
+    /**
+     * @return array<string, array{0: int}>
+     */
+    public static function nonPositiveTimeoutProvider(): array
+    {
+        return [
+            'zero'     => [0],
+            'negative' => [-1],
+        ];
+    }
+
+    #[DataProvider('nonPositiveTimeoutProvider')]
+    public function testStatementTimeoutRejectsANonPositiveCount(int $timeoutMs): void
+    {
+        // Both servers read a zero as no limit, so letting one through would
+        // turn asking for a timeout into silently asking for none.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('prepare');
+
+        $connection = new Connection($pdo, 'test');
+
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $connection->query('SELECT 1', [], $timeoutMs),
+        );
+        $this->assertSame(
+            'A statement timeout is a count of milliseconds to run for, so it starts at 1; got ' . $timeoutMs . '.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testStatementTimeoutRejectsAStatementThatDoesNotOpenWithSelect(): void
+    {
+        // Refused here rather than on the server, so the same call is refused
+        // on both flavors instead of only on the one that cannot parse it.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('prepare');
+
+        $connection = new Connection($pdo, 'test');
+
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $connection->query('WITH t AS (SELECT 1) SELECT * FROM t', [], 400),
+        );
+        $this->assertSame(
+            'A statement timeout is written into the SELECT it limits, so the statement has to open with it.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testStatementTimeoutIsWhatTheConnectionLogsAndReports(): void
+    {
+        // The statement the server was given is the one worth having in the
+        // log and in the exception; the pre-rewrite text never ran.
+        $pdo = $this->createStub(PDO::class);
+        $this->scriptVersionQuery($pdo, '8.0.37');
+        $pdo->method('prepare')->willReturn($this->scriptedSelectStatement());
+
+        $connection = new Connection($pdo, 'test');
+        $handler    = $this->attachLogger($connection, new LoggingOptions(logAllQueries: true));
+
+        $connection->query('SELECT `id` FROM `users`', [], 400);
+
+        $records = $handler->getRecords();
+        $this->assertNotSame([], $records);
+
+        $last = end($records);
+        $this->assertNotFalse($last);
+        $this->assertSame('SELECT /*+ MAX_EXECUTION_TIME(400) */ `id` FROM `users`', $last->context['sql']);
     }
 
     public function testQueryTimeoutIsSkippedWhenUnset(): void
