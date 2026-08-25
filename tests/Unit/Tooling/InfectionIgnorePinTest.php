@@ -50,18 +50,20 @@ final class InfectionIgnorePinTest extends TestCase
     }
 
     /**
-     * Read every ignore entry from the Infection config.
+     * Collect the ignore entries of a decoded mutators section.
      *
      * Entries live either under a mutator's own "ignore" list or under the
      * "global-ignore" list, which MutatorResolver merges into the ignore list
-     * of every mutator.
+     * of every mutator. Everything else a mutator can carry (a bare bool, a
+     * regex list) holds no entry.
      *
-     * @return list<string> Entries such as Class::method or Class::method::line
+     * @param  array<array-key, mixed> $mutators Decoded mutators section
+     * @return list<string>            Entries such as Class::method or Class::method::line
      */
-    private function ignoreEntries(): array
+    private function entriesIn(array $mutators): array
     {
         $entries = [];
-        foreach ($this->mutatorSettings() as $key => $settings) {
+        foreach ($mutators as $key => $settings) {
             if (!\is_array($settings)) {
                 continue;
             }
@@ -79,6 +81,16 @@ final class InfectionIgnorePinTest extends TestCase
         }
 
         return $entries;
+    }
+
+    /**
+     * Read every ignore entry from the Infection config.
+     *
+     * @return list<string> Entries such as Class::method or Class::method::line
+     */
+    private function ignoreEntries(): array
+    {
+        return $this->entriesIn($this->mutatorSettings());
     }
 
     /**
@@ -124,6 +136,10 @@ final class InfectionIgnorePinTest extends TestCase
         $start      = $reflection->getStartLine();
         $end        = $reflection->getEndLine();
         $pinned     = (int) $line;
+        if ($start === false || $end === false) {
+            return $entry . ' names a method with no source location, so no line can be checked.';
+        }
+
         if ($pinned < $start || $pinned > $end) {
             return $entry . ' is outside ' . $method . '(), which now spans lines '
                 . $start . ' to ' . $end . '.';
@@ -142,10 +158,14 @@ final class InfectionIgnorePinTest extends TestCase
         // a 12 line addition to Connection.php moved transaction::495 and the
         // mutation baseline reported it as a regression.
         //
-        // Two things stay outside the check. A pin that drifts onto another
-        // mutable line of the same method still swallows that mutant's signal,
-        // and an entry carrying an fnmatch wildcard names no single line at
-        // all. dev-runbook.md 5 asks for both to be read by hand.
+        // Two ways of failing quietly stay outside the check. A pin that drifts
+        // onto another mutable line of the same method still swallows that
+        // mutant's signal, and an entry carrying an fnmatch wildcard names no
+        // single line at all. dev-runbook.md 5 asks for both to be read by
+        // hand. A pin that stops matching altogether -- IgnoreConfig compares
+        // identifiers case sensitively and takes no declaring class into
+        // account, where the reflection below folds both -- is loud instead:
+        // the mutant escapes and the mutation baseline exits non zero.
         $failures = [];
         foreach ($this->linePins() as $entry) {
             $failure = $this->pinFailure($entry);
@@ -176,11 +196,56 @@ final class InfectionIgnorePinTest extends TestCase
         // green forever. This class is its own fixture, so the case does not
         // move when src does.
         $line = new ReflectionMethod(self::class, 'pinFailure')->getStartLine();
+        if ($line === false) {
+            self::fail('pinFailure() reported no source location.');
+        }
 
         self::assertNull($this->pinFailure(self::class . '::pinFailure::' . $line));
-        self::assertNotNull($this->pinFailure(self::class . '::pinFailure::1'));
-        self::assertNotNull($this->pinFailure(self::class . '::pinFailure::x'));
-        self::assertNotNull($this->pinFailure(self::class . '::noSuchMethod::1'));
+        self::assertStringContainsString(
+            'is outside',
+            (string) $this->pinFailure(self::class . '::pinFailure::1'),
+        );
+        self::assertStringContainsString(
+            'is outside',
+            (string) $this->pinFailure(self::class . '::pinFailure::' . ($line + 1000)),
+        );
+        self::assertStringContainsString(
+            'does not exist',
+            (string) $this->pinFailure(self::class . '::noSuchMethod::1'),
+        );
+        // The digit check is the only thing standing between a line that lost
+        // characters and a plausible looking number: (int) '181O' is 181, which
+        // lands inside a method and would be reported as healthy.
+        self::assertStringContainsString(
+            'is not a line number',
+            (string) $this->pinFailure(self::class . '::pinFailure::' . $line . 'O'),
+        );
+        // An entry may name a class PHP compiled in, which reports no lines at
+        // all. Comparing against false would read as a range starting nowhere.
+        self::assertStringContainsString(
+            'no source location',
+            (string) $this->pinFailure('DateTimeImmutable::format::1'),
+        );
+    }
+
+    public function testBothIgnoreListsAreRead(): void
+    {
+        // The global-ignore branch is not reachable from the config as it
+        // stands today, so nothing else would notice if it were removed. This
+        // feeds the shapes a mutators section can hold straight to the reader.
+        $entries = $this->entriesIn([
+            'global-ignore'                 => ['Acme\\Thing::global::7', 'Acme\\Thing::other'],
+            'global-ignoreSourceCodeByRegex' => ['/nothing/'],
+            '@default'                      => true,
+            'CastString'                    => ['ignore' => ['Acme\\Thing::mutator::9']],
+            'TrueValue'                     => ['ignoreSourceCodeByRegex' => ['/nothing/']],
+            'Coalesce'                      => ['ignore' => [42]],
+        ]);
+
+        self::assertSame(
+            ['Acme\\Thing::global::7', 'Acme\\Thing::other', 'Acme\\Thing::mutator::9'],
+            $entries,
+        );
     }
 
     public function testWildcardEntriesAreLeftToInfection(): void
@@ -193,5 +258,6 @@ final class InfectionIgnorePinTest extends TestCase
         self::assertFalse($this->isCheckablePin('Acme\\Thing::method::4*'));
         self::assertFalse($this->isCheckablePin('Acme\\Thing::method::4?'));
         self::assertFalse($this->isCheckablePin('Acme\\Thing::method::[0-9]2'));
+        self::assertFalse($this->isCheckablePin('Acme\\Thing::method::42::7'));
     }
 }
