@@ -710,6 +710,23 @@ final class SelectTest extends TestCase
             ->whereClose();
     }
 
+    public function testEveryGroupAClosureLeavesOpenIsClosedForIt(): void
+    {
+        // Tidying up after a closure has to run until the depth is back where
+        // it started, not once: with two groups left open, closing a single one
+        // would hand the chain a group that is not its own, and the close below
+        // would take it instead of saying there is nothing to close.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('No group of conditions is open, so there is nothing to close.');
+
+        $this->connection->select()
+            ->from('users')
+            ->where(static function (Select $query): void {
+                $query->whereOpen()->where('status', 'active')->whereOpen()->where('role', 'admin');
+            })
+            ->whereClose();
+    }
+
     #[DataProvider('provideCallsWithArgumentsThatWouldBeIgnored')]
     public function testAListOrClosureGivenOtherArgumentsIsRejected(callable $call, string $expectedMessage): void
     {
