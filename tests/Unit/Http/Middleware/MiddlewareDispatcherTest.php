@@ -130,6 +130,36 @@ final class MiddlewareDispatcherTest extends TestCase
         $this->assertSame(['A:before', 'B:before', 'C:before', 'C:after', 'B:after', 'A:after'], $order);
     }
 
+    public function testTheChainMovesPastEachMiddlewareRatherThanHandingItBackToItself(): void
+    {
+        // The handler a middleware is given points at the next entry, not the
+        // one being run. Without that step the same middleware is handed the
+        // request again and the stack never ends; the guard below turns that
+        // into a count so the failure lands on an assertion rather than on the
+        // recursion running out of room.
+        $guard = new class () implements MiddlewareInterface {
+            public int $entries = 0;
+
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                $this->entries++;
+
+                if ($this->entries > 1) {
+                    return new Response(508)->withBody(Stream::create('re-entered'));
+                }
+
+                return $handler->handle($request);
+            }
+        };
+
+        $dispatcher = new MiddlewareDispatcher($this->createFallbackHandler());
+        $dispatcher->pipe($guard);
+        $response = $dispatcher->handle($this->createRequest());
+
+        $this->assertSame(1, $guard->entries);
+        $this->assertSame('fallback', (string) $response->getBody());
+    }
+
     public function testMiddlewareCanModifyResponse(): void
     {
         $middleware = new class () implements MiddlewareInterface {
