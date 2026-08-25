@@ -28,6 +28,7 @@
         "ext-apcu": "*",
         "ext-pdo_sqlite": "*",
         "ext-tokenizer": "*",
+        "colinodell/json5": "^3.0",
         "friendsofphp/php-cs-fixer": "^3.0",
         "infection/infection": "^0.34.2 || ^0.35.0",
         "jetbrains/phpstorm-stubs": "^2026.1",
