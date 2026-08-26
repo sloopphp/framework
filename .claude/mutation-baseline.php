@@ -21,13 +21,14 @@ declare(strict_types=1);
  * runner scores as detected without a test having said so. Requiring each one
  * to be in the baseline gives them the review the escaped ones already get.
  *
- * Which of timeouted and errored a mutant lands on is decided by the timeout
- * setting rather than by machine load. At timeout 30 the two MiddlewareDispatcher
- * mutants exhaust the stack and report as errored; at timeout 0.5 the timeout
- * fires first and the same two report as timeouted. Measured over 13 runs on
- * 2026-08-27: at timeout 30 the three sets were identical every time, including
- * on a saturated machine that slowed a run by 2.38x. The slowest killed mutant
- * needs about 0.4s of wall time, leaving a 75x margin to the timeout.
+ * The timeout setting decides which of timeouted and errored a mutant lands on:
+ * at timeout 30 the two MiddlewareDispatcher mutants exhaust the stack and
+ * report as errored, at timeout 0.5 the timeout fires first and the same two
+ * report as timeouted. Machine load moved nothing in what was measured on
+ * 2026-08-27, over 13 runs at timeout 30 the three sets were identical every
+ * time, including on a saturated machine that slowed a run by 2.38x. The
+ * slowest killed mutant needs about 0.4s of wall time, so the margin to the
+ * timeout is around 75x on that machine.
  *
  * Skipped mutants fail the run outright. Infection marks a mutant skipped when
  * its nominal test time already exceeds the timeout, so the mutant is never
