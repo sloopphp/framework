@@ -44,6 +44,30 @@
             "diff": "-                throw $thrown;\n+                $thrown;"
         },
         {
+            "file": "src/Sloop/Database/Query/BuilderWhere.php",
+            "method": "BuilderWhere::handToCallback",
+            "mutator": "MethodCallRemoval",
+            "diff": "-                $this->closeGroup();\n+"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Grammar.php",
+            "method": "Grammar::withoutEmptyGroups",
+            "mutator": "FalseValue",
+            "diff": "-            $dropped = false;\n+            $dropped = true;"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Grammar.php",
+            "method": "Grammar::withoutEmptyGroups",
+            "mutator": "Increment",
+            "diff": "-                    $index++;\n+                    $index--;"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Grammar.php",
+            "method": "Grammar::withoutEmptyGroups",
+            "mutator": "LessThanNegotiation",
+            "diff": "-            for ($index = 0, $total = \\count($conditions); $index < $total; $index++) {\n+            for ($index = 0, $total = \\count($conditions); $index >= $total; $index++) {"
+        },
+        {
             "file": "src/Sloop/Database/Replica/ApcuDeadReplicaCache.php",
             "method": "ApcuDeadReplicaCache::isAvailable",
             "mutator": "LogicalAnd",

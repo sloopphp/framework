@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 /*
- * Compares the escaped mutants of the latest Infection run against a committed
- * baseline and fails when a mutant escapes that was not escaping before.
+ * Compares the surviving mutants of the latest Infection run against a committed
+ * baseline and fails when a mutant survives that was not surviving before.
  *
  * Why a baseline instead of only minMsi: MSI is an aggregate. Adding well
  * tested code raises it, so a newly escaping mutant in an existing file can be
@@ -15,10 +15,25 @@ declare(strict_types=1);
  * changed diff lines). Line numbers are deliberately excluded: editing anything
  * above a mutant would otherwise invalidate every entry below it.
  *
- * Timeouted and errored mutants are part of the allowed set. They belong to the
- * same infinite-loop family here and which of the two a run lands on depends on
- * machine load, so a mutant can move between escaped, timeouted and errored
- * without any source change.
+ * Escaped, timeouted and errored mutants are all compared against the baseline.
+ * None of the three had an assertion detect the mutation, yet MSI counts
+ * timeouts and errors in its numerator, so a mutant that hangs or crashes the
+ * runner scores as detected without a test having said so. Requiring each one
+ * to be in the baseline gives them the review the escaped ones already get.
+ *
+ * Which of timeouted and errored a mutant lands on is decided by the timeout
+ * setting rather than by machine load. At timeout 30 the two MiddlewareDispatcher
+ * mutants exhaust the stack and report as errored; at timeout 0.5 the timeout
+ * fires first and the same two report as timeouted. Measured over 13 runs on
+ * 2026-08-27: at timeout 30 the three sets were identical every time, including
+ * on a saturated machine that slowed a run by 2.38x. The slowest killed mutant
+ * needs about 0.4s of wall time, leaving a 75x margin to the timeout.
+ *
+ * Skipped mutants fail the run outright. Infection marks a mutant skipped when
+ * its nominal test time already exceeds the timeout, so the mutant is never
+ * executed, and MSI removes it from the denominator instead of counting it
+ * against the score. The report carries only a count of them and no list, so
+ * they cannot be baselined the way the other three are.
  *
  * The baseline is read from the committed file, never from build/. A stale
  * generated report was once mistaken for the current baseline, which made a
@@ -635,16 +650,20 @@ final class MutationBaseline
 
         try {
             $report  = self::loadReport($reportPath);
-            $escaped = self::readSection($report, 'escaped', $rootDir);
+            $skipped = Json::asInt(Json::asArray($report['stats'] ?? null)['skippedCount'] ?? null);
+            if ($skipped > 0) {
+                return self::reportSkipped($skipped);
+            }
+
             $allowed = array_merge(
-                $escaped,
+                self::readSection($report, 'escaped', $rootDir),
                 self::readSection($report, 'timeouted', $rootDir),
                 self::readSection($report, 'errored', $rootDir),
             );
 
             return $update
                 ? self::write($baselinePath, $allowed)
-                : self::check($baselinePath, $escaped, $allowed);
+                : self::check($baselinePath, $allowed);
         } catch (\RuntimeException $exception) {
             self::writeError($errorStream, $exception->getMessage());
 
@@ -834,11 +853,10 @@ final class MutationBaseline
      * Compare the latest run against the baseline.
      *
      * @param  string       $path    Absolute path to the baseline file
-     * @param  list<Mutant> $escaped Mutants that escaped in the latest run
      * @param  list<Mutant> $allowed Mutants that survived in any form in the latest run
      * @return int          Process exit code
      */
-    private static function check(string $path, array $escaped, array $allowed): int
+    private static function check(string $path, array $allowed): int
     {
         $baselineCounts = self::readBaselineCounts($path);
         $allowedCounts  = self::countByKey($allowed);
@@ -853,7 +871,7 @@ final class MutationBaseline
         // is baselined.
         $seen        = [];
         $regressions = [];
-        foreach ($escaped as $mutant) {
+        foreach ($allowed as $mutant) {
             $key        = $mutant->key();
             $seen[$key] = ($seen[$key] ?? 0) + 1;
             if ($seen[$key] > ($baselineCounts[$key] ?? 0)) {
@@ -862,18 +880,41 @@ final class MutationBaseline
         }
 
         if ($regressions === []) {
-            echo 'No new escaped mutants (', \count($escaped), ' escaped, all in the baseline).', \PHP_EOL;
+            echo 'No new surviving mutants (', \count($allowed), ' survived, all in the baseline).', \PHP_EOL;
 
             return 0;
         }
 
-        echo \count($regressions), ' mutant(s) escaped that are not in the baseline:', \PHP_EOL, \PHP_EOL;
+        echo \count($regressions), ' mutant(s) survived that are not in the baseline:', \PHP_EOL, \PHP_EOL;
         foreach ($regressions as $mutant) {
             echo $mutant->describe(), \PHP_EOL, \PHP_EOL;
         }
 
         echo 'Add a test that kills them. If a mutant is equivalent, ignore it in infection.json5 ',
-        'with a reason instead of widening the baseline.', \PHP_EOL;
+        'with a reason instead of widening the baseline.', \PHP_EOL, \PHP_EOL,
+        'A mutant that timed out or errored reached no assertion at all, so decide which it is ',
+        'before adding it here: put a bounded stand-in of the mutation in place by hand and see ',
+        'whether a test names the behaviour.', \PHP_EOL,
+        'Some mutations only ever hang, with output identical to the original until they do. ',
+        'No assertion can separate those from the original and the timeout is the detection, ',
+        'so the baseline is where they belong, with the reason written down.', \PHP_EOL;
+
+        return 1;
+    }
+
+    /**
+     * Report a run that left mutants unexecuted.
+     *
+     * @param  int $skipped Number of mutants Infection did not run
+     * @return int Process exit code
+     */
+    private static function reportSkipped(int $skipped): int
+    {
+        echo $skipped, ' mutant(s) were skipped, so the run is incomplete.', \PHP_EOL, \PHP_EOL,
+        'Infection skips a mutant whose tests are already expected to exceed the timeout, and ',
+        'drops it from the denominator of the score.', \PHP_EOL,
+        'The effect is an MSI that rises as fewer mutants run. Raise "timeout" in infection.json5 ',
+        'or make the covering tests faster, then rerun.', \PHP_EOL;
 
         return 1;
     }
