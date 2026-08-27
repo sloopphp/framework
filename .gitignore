@@ -10,3 +10,4 @@
 /build/
 .infection.cache/
 *.log
+/.claude/worktrees/

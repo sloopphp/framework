@@ -8,6 +8,10 @@ $finder = PhpCsFixer\Finder::create()
         __DIR__ . '/tests',
         __DIR__ . '/.claude',
     ])
+    // A git worktree under .claude is a whole second checkout, vendor included,
+    // and a parallel session writes into it while this runs. Left in, the scan
+    // grows from 198 files to five figures and reads half-written files.
+    ->exclude('worktrees')
     ->name('*.php');
 
 return (new PhpCsFixer\Config())
