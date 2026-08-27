@@ -2250,6 +2250,20 @@ final class SelectTest extends TestCase
         $this->assertCount(3, $handler->getRecords());
     }
 
+    public function testChunkByIdStopsAskingOnceABatchComesBackShort(): void
+    {
+        // As with chunk(): a batch smaller than the size means the server had
+        // nothing more above the value reached, so the walk ends there rather
+        // than spending a fourth statement to be told the same thing.
+        $this->seedNumberedUsers(7);
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->chunkById(3, $this->record(...));
+
+        $this->assertSame('|0:1,2,3|1:4,5,6|2:7', $this->walked);
+        $this->assertCount(3, $handler->getRecords());
+    }
+
     public function testChunkOverNothingNeverReachesTheCallback(): void
     {
         $finished = $this->connection->select()->from('users')->chunk(3, $this->record(...));
@@ -2347,7 +2361,8 @@ final class SelectTest extends TestCase
 
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains(
-            'chunkById() walks by "id", which is not among the columns read (name).',
+            'chunkById() walks by "id", which is not among the columns read (name). Select it, or walk'
+                . ' by one of them.',
         );
 
         $this->connection->select('name')->from('users')->chunkById(1, static function (): void {
@@ -2362,7 +2377,9 @@ final class SelectTest extends TestCase
 
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains(
-            'chunkById() walks by "nickname", and a row came back with no value in it.',
+            'chunkById() walks by "nickname", and a row came back with no value in it. Nothing compares'
+                . ' above null, so the walk would stop there and leave the rest unseen. Walk by a column'
+                . ' that holds a value per row.',
         );
 
         $this->connection->select('id', 'nickname')->from('users')->chunkById(1, static function (): void {
@@ -2372,7 +2389,11 @@ final class SelectTest extends TestCase
     public function testChunkByIdIsRefusedWhenTheBuilderAlreadySorts(): void
     {
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains('chunkById() sorts by "id" to walk the rows');
+        $this->expectExceptionMessageIsOrContains(
+            'chunkById() sorts by "id" to walk the rows, so a sort already on the builder would either'
+                . ' come first and break the walk, or come second and never be reached. Drop the orderBy()'
+                . ' call, or walk the rows with chunk().',
+        );
 
         $this->connection->select()->from('users')->orderBy('name')->chunkById(2, static function (): void {
         });
@@ -2397,7 +2418,11 @@ final class SelectTest extends TestCase
         $select = $window($this->connection->select()->from('users'));
 
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains($walk . '() addresses the rows a batch at a time');
+        $this->expectExceptionMessageIsOrContains(
+            $walk . '() addresses the rows a batch at a time, so it sets the limit and offset itself and'
+                . ' cannot keep the ones already on this builder. Drop the limit()/offset() call, or read'
+                . ' that slice on its own with execute().',
+        );
 
         $select->{$walk}(2, static function (): void {
         });
@@ -2457,10 +2482,40 @@ final class SelectTest extends TestCase
         $this->assertFalse($page->hasMorePages);
     }
 
+    public function testAPageOfOneRowIsRead(): void
+    {
+        // One is the smallest page there is, and the boundary the refusal of
+        // nought sits against.
+        $this->seedNumberedUsers(3);
+
+        $page = $this->connection->select()->from('users')->paginate(1, 2);
+
+        $this->assertSame('2', self::idsOf($page->items));
+        $this->assertSame(3, $page->total);
+        $this->assertSame(3, $page->lastPage);
+    }
+
+    public function testAWalkOverRowsThatDivideEvenlyEndsOnAnEmptyBatch(): void
+    {
+        // Six rows in threes leave no short batch, so the walk learns it is
+        // done from a statement that comes back empty. That is a different way
+        // out of the loop than the one every other walk here takes.
+        $this->seedNumberedUsers(6);
+
+        $finished = $this->connection->select()->from('users')->chunkById(3, $this->record(...));
+
+        $this->assertTrue($finished);
+        $this->assertSame('|0:1,2,3|1:4,5,6', $this->walked);
+    }
+
     public function testPaginateIsRefusedWhenARowWindowIsAlreadySet(): void
     {
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessageIsOrContains('paginate() addresses the rows a batch at a time');
+        $this->expectExceptionMessageIsOrContains(
+            'paginate() addresses the rows a batch at a time, so it sets the limit and offset itself and'
+                . ' cannot keep the ones already on this builder. Drop the limit()/offset() call, or read'
+                . ' that slice on its own with execute().',
+        );
 
         $this->connection->select()->from('users')->limit(5)->paginate(2, 1);
     }
@@ -2471,8 +2526,8 @@ final class SelectTest extends TestCase
     public static function providePagesThatCannotBeRead(): array
     {
         return [
-            'no rows per page' => [0, 1, 'Rows per page must be at least 1, got 0.'],
-            'a page below one' => [2, 0, 'Page number must be at least 1, got 0.'],
+            'no rows per page' => [0, 1, 'paginate() reads at least one row per page, got 0.'],
+            'a page below one' => [2, 0, 'paginate() counts pages from 1, got 0.'],
         ];
     }
 

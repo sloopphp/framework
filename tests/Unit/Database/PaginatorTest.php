@@ -99,6 +99,16 @@ final class PaginatorTest extends TestCase
         $this->assertNull($page->previousPage);
     }
 
+    public function testAPageOfOneRowIsDescribed(): void
+    {
+        // One is the smallest page there is, and the boundary the refusal of
+        // nought sits against.
+        $page = $this->paginator(3, 1, 2);
+
+        $this->assertSame(3, $page->lastPage);
+        $this->assertTrue($page->hasMorePages);
+    }
+
     /**
      * @return array<string, array{int, int, int, string}>
      */

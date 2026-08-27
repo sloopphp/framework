@@ -593,11 +593,11 @@ class Select extends BuilderWhere
         $this->requireNoRowWindow('paginate');
 
         if ($perPage < 1) {
-            throw new InvalidArgumentException('Rows per page must be at least 1, got ' . $perPage . '.');
+            throw new InvalidArgumentException('paginate() reads at least one row per page, got ' . $perPage . '.');
         }
 
         if ($page < 1) {
-            throw new InvalidArgumentException('Page number must be at least 1, got ' . $page . '.');
+            throw new InvalidArgumentException('paginate() counts pages from 1, got ' . $page . '.');
         }
 
         $items = $this->runReading($this->columns, $perPage, ($page - 1) * $perPage);
