@@ -444,14 +444,7 @@ class Select extends BuilderWhere
      */
     public function count(): int
     {
-        if ($this->lock === RowLock::UpdateNoWait) {
-            throw new LogicException(
-                'count() cannot be taken with NOWAIT. MySQL swallows the abort inside a COUNT and '
-                    . 'answers with the rows it reached before the held one, so the number looks ordinary '
-                    . 'and nothing says it is short. Count the rows of get(), or take the lock without '
-                    . 'NOWAIT.',
-            );
-        }
+        $this->requireCountableLock('count');
 
         $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
 
@@ -600,11 +593,15 @@ class Select extends BuilderWhere
             throw new InvalidArgumentException('paginate() counts pages from 1, got ' . $page . '.');
         }
 
+        // Asked before the page goes out rather than left to count(): the page
+        // would otherwise take its locks and only then be told the count cannot
+        // be had, leaving the caller holding rows for a statement that failed.
+        $this->requireCountableLock('paginate');
+
         $items = $this->runReading($this->columns, $perPage, ($page - 1) * $perPage);
 
-        // count() rather than a COUNT written here, so the refusal under NOWAIT
-        // and the check that the server answered with an integer are not two
-        // things that have to agree.
+        // count() rather than a COUNT written here, so the check that the
+        // server answered with an integer is not two things that have to agree.
         return new Paginator($items, $this->count(), $perPage, $page);
     }
 
@@ -719,11 +716,15 @@ class Select extends BuilderWhere
                 return true;
             }
 
+            // Read before the callback rather than after it: a column that was
+            // never selected is a mistake in the chain, and finding it out only
+            // once a batch has been handed over means the callback has already
+            // done its work for a walk that cannot go on.
+            $above = $this->valueWalked($rows[array_key_last($rows)], $column);
+
             if ($callback($batch, $index) === false) {
                 return false;
             }
-
-            $above = $this->valueWalked($rows[array_key_last($rows)], $column);
 
             if (\count($rows) < $size) {
                 return true;
@@ -794,6 +795,35 @@ class Select extends BuilderWhere
             $method . '() addresses the rows a batch at a time, so it sets the limit and offset itself and'
                 . ' cannot keep the ones already on this builder. Drop the limit()/offset() call, or read'
                 . ' that slice on its own with execute().',
+        );
+    }
+
+    /**
+     * Refuse a count over rows this statement holds with NOWAIT.
+     *
+     * MySQL swallows the NOWAIT abort inside a COUNT and answers with the rows
+     * it had counted before it reached the held one, so what comes back is a
+     * plausible number rather than an error: holding the first row of the scan
+     * answers 0, and holding the last answers one less than the true count.
+     * Whether the statement takes that path depends on the plan, and a SUM over
+     * the same scan does fail, so this is COUNT keeping its own tally rather
+     * than aggregates in general. MariaDB reports the failure properly, but the
+     * refusal covers both so the same code means the same thing on either.
+     *
+     * @param  string         $method Name of the method being asked for
+     * @return void
+     * @throws LogicException When the rows are held with NOWAIT
+     */
+    private function requireCountableLock(string $method): void
+    {
+        if ($this->lock !== RowLock::UpdateNoWait) {
+            return;
+        }
+
+        throw new LogicException(
+            $method . '() cannot count rows held with NOWAIT. MySQL swallows the abort inside a COUNT and'
+                . ' answers with the rows it reached before the held one, so the number looks ordinary and'
+                . ' nothing says it is short. Count the rows of get(), or take the lock without NOWAIT.',
         );
     }
 

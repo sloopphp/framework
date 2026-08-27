@@ -2040,10 +2040,9 @@ final class SelectTest extends TestCase
         // concatenated pieces, and matching only the first would let the rest
         // be reordered or dropped without a test noticing.
         $this->assertSame(
-            'count() cannot be taken with NOWAIT. MySQL swallows the abort inside a COUNT and '
-                . 'answers with the rows it reached before the held one, so the number looks ordinary '
-                . 'and nothing says it is short. Count the rows of get(), or take the lock without '
-                . 'NOWAIT.',
+            'count() cannot count rows held with NOWAIT. MySQL swallows the abort inside a COUNT and'
+                . ' answers with the rows it reached before the held one, so the number looks ordinary and'
+                . ' nothing says it is short. Count the rows of get(), or take the lock without NOWAIT.',
             $e->getMessage(),
         );
     }
@@ -2355,6 +2354,21 @@ final class SelectTest extends TestCase
         $this->assertSame('|0:1,2|1:3,4', $this->walked);
     }
 
+    public function testChunkByIdRefusesAColumnThatWasNotReadBeforeHandingOverABatch(): void
+    {
+        // The column is missing from every batch, so the walk cannot go on. The
+        // callback is where writing and sending happen, and running it once for
+        // a walk that is about to fail leaves that work behind.
+        $this->seedNumberedUsers(2);
+
+        $this->assertThrows(
+            UnexpectedValueException::class,
+            fn () => $this->connection->select('name')->from('users')->chunkById(1, $this->record(...)),
+        );
+
+        $this->assertSame('', $this->walked);
+    }
+
     public function testChunkByIdRefusesAColumnThatWasNotRead(): void
     {
         $this->seedNumberedUsers(2);
@@ -2506,6 +2520,28 @@ final class SelectTest extends TestCase
 
         $this->assertTrue($finished);
         $this->assertSame('|0:1,2,3|1:4,5,6', $this->walked);
+    }
+
+    public function testPaginateRefusesRowsHeldWithNoWaitBeforeReadingThePage(): void
+    {
+        // The refusal has to come before the page goes out: on a server that
+        // takes the lock, a page read first would leave the caller holding rows
+        // for a statement that then failed.
+        $this->seedNumberedUsers(3);
+        $handler = $this->attachLogger();
+
+        $e = $this->assertThrows(
+            LogicException::class,
+            fn () => $this->connection->select()->from('users')->forUpdate(noWait: true)->paginate(2, 1),
+        );
+
+        $this->assertSame(
+            'paginate() cannot count rows held with NOWAIT. MySQL swallows the abort inside a COUNT and'
+                . ' answers with the rows it reached before the held one, so the number looks ordinary and'
+                . ' nothing says it is short. Count the rows of get(), or take the lock without NOWAIT.',
+            $e->getMessage(),
+        );
+        $this->assertSame([], $handler->getRecords());
     }
 
     public function testPaginateIsRefusedWhenARowWindowIsAlreadySet(): void
