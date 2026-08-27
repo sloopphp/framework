@@ -10,6 +10,7 @@ use Sloop\Database\ConnectionRoute;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Paginator;
 use Sloop\Database\Result;
 use UnexpectedValueException;
 
@@ -241,30 +242,52 @@ class Select extends BuilderWhere
      * Write this statement as SQL, reading the given columns and row count.
      *
      * The shortcuts below each want a statement that differs from the one the
-     * builder describes — fewer columns, or one row instead of all of them.
-     * They pass what they need here rather than changing the builder, so
-     * calling a shortcut leaves the builder able to run its own statement.
+     * builder describes — fewer columns, one row instead of all of them, or a
+     * condition and a sort of their own. They pass what they need here rather
+     * than changing the builder, so calling a shortcut leaves the builder able
+     * to run its own statement.
      *
-     * @param  array<array-key, string|Expression> $columns Columns to read
-     * @param  int|null                            $limit   Most rows to read, or null for all of them
-     * @param  int|null                            $offset  Rows to skip first, or null to start at the top
+     * An extra condition is joined to everything the builder collected as a
+     * whole rather than appended to the end of it. Appending would put it
+     * beside the last condition, and AND binds tighter than OR, so a WHERE the
+     * caller wrote as `a OR b` would come back meaning `a OR (b AND extra)`.
+     * The parentheses that avoid that are dropped again when the builder holds
+     * no conditions, since an empty pair is not valid SQL.
+     *
+     * @param  array<array-key, string|Expression> $columns   Columns to read
+     * @param  int|null                            $limit     Most rows to read, or null for all of them
+     * @param  int|null                            $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                      $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                          $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
      * @throws LogicException                      When no table has been named, or a group of conditions was left open
      * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
      */
-    private function compileReading(array $columns, ?int $limit, ?int $offset): CompiledSql
-    {
+    private function compileReading(
+        array $columns,
+        ?int $limit,
+        ?int $offset,
+        ?WherePart $alsoWhere = null,
+        ?Order $thenBy = null,
+    ): CompiledSql {
         if ($this->from === null) {
             throw new LogicException('A SELECT reads from a table; call from() before compiling the statement.');
         }
 
         $this->requireGroupsClosed();
 
+        $conditions = $alsoWhere === null ? $this->conditions : [
+            new GroupBoundary(GroupEdge::Open),
+            ...$this->conditions,
+            new GroupBoundary(GroupEdge::Close),
+            $alsoWhere,
+        ];
+
         return $this->grammar->compileSelect(new SelectSpec(
             from:       $this->from,
             columns:    $columns,
-            conditions: $this->conditions,
-            orders:     $this->orders,
+            conditions: $conditions,
+            orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
             limit:      $limit,
             offset:     $offset,
             lock:       $this->lock,
@@ -274,9 +297,11 @@ class Select extends BuilderWhere
     /**
      * Run a statement that reads the given columns and row count.
      *
-     * @param  array<array-key, string|Expression> $columns Columns to read
-     * @param  int|null                            $limit   Most rows to read, or null for all of them
-     * @param  int|null                            $offset  Rows to skip first, or null to start at the top
+     * @param  array<array-key, string|Expression> $columns   Columns to read
+     * @param  int|null                            $limit     Most rows to read, or null for all of them
+     * @param  int|null                            $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                      $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                          $thenBy    Sort term to add after the builder's own, or null for none
      * @return Result                              Rows the statement read
      * @throws LogicException                      When no table has been named, or a group of conditions was left open
      * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
@@ -285,9 +310,14 @@ class Select extends BuilderWhere
      * @throws DatabaseException                   When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      * @throws UnexpectedValueException            When the driver returns a value outside the types it contracts to
      */
-    private function runReading(array $columns, ?int $limit, ?int $offset): Result
-    {
-        $compiled = $this->compileReading($columns, $limit, $offset);
+    private function runReading(
+        array $columns,
+        ?int $limit,
+        ?int $offset,
+        ?WherePart $alsoWhere = null,
+        ?Order $thenBy = null,
+    ): Result {
+        $compiled = $this->compileReading($columns, $limit, $offset, $alsoWhere, $thenBy);
 
         return $this->route->connection()->query($compiled->sql, $compiled->bindings, $this->timeoutMs);
     }
@@ -537,5 +567,247 @@ class Select extends BuilderWhere
         }
 
         return $plucked;
+    }
+
+    /**
+     * Read one page of rows, and count how many there are in all.
+     *
+     * Two statements go out: the page, and a COUNT over the same conditions.
+     * They cannot be one, because the count has to see past the window the page
+     * is cut from. Rows written between the two are therefore in one number and
+     * not the other; Paginator says what that means for the page numbers it
+     * works out.
+     *
+     * @param  int                         $perPage Most rows the page carries
+     * @param  int                         $page    1-based number of the page to read
+     * @return Paginator                   The page, with the size of the set it came from
+     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, or the rows are held with NOWAIT
+     * @throws InvalidArgumentException    When the page size or number is below one, an identifier is malformed, or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When either statement fails
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
+     */
+    public function paginate(int $perPage, int $page): Paginator
+    {
+        $this->requireNoRowWindow('paginate');
+
+        if ($perPage < 1) {
+            throw new InvalidArgumentException('Rows per page must be at least 1, got ' . $perPage . '.');
+        }
+
+        if ($page < 1) {
+            throw new InvalidArgumentException('Page number must be at least 1, got ' . $page . '.');
+        }
+
+        $items = $this->runReading($this->columns, $perPage, ($page - 1) * $perPage);
+
+        // count() rather than a COUNT written here, so the refusal under NOWAIT
+        // and the check that the server answered with an integer are not two
+        // things that have to agree.
+        return new Paginator($items, $this->count(), $perPage, $page);
+    }
+
+    /**
+     * Walk the matching rows a batch at a time, cut by position.
+     *
+     * Each batch is a statement of its own reading the next $size rows, so the
+     * whole set never has to be held at once. What the batches are is decided
+     * per statement rather than up front: a row written or removed while the
+     * walk is running shifts every later position, so the same row can be seen
+     * twice or missed. chunkById() does not have that problem and is the one to
+     * reach for unless the order has to be the builder's own.
+     *
+     * The callback is given the batch and its 0-based number, and returning
+     * false from it stops the walk.
+     *
+     * @param  int                         $size     Most rows a batch carries
+     * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
+     * @return bool                        False when the callback stopped the walk, true when the rows ran out
+     * @throws LogicException              When a row window is already set, no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException    When the batch size is below one, an identifier is malformed, or the row window is inconsistent
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When a statement fails
+     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
+     */
+    public function chunk(int $size, callable $callback): bool
+    {
+        $this->requireNoRowWindow('chunk');
+        $this->requireBatchSize($size);
+
+        $offset = 0;
+        $index  = 0;
+
+        while (true) {
+            $batch = $this->runReading($this->columns, $size, $offset);
+
+            if ($batch->isEmpty()) {
+                return true;
+            }
+
+            if ($callback($batch, $index) === false) {
+                return false;
+            }
+
+            if ($batch->count() < $size) {
+                // The server had nothing more to give, so asking again would
+                // only cost a round trip to learn the same thing.
+                return true;
+            }
+
+            $offset += $size;
+            $index++;
+        }
+    }
+
+    /**
+     * Walk the matching rows a batch at a time, cut by a column's value.
+     *
+     * Each batch asks for the rows whose $column is above the highest one the
+     * last batch saw, sorted by that column. Nothing is addressed by position,
+     * so rows written or removed while the walk is running do not shift the
+     * batches that follow — which is why this is the one to reach for on a set
+     * being written to.
+     *
+     * The column has to hold a distinct value per row for the walk to be
+     * complete: rows sharing the value the batch ended on are above nothing and
+     * are stepped over. A primary key is the usual choice, and is the default.
+     *
+     * The callback is given the batch and its 0-based number, and returning
+     * false from it stops the walk.
+     *
+     * @param  int                         $size     Most rows a batch carries
+     * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
+     * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
+     * @return bool                        False when the callback stopped the walk, true when the rows ran out
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
+     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When a statement fails
+     * @throws UnexpectedValueException    When the walked column is absent from the rows or holds no value, or the driver returns a value outside the types it contracts to
+     */
+    public function chunkById(int $size, callable $callback, string $column = 'id'): bool
+    {
+        $this->requireNoRowWindow('chunkById');
+        $this->requireBatchSize($size);
+
+        if ($this->orders !== []) {
+            throw new LogicException(
+                'chunkById() sorts by "' . $column . '" to walk the rows, so a sort already on the builder'
+                    . ' would either come first and break the walk, or come second and never be reached.'
+                    . ' Drop the orderBy() call, or walk the rows with chunk().',
+            );
+        }
+
+        $above = null;
+        $index = 0;
+
+        while (true) {
+            $batch = $this->runReading(
+                $this->columns,
+                $size,
+                null,
+                $above === null ? null : $this->grammar->comparison($column, '>', $above),
+                new Order($column),
+            );
+
+            $rows = $batch->asArray();
+
+            if ($rows === []) {
+                return true;
+            }
+
+            if ($callback($batch, $index) === false) {
+                return false;
+            }
+
+            $above = $this->valueWalked($rows[array_key_last($rows)], $column);
+
+            if (\count($rows) < $size) {
+                return true;
+            }
+
+            $index++;
+        }
+    }
+
+    /**
+     * Read the value the next batch has to start above.
+     *
+     * Given the last row of the batch, which the sort put highest. A row
+     * without the column, or with no value in it, would leave the walk with
+     * nothing to compare against and every later batch empty, so neither is
+     * passed over quietly.
+     *
+     * @param  array<array-key, int|float|string|null> $row    Last row of the batch just walked
+     * @param  string                                  $column Column being walked by
+     * @return int|float|string                        Highest value the batch reached
+     * @throws UnexpectedValueException                When the column is absent from the row, or holds null
+     */
+    private function valueWalked(array $row, string $column): int|float|string
+    {
+        // A column written as `users`.`id` comes back keyed as id, the same
+        // reason value() and pluck() do not look it up as written.
+        $position = strrpos($column, '.');
+        $key      = $position === false ? $column : substr($column, $position + 1);
+
+        if (!\array_key_exists($key, $row)) {
+            throw new UnexpectedValueException(
+                'chunkById() walks by "' . $column . '", which is not among the columns read ('
+                    . implode(', ', array_keys($row)) . '). Select it, or walk by one of them.',
+            );
+        }
+
+        $value = $row[$key];
+
+        if ($value === null) {
+            throw new UnexpectedValueException(
+                'chunkById() walks by "' . $column . '", and a row came back with no value in it. Nothing'
+                    . ' compares above null, so the walk would stop there and leave the rest unseen. Walk by'
+                    . ' a column that holds a value per row.',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Refuse a walk over a builder that already addresses a slice of the rows.
+     *
+     * The walks below set the window per batch, so one already on the builder
+     * cannot also apply. Dropping it quietly would change which rows are walked
+     * without saying so, which is the one outcome worth an exception here.
+     *
+     * @param  string         $method Name of the walk being asked for
+     * @return void
+     * @throws LogicException When a limit or an offset is already set
+     */
+    private function requireNoRowWindow(string $method): void
+    {
+        if ($this->limit === null && $this->offset === null) {
+            return;
+        }
+
+        throw new LogicException(
+            $method . '() addresses the rows a batch at a time, so it sets the limit and offset itself and'
+                . ' cannot keep the ones already on this builder. Drop the limit()/offset() call, or read'
+                . ' that slice on its own with execute().',
+        );
+    }
+
+    /**
+     * Refuse a batch that could not carry a row.
+     *
+     * @param  int                      $size Batch size asked for
+     * @return void
+     * @throws InvalidArgumentException When the size is below one
+     */
+    private function requireBatchSize(int $size): void
+    {
+        if ($size < 1) {
+            throw new InvalidArgumentException('Batch size must be at least 1, got ' . $size . '.');
+        }
     }
 }

@@ -21,6 +21,7 @@ use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Query\SelectSpec;
+use Sloop\Database\Result;
 use Sloop\Tests\Support\ThrowsAssertions;
 use UnexpectedValueException;
 
@@ -29,6 +30,8 @@ final class SelectTest extends TestCase
     use ThrowsAssertions;
 
     private Connection $connection;
+
+    private string $walked = '';
 
     protected function setUp(): void
     {
@@ -46,6 +49,7 @@ final class SelectTest extends TestCase
         $sqlite->createFunction('version', static fn (): string => '8.0.37');
 
         $this->connection = new Connection($sqlite, 'select_test');
+        $this->walked     = '';
     }
 
     private function attachLogger(): TestHandler
@@ -85,6 +89,38 @@ final class SelectTest extends TestCase
         }
 
         $this->fail('Expected an InvalidArgumentException, none was thrown.');
+    }
+
+    private function seedNumberedUsers(int $count, string $status = 'active'): void
+    {
+        $rows = [];
+
+        for ($id = 1; $id <= $count; $id++) {
+            $rows[] = '(' . $id . ', \'user' . $id . '\', \'' . $status . '\', NULL, 1.0)';
+        }
+
+        $this->connection->statement(
+            'INSERT INTO users (id, name, status, nickname, weight) VALUES ' . implode(', ', $rows),
+        );
+    }
+
+    private static function idsOf(Result $batch): string
+    {
+        $ids = [];
+
+        foreach ($batch as $row) {
+            $ids[] = (string) $row['id'];
+        }
+
+        return implode(',', $ids);
+    }
+
+    private function record(Result $batch, int $index): void
+    {
+        // Held as text rather than a list so that the batch boundaries and
+        // their numbering land in the same assertion as the ids, and so that
+        // the walks can collect without a closure inheriting by reference.
+        $this->walked .= '|' . $index . ':' . self::idsOf($batch);
     }
 
     private function seedUsers(): void
@@ -2158,5 +2194,294 @@ final class SelectTest extends TestCase
             'SELECT /*+ MAX_EXECUTION_TIME(1) */ `id` FROM `users`',
             $this->loggedSql($handler),
         );
+    }
+
+    public function testChunkWalksEveryMatchingRow(): void
+    {
+        $this->seedNumberedUsers(7);
+
+        $finished = $this->connection->select()->from('users')->chunk(3, $this->record(...));
+
+        $this->assertTrue($finished);
+        $this->assertSame('|0:1,2,3|1:4,5,6|2:7', $this->walked);
+    }
+
+    public function testChunkMovesPastEachBatchRatherThanReadingTheFirstAgain(): void
+    {
+        // A walk that does not advance reads the same rows for ever. Stopping
+        // after three batches turns that into ids an assertion can compare,
+        // rather than a statement that never stops going out.
+        $this->seedNumberedUsers(9);
+
+        $this->connection->select()->from('users')->chunk(3, function (Result $batch, int $index): bool {
+            $this->record($batch, $index);
+
+            return substr_count($this->walked, '|') < 3;
+        });
+
+        $this->assertSame('|0:1,2,3|1:4,5,6|2:7,8,9', $this->walked);
+    }
+
+    public function testChunkStopsWhereTheCallbackSaysSo(): void
+    {
+        $this->seedNumberedUsers(7);
+
+        $finished = $this->connection->select()->from('users')->chunk(3, function (Result $batch, int $index): bool {
+            $this->record($batch, $index);
+
+            return false;
+        });
+
+        $this->assertFalse($finished);
+        $this->assertSame('|0:1,2,3', $this->walked);
+    }
+
+    public function testChunkStopsAskingOnceABatchComesBackShort(): void
+    {
+        // A batch smaller than the size means the server had nothing more to
+        // give, so the walk ends there. Without that, seven rows in threes
+        // would cost a fourth statement to learn what the third already said.
+        $this->seedNumberedUsers(7);
+        $handler = $this->attachLogger();
+
+        $this->connection->select()->from('users')->chunk(3, $this->record(...));
+
+        $this->assertSame('|0:1,2,3|1:4,5,6|2:7', $this->walked);
+        $this->assertCount(3, $handler->getRecords());
+    }
+
+    public function testChunkOverNothingNeverReachesTheCallback(): void
+    {
+        $finished = $this->connection->select()->from('users')->chunk(3, $this->record(...));
+
+        $this->assertTrue($finished);
+        $this->assertSame('', $this->walked);
+    }
+
+    public function testChunkWalksOnlyTheRowsTheConditionsMatch(): void
+    {
+        $this->seedNumberedUsers(4);
+        $this->connection->statement('UPDATE users SET status = \'blocked\' WHERE id IN (2, 4)');
+
+        $this->connection->select()->from('users')->where('status', 'active')->chunk(2, $this->record(...));
+
+        $this->assertSame('|0:1,3', $this->walked);
+    }
+
+    public function testChunkByIdWalksEveryMatchingRow(): void
+    {
+        $this->seedNumberedUsers(7);
+
+        $finished = $this->connection->select()->from('users')->chunkById(3, $this->record(...));
+
+        $this->assertTrue($finished);
+        $this->assertSame('|0:1,2,3|1:4,5,6|2:7', $this->walked);
+    }
+
+    public function testChunkByIdMovesPastEachBatchRatherThanReadingTheFirstAgain(): void
+    {
+        // As with chunk(), a walk that does not carry the highest value forward
+        // reads the same rows for ever; stopping after three batches makes that
+        // an assertion rather than a statement that never stops going out.
+        $this->seedNumberedUsers(9);
+
+        $this->connection->select()->from('users')->chunkById(3, function (Result $batch, int $index): bool {
+            $this->record($batch, $index);
+
+            return substr_count($this->walked, '|') < 3;
+        });
+
+        $this->assertSame('|0:1,2,3|1:4,5,6|2:7,8,9', $this->walked);
+    }
+
+    public function testChunkByIdKeepsAnOrConditionTogether(): void
+    {
+        // The walk requires `id > ?` alongside whatever the builder collected.
+        // Appended to the end it would sit beside the last condition, and AND
+        // binds tighter than OR, so `a OR b` would come back meaning
+        // `a OR (b AND id > ?)` and the walk would keep answering with a.
+        $this->seedNumberedUsers(5);
+
+        // Stopping after three batches keeps a walk that cannot advance from
+        // running for ever: `id = 1 OR (id = 2 AND id > 1)` matches row 1 on
+        // every pass, so without a bound the failure would be a statement that
+        // never stops rather than an assertion.
+        $this->connection->select()->from('users')
+            ->where('id', 1)->orWhere('id', 2)
+            ->chunkById(1, function (Result $batch, int $index): bool {
+                $this->record($batch, $index);
+
+                return substr_count($this->walked, '|') < 3;
+            });
+
+        $this->assertSame('|0:1|1:2', $this->walked);
+    }
+
+    public function testChunkByIdStopsWhereTheCallbackSaysSo(): void
+    {
+        $this->seedNumberedUsers(7);
+
+        $finished = $this->connection->select()->from('users')
+            ->chunkById(3, function (Result $batch, int $index): bool {
+                $this->record($batch, $index);
+
+                return false;
+            });
+
+        $this->assertFalse($finished);
+        $this->assertSame('|0:1,2,3', $this->walked);
+    }
+
+    public function testChunkByIdWalksByAColumnWrittenWithItsTable(): void
+    {
+        $this->seedNumberedUsers(4);
+
+        $this->connection->select()->from('users')->chunkById(2, $this->record(...), 'users.id');
+
+        $this->assertSame('|0:1,2|1:3,4', $this->walked);
+    }
+
+    public function testChunkByIdRefusesAColumnThatWasNotRead(): void
+    {
+        $this->seedNumberedUsers(2);
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'chunkById() walks by "id", which is not among the columns read (name).',
+        );
+
+        $this->connection->select('name')->from('users')->chunkById(1, static function (): void {
+        });
+    }
+
+    public function testChunkByIdRefusesAWalkedColumnWithNoValueInIt(): void
+    {
+        // Nothing compares above null, so the next batch would come back empty
+        // and every row after this one would go unwalked.
+        $this->seedNumberedUsers(2);
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'chunkById() walks by "nickname", and a row came back with no value in it.',
+        );
+
+        $this->connection->select('id', 'nickname')->from('users')->chunkById(1, static function (): void {
+        }, 'nickname');
+    }
+
+    public function testChunkByIdIsRefusedWhenTheBuilderAlreadySorts(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('chunkById() sorts by "id" to walk the rows');
+
+        $this->connection->select()->from('users')->orderBy('name')->chunkById(2, static function (): void {
+        });
+    }
+
+    /**
+     * @return array<string, array{callable(Select): Select, string}>
+     */
+    public static function provideWalksOverAnAddressedSliceOfTheRows(): array
+    {
+        return [
+            'chunk after limit'      => [static fn (Select $q): Select => $q->limit(5), 'chunk'],
+            'chunk after offset'     => [static fn (Select $q): Select => $q->offset(5), 'chunk'],
+            'chunkById after limit'  => [static fn (Select $q): Select => $q->limit(5), 'chunkById'],
+            'chunkById after offset' => [static fn (Select $q): Select => $q->offset(5), 'chunkById'],
+        ];
+    }
+
+    #[DataProvider('provideWalksOverAnAddressedSliceOfTheRows')]
+    public function testAWalkIsRefusedWhenARowWindowIsAlreadySet(callable $window, string $walk): void
+    {
+        $select = $window($this->connection->select()->from('users'));
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains($walk . '() addresses the rows a batch at a time');
+
+        $select->{$walk}(2, static function (): void {
+        });
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function provideWalkNames(): array
+    {
+        return ['chunk' => ['chunk'], 'chunkById' => ['chunkById']];
+    }
+
+    #[DataProvider('provideWalkNames')]
+    public function testAWalkRefusesABatchThatCouldNotCarryARow(string $walk): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Batch size must be at least 1, got 0.');
+
+        $this->connection->select()->from('users')->{$walk}(0, static function (): void {
+        });
+    }
+
+    public function testPaginateReadsTheRequestedPageAndCountsEveryMatch(): void
+    {
+        $this->seedNumberedUsers(7);
+
+        $page = $this->connection->select()->from('users')->paginate(3, 2);
+
+        $this->assertSame('4,5,6', self::idsOf($page->items));
+        $this->assertSame(7, $page->total);
+        $this->assertSame(3, $page->perPage);
+        $this->assertSame(2, $page->currentPage);
+        $this->assertSame(3, $page->lastPage);
+    }
+
+    public function testPaginateCountsWhatTheConditionsMatchRatherThanTheWholeTable(): void
+    {
+        $this->seedNumberedUsers(6);
+        $this->connection->statement('UPDATE users SET status = \'blocked\' WHERE id IN (2, 4, 6)');
+
+        $page = $this->connection->select()->from('users')->where('status', 'active')->paginate(2, 1);
+
+        $this->assertSame('1,3', self::idsOf($page->items));
+        $this->assertSame(3, $page->total);
+    }
+
+    public function testPaginatePastTheLastPageReadsNothingButStillCounts(): void
+    {
+        $this->seedNumberedUsers(3);
+
+        $page = $this->connection->select()->from('users')->paginate(2, 9);
+
+        $this->assertTrue($page->items->isEmpty());
+        $this->assertSame(3, $page->total);
+        $this->assertSame(2, $page->lastPage);
+        $this->assertFalse($page->hasMorePages);
+    }
+
+    public function testPaginateIsRefusedWhenARowWindowIsAlreadySet(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('paginate() addresses the rows a batch at a time');
+
+        $this->connection->select()->from('users')->limit(5)->paginate(2, 1);
+    }
+
+    /**
+     * @return array<string, array{int, int, string}>
+     */
+    public static function providePagesThatCannotBeRead(): array
+    {
+        return [
+            'no rows per page' => [0, 1, 'Rows per page must be at least 1, got 0.'],
+            'a page below one' => [2, 0, 'Page number must be at least 1, got 0.'],
+        ];
+    }
+
+    #[DataProvider('providePagesThatCannotBeRead')]
+    public function testPagesThatCannotBeReadAreRefused(int $perPage, int $page, string $expectedMessage): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains($expectedMessage);
+
+        $this->connection->select()->from('users')->paginate($perPage, $page);
     }
 }
