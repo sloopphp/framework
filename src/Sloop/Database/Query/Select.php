@@ -421,18 +421,9 @@ class Select extends BuilderWhere
      * all. Counting what the conditions match is the only reading of count()
      * the window can serve.
      *
-     * A NOWAIT lock is refused here rather than counted. MySQL swallows the
-     * NOWAIT abort inside a COUNT and answers with the rows it had counted
-     * before it reached the held one, so what comes back is a plausible number
-     * rather than an error: holding the first row of the scan answers 0, and
-     * holding the last answers one less than the true count. Whether the
-     * statement takes that path depends on the plan, and a SUM over the same
-     * scan does fail, so this is COUNT keeping its own tally rather than
-     * aggregates in general. MariaDB reports the failure properly, but the
-     * refusal covers both so the same code means the same thing on either.
-     *
-     * The other locks are left alone: a plain FOR UPDATE waits and then
-     * reports the wait, and SKIP LOCKED counts what it could take.
+     * A NOWAIT lock is refused rather than counted; requireCountableLock()
+     * says why. The other locks are left alone: a plain FOR UPDATE waits and
+     * then reports the wait, and SKIP LOCKED counts what it could take.
      *
      * @return int                         How many rows matched
      * @throws LogicException              When no table has been named, a group of conditions was left open, or the lock is NOWAIT
