@@ -6,12 +6,33 @@
     <file>tests</file>
     <file>.claude</file>
 
+    <!-- A git worktree under .claude is a whole second checkout, vendor included,
+         and a parallel session writes into it while this runs. -->
+    <exclude-pattern>.claude/worktrees/*</exclude-pattern>
+
     <arg name="colors"/>
     <arg value="sp"/>
 
     <!-- ==================== -->
     <!-- PHPDoc               -->
     <!-- ==================== -->
+
+    <!-- PHP 8.4 property hooks. The cause is the tokenizer rather than either sniff: PHPCS
+         emits a plain T_OPEN_CURLY_BRACKET after the property name and opens no scope for the
+         hook body. `$v { get => ... }` is therefore indistinguishable from the removed `$str{0}`
+         offset syntax, and every `$this` inside a hook is counted as one more undocumented
+         property (measured: one error per `$this`). Scoped to the files that use hooks so both
+         sniffs keep working everywhere else — a missing docblock in any other file is still an
+         error. Verified against PHPCS 4.0.4 / PHPCompatibility 10.0.0-alpha2, the newest
+         releases as of 2026-08-27; php-cs-fixer and PHPStan read the same file without
+         complaint. Drop both blocks once PHPCS tokenizes hooks: phpcs passing on Paginator.php
+         with them removed is the whole check. -->
+    <rule ref="PHPCompatibility.Syntax.RemovedCurlyBraceArrayAccess">
+        <exclude-pattern>src/Sloop/Database/Paginator.php</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.VariableComment.Missing">
+        <exclude-pattern>src/Sloop/Database/Paginator.php</exclude-pattern>
+    </rule>
 
     <!-- PHPDoc required on methods (test code excluded) -->
     <rule ref="Squiz.Commenting.FunctionComment">

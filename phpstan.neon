@@ -8,6 +8,12 @@ parameters:
         - src
         - tests
         - .claude
+    excludePaths:
+        # A git worktree under .claude is a whole second checkout, vendor
+        # included, and a parallel session writes into it while this runs.
+        # (?) marks it optional: the directory only exists where someone opened a
+        # worktree, and PHPStan refuses a path that is not there.
+        - .claude/worktrees (?)
     scanFiles:
         - src/Sloop/Helpers/path.php
         - src/Sloop/Helpers/env.php

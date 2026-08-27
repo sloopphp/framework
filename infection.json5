@@ -289,7 +289,14 @@
                 // routing, so the replica path is never entered. Dropping the
                 // group from the scan is therefore unobservable. It stays in the
                 // code as the invariant the routing guard relies on.
-                "Sloop\\Database\\ConnectionManager::hasConnectionInTransaction"
+                "Sloop\\Database\\ConnectionManager::hasConnectionInTransaction",
+                // Select::compileReading appends $thenBy to the sorts the builder
+                // already holds. The only caller that passes one is chunkById(),
+                // which refuses a builder that already sorts, so the list being
+                // extended is always empty and dropping it changes nothing. The
+                // spread stays because the parameter means "after the builder's
+                // own", which is what a second caller would need.
+                "Sloop\\Database\\Query\\Select::compileReading"
             ]
         }
     },

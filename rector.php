@@ -29,6 +29,10 @@ return RectorConfig::configure()
         ClassPropertyAssignToConstructorPromotionRector::RENAME_PROPERTY => false,
     ])
     ->withSkip([
+        // A git worktree under .claude is a whole second checkout, vendor
+        // included, and a parallel session writes into it while this runs.
+        __DIR__ . '/.claude/worktrees',
+
         // docs/coding-standards.md and .claude/CLAUDE.md state that
         // array_any() / array_all() are not adopted (foreach is faster),
         // so these two rules from the PHP 8.4 set are not applied.
