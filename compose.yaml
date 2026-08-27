@@ -1,3 +1,5 @@
+name: sloop
+
 services:
   mysql:
     image: mysql:8.0

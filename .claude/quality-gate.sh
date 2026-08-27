@@ -28,7 +28,14 @@
 #   .claude/quality-gate.sh --with-integration # also run Integration (needs docker compose up -d)
 #   .claude/quality-gate.sh --all              # run everything
 #
-# Exit code: 1 if any gate fails, 0 if all pass.
+# Parallel sessions: several git worktrees share one database server, so the
+# Integration gates run against a database named after the worktree rather than
+# the fixed sloop_test. Without that, one session drops a table while another
+# reads it and both see failures that have nothing to do with their changes.
+# The run is also serialised per worktree, since two gates in the same tree
+# fight over the same caches and the same database.
+#
+# Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
 set -uo pipefail
 
@@ -37,6 +44,23 @@ script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 script_path="$script_dir/$(basename "$0")"
 
 cd "$script_dir/.." || exit 1
+
+# One run per worktree. The lock is released when the script exits, since the
+# descriptor dies with it; a killed run does not leave the tree locked.
+lock_file='.phpunit.cache/quality-gate.lock'
+mkdir -p "$(dirname "$lock_file")" || exit 1
+exec 9> "$lock_file" || exit 1
+if command -v flock > /dev/null 2>&1 && ! flock -n 9; then
+    echo 'another quality gate is running in this worktree' >&2
+    exit 3
+fi
+
+# The database is named after the worktree so that parallel sessions do not
+# share tables. Anything outside [a-z0-9_] is not valid unquoted in an
+# identifier, and the server caps the whole name at 64 characters.
+worktree_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+worktree_slug=$(printf '%s' "$worktree_name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
+db_name="sloop_test_${worktree_slug:0:40}"
 
 # Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
 if [ -t 1 ]; then
@@ -162,8 +186,30 @@ else
 fi
 
 if [ "$with_integration" -eq 1 ]; then
-    run_gate 'Integration (3306)' vendor/bin/phpunit --testsuite=Integration
-    run_gate 'Integration (3307)' env DB_PORT=3307 vendor/bin/phpunit --testsuite=Integration
+    # Create the worktree's database on both engines before the tests connect.
+    # The sloop user cannot create databases, so this goes through root.
+    integration_ready=1
+    for service in mysql mariadb; do
+        if ! docker compose exec -T "$service" mysql -uroot -proot \
+            -e "CREATE DATABASE IF NOT EXISTS \`$db_name\`;
+                GRANT ALL PRIVILEGES ON \`$db_name\`.* TO 'sloop'@'%';" > /dev/null 2>&1; then
+            printf '\n  (could not prepare %s on %s; run docker compose up -d)\n' \
+                "$db_name" "$service"
+            integration_ready=0
+        fi
+    done
+
+    if [ "$integration_ready" -eq 1 ]; then
+        printf '\n  (integration database: %s)\n' "$db_name"
+        run_gate 'Integration (3306)' env DB_NAME="$db_name" \
+            vendor/bin/phpunit --testsuite=Integration
+        run_gate 'Integration (3307)' env DB_NAME="$db_name" DB_PORT=3307 \
+            vendor/bin/phpunit --testsuite=Integration
+    else
+        names+=('Integration')
+        codes+=(1)
+        counts+=('')
+    fi
 fi
 
 if [ "$with_mutation" -eq 1 ]; then
