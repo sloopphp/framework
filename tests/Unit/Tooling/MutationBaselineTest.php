@@ -161,7 +161,7 @@ final class MutationBaselineTest extends TestCase
         $this->writeBaselineFrom($this->reportWith(['escaped' => [$mutant]]));
 
         self::assertSame(1, $this->check($this->reportWith(['escaped' => [$mutant, $mutant]])));
-        self::assertStringContainsString('1 mutant(s) escaped', $this->output);
+        self::assertStringContainsString('1 mutant(s) survived', $this->output);
     }
 
     public function testAReportWithoutMutantsIsAnOperatorErrorRatherThanAPass(): void
@@ -202,7 +202,7 @@ final class MutationBaselineTest extends TestCase
         ]);
 
         self::assertSame(1, $this->check($report));
-        self::assertStringContainsString('1 mutant(s) escaped', $this->output);
+        self::assertStringContainsString('1 mutant(s) survived', $this->output);
         self::assertStringContainsString('LogicalAnd', $this->output);
     }
 
@@ -235,6 +235,74 @@ final class MutationBaselineTest extends TestCase
         $this->writeBaselineFrom($this->reportWith(['errored' => [$mutant]]));
 
         self::assertSame(0, $this->check($this->reportWith(['escaped' => [$mutant]])));
+    }
+
+    public function testATimeoutedMutantMissingFromTheBaselineFailsTheGate(): void
+    {
+        $this->writeBaselineFrom($this->reportWith(['escaped' => []]));
+
+        $report = $this->reportWith([
+            'timeouted' => [$this->entry('Sample.php', 40, 'MethodCallRemoval', '-        $this->close();', '+')],
+        ]);
+
+        self::assertSame(1, $this->check($report));
+        self::assertStringContainsString('1 mutant(s) survived', $this->output);
+        self::assertStringContainsString('MethodCallRemoval', $this->output);
+    }
+
+    public function testAnErroredMutantMissingFromTheBaselineFailsTheGate(): void
+    {
+        $this->writeBaselineFrom($this->reportWith(['escaped' => []]));
+
+        $report = $this->reportWith([
+            'errored' => [$this->entry('Sample.php', 40, 'DecrementInteger', '-        $i + 1;', '+        $i + 0;')],
+        ]);
+
+        self::assertSame(1, $this->check($report));
+        self::assertStringContainsString('1 mutant(s) survived', $this->output);
+        self::assertStringContainsString('DecrementInteger', $this->output);
+    }
+
+    public function testAKilledMutantThatStartsTimingOutIsNotWavedThroughAsUnchanged(): void
+    {
+        $mutant = $this->entry('Sample.php', 40, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;');
+
+        $this->writeBaselineFrom($this->reportWith(['escaped' => []]));
+
+        self::assertSame(0, $this->check($this->reportWith(['escaped' => []])));
+        self::assertSame(1, $this->check($this->reportWith(['timeouted' => [$mutant]])));
+    }
+
+    public function testASkippedMutantMakesTheRunIncompleteRatherThanAPass(): void
+    {
+        $this->writeBaselineFrom($this->reportWith(['escaped' => []]));
+
+        $report          = $this->reportWith(['escaped' => []]);
+        $report['stats'] = ['totalMutantsCount' => 100, 'skippedCount' => 7];
+
+        self::assertSame(1, $this->check($report));
+        self::assertStringContainsString('7 mutant(s) were skipped', $this->output);
+    }
+
+    public function testASkippedRunDoesNotRewriteTheBaseline(): void
+    {
+        $this->writeBaselineFrom($this->reportWith([
+            'escaped' => [$this->entry('Sample.php', 40, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;')],
+        ]));
+
+        $before          = (string) file_get_contents($this->workDir . '/baseline.json');
+        $report          = $this->reportWith(['escaped' => []]);
+        $report['stats'] = ['totalMutantsCount' => 100, 'skippedCount' => 3];
+        file_put_contents($this->workDir . '/report.json', json_encode($report));
+
+        $code = $this->invoke([
+            '--update',
+            '--report=' . $this->workDir . '/report.json',
+            '--baseline=' . $this->workDir . '/baseline.json',
+        ]);
+
+        self::assertSame(1, $code);
+        self::assertSame($before, (string) file_get_contents($this->workDir . '/baseline.json'));
     }
 
     public function testBaselineEntriesThatNoLongerSurviveAreReportedWithoutFailing(): void
