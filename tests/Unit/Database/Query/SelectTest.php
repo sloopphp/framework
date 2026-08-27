@@ -115,12 +115,18 @@ final class SelectTest extends TestCase
         return implode(',', $ids);
     }
 
-    private function record(Result $batch, int $index): void
+    private function record(Result $batch, int $index): bool
     {
         // Held as text rather than a list so that the batch boundaries and
         // their numbering land in the same assertion as the ids, and so that
         // the walks can collect without a closure inheriting by reference.
         $this->walked .= '|' . $index . ':' . self::idsOf($batch);
+
+        // Every walk below ends well inside ten batches. Stopping there anyway
+        // means a walk that cannot advance is a wrong string rather than a
+        // statement that never stops: a test that hangs says nothing about
+        // whether the behaviour is pinned, it only says the run was killed.
+        return substr_count($this->walked, '|') < 10;
     }
 
     private function seedUsers(): void

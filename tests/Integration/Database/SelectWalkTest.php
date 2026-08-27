@@ -47,15 +47,17 @@ final class SelectWalkTest extends TransactionalIntegrationTestCase
         return implode(',', $ids);
     }
 
-    private function record(Result $batch, int $index): string
+    private function record(Result $batch, int $index): bool
     {
         // Held as text rather than a list so that the batch boundaries and
         // their numbering land in the same assertion as the ids, and so that
         // the walks can collect without a closure inheriting by reference.
-        $ids           = self::idsOf($batch);
-        $this->walked .= '|' . $index . ':' . $ids;
+        $this->walked .= '|' . $index . ':' . self::idsOf($batch);
 
-        return $ids;
+        // Bounded for the same reason as the unit walks: a walk that cannot
+        // advance has to come back as a wrong string, not as a run that never
+        // ends.
+        return substr_count($this->walked, '|') < 10;
     }
 
     public function testChunkWalksEveryRowOnTheServer(): void
@@ -83,10 +85,14 @@ final class SelectWalkTest extends TransactionalIntegrationTestCase
         // the behaviour the guide warns about, pinned here so that a change to
         // chunk() that quietly altered it would show up.
         $this->connection->select('id')->from('users')->orderBy('id')
-            ->chunk(2, function (Result $batch, int $index): void {
-                if ($this->record($batch, $index) === '1,2') {
+            ->chunk(2, function (Result $batch, int $index): bool {
+                $keepGoing = $this->record($batch, $index);
+
+                if (self::idsOf($batch) === '1,2') {
                     $this->connection->statement('DELETE FROM users WHERE id IN (1, 2)');
                 }
+
+                return $keepGoing;
             });
 
         $this->assertSame('|0:1,2|1:5,6', $this->walked);
@@ -97,10 +103,14 @@ final class SelectWalkTest extends TransactionalIntegrationTestCase
         // The same removal, but each statement asks for the rows above the
         // value the last one reached, so nothing behind them moves.
         $this->connection->select('id')->from('users')
-            ->chunkById(2, function (Result $batch, int $index): void {
-                if ($this->record($batch, $index) === '1,2') {
+            ->chunkById(2, function (Result $batch, int $index): bool {
+                $keepGoing = $this->record($batch, $index);
+
+                if (self::idsOf($batch) === '1,2') {
                     $this->connection->statement('DELETE FROM users WHERE id IN (1, 2)');
                 }
+
+                return $keepGoing;
             });
 
         $this->assertSame('|0:1,2|1:3,4|2:5,6', $this->walked);
