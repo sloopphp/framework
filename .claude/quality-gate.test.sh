@@ -19,13 +19,17 @@ set -uo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 
-# Load gate_count without running the gates: take just the function definition.
+# Load the functions under test without running the gates: take just their
+# definitions.
 eval "$(sed -n '/^gate_count() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^integration_db_name() {/,/^}/p' "$script_dir/quality-gate.sh")"
 
-if ! declare -f gate_count > /dev/null; then
-    echo "gate_count could not be loaded from quality-gate.sh" >&2
-    exit 1
-fi
+for fn in gate_count integration_db_name; do
+    if ! declare -f "$fn" > /dev/null; then
+        echo "$fn could not be loaded from quality-gate.sh" >&2
+        exit 1
+    fi
+done
 
 esc=$(printf '\033')
 passed=0
@@ -102,6 +106,37 @@ check 'composer audit: reports no count' 'composer audit' '' \
 
 check 'unknown gate: reports no count' 'Some New Gate' '' \
     'whatever the tool printed'
+
+# Assert the database name derived from a worktree directory name.
+#
+# $1 case name, $2 directory name, $3 expected database name
+check_db_name() {
+    local case_name="$1" want="$3" got
+
+    got=$(integration_db_name "$2")
+
+    if [ "$got" = "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+check_db_name 'db name: the repository itself' 'framework' 'sloop_test_framework'
+
+# What the worktree tool produces: the name a session passes to it, which is
+# allowed to hold dashes and dots.
+check_db_name 'db name: dashes' 'fix-chunk-by-id' 'sloop_test_fix_chunk_by_id'
+check_db_name 'db name: dots' 'v0.1.probe' 'sloop_test_v0_1_probe'
+check_db_name 'db name: upper case' 'Feature-A' 'sloop_test_feature_a'
+
+# A name the server would refuse: 64 characters is the cap for the whole
+# identifier, and the prefix takes 11 of them.
+check_db_name 'db name: truncated to fit' \
+    'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeee' \
+    'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd'
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

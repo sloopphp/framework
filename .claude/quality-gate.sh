@@ -56,11 +56,19 @@ if command -v flock > /dev/null 2>&1 && ! flock -n 9; then
 fi
 
 # The database is named after the worktree so that parallel sessions do not
-# share tables. Anything outside [a-z0-9_] is not valid unquoted in an
-# identifier, and the server caps the whole name at 64 characters.
-worktree_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
-worktree_slug=$(printf '%s' "$worktree_name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
-db_name="sloop_test_${worktree_slug:0:40}"
+# share tables.
+#
+# $1 the worktree directory name
+integration_db_name() {
+    # Anything outside [a-z0-9_] is not valid in an identifier unless the name
+    # is quoted at every use, and the server caps a name at 64 characters.
+    local slug
+    slug=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
+
+    printf 'sloop_test_%s' "${slug:0:40}"
+}
+
+db_name=$(integration_db_name "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")
 
 # Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
 if [ -t 1 ]; then
