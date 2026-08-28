@@ -32,8 +32,8 @@
 # Integration gates run against a database named after the worktree rather than
 # the fixed sloop_test. Without that, one session drops a table while another
 # reads it and both see failures that have nothing to do with their changes.
-# The run is also serialised per worktree, since two gates in the same tree
-# fight over the same caches and the same database.
+# The run is also serialised per worktree where flock is installed, since two
+# gates in the same tree fight over the same caches and the same database.
 #
 # Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
@@ -45,30 +45,28 @@ script_path="$script_dir/$(basename "$0")"
 
 cd "$script_dir/.." || exit 1
 
-# One run per worktree. The lock is released when the script exits, since the
-# descriptor dies with it; a killed run does not leave the tree locked.
-lock_file='.phpunit.cache/quality-gate.lock'
-mkdir -p "$(dirname "$lock_file")" || exit 1
-exec 9> "$lock_file" || exit 1
-if command -v flock > /dev/null 2>&1 && ! flock -n 9; then
-    echo 'another quality gate is running in this worktree' >&2
-    exit 3
-fi
-
 # The database is named after the worktree so that parallel sessions do not
 # share tables.
 #
 # $1 the worktree directory name
 integration_db_name() {
     # Anything outside [a-z0-9_] is not valid in an identifier unless the name
-    # is quoted at every use, and the server caps a name at 64 characters.
+    # is quoted at every use. The server caps an identifier at 64 characters and
+    # the prefix takes 11 of them, leaving 53.
     local slug
     slug=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
 
-    printf 'sloop_test_%s' "${slug:0:40}"
-}
+    # Plain truncation would put two worktrees whose names share a long prefix
+    # on one database, which is the interference this whole thing is for. Past
+    # the limit the tail becomes a digest of the full name instead.
+    if [ "${#slug}" -gt 53 ]; then
+        local digest
+        digest=$(printf '%s' "$1" | sha256sum | cut -c1-8)
+        slug="${slug:0:44}_$digest"
+    fi
 
-db_name=$(integration_db_name "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")
+    printf 'sloop_test_%s' "$slug"
+}
 
 # Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
 if [ -t 1 ]; then
@@ -94,6 +92,22 @@ for arg in "$@"; do
         *) echo "unknown argument: $arg" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+# One run per worktree, taken after the arguments are read so that --help and a
+# mistyped flag still answer while another run holds the lock. The lock is
+# released when the script exits, since the descriptor dies with it; a killed
+# run does not leave the tree locked.
+lock_file='.phpunit.cache/quality-gate.lock'
+mkdir -p "$(dirname "$lock_file")" || exit 1
+exec 9> "$lock_file" || exit 1
+if ! command -v flock > /dev/null 2>&1; then
+    printf '\n  (flock not installed; a second run in this worktree is not blocked)\n'
+elif ! flock -n 9; then
+    echo 'another quality gate is running in this worktree' >&2
+    exit 3
+fi
+
+db_name=$(integration_db_name "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")
 
 names=()
 codes=()
@@ -198,13 +212,18 @@ if [ "$with_integration" -eq 1 ]; then
     # The sloop user cannot create databases, so this goes through root.
     integration_ready=1
     for service in mysql mariadb; do
+        # Captured rather than discarded: a guessed cause ("run docker compose
+        # up -d") is wrong for every failure that is not a stopped container,
+        # and it would be the only thing left on screen.
+        prep=$(mktemp) || exit 1
         if ! docker compose exec -T "$service" mysql -uroot -proot \
             -e "CREATE DATABASE IF NOT EXISTS \`$db_name\`;
-                GRANT ALL PRIVILEGES ON \`$db_name\`.* TO 'sloop'@'%';" > /dev/null 2>&1; then
-            printf '\n  (could not prepare %s on %s; run docker compose up -d)\n' \
-                "$db_name" "$service"
+                GRANT ALL PRIVILEGES ON \`$db_name\`.* TO 'sloop'@'%';" > "$prep" 2>&1; then
+            printf '\n  (could not prepare %s on %s)\n' "$db_name" "$service"
+            cat "$prep"
             integration_ready=0
         fi
+        rm -f "$prep"
     done
 
     if [ "$integration_ready" -eq 1 ]; then

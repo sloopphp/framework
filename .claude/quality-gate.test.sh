@@ -132,11 +132,38 @@ check_db_name 'db name: dashes' 'fix-chunk-by-id' 'sloop_test_fix_chunk_by_id'
 check_db_name 'db name: dots' 'v0.1.probe' 'sloop_test_v0_1_probe'
 check_db_name 'db name: upper case' 'Feature-A' 'sloop_test_feature_a'
 
-# A name the server would refuse: 64 characters is the cap for the whole
-# identifier, and the prefix takes 11 of them.
-check_db_name 'db name: truncated to fit' \
-    'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeee' \
-    'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd'
+# The whole identifier has to fit in 64 characters and the prefix takes 11, so
+# a slug longer than 53 is cut. The digest is what keeps two worktrees whose
+# names share a long prefix on separate databases; plain truncation would put
+# them on the same one.
+long_a='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffff-1'
+long_b='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffff-2'
+
+check_db_name 'db name: at the limit, kept whole' \
+    'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff' \
+    'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff'
+
+check_db_name 'db name: past the limit, digest tail' "$long_a" \
+    "sloop_test_$(printf '%s' "${long_a:0:44}" | tr -c 'a-z0-9' '_')_$(printf '%s' "$long_a" | sha256sum | cut -c1-8)"
+
+if [ "$(integration_db_name "$long_a")" != "$(integration_db_name "$long_b")" ]; then
+    printf '  ok   %s\n' 'db name: names sharing a long prefix stay apart'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: both became [%s]\n' \
+        'db name: names sharing a long prefix stay apart' "$(integration_db_name "$long_a")"
+    failed=$((failed + 1))
+fi
+
+full_name=$(integration_db_name "$long_a")
+if [ "${#full_name}" -le 64 ]; then
+    printf '  ok   %s\n' 'db name: stays within the 64 character cap'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: %d characters\n' \
+        'db name: stays within the 64 character cap' "${#full_name}"
+    failed=$((failed + 1))
+fi
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
