@@ -60,6 +60,10 @@ integration_db_name() {
     # on one database, which is the interference this whole thing is for. Past
     # the limit the tail becomes a digest of the full name instead.
     if [ "${#slug}" -gt 53 ]; then
+        if ! command -v sha256sum > /dev/null 2>&1; then
+            printf '\n  (sha256sum not installed; long worktree names may share a database)\n'
+        fi
+
         local digest
         digest=$(printf '%s' "$1" | sha256sum | cut -c1-8)
         slug="${slug:0:44}_$digest"
