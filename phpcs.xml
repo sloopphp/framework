@@ -4,11 +4,12 @@
 
     <file>src</file>
     <file>tests</file>
-    <file>.claude</file>
-
-    <!-- A git worktree under .claude is a whole second checkout, vendor included,
-         and a parallel session writes into it while this runs. -->
-    <exclude-pattern>.claude/worktrees/*</exclude-pattern>
+    <!-- Named rather than scanned as a directory: .claude also holds the git
+         worktrees a parallel session works in, and an exclude-pattern cannot
+         keep those out. PHPCS matches a pattern against the whole path, so
+         from inside a worktree the pattern matches every file being checked
+         and the run ends with "No files were checked". -->
+    <file>.claude/mutation-baseline.php</file>
 
     <arg name="colors"/>
     <arg value="sp"/>

@@ -19,13 +19,17 @@ set -uo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 
-# Load gate_count without running the gates: take just the function definition.
+# Load the functions under test without running the gates: take just their
+# definitions.
 eval "$(sed -n '/^gate_count() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^integration_db_name() {/,/^}/p' "$script_dir/quality-gate.sh")"
 
-if ! declare -f gate_count > /dev/null; then
-    echo "gate_count could not be loaded from quality-gate.sh" >&2
-    exit 1
-fi
+for fn in gate_count integration_db_name; do
+    if ! declare -f "$fn" > /dev/null; then
+        echo "$fn could not be loaded from quality-gate.sh" >&2
+        exit 1
+    fi
+done
 
 esc=$(printf '\033')
 passed=0
@@ -102,6 +106,64 @@ check 'composer audit: reports no count' 'composer audit' '' \
 
 check 'unknown gate: reports no count' 'Some New Gate' '' \
     'whatever the tool printed'
+
+# Assert the database name derived from a worktree directory name.
+#
+# $1 case name, $2 directory name, $3 expected database name
+check_db_name() {
+    local case_name="$1" want="$3" got
+
+    got=$(integration_db_name "$2")
+
+    if [ "$got" = "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+check_db_name 'db name: the repository itself' 'framework' 'sloop_test_framework'
+
+# What the worktree tool produces: the name a session passes to it, which is
+# allowed to hold dashes and dots.
+check_db_name 'db name: dashes' 'fix-chunk-by-id' 'sloop_test_fix_chunk_by_id'
+check_db_name 'db name: dots' 'v0.1.probe' 'sloop_test_v0_1_probe'
+check_db_name 'db name: upper case' 'Feature-A' 'sloop_test_feature_a'
+
+# The whole identifier has to fit in 64 characters and the prefix takes 11, so
+# a slug longer than 53 is cut. The digest is what keeps two worktrees whose
+# names share a long prefix on separate databases; plain truncation would put
+# them on the same one.
+long_a='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffff-1'
+long_b='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffff-2'
+
+check_db_name 'db name: at the limit, kept whole' \
+    'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff' \
+    'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff'
+
+check_db_name 'db name: past the limit, digest tail' "$long_a" \
+    "sloop_test_$(printf '%s' "${long_a:0:44}" | tr -c 'a-z0-9' '_')_$(printf '%s' "$long_a" | sha256sum | cut -c1-8)"
+
+if [ "$(integration_db_name "$long_a")" != "$(integration_db_name "$long_b")" ]; then
+    printf '  ok   %s\n' 'db name: names sharing a long prefix stay apart'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: both became [%s]\n' \
+        'db name: names sharing a long prefix stay apart' "$(integration_db_name "$long_a")"
+    failed=$((failed + 1))
+fi
+
+full_name=$(integration_db_name "$long_a")
+if [ "${#full_name}" -le 64 ]; then
+    printf '  ok   %s\n' 'db name: stays within the 64 character cap'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: %d characters\n' \
+        'db name: stays within the 64 character cap' "${#full_name}"
+    failed=$((failed + 1))
+fi
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
