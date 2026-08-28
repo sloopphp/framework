@@ -143,6 +143,11 @@ check_db_name 'db name: at the limit, kept whole' \
     'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff' \
     'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff'
 
+# One past the limit: the branch has to take over here and nowhere earlier.
+one_over='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefffg'
+check_db_name 'db name: one past the limit' "$one_over" \
+    "sloop_test_${one_over:0:44}_$(printf '%s' "$one_over" | sha256sum | cut -c1-8)"
+
 check_db_name 'db name: past the limit, digest tail' "$long_a" \
     "sloop_test_$(printf '%s' "${long_a:0:44}" | tr -c 'a-z0-9' '_')_$(printf '%s' "$long_a" | sha256sum | cut -c1-8)"
 
@@ -164,6 +169,36 @@ else
         'db name: stays within the 64 character cap' "${#full_name}"
     failed=$((failed + 1))
 fi
+
+# The caller reads this function through a command substitution, so anything it
+# writes on stdout lands inside the database name. A notice about a missing hash
+# command once did exactly that, and the name came back 127 characters long with
+# the notice in it.
+hash_free_dir=$(mktemp -d) || exit 1
+for tool in bash tr cut printf; do
+    ln -s "$(command -v "$tool")" "$hash_free_dir/$tool" 2>/dev/null
+done
+
+hash_free_name=$(PATH="$hash_free_dir" integration_db_name "$long_a" 2>/dev/null)
+rm -rf "$hash_free_dir"
+
+case "$hash_free_name" in
+    *[![:alnum:]_]*)
+        printf '  FAIL %s: got [%s]\n' \
+            'db name: no stray output with no hash command' "$hash_free_name"
+        failed=$((failed + 1))
+        ;;
+    *)
+        if [ "${#hash_free_name}" -le 64 ]; then
+            printf '  ok   %s\n' 'db name: no stray output with no hash command'
+            passed=$((passed + 1))
+        else
+            printf '  FAIL %s: %d characters\n' \
+                'db name: no stray output with no hash command' "${#hash_free_name}"
+            failed=$((failed + 1))
+        fi
+        ;;
+esac
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

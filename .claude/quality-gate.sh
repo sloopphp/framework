@@ -60,13 +60,24 @@ integration_db_name() {
     # on one database, which is the interference this whole thing is for. Past
     # the limit the tail becomes a digest of the full name instead.
     if [ "${#slug}" -gt 53 ]; then
-        if ! command -v sha256sum > /dev/null 2>&1; then
-            printf '\n  (sha256sum not installed; long worktree names may share a database)\n'
-        fi
+        # Whatever this writes on stdout ends up inside the name, since the
+        # caller reads the function through a command substitution. Notices go
+        # to stderr, and a missing hash command has to leave the name alone.
+        local digest=''
+        local hasher
+        for hasher in sha256sum md5sum cksum; do
+            if command -v "$hasher" > /dev/null 2>&1; then
+                digest=$(printf '%s' "$1" | "$hasher" | tr -c 'a-z0-9' '_' | cut -c1-8)
+                break
+            fi
+        done
 
-        local digest
-        digest=$(printf '%s' "$1" | sha256sum | cut -c1-8)
-        slug="${slug:0:44}_$digest"
+        if [ -z "$digest" ]; then
+            echo 'no hash command found; long worktree names may share a database' >&2
+            slug="${slug:0:53}"
+        else
+            slug="${slug:0:44}_$digest"
+        fi
     fi
 
     printf 'sloop_test_%s' "$slug"
