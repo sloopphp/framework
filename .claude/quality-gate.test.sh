@@ -143,6 +143,11 @@ check_db_name 'db name: at the limit, kept whole' \
     'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff' \
     'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff'
 
+# One past the limit: the branch has to take over here and nowhere earlier.
+one_over='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefffg'
+check_db_name 'db name: one past the limit' "$one_over" \
+    "sloop_test_${one_over:0:44}_$(printf '%s' "$one_over" | sha256sum | cut -c1-8)"
+
 check_db_name 'db name: past the limit, digest tail' "$long_a" \
     "sloop_test_$(printf '%s' "${long_a:0:44}" | tr -c 'a-z0-9' '_')_$(printf '%s' "$long_a" | sha256sum | cut -c1-8)"
 
@@ -164,6 +169,107 @@ else
         'db name: stays within the 64 character cap' "${#full_name}"
     failed=$((failed + 1))
 fi
+
+# Build a PATH holding only the named commands, so that the fallback chain can
+# be walked one hasher at a time. Every link is checked: a stub that silently
+# failed to build would send the function down a different path than the one the
+# case is about, and the assertions below would pass without touching it.
+#
+# $@ external commands to expose
+stub_path() {
+    local dir tool target
+    dir=$(mktemp -d) || exit 1
+
+    for tool in "$@"; do
+        target=$(command -v "$tool")
+        case "$target" in
+            /*) ln -s "$target" "$dir/$tool" || exit 1 ;;
+            *)  echo "stub_path: $tool is not an external command" >&2; exit 1 ;;
+        esac
+    done
+
+    printf '%s' "$dir"
+}
+
+# stub_path runs in a command substitution, so its exit only ends that subshell.
+# An empty answer is how a rejected command reaches the caller.
+#
+# $1 the directory stub_path returned
+require_stub() {
+    [ -n "$1" ] && return 0
+
+    echo 'stub_path could not build a PATH; the cases below would not test what they name' >&2
+    exit 1
+}
+
+# The database name the function has to produce when it cannot hash: the slug
+# cut to 53, with nothing else added. Comparing against the whole string rather
+# than its shape is what makes a broken stub fail instead of pass — with no
+# hasher reached at all the name comes back as the bare prefix.
+hash_free_want="sloop_test_$(printf '%s' "$long_a" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | cut -c1-53)"
+
+# The caller reads this function through a command substitution, so anything it
+# writes on stdout lands inside the database name. A notice about a missing hash
+# command once did exactly that, and the name came back 127 characters long with
+# the notice in it.
+hash_free_dir=$(stub_path bash tr cut)
+require_stub "$hash_free_dir"
+hash_free_name=$(PATH="$hash_free_dir" integration_db_name "$long_a" 2>/dev/null)
+rm -rf "$hash_free_dir"
+
+if [ "$hash_free_name" = "$hash_free_want" ]; then
+    printf '  ok   %s\n' 'db name: no stray output with no hash command'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: want [%s], got [%s]\n' \
+        'db name: no stray output with no hash command' "$hash_free_want" "$hash_free_name"
+    failed=$((failed + 1))
+fi
+
+# Each hasher in the chain, reached by hiding the ones before it. cksum is the
+# reason the digest goes through tr: it prints "<crc> <bytes>", so without that
+# step a space lands inside the identifier. The input below is chosen for a
+# 7-digit crc, which puts the space within the first 8 characters.
+cksum_input='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeff-27'
+
+for hasher in md5sum cksum; do
+    dir=$(stub_path bash tr cut "$hasher")
+    require_stub "$dir"
+
+    for name in "$long_a" "$long_b" "$cksum_input"; do
+        got=$(PATH="$dir" integration_db_name "$name" 2>/dev/null)
+
+        case "$got" in
+            sloop_test_*[!a-z0-9_]*)
+                printf '  FAIL %s: got [%s]\n' "db name: $hasher digest charset" "$got"
+                failed=$((failed + 1))
+                ;;
+            *)
+                if [ "${#got}" -eq 64 ]; then
+                    printf '  ok   %s\n' "db name: $hasher on ${#name} characters"
+                    passed=$((passed + 1))
+                else
+                    printf '  FAIL %s: %d characters [%s]\n' \
+                        "db name: $hasher on ${#name} characters" "${#got}" "$got"
+                    failed=$((failed + 1))
+                fi
+                ;;
+        esac
+    done
+
+    a=$(PATH="$dir" integration_db_name "$long_a" 2>/dev/null)
+    b=$(PATH="$dir" integration_db_name "$long_b" 2>/dev/null)
+    rm -rf "$dir"
+
+    if [ "$a" != "$b" ]; then
+        printf '  ok   %s\n' "db name: $hasher keeps a shared prefix apart"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: both became [%s]\n' \
+            "db name: $hasher keeps a shared prefix apart" "$a"
+        failed=$((failed + 1))
+    fi
+done
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
