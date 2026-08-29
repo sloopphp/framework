@@ -103,6 +103,15 @@ verbose: Found total 0 errors in 3 ms for .github/workflows/ci.yml'
 check 'actionlint: no workflow found' 'actionlint' '0' \
     'verbose: Collected 0 YAML files'
 
+# gitleaks colours its log even when the output is not a terminal, and the
+# escape sequence sits directly before the number.
+check 'gitleaks: commits scanned' 'gitleaks' '247' \
+    "${esc}[90m9:07PM${esc}[0m ${esc}[32mINF${esc}[0m ${esc}[1m247 commits scanned.${esc}[0m
+${esc}[90m9:07PM${esc}[0m ${esc}[32mINF${esc}[0m ${esc}[1mno leaks found${esc}[0m"
+
+check 'gitleaks: empty history' 'gitleaks' '0' \
+    '9:07PM INF 0 commits scanned.'
+
 # This gate prints nothing when it is clean, and the number of files it was
 # given comes from git ls-files rather than from the tool itself.
 check 'shellcheck: reports no count' 'shellcheck' '' \

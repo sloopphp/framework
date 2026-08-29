@@ -172,6 +172,10 @@ gate_count() {
             # "verbose: Collected 1 YAML files", from the -verbose run below.
             sed -n 's/.*Collected \([0-9][0-9]*\) YAML files.*/\1/p' "$plain" | tail -n 1
             ;;
+        'gitleaks')
+            # "247 commits scanned."
+            sed -n 's/.*[^0-9]\([0-9][0-9]*\) commits scanned.*/\1/p' "$plain" | tail -n 1
+            ;;
         'typos')
             # typos prints nothing when it finds no typo, so the count comes from
             # its own listing. This is what it would check, not what it captured,
@@ -261,6 +265,16 @@ if command -v shellcheck > /dev/null 2>&1; then
     run_gate 'shellcheck' run_shellcheck
 else
     printf '\n  (shellcheck not installed, skipped. apk add shellcheck)\n'
+fi
+
+# GitHub's own secret scanning covers the pushed repository, but only for the
+# patterns of providers it partners with; this adds the generic ones and reads
+# the whole history. git mode, not dir: the working tree holds vendor/ and tool
+# caches, whose contents match the generic patterns by chance.
+if command -v gitleaks > /dev/null 2>&1; then
+    run_gate 'gitleaks' gitleaks git --no-banner --redact .
+else
+    printf '\n  (gitleaks not installed, skipped. https://github.com/gitleaks/gitleaks/releases)\n'
 fi
 
 if [ "$with_integration" -eq 1 ]; then

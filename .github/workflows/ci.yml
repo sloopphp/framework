@@ -149,6 +149,38 @@ jobs:
           set -o pipefail
           git ls-files '*.sh' | xargs "${RUNNER_TEMP}/shellcheck"
 
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: '8.30.1'
+      GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+
+    steps:
+      # The scan reads commits, not the working tree, so it needs the history
+      # rather than the single commit checkout gives by default.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          base='https://github.com/gitleaks/gitleaks/releases/download'
+          url="${base}/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "${RUNNER_TEMP}/gitleaks.tar.gz" "$url"
+          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/gitleaks.tar.gz" | sha256sum -c -
+          tar xzf "${RUNNER_TEMP}/gitleaks.tar.gz" -C "${RUNNER_TEMP}" gitleaks
+
+      # GitHub's own secret scanning covers this repository, but only for the
+      # patterns of providers it partners with. This adds the generic ones -
+      # private keys, connection strings - and reads the whole history, so a
+      # secret that was committed and later removed is still found.
+      #
+      # git mode, not dir: the working tree on a runner includes vendor/ and
+      # tool caches, whose contents match the generic patterns by chance.
+      - name: Scan commits for secrets
+        run: '"${RUNNER_TEMP}/gitleaks" git --no-banner --redact .'
+
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
