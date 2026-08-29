@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Config;
 
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\CastMode;
 use Sloop\Database\Config\PoolConfig;
 use Sloop\Database\Config\ValidatedConfig;
 
@@ -46,6 +47,7 @@ final class PoolConfigTest extends TestCase
             queryTimeoutMs: 5000,
             persistent: true,
             prefix: 'shop_',
+            casts: CastMode::Datetime,
         );
 
         $this->assertSame('mydb', $pool->name);
@@ -61,6 +63,7 @@ final class PoolConfigTest extends TestCase
         $this->assertSame(5000, $pool->queryTimeoutMs);
         $this->assertTrue($pool->persistent);
         $this->assertSame('shop_', $pool->prefix);
+        $this->assertSame(CastMode::Datetime, $pool->casts);
     }
 
     public function testStoresEmptyReplicas(): void
@@ -79,6 +82,7 @@ final class PoolConfigTest extends TestCase
             queryTimeoutMs: null,
             persistent: false,
             prefix: '',
+            casts: CastMode::Off,
         );
 
         $this->assertSame([], $pool->replicas);
@@ -91,6 +95,7 @@ final class PoolConfigTest extends TestCase
         $this->assertNull($pool->queryTimeoutMs);
         $this->assertFalse($pool->persistent);
         $this->assertSame('', $pool->prefix);
+        $this->assertSame(CastMode::Off, $pool->casts);
     }
 
     public function testStoresSingleReplica(): void
@@ -112,6 +117,7 @@ final class PoolConfigTest extends TestCase
             queryTimeoutMs: null,
             persistent: false,
             prefix: '',
+            casts: CastMode::Off,
         );
 
         $this->assertCount(1, $pool->replicas);

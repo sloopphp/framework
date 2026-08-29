@@ -6,6 +6,7 @@ namespace Sloop\Database\Config;
 
 use PDO;
 use Pdo\Mysql as PdoMysql;
+use Sloop\Database\CastMode;
 use Sloop\Database\Exception\InvalidConfigException;
 
 /**
@@ -68,6 +69,7 @@ final class ConnectionConfigResolver
         'query_timeout_ms',
         'persistent',
         'prefix',
+        'casts',
     ];
 
     /**
@@ -212,6 +214,11 @@ final class ConnectionConfigResolver
     private const string DEFAULT_PREFIX = '';
 
     /**
+     * Default cast mode when omitted: values stay as the driver returned them.
+     */
+    private const CastMode DEFAULT_CASTS = CastMode::Off;
+
+    /**
      * Validate a single-connection config and return a typed ValidatedConfig.
      *
      * Public entry point for single-connection validation and the per-entry
@@ -276,6 +283,7 @@ final class ConnectionConfigResolver
         $queryTimeoutMs  = self::extractOptionalPositiveInt($name, $config, 'query_timeout_ms');
         $persistent      = self::extractOptionalBool($name, $config, 'persistent') ?? self::DEFAULT_PERSISTENT;
         $prefix          = self::extractOptionalPrefix($name, $config) ?? self::DEFAULT_PREFIX;
+        $casts           = self::extractOptionalCastMode($name, $config) ?? self::DEFAULT_CASTS;
 
         return new PoolConfig(
             name:                  $name,
@@ -291,6 +299,7 @@ final class ConnectionConfigResolver
             queryTimeoutMs:        $queryTimeoutMs,
             persistent:            $persistent,
             prefix:                $prefix,
+            casts:                 $casts,
         );
     }
 
@@ -593,6 +602,35 @@ final class ConnectionConfigResolver
         if (preg_match('/\A[a-zA-Z0-9_]*\z/', $value) !== 1) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "prefix" must contain only alphanumeric and underscore characters, got "' . $value . '".',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract the optional `casts`, returning null when absent.
+     *
+     * The value is the enum case itself rather than its name. Config files are
+     * PHP here, so a caller can write the case, and taking only the case means
+     * a misspelling is a fatal where it is written instead of a message from
+     * this method.
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @return CastMode|null           The configured mode, or null when the key is absent
+     * @throws InvalidConfigException  When the value is not a CastMode case
+     */
+    private static function extractOptionalCastMode(string $name, array $config): ?CastMode
+    {
+        if (!\array_key_exists('casts', $config)) {
+            return null;
+        }
+
+        $value = $config['casts'];
+        if (!$value instanceof CastMode) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "casts" must be a ' . CastMode::class . ' case.',
             );
         }
 

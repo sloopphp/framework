@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Database\Config;
 
+use Sloop\Database\CastMode;
+
 /**
  * Validated pool configuration: primary + replica list + pool-level behavior settings.
  *
@@ -39,6 +41,9 @@ final readonly class PoolConfig
      * @param string                $prefix                Prepended to every table name a query builder quotes; empty for none.
      *                                                     Pool-level rather than per server, because the primary and its
      *                                                     replicas hold the same tables
+     * @param CastMode              $casts                 How far fetched values are converted away from the driver's types.
+     *                                                     Pool-level because the return types of a read must not depend on
+     *                                                     which server answered it
      */
     public function __construct(
         public string $name,
@@ -54,6 +59,7 @@ final readonly class PoolConfig
         public ?int $queryTimeoutMs,
         public bool $persistent,
         public string $prefix,
+        public CastMode $casts,
     ) {
     }
 }
