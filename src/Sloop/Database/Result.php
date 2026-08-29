@@ -8,6 +8,8 @@ use ArrayIterator;
 use Countable;
 use InvalidArgumentException;
 use IteratorAggregate;
+use ReflectionClass;
+use RuntimeException;
 use Sloop\Support\Collection;
 use Traversable;
 
@@ -174,6 +176,116 @@ final readonly class Result implements IteratorAggregate, Countable
         }
 
         return $groups;
+    }
+
+    /**
+     * Hydrate each row into an instance of the given class.
+     *
+     * Columns are matched to constructor parameters by name and passed as named
+     * arguments, so the order of the SELECT list does not matter. A column with
+     * no matching parameter is ignored, which lets one class read a subset of a
+     * wider result set.
+     *
+     * Values are handed over as the driver returned them; converting a DATETIME
+     * string into a date object, or a flag into an enum, is the constructor's
+     * job. A value the constructor cannot accept surfaces as the TypeError it
+     * raises, naming the parameter.
+     *
+     * @template T of object
+     * @param  class-string<T>          $class Class to hydrate each row into
+     * @return list<T>                  One instance per row, in the result's order
+     * @throws InvalidArgumentException When the class cannot be hydrated into at all
+     * @throws RuntimeException         When a row has no column for a required parameter
+     */
+    public function asObject(string $class): array
+    {
+        $parameters = self::constructorParameters($class);
+
+        $objects = [];
+
+        foreach ($this->rows as $index => $row) {
+            $arguments = [];
+
+            foreach ($parameters as $name => $isOptional) {
+                if (\array_key_exists($name, $row)) {
+                    $arguments[$name] = $row[$name];
+
+                    continue;
+                }
+
+                if (!$isOptional) {
+                    throw new RuntimeException(
+                        'Row ' . $index . ' has no column "' . $name . '" for ' . $class
+                            . '::__construct(). Columns present: '
+                            . implode(', ', array_keys($row)) . '.',
+                    );
+                }
+            }
+
+            $objects[] = new $class(...$arguments);
+        }
+
+        return $objects;
+    }
+
+    /**
+     * Read the constructor parameters a class is hydrated through.
+     *
+     * The result is cached per class name for the life of the process, since a
+     * class signature cannot change once loaded. The cache is a static local
+     * rather than a property because a readonly class cannot declare static
+     * properties.
+     *
+     * @param  class-string             $class Class to reflect
+     * @return array<string, bool>      Parameter name to whether it may be omitted
+     * @throws InvalidArgumentException When the class cannot be hydrated into at all
+     */
+    private static function constructorParameters(string $class): array
+    {
+        /** @var array<class-string, array<string, bool>> $cache */
+        static $cache = [];
+
+        if (isset($cache[$class])) {
+            return $cache[$class];
+        }
+
+        if (!class_exists($class)) {
+            throw new InvalidArgumentException('Class "' . $class . '" does not exist.');
+        }
+
+        $reflection = new ReflectionClass($class);
+
+        if (!$reflection->isInstantiable()) {
+            throw new InvalidArgumentException(
+                'Class "' . $class . '" cannot be instantiated, so rows cannot be hydrated into it.',
+            );
+        }
+
+        $constructor = $reflection->getConstructor();
+
+        if ($constructor === null) {
+            throw new InvalidArgumentException(
+                'Class "' . $class . '" has no constructor, so there is nowhere to pass the columns.',
+            );
+        }
+
+        $parameters = [];
+
+        foreach ($constructor->getParameters() as $parameter) {
+            // A variadic parameter collects whatever is left over, and named
+            // arguments cannot reach it. Rejecting it here keeps the failure at
+            // the class rather than at a row that happens to lack a column.
+            if ($parameter->isVariadic()) {
+                throw new InvalidArgumentException(
+                    'Constructor of "' . $class . '" takes a variadic parameter ($'
+                        . $parameter->getName() . '), which columns cannot be matched to.',
+                );
+            }
+
+            $parameters[$parameter->getName()] = $parameter->isOptional();
+        }
+
+        return $cache[$class] = $parameters;
     }
 
     /**

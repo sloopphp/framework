@@ -216,6 +216,11 @@
             "ignore": [
                 "Sloop\\Support\\Str::snake",
                 "Sloop\\Support\\Str::studly",
+                // Result::constructorParameters returns the cached reflection
+                // for a class it has already read. Removing the early return
+                // re-reads the same class signature and stores the same map, so
+                // only the reflection cost differs. Same shape as Str above.
+                "Sloop\\Database\\Result::constructorParameters",
                 // ConnectionManager::applyQueryTimeout returns early when the
                 // pool declares no timeout. It is only ever called with a
                 // freshly built Connection, whose timeout is already null and

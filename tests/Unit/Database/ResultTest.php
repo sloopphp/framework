@@ -6,8 +6,16 @@ namespace Sloop\Tests\Unit\Database;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Sloop\Database\Result;
 use Sloop\Support\Collection;
+use Sloop\Tests\Unit\Database\Stub\HydratedAbstract;
+use Sloop\Tests\Unit\Database\Stub\HydratedNullable;
+use Sloop\Tests\Unit\Database\Stub\HydratedSparse;
+use Sloop\Tests\Unit\Database\Stub\HydratedUser;
+use Sloop\Tests\Unit\Database\Stub\HydratedVariadic;
+use Sloop\Tests\Unit\Database\Stub\HydratedWithoutConstructor;
+use TypeError;
 
 final class ResultTest extends TestCase
 {
@@ -250,5 +258,174 @@ final class ResultTest extends TestCase
         // Exercising a Collection-only operation proves the bridge produces a
         // usable Collection rather than something that merely holds the rows.
         $this->assertSame(42, $collection->sum('score'));
+    }
+
+    public function testAsObjectHydratesOneInstancePerRowInOrder(): void
+    {
+        $result = new Result([
+            ['id' => 1, 'name' => 'alice', 'email' => 'alice@example.com'],
+            ['id' => 2, 'name' => 'bob', 'email' => 'bob@example.com'],
+        ]);
+
+        $users = $result->asObject(HydratedUser::class);
+
+        $this->assertCount(2, $users);
+        $this->assertSame([1, 2], array_map(static fn (HydratedUser $u): int => $u->id, $users));
+        $this->assertSame('alice@example.com', $users[0]->email);
+    }
+
+    public function testAsObjectIgnoresTheOrderColumnsAppearInTheRow(): void
+    {
+        $result = new Result([['email' => 'z@example.com', 'name' => 'zoe', 'id' => 9]]);
+
+        $user = $result->asObject(HydratedUser::class)[0];
+
+        $this->assertSame(9, $user->id);
+        $this->assertSame('zoe', $user->name);
+        $this->assertSame('z@example.com', $user->email);
+    }
+
+    public function testAsObjectDoesNotAcceptAColumnWhoseNameDiffersFromTheParameter(): void
+    {
+        $result = new Result([['id' => 1, 'nickname' => 'alice']]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Row 0 has no column "name" for ' . HydratedUser::class
+                . '::__construct(). Columns present: id, nickname.',
+        );
+
+        $result->asObject(HydratedUser::class);
+    }
+
+    public function testAsObjectIgnoresColumnsThatNoParameterTakes(): void
+    {
+        $result = new Result([['id' => 1, 'name' => 'alice', 'unused' => 'x']]);
+
+        $this->assertSame(1, $result->asObject(HydratedUser::class)[0]->id);
+    }
+
+    public function testAsObjectLeavesAnAbsentOptionalColumnToItsDefault(): void
+    {
+        $result = new Result([['id' => 1, 'name' => 'alice']]);
+
+        $this->assertNull($result->asObject(HydratedUser::class)[0]->email);
+    }
+
+    public function testAsObjectSkipsAnAbsentOptionalColumnWithoutShiftingTheOnesAfterIt(): void
+    {
+        $result = new Result([['id' => 1, 'rank' => 5]]);
+
+        $sparse = $result->asObject(HydratedSparse::class)[0];
+
+        $this->assertSame('none', $sparse->label);
+        $this->assertSame(5, $sparse->rank);
+    }
+
+    public function testAsObjectPassesANullColumnThroughRatherThanFallingBackToTheDefault(): void
+    {
+        $result = new Result([['id' => 1, 'note' => null]]);
+
+        $this->assertNull($result->asObject(HydratedNullable::class)[0]->note);
+    }
+
+    public function testAsObjectUsesTheDefaultOnlyWhenTheColumnIsAbsent(): void
+    {
+        $result = new Result([['id' => 1]]);
+
+        $this->assertSame('unset', $result->asObject(HydratedNullable::class)[0]->note);
+    }
+
+    public function testAsObjectRejectsARowMissingAColumnARequiredParameterNeeds(): void
+    {
+        $result = new Result([['id' => 1, 'name' => 'alice'], ['id' => 2]]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Row 1 has no column "name" for ' . HydratedUser::class
+                . '::__construct(). Columns present: id.',
+        );
+
+        $result->asObject(HydratedUser::class);
+    }
+
+    public function testAsObjectReturnsAnEmptyListForAnEmptyResult(): void
+    {
+        $this->assertSame([], new Result([])->asObject(HydratedUser::class));
+    }
+
+    public function testAsObjectRejectsAnUnusableClassEvenWithNoRowsToHydrate(): void
+    {
+        $result = new Result([]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Constructor of "' . HydratedVariadic::class
+                . '" takes a variadic parameter ($columns), which columns cannot be matched to.',
+        );
+
+        $result->asObject(HydratedVariadic::class);
+    }
+
+    public function testAsObjectRejectsAClassThatDoesNotExist(): void
+    {
+        $result = new Result([['id' => 1]]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Class "Sloop\\Tests\\Unit\\Database\\Stub\\NoSuchDto" does not exist.',
+        );
+
+        /** @phpstan-ignore argument.type */
+        $result->asObject('Sloop\\Tests\\Unit\\Database\\Stub\\NoSuchDto');
+    }
+
+    public function testAsObjectRejectsAClassThatCannotBeInstantiated(): void
+    {
+        $result = new Result([['id' => 1]]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Class "' . HydratedAbstract::class
+                . '" cannot be instantiated, so rows cannot be hydrated into it.',
+        );
+
+        $result->asObject(HydratedAbstract::class);
+    }
+
+    public function testAsObjectRejectsAClassWithoutAConstructor(): void
+    {
+        $result = new Result([['id' => 1]]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Class "' . HydratedWithoutConstructor::class
+                . '" has no constructor, so there is nowhere to pass the columns.',
+        );
+
+        $result->asObject(HydratedWithoutConstructor::class);
+    }
+
+    public function testAsObjectRejectsAVariadicConstructor(): void
+    {
+        $result = new Result([['id' => 1]]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Constructor of "' . HydratedVariadic::class
+                . '" takes a variadic parameter ($columns), which columns cannot be matched to.',
+        );
+
+        $result->asObject(HydratedVariadic::class);
+    }
+
+    public function testAsObjectLetsTheConstructorsTypeErrorThroughNamingTheParameter(): void
+    {
+        $result = new Result([['id' => 'not-an-int', 'name' => 'alice']]);
+
+        $this->expectException(TypeError::class);
+        $this->expectExceptionMessageMatches('/\$id/');
+
+        $result->asObject(HydratedUser::class);
     }
 }
