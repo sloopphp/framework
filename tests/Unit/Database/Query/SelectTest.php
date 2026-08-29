@@ -109,7 +109,11 @@ final class SelectTest extends TestCase
         $ids = [];
 
         foreach ($batch as $row) {
-            $ids[] = (string) $row['id'];
+            $id = $row['id'];
+            if (!\is_int($id)) {
+                self::fail('The id column should read back as an int, got ' . get_debug_type($id) . '.');
+            }
+            $ids[] = (string) $id;
         }
 
         return implode(',', $ids);

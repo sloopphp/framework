@@ -6,6 +6,7 @@ namespace Sloop\Database;
 
 use ArrayIterator;
 use Countable;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use IteratorAggregate;
 use ReflectionClass;
@@ -28,7 +29,7 @@ use Traversable;
  * Rows are held in memory rather than streamed, so the result can be iterated
  * more than once.
  *
- * @implements IteratorAggregate<int, array<array-key, int|float|string|null>>
+ * @implements IteratorAggregate<int, array<array-key, int|float|string|bool|DateTimeImmutable|null>>
  */
 final readonly class Result implements IteratorAggregate, Countable
 {
@@ -39,7 +40,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * column name stays array-key because PHP casts numeric string keys such as
      * the one `SELECT 1` produces to int.
      *
-     * @param list<array<array-key, int|float|string|null>> $rows Fetched rows
+     * @param list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> $rows Fetched rows
      */
     public function __construct(private array $rows)
     {
@@ -48,7 +49,7 @@ final readonly class Result implements IteratorAggregate, Countable
     /**
      * Iterate the rows in their original order.
      *
-     * @return Traversable<int, array<array-key, int|float|string|null>>
+     * @return Traversable<int, array<array-key, int|float|string|bool|DateTimeImmutable|null>>
      */
     public function getIterator(): Traversable
     {
@@ -78,7 +79,7 @@ final readonly class Result implements IteratorAggregate, Countable
     /**
      * Return the rows as a plain list.
      *
-     * @return list<array<array-key, int|float|string|null>>
+     * @return list<array<array-key, int|float|string|bool|DateTimeImmutable|null>>
      */
     public function asArray(): array
     {
@@ -92,7 +93,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * typed to hold the two are the same, so this is purely for parity with
      * Collection::first().
      *
-     * @return array<array-key, int|float|string|null>|null
+     * @return array<array-key, int|float|string|bool|DateTimeImmutable|null>|null
      */
     public function first(): ?array
     {
@@ -108,10 +109,10 @@ final readonly class Result implements IteratorAggregate, Countable
      * this suits lookups by primary or unique key. Pass $removeKey to drop the
      * key column from each row, which is redundant once it is the outer key.
      *
-     * @param  string                                                    $keyColumn Column whose value becomes the outer key
-     * @param  bool                                                      $removeKey Whether to drop the key column from each row
-     * @return array<array-key, array<array-key, int|float|string|null>> Rows keyed by the column value
-     * @throws InvalidArgumentException                                  When the column is absent or its value cannot be an array key
+     * @param  string                                                                           $keyColumn Column whose value becomes the outer key
+     * @param  bool                                                                             $removeKey Whether to drop the key column from each row
+     * @return array<array-key, array<array-key, int|float|string|bool|DateTimeImmutable|null>> Rows keyed by the column value
+     * @throws InvalidArgumentException                                                         When the column is absent or its value cannot be an array key
      */
     public function asArrayBy(string $keyColumn, bool $removeKey = false): array
     {
@@ -135,10 +136,10 @@ final readonly class Result implements IteratorAggregate, Countable
      *
      * Later rows overwrite earlier ones on duplicate keys, matching asArrayBy().
      *
-     * @param  string                                  $keyColumn   Column whose value becomes the key
-     * @param  string                                  $valueColumn Column whose value becomes the value
-     * @return array<array-key, int|float|string|null> Key column value to value column value
-     * @throws InvalidArgumentException                When either column is absent or the key cannot be an array key
+     * @param  string                                                         $keyColumn   Column whose value becomes the key
+     * @param  string                                                         $valueColumn Column whose value becomes the value
+     * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Key column value to value column value
+     * @throws InvalidArgumentException                                       When either column is absent or the key cannot be an array key
      */
     public function asMap(string $keyColumn, string $valueColumn): array
     {
@@ -163,9 +164,9 @@ final readonly class Result implements IteratorAggregate, Countable
      * Only single-column grouping is offered here. Composite keys and any
      * reshaping of the groups belong to Collection via toCollection().
      *
-     * @param  string                                                          $column Column to group by
-     * @return array<array-key, list<array<array-key, int|float|string|null>>> Groups in first-seen order
-     * @throws InvalidArgumentException                                        When the column is absent or its value cannot be an array key
+     * @param  string                                                                                 $column Column to group by
+     * @return array<array-key, list<array<array-key, int|float|string|bool|DateTimeImmutable|null>>> Groups in first-seen order
+     * @throws InvalidArgumentException                                                               When the column is absent or its value cannot be an array key
      */
     public function groupBy(string $column): array
     {
@@ -291,7 +292,7 @@ final readonly class Result implements IteratorAggregate, Countable
     /**
      * Hand the rows to the general-purpose Collection for further reshaping.
      *
-     * @return Collection<array<array-key, int|float|string|null>> Collection wrapping the rows
+     * @return Collection<array<array-key, int|float|string|bool|DateTimeImmutable|null>> Collection wrapping the rows
      */
     public function toCollection(): Collection
     {
@@ -305,10 +306,10 @@ final readonly class Result implements IteratorAggregate, Countable
      * neither int nor string would be coerced by PHP — null to '', a float to a
      * truncated int — silently merging rows that are not actually the same.
      *
-     * @param  array<array-key, int|float|string|null> $row    Row to read from
-     * @param  string                                  $column Column holding the key
-     * @return int|string                              Value usable as an array key
-     * @throws InvalidArgumentException                When the column is absent or its value cannot be an array key
+     * @param  array<array-key, int|float|string|bool|DateTimeImmutable|null> $row    Row to read from
+     * @param  string                                                         $column Column holding the key
+     * @return int|string                                                     Value usable as an array key
+     * @throws InvalidArgumentException                                       When the column is absent or its value cannot be an array key
      */
     private function keyFor(array $row, string $column): int|string
     {

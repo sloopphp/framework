@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Sloop\Database;
 
 use Closure;
+use DateMalformedStringException;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use PDO;
@@ -85,6 +87,16 @@ final class Connection
      * @var Grammar
      */
     private Grammar $grammar;
+
+    /**
+     * How far fetched values are converted for statements run on this connection.
+     *
+     * Defaults to Off; ConnectionManager replaces it with the pool's setting,
+     * and a single statement can be run under another mode without changing it.
+     *
+     * @var CastMode
+     */
+    private CastMode $castMode = CastMode::Off;
 
     /**
      * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
@@ -174,6 +186,21 @@ final class Connection
     }
 
     /**
+     * Set how far fetched values are converted on this connection.
+     *
+     * ConnectionManager calls this with the pool's `casts` setting. Reading the
+     * column types costs one call per column per statement, which is why Off
+     * skips it entirely rather than converting nothing.
+     *
+     * @param  CastMode $mode Preset to apply to statements that do not name one
+     * @return void
+     */
+    public function setCastMode(CastMode $mode): void
+    {
+        $this->castMode = $mode;
+    }
+
+    /**
      * Set the per-session query timeout in milliseconds (null disables it).
      *
      * Stored on the Connection but not issued to the server until the first
@@ -244,12 +271,15 @@ final class Connection
      * @param  string                   $sql       SQL statement returning a result set
      * @param  array<int|string, mixed> $bindings  Parameters to bind
      * @param  int|null                 $timeoutMs Milliseconds this statement may run for, or null to leave it to the session
+     * @param  CastMode|null            $casts     Conversion preset for this statement alone, or null to use the connection's
      * @return Result                   Fetched rows
      * @throws InvalidArgumentException When the timeout is not positive, or the statement cannot carry one
      * @throws DatabaseException        When the statement fails
      * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
+     * @throws RuntimeException         When a conversion is asked for and the driver reports no column metadata,
+     *                                  or a value cannot be converted
      */
-    public function query(string $sql, array $bindings = [], ?int $timeoutMs = null): Result
+    public function query(string $sql, array $bindings = [], ?int $timeoutMs = null, ?CastMode $casts = null): Result
     {
         $this->applyQueryTimeoutIfPending();
 
@@ -260,13 +290,14 @@ final class Connection
         $startTime = $this->shouldMeasureElapsed() ? microtime(true) : null;
 
         try {
-            $stmt = $this->prepareAndExecute($sql, $bindings);
-            $rows = [];
+            $stmt  = $this->prepareAndExecute($sql, $bindings);
+            $casts = $this->columnCasts($stmt, $casts ?? $this->castMode);
+            $rows  = [];
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 if (!\is_array($row)) {
                     throw new UnexpectedValueException('PDO returned non-array row from FETCH_ASSOC');
                 }
-                $rows[] = self::narrowRow($row);
+                $rows[] = $this->castRow(self::narrowRow($row), $casts);
             }
         } catch (DatabaseException $e) {
             $this->logQueryFailure($sql, $bindings, $e);
@@ -316,6 +347,179 @@ final class Connection
         }
 
         return $narrowed;
+    }
+
+    /**
+     * Work out which of a statement's columns are converted, and into what.
+     *
+     * Columns are read left to right and keyed by name, which is the direction
+     * FETCH_ASSOC resolves two columns sharing a label in: the rightmost wins
+     * in both, so the conversion follows the value it is applied to.
+     *
+     * @param  PDOStatement                 $stmt Executed statement to read the column types of
+     * @param  CastMode                     $mode Preset deciding which columns qualify
+     * @return array<array-key, ColumnCast> Conversion by column name; empty when nothing is converted
+     * @throws RuntimeException             When the driver reports no metadata for a column
+     */
+    private function columnCasts(PDOStatement $stmt, CastMode $mode): array
+    {
+        if ($mode === CastMode::Off) {
+            return [];
+        }
+
+        $casts = [];
+        $count = $stmt->columnCount();
+
+        for ($index = 0; $index < $count; $index++) {
+            $meta = $stmt->getColumnMeta($index);
+            if ($meta === false) {
+                throw new RuntimeException(
+                    'Connection [' . $this->connectionName . ']: the driver reports no metadata for column '
+                        . $index . ', so casts cannot be applied. Set the pool\'s "casts" to CastMode::Off '
+                        . 'to read this statement.',
+                );
+            }
+
+            $cast = self::castForColumn($meta, $mode);
+            if ($cast !== null) {
+                $casts[$meta['name']] = $cast;
+            }
+        }
+
+        return $casts;
+    }
+
+    /**
+     * Decide what one column's values become under a preset.
+     *
+     * A column type the preset says nothing about returns null and keeps the
+     * type the driver gave it. A driver that reports no native type for a
+     * column is treated the same way: there is nothing to decide on.
+     *
+     * @param  array{native_type?: string, len: int} $meta One column's metadata from PDOStatement::getColumnMeta()
+     * @param  CastMode                              $mode Preset deciding which column types qualify
+     * @return ColumnCast|null                       Conversion for this column, or null to leave it alone
+     */
+    private static function castForColumn(array $meta, CastMode $mode): ?ColumnCast
+    {
+        $nativeType = $meta['native_type'] ?? null;
+        if ($nativeType === null) {
+            return null;
+        }
+
+        if ($nativeType === 'DATE' || $nativeType === 'DATETIME' || $nativeType === 'TIMESTAMP') {
+            return ColumnCast::Datetime;
+        }
+
+        // TINYINT(1) is how a flag is stored; wider TINYINTs are small numbers.
+        if ($mode !== CastMode::Datetime && $nativeType === 'TINY' && $meta['len'] === 1) {
+            return ColumnCast::Boolean;
+        }
+
+        return null;
+    }
+
+    /**
+     * Apply the conversions to one narrowed row.
+     *
+     * @param  array<array-key, int|float|string|null>                        $row   Row as the driver returned it
+     * @param  array<array-key, ColumnCast>                                   $casts Conversion by column name
+     * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> The row with the converted columns replaced
+     * @throws RuntimeException                                               When a value cannot be converted
+     */
+    private function castRow(array $row, array $casts): array
+    {
+        if ($casts === []) {
+            return $row;
+        }
+
+        $cast = [];
+
+        foreach ($row as $column => $value) {
+            $cast[$column] = isset($casts[$column])
+                ? $this->castValue($column, $value, $casts[$column])
+                : $value;
+        }
+
+        return $cast;
+    }
+
+    /**
+     * Convert one value, leaving null as null.
+     *
+     * A null column has nothing to convert and stays null under every preset,
+     * so a nullable date reads as `DateTimeImmutable|null` rather than needing
+     * a sentinel.
+     *
+     * @param  int|string                  $column Column name, for the message when this fails
+     * @param  int|float|string|null       $value  Value as the driver returned it
+     * @param  ColumnCast                  $cast   Conversion to apply
+     * @return bool|DateTimeImmutable|null The converted value
+     * @throws RuntimeException            When the value cannot be converted
+     */
+    private function castValue(int|string $column, int|float|string|null $value, ColumnCast $cast): bool|DateTimeImmutable|null
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return match ($cast) {
+            ColumnCast::Datetime => $this->toDateTime($column, (string) $value),
+            ColumnCast::Boolean  => (bool) $value,
+        };
+    }
+
+    /**
+     * Read one date column's value, failing on anything PHP would guess at.
+     *
+     * DateTimeImmutable is lenient in ways that turn bad data into a plausible
+     * date rather than an error: an empty string becomes the current time, and
+     * a zero date becomes -0001-11-30. Both are read back as a real timestamp
+     * with nothing to notice them by, so they are rejected here instead. The
+     * out-of-range dates the parser rolls forward (2026-02-31 becoming March 3)
+     * raise a warning, which is what the error counts are checked for.
+     *
+     * @param  int|string        $column Column name, for the message when this fails
+     * @param  string            $value  Value as the driver returned it
+     * @return DateTimeImmutable The parsed value
+     * @throws RuntimeException  When the value is not a date PHP reads unambiguously
+     */
+    private function toDateTime(int|string $column, string $value): DateTimeImmutable
+    {
+        if ($value === '') {
+            throw $this->unreadableDate($column, $value);
+        }
+
+        try {
+            $parsed = new DateTimeImmutable($value);
+        } catch (DateMalformedStringException $e) {
+            throw $this->unreadableDate($column, $value, $e);
+        }
+
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+            throw $this->unreadableDate($column, $value);
+        }
+
+        return $parsed;
+    }
+
+    /**
+     * Build the failure for a date column whose value cannot be read.
+     *
+     * @param  int|string       $column   Column the value came from
+     * @param  string           $value    Value as the driver returned it
+     * @param  Throwable|null   $previous Parser failure, when there was one
+     * @return RuntimeException The failure to throw
+     */
+    private function unreadableDate(int|string $column, string $value, ?Throwable $previous = null): RuntimeException
+    {
+        return new RuntimeException(
+            'Connection [' . $this->connectionName . ']: column "' . $column . '" holds "' . $value
+                . '", which is not a date PHP can read.',
+            0,
+            $previous,
+        );
     }
 
     /**

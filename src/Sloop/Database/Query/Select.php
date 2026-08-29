@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Database\Query;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use Sloop\Database\ConnectionRoute;
@@ -351,13 +352,13 @@ class Select extends BuilderWhere
      * already set is narrowed to that one row; the offset is kept, so
      * offset(1)->first() reads the second row.
      *
-     * @return array<array-key, int|float|string|null>|null The row, or null when nothing matched
-     * @throws LogicException                               When no table has been named, or a group of conditions was left open
-     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException                  When the connection cannot be obtained
-     * @throws DatabaseException                            When the statement fails
-     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     * @return array<array-key, int|float|string|bool|DateTimeImmutable|null>|null The row, or null when nothing matched
+     * @throws LogicException                                                      When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                                              When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                                         When the connection cannot be obtained
+     * @throws DatabaseException                                                   When the statement fails
+     * @throws UnexpectedValueException                                            When the driver returns a value outside the types it contracts to
      */
     public function first(): ?array
     {
@@ -372,16 +373,16 @@ class Select extends BuilderWhere
      * limit is narrowed to one row and the offset is kept, so
      * offset(1)->value('name') reads the second row's name.
      *
-     * @param  string                      $column Column to read
-     * @return int|float|string|null       Its value, or null when nothing matched
-     * @throws LogicException              When no table has been named, or a group of conditions was left open
-     * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException When the connection cannot be obtained
-     * @throws DatabaseException           When the statement fails
-     * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
+     * @param  string                                       $column Column to read
+     * @return int|float|string|bool|DateTimeImmutable|null Its value, or null when nothing matched
+     * @throws LogicException                               When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
      */
-    public function value(string $column): int|float|string|null
+    public function value(string $column): int|float|string|bool|DateTimeImmutable|null
     {
         $row = $this->runReading([$column], 1, $this->offset)->first();
 
@@ -397,13 +398,13 @@ class Select extends BuilderWhere
      *
      * The same rows execute() would return, without going through Result.
      *
-     * @return list<array<array-key, int|float|string|null>> Rows in the order they were read
-     * @throws LogicException                                When no table has been named, or a group of conditions was left open
-     * @throws InvalidArgumentException                      When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                        When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException                   When the connection cannot be obtained
-     * @throws DatabaseException                             When the statement fails
-     * @throws UnexpectedValueException                      When the driver returns a value outside the types it contracts to
+     * @return list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> Rows in the order they were read
+     * @throws LogicException                                                       When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                                             When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                                               When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                                          When the connection cannot be obtained
+     * @throws DatabaseException                                                    When the statement fails
+     * @throws UnexpectedValueException                                             When the driver returns a value outside the types it contracts to
      */
     public function get(): array
     {
@@ -502,15 +503,15 @@ class Select extends BuilderWhere
      * Result::asMap() does. The select list is replaced by the columns named
      * here, so a builder that names other columns does not send them.
      *
-     * @param  string                                  $valueColumn Column whose values are returned
-     * @param  string|null                             $keyColumn   Column whose values key them, or null for a list
-     * @return array<array-key, int|float|string|null> Values, keyed when a key column was given
-     * @throws LogicException                          When no table has been named, or a group of conditions was left open
-     * @throws InvalidArgumentException                When an identifier is malformed, the row window is inconsistent, or a key cannot be an array key
-     * @throws InvalidConfigException                  When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException             When the connection cannot be obtained
-     * @throws DatabaseException                       When the statement fails
-     * @throws UnexpectedValueException                When the driver returns a value outside the types it contracts to
+     * @param  string                                                         $valueColumn Column whose values are returned
+     * @param  string|null                                                    $keyColumn   Column whose values key them, or null for a list
+     * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Values, keyed when a key column was given
+     * @throws LogicException                                                 When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                                       When an identifier is malformed, the row window is inconsistent, or a key cannot be an array key
+     * @throws InvalidConfigException                                         When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                                    When the connection cannot be obtained
+     * @throws DatabaseException                                              When the statement fails
+     * @throws UnexpectedValueException                                       When the driver returns a value outside the types it contracts to
      */
     public function pluck(string $valueColumn, ?string $keyColumn = null): array
     {
@@ -733,10 +734,10 @@ class Select extends BuilderWhere
      * nothing to compare against and every later batch empty, so neither is
      * passed over quietly.
      *
-     * @param  array<array-key, int|float|string|null> $row    Last row of the batch just walked
-     * @param  string                                  $column Column being walked by
-     * @return int|float|string                        Highest value the batch reached
-     * @throws UnexpectedValueException                When the column is absent from the row, or holds null
+     * @param  array<array-key, int|float|string|bool|DateTimeImmutable|null> $row    Last row of the batch just walked
+     * @param  string                                                         $column Column being walked by
+     * @return int|float|string                                               Highest value the batch reached
+     * @throws UnexpectedValueException                                       When the column is absent from the row, or holds null
      */
     private function valueWalked(array $row, string $column): int|float|string
     {
@@ -759,6 +760,18 @@ class Select extends BuilderWhere
                 'chunkById() walks by "' . $column . '", and a row came back with no value in it. Nothing'
                     . ' compares above null, so the walk would stop there and leave the rest unseen. Walk by'
                     . ' a column that holds a value per row.',
+            );
+        }
+
+        // The cursor is bound into the next statement, so it has to be a value
+        // PDO can bind. A cast mode turns some columns into objects and bools,
+        // which the walk cannot carry from one batch to the next.
+        if (!\is_int($value) && !\is_float($value) && !\is_string($value)) {
+            throw new UnexpectedValueException(
+                'chunkById() walks by "' . $column . '", and the cast mode in effect turns it into '
+                    . get_debug_type($value) . '. The walk binds this value into the statement that reads the'
+                    . ' next batch, so it has to be a number or a string. Walk by a column the casts leave'
+                    . ' alone, or read this statement under CastMode::Off.',
             );
         }
 
