@@ -96,7 +96,7 @@ jobs:
 
       # Exclusions are read automatically from _typos.toml at the repository root.
       - name: Check typos
-        run: "${RUNNER_TEMP}/typos"
+        run: '"${RUNNER_TEMP}/typos"'
 
   static-analysis:
     name: Static Analysis
