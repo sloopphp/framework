@@ -98,6 +98,57 @@ jobs:
       - name: Check typos
         run: '"${RUNNER_TEMP}/typos"'
 
+  workflow-lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: '1.7.12'
+      ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+      SHELLCHECK_VERSION: '0.11.0'
+      SHELLCHECK_SHA256: '8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Release binaries rather than the published Actions, for the same reason
+      # as typos above: these tools only read files in the checkout and need no
+      # workflow token, so there is no reason to run them with Action context.
+      # actionlint publishes checksums; the value below was compared against
+      # that file at adoption time. shellcheck publishes none, so its value was
+      # measured. When bumping either version, measure and replace the SHA256.
+      - name: Install actionlint and shellcheck
+        run: |
+          base='https://github.com/rhysd/actionlint/releases/download'
+          url="${base}/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "${RUNNER_TEMP}/actionlint.tar.gz" "$url"
+          echo "${ACTIONLINT_SHA256}  ${RUNNER_TEMP}/actionlint.tar.gz" | sha256sum -c -
+          tar xzf "${RUNNER_TEMP}/actionlint.tar.gz" -C "${RUNNER_TEMP}" actionlint
+
+          base='https://github.com/koalaman/shellcheck/releases/download'
+          url="${base}/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl -sSfL -o "${RUNNER_TEMP}/shellcheck.tar.xz" "$url"
+          echo "${SHELLCHECK_SHA256}  ${RUNNER_TEMP}/shellcheck.tar.xz" | sha256sum -c -
+          tar xJf "${RUNNER_TEMP}/shellcheck.tar.xz" -C "${RUNNER_TEMP}" \
+            --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+
+      # actionlint reads the run: blocks through shellcheck when it is on PATH,
+      # so the two are installed together and the workflow's shell is checked as
+      # part of this step.
+      - name: Lint workflows (actionlint)
+        run: PATH="${RUNNER_TEMP}:$PATH" "${RUNNER_TEMP}/actionlint"
+
+      # The quality gate decides whether every other check in this file passes,
+      # so a mistake in its shell is a mistake in all of them.
+      - name: Lint shell scripts (shellcheck)
+        # pipefail is not on by default in a run: block, so a failure of
+        # git ls-files would otherwise be hidden by the exit code of xargs.
+        # xargs is left without -r on purpose: if the listing ever comes back
+        # empty, shellcheck is called with no argument and exits non-zero,
+        # rather than passing over nothing.
+        run: |
+          set -o pipefail
+          git ls-files '*.sh' | xargs "${RUNNER_TEMP}/shellcheck"
+
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest

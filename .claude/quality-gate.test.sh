@@ -93,6 +93,21 @@ check 'infection: mutations generated' 'Infection' '2044' \
     '2044 mutations were generated:
     2031 mutants were killed by Test Framework'
 
+check 'actionlint: files collected' 'actionlint' '1' \
+    'verbose: Collected 1 YAML files
+verbose: Linting .github/workflows/ci.yml
+verbose: Found total 0 errors in 3 ms for .github/workflows/ci.yml'
+
+# The case the watchdog exists for: actionlint exits 0 when it finds no workflow
+# to lint, so the count is what tells an empty run apart from a clean one.
+check 'actionlint: no workflow found' 'actionlint' '0' \
+    'verbose: Collected 0 YAML files'
+
+# This gate prints nothing when it is clean, and the number of files it was
+# given comes from git ls-files rather than from the tool itself.
+check 'shellcheck: reports no count' 'shellcheck' '' \
+    ''
+
 # Gates that report no count have to stay empty rather than fall back to zero:
 # zero would fail the run, and a gate that cannot be counted has not failed.
 check 'phpstan: reports no count' 'PHPStan' '' \
