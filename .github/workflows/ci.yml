@@ -135,10 +135,21 @@ jobs:
       # so the two are installed together and the workflow's shell is checked as
       # part of this step.
       - name: Lint workflows (actionlint)
-        run: PATH="${RUNNER_TEMP}:$PATH" "${RUNNER_TEMP}/actionlint"
+        # actionlint turns the shellcheck rule off without failing when it
+        # cannot run it, and says so only under -verbose. Without this check a
+        # broken PATH would leave every run: block unchecked and still green.
+        run: |
+          set -o pipefail
+          PATH="${RUNNER_TEMP}:$PATH" "${RUNNER_TEMP}/actionlint" -verbose 2>&1 \
+            | tee "${RUNNER_TEMP}/actionlint.log"
+          if grep -q 'Rule "shellcheck" was disabled' "${RUNNER_TEMP}/actionlint.log"; then
+            echo 'actionlint did not use shellcheck' >&2
+            exit 1
+          fi
 
-      # The quality gate decides whether every other check in this file passes,
-      # so a mistake in its shell is a mistake in all of them.
+      # The quality gate script decides whether every other gate passes when it
+      # is run locally, so a mistake in its shell is a mistake in all of them.
+      # CI does not go through it; it calls each tool directly.
       - name: Lint shell scripts (shellcheck)
         # pipefail is not on by default in a run: block, so a failure of
         # git ls-files would otherwise be hidden by the exit code of xargs.

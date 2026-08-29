@@ -98,8 +98,10 @@ check 'actionlint: files collected' 'actionlint' '1' \
 verbose: Linting .github/workflows/ci.yml
 verbose: Found total 0 errors in 3 ms for .github/workflows/ci.yml'
 
-# The case the watchdog exists for: actionlint exits 0 when it finds no workflow
-# to lint, so the count is what tells an empty run apart from a clean one.
+# actionlint exits 3 when it finds no workflow, so an empty run already fails on
+# the exit code. This pins the other half of the contract: a reported 0 has to
+# come back as 0 rather than as "not counted", which the run would read as a
+# gate that does not report a count at all.
 check 'actionlint: no workflow found' 'actionlint' '0' \
     'verbose: Collected 0 YAML files'
 

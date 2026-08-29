@@ -235,8 +235,36 @@ fi
 # actionlint reads the run: blocks through shellcheck when it is on PATH, so the
 # workflow's shell is checked here as well as the workflow syntax. -verbose is
 # what makes it report how many files it collected.
+#
+# It also turns that rule off without failing when it cannot run shellcheck, and
+# neither the exit code nor the file count changes when it does. A run that
+# checked the shell and one that did not look the same, which is the state this
+# script exists to catch, so the notice it writes under -verbose is read here.
+# run_gate takes the command as its arguments, so this function is called by
+# name and the call site is not visible to the linter (SC2329).
+# shellcheck disable=SC2329
+run_actionlint() {
+    local out
+    out=$(mktemp) || return 1
+    actionlint -verbose > "$out" 2>&1
+    local code=$?
+
+    cat "$out"
+
+    # Absence is already reported by the shellcheck gate below. What is left is
+    # the case where shellcheck is installed and the rule was disabled anyway.
+    if command -v shellcheck > /dev/null 2>&1 &&
+        grep -q 'Rule "shellcheck" was disabled' "$out"; then
+        echo 'shellcheck is installed but actionlint did not use it' >&2
+        code=1
+    fi
+
+    rm -f "$out"
+    return "$code"
+}
+
 if command -v actionlint > /dev/null 2>&1; then
-    run_gate 'actionlint' actionlint -verbose
+    run_gate 'actionlint' run_actionlint
 else
     printf '\n  (actionlint not installed, skipped. https://github.com/rhysd/actionlint/releases)\n'
 fi
@@ -264,7 +292,7 @@ run_shellcheck() {
 if command -v shellcheck > /dev/null 2>&1; then
     run_gate 'shellcheck' run_shellcheck
 else
-    printf '\n  (shellcheck not installed, skipped. apk add shellcheck)\n'
+    printf '\n  (shellcheck not installed, skipped. actionlint cannot read run: blocks without it)\n'
 fi
 
 # GitHub's own secret scanning covers the pushed repository, but only for the
