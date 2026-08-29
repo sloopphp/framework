@@ -299,11 +299,14 @@ for hasher in md5sum cksum; do
 done
 
 # actionlint turns its shellcheck rule off without failing when it cannot run
-# shellcheck, so run_actionlint reads the notice instead of the exit code. That
+# that tool, so run_actionlint reads the notice instead of the exit code. That
 # makes the gate depend on a third piece of tool wording, alongside the two in
 # gate_count, and it is the one that decides whether run: blocks are checked at
 # all. Both tools are replaced by stubs on PATH so the case is about the
 # reading, not about what the real actionlint happens to print today.
+#
+# Note that a comment line may not begin with the linter's own name: it reads
+# that as one of its directives and fails to parse it (SC1072 / SC1073).
 #
 # $1 case name, $2 expected return code, $3 what the stub actionlint prints
 check_actionlint() {
@@ -329,11 +332,17 @@ check_actionlint() {
     fi
 }
 
+# The samples are captured output, so the $PATH in them is literal text and has
+# to stay unexpanded (SC2016).
+# shellcheck disable=SC2016
 check_actionlint 'actionlint: the shellcheck rule was turned off' 1 \
     'verbose: Collected 1 YAML files
 verbose: Rule "shellcheck" was disabled: exec: "shellcheck": executable file not found in $PATH
 verbose: Found total 0 errors in 0 ms for .github/workflows/ci.yml'
 
+# The samples are captured output, so the $PATH in them is literal text and has
+# to stay unexpanded (SC2016).
+# shellcheck disable=SC2016
 check_actionlint 'actionlint: the shellcheck rule ran' 0 \
     'verbose: Collected 1 YAML files
 verbose: Rule "pyflakes" was disabled: exec: "pyflakes": executable file not found in $PATH
