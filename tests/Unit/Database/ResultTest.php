@@ -274,7 +274,7 @@ final class ResultTest extends TestCase
         $this->assertSame('alice@example.com', $users[0]->email);
     }
 
-    public function testAsObjectReadsEachColumnIntoTheParameterOfTheSameName(): void
+    public function testAsObjectIgnoresTheOrderColumnsAppearInTheRow(): void
     {
         $result = new Result([['email' => 'z@example.com', 'name' => 'zoe', 'id' => 9]]);
 
@@ -283,6 +283,19 @@ final class ResultTest extends TestCase
         $this->assertSame(9, $user->id);
         $this->assertSame('zoe', $user->name);
         $this->assertSame('z@example.com', $user->email);
+    }
+
+    public function testAsObjectDoesNotAcceptAColumnWhoseNameDiffersFromTheParameter(): void
+    {
+        $result = new Result([['id' => 1, 'nickname' => 'alice']]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Row 0 has no column "name" for ' . HydratedUser::class
+                . '::__construct(). Columns present: id, nickname.',
+        );
+
+        $result->asObject(HydratedUser::class);
     }
 
     public function testAsObjectIgnoresColumnsThatNoParameterTakes(): void
@@ -393,7 +406,7 @@ final class ResultTest extends TestCase
         $result->asObject(HydratedWithoutConstructor::class);
     }
 
-    public function testAsObjectRejectsAVariadicConstructorBeforeReadingAnyRow(): void
+    public function testAsObjectRejectsAVariadicConstructor(): void
     {
         $result = new Result([['id' => 1]]);
 
