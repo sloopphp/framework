@@ -23,8 +23,9 @@ script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 # definitions.
 eval "$(sed -n '/^gate_count() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^integration_db_name() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^run_actionlint() {/,/^}/p' "$script_dir/quality-gate.sh")"
 
-for fn in gate_count integration_db_name; do
+for fn in gate_count integration_db_name run_actionlint; do
     if ! declare -f "$fn" > /dev/null; then
         echo "$fn could not be loaded from quality-gate.sh" >&2
         exit 1
@@ -296,6 +297,47 @@ for hasher in md5sum cksum; do
         failed=$((failed + 1))
     fi
 done
+
+# actionlint turns its shellcheck rule off without failing when it cannot run
+# shellcheck, so run_actionlint reads the notice instead of the exit code. That
+# makes the gate depend on a third piece of tool wording, alongside the two in
+# gate_count, and it is the one that decides whether run: blocks are checked at
+# all. Both tools are replaced by stubs on PATH so the case is about the
+# reading, not about what the real actionlint happens to print today.
+#
+# $1 case name, $2 expected return code, $3 what the stub actionlint prints
+check_actionlint() {
+    local case_name="$1" want="$2" output="$3"
+
+    local dir
+    dir=$(mktemp -d) || exit 1
+    printf '%s\n' "$output" > "$dir/captured"
+    printf '#!/bin/sh\ncat "%s"\n' "$dir/captured" > "$dir/actionlint"
+    printf '#!/bin/sh\nexit 0\n' > "$dir/shellcheck"
+    chmod +x "$dir/actionlint" "$dir/shellcheck"
+
+    local got=0
+    PATH="$dir:$PATH" run_actionlint > /dev/null 2>&1 || got=$?
+    rm -rf "$dir"
+
+    if [ "$got" -eq "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+check_actionlint 'actionlint: the shellcheck rule was turned off' 1 \
+    'verbose: Collected 1 YAML files
+verbose: Rule "shellcheck" was disabled: exec: "shellcheck": executable file not found in $PATH
+verbose: Found total 0 errors in 0 ms for .github/workflows/ci.yml'
+
+check_actionlint 'actionlint: the shellcheck rule ran' 0 \
+    'verbose: Collected 1 YAML files
+verbose: Rule "pyflakes" was disabled: exec: "pyflakes": executable file not found in $PATH
+verbose: Found total 0 errors in 0 ms for .github/workflows/ci.yml'
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

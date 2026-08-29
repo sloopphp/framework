@@ -292,7 +292,7 @@ run_shellcheck() {
 if command -v shellcheck > /dev/null 2>&1; then
     run_gate 'shellcheck' run_shellcheck
 else
-    printf '\n  (shellcheck not installed, skipped. actionlint cannot read run: blocks without it)\n'
+    printf '\n  (shellcheck not installed, skipped. apk add shellcheck. actionlint cannot read run: blocks without it)\n'
 fi
 
 # GitHub's own secret scanning covers the pushed repository, but only for the
