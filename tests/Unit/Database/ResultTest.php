@@ -10,6 +10,7 @@ use RuntimeException;
 use Sloop\Database\Result;
 use Sloop\Support\Collection;
 use Sloop\Tests\Unit\Database\Stub\HydratedAbstract;
+use Sloop\Tests\Unit\Database\Stub\HydratedNullable;
 use Sloop\Tests\Unit\Database\Stub\HydratedSparse;
 use Sloop\Tests\Unit\Database\Stub\HydratedUser;
 use Sloop\Tests\Unit\Database\Stub\HydratedVariadic;
@@ -273,7 +274,7 @@ final class ResultTest extends TestCase
         $this->assertSame('alice@example.com', $users[0]->email);
     }
 
-    public function testAsObjectMatchesColumnsByNameRatherThanPosition(): void
+    public function testAsObjectReadsEachColumnIntoTheParameterOfTheSameName(): void
     {
         $result = new Result([['email' => 'z@example.com', 'name' => 'zoe', 'id' => 9]]);
 
@@ -308,6 +309,20 @@ final class ResultTest extends TestCase
         $this->assertSame(5, $sparse->rank);
     }
 
+    public function testAsObjectPassesANullColumnThroughRatherThanFallingBackToTheDefault(): void
+    {
+        $result = new Result([['id' => 1, 'note' => null]]);
+
+        $this->assertNull($result->asObject(HydratedNullable::class)[0]->note);
+    }
+
+    public function testAsObjectUsesTheDefaultOnlyWhenTheColumnIsAbsent(): void
+    {
+        $result = new Result([['id' => 1]]);
+
+        $this->assertSame('unset', $result->asObject(HydratedNullable::class)[0]->note);
+    }
+
     public function testAsObjectRejectsARowMissingAColumnARequiredParameterNeeds(): void
     {
         $result = new Result([['id' => 1, 'name' => 'alice'], ['id' => 2]]);
@@ -324,6 +339,19 @@ final class ResultTest extends TestCase
     public function testAsObjectReturnsAnEmptyListForAnEmptyResult(): void
     {
         $this->assertSame([], new Result([])->asObject(HydratedUser::class));
+    }
+
+    public function testAsObjectRejectsAnUnusableClassEvenWithNoRowsToHydrate(): void
+    {
+        $result = new Result([]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Constructor of "' . HydratedVariadic::class
+                . '" takes a variadic parameter ($columns), which columns cannot be matched to.',
+        );
+
+        $result->asObject(HydratedVariadic::class);
     }
 
     public function testAsObjectRejectsAClassThatDoesNotExist(): void

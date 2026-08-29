@@ -9,12 +9,10 @@ use RuntimeException;
 use Sloop\Tests\Integration\Database\Stub\SelectedUser;
 use Sloop\Tests\Support\TransactionalIntegrationTestCase;
 
-/**
- * What the unit tests cannot answer: the values a real driver returns are the
- * ones the constructor has to accept. A DTO declaring int for an INT column
- * only works if the driver hands back an int, and that is a property of the
- * connection rather than of Result.
- */
+// What the unit tests cannot answer: the values a real driver returns are the
+// ones the constructor has to accept. A DTO declaring int for an INT column
+// only works if the driver hands back an int, and that is a property of the
+// connection rather than of Result.
 final class SelectHydrationTest extends TransactionalIntegrationTestCase
 {
     protected function setUp(): void
