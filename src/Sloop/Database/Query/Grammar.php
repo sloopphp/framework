@@ -111,6 +111,31 @@ class Grammar
     }
 
     /**
+     * Compile a DELETE statement and the bindings its placeholders need.
+     *
+     * ORDER BY and LIMIT are written for the same reason MySQL takes them
+     * here: they say which rows go when only some of the matches are to be
+     * removed. Without a limit an order changes nothing about the result and
+     * is written anyway, since it is what the caller asked for.
+     *
+     * @param  DeleteSpec               $spec Parts of the statement
+     * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    public function compileDelete(DeleteSpec $spec): CompiledSql
+    {
+        $from    = $this->compileFrom($spec->from);
+        $where   = $this->compileWhere($spec->conditions);
+        $orderBy = $this->compileOrderBy($spec->orders);
+        $limit   = $this->compileLimit($spec->limit, null);
+
+        return new CompiledSql(
+            'DELETE' . $from->sql . $where->sql . $orderBy->sql . $limit->sql,
+            array_merge($from->bindings, $where->bindings, $orderBy->bindings, $limit->bindings),
+        );
+    }
+
+    /**
      * Quote a table name, applying the table prefix.
      *
      * The prefix names a table, so in a schema qualified name it goes on the

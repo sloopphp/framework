@@ -12,6 +12,7 @@ use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
+use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
@@ -169,6 +170,27 @@ final class ConnectionManager
             new ReadConnectionRoute($this),
             $this->grammarFor($this->resolvePool($this->defaultName)),
             ...$columns,
+        );
+    }
+
+    /**
+     * Start a DELETE on the default pool's primary.
+     *
+     * The connection is resolved when the statement runs rather than here, as
+     * it is for select(). A write goes to the primary either way, so what the
+     * late resolution buys is that a builder made before begin() takes part in
+     * the transaction that opened after it.
+     *
+     * @param  string                 $table Table to delete from, optionally schema qualified
+     * @return Delete                 Builder for the statement
+     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     */
+    public function delete(string $table): Delete
+    {
+        return new Delete(
+            new WriteConnectionRoute($this),
+            $this->grammarFor($this->resolvePool($this->defaultName)),
+            $table,
         );
     }
 

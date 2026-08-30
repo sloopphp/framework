@@ -19,6 +19,7 @@ use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Exception\DeadlockException;
 use Sloop\Database\Exception\ExceptionFactory;
 use Sloop\Database\Exception\LockWaitTimeoutException;
+use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
@@ -148,6 +149,21 @@ final class Connection
     public function select(string|Expression ...$columns): Select
     {
         return new Select(new FixedConnectionRoute($this), $this->grammar, ...$columns);
+    }
+
+    /**
+     * Start a DELETE statement over this connection.
+     *
+     * As with select(), the builder is handed this connection's grammar, so
+     * the table prefix comes from the pool the connection belongs to, and the
+     * statement runs on this connection with nothing left to route.
+     *
+     * @param  string $table Table to delete from, optionally schema qualified
+     * @return Delete Builder for the statement
+     */
+    public function delete(string $table): Delete
+    {
+        return new Delete(new FixedConnectionRoute($this), $this->grammar, $table);
     }
 
     /**

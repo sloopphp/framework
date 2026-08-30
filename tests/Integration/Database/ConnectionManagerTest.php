@@ -254,6 +254,32 @@ final class ConnectionManagerTest extends IntegrationTestCase
         }
     }
 
+    public function testDeleteWritesThroughThePrimaryEvenWhenAReplicaIsConfigured(): void
+    {
+        // The pool declares a replica, so a statement that took the read route
+        // would land on the replica session. Both sessions here name the same
+        // server, so what shows the write went to the primary is that the row
+        // is gone and the statement did not fail against a route that has no
+        // business writing.
+        $config           = self::defaultConfig();
+        $config['read']   = [['host' => $config['host']]];
+        $config['prefix'] = self::READ_ROUTE_PREFIX;
+
+        $manager = $this->manager($config);
+        $this->createReadRouteTable($manager->connection(writable: true));
+
+        try {
+            $removed = $manager->delete('widgets')->where('id', 1)->execute();
+
+            $this->assertSame(1, $removed);
+
+            $rows = $manager->select('label')->from('widgets')->orderBy('id')->execute();
+            $this->assertSame([['label' => 'second']], $rows->asArray());
+        } finally {
+            $manager->connection(writable: true)->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        }
+    }
+
     public function testSelectAppliesThePoolsPrefixAgainstTheServer(): void
     {
         // from('widgets') has to reach the prefixed table, which only shows up
