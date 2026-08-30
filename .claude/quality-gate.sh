@@ -130,8 +130,10 @@ counts=()
 
 # Gates whose output carries no count, with the reason shown at the end of the run.
 excluded_note='PHPStan, Rector and composer audit report no count (verified with -v,
-       --error-format=json and --format=json). Mutation baseline runs its own
-       check: it rejects an Infection report whose totalMutantsCount is 0.'
+       --error-format=json and --format=json). shellcheck reports none either;
+       the number of files comes from git ls-files, which is an input-side
+       number and would only show that work existed. Mutation baseline runs its
+       own check: it rejects an Infection report whose totalMutantsCount is 0.'
 
 # Print how many items a gate inspected, or nothing when the tool reports no count.
 #
@@ -165,6 +167,14 @@ gate_count() {
         'composer deps')
             # "(scanned 156 files in 0.053 s)"
             sed -n 's/.*scanned \([0-9][0-9]*\) files.*/\1/p' "$plain" | tail -n 1
+            ;;
+        'actionlint')
+            # "verbose: Collected 1 YAML files", from the -verbose run below.
+            sed -n 's/.*Collected \([0-9][0-9]*\) YAML files.*/\1/p' "$plain" | tail -n 1
+            ;;
+        'gitleaks')
+            # "247 commits scanned."
+            sed -n 's/.*[^0-9]\([0-9][0-9]*\) commits scanned.*/\1/p' "$plain" | tail -n 1
             ;;
         'typos')
             # typos prints nothing when it finds no typo, so the count comes from
@@ -220,6 +230,79 @@ if command -v typos > /dev/null 2>&1; then
     run_gate 'typos' typos
 else
     printf '\n  (typos not installed, skipped. apk add typos / cargo install typos-cli)\n'
+fi
+
+# actionlint reads the run: blocks through shellcheck when it is on PATH, so the
+# workflow's shell is checked here as well as the workflow syntax. -verbose is
+# what makes it report how many files it collected.
+#
+# It also turns that rule off without failing when it cannot run shellcheck, and
+# neither the exit code nor the file count changes when it does. A run that
+# checked the shell and one that did not look the same, which is the state this
+# script exists to catch, so the notice it writes under -verbose is read here.
+# run_gate takes the command as its arguments, so this function is called by
+# name and the call site is not visible to the linter (SC2329).
+# shellcheck disable=SC2329
+run_actionlint() {
+    local out
+    out=$(mktemp) || return 1
+    actionlint -verbose > "$out" 2>&1
+    local code=$?
+
+    cat "$out"
+
+    # Absence is already reported by the shellcheck gate below. What is left is
+    # the case where shellcheck is installed and the rule was disabled anyway.
+    if command -v shellcheck > /dev/null 2>&1 &&
+        grep -q 'Rule "shellcheck" was disabled' "$out"; then
+        echo 'shellcheck is installed but actionlint did not use it' >&2
+        code=1
+    fi
+
+    rm -f "$out"
+    return "$code"
+}
+
+if command -v actionlint > /dev/null 2>&1; then
+    run_gate 'actionlint' run_actionlint
+else
+    printf '\n  (actionlint not installed, skipped. https://github.com/rhysd/actionlint/releases)\n'
+fi
+
+# The scripts in this directory decide whether every other gate passes, so a
+# mistake in their shell is a mistake in all of them.
+# run_gate takes the command as its arguments, so this function is called by
+# name and the call site is not visible to the linter (SC2329).
+# shellcheck disable=SC2329
+run_shellcheck() {
+    local files=()
+    while IFS= read -r file; do
+        files+=("$file")
+    done < <(git ls-files '*.sh')
+
+    # No files means the selection broke, not that there is nothing to check.
+    if [ "${#files[@]}" -eq 0 ]; then
+        echo 'git ls-files matched no shell script' >&2
+        return 1
+    fi
+
+    shellcheck "${files[@]}"
+}
+
+if command -v shellcheck > /dev/null 2>&1; then
+    run_gate 'shellcheck' run_shellcheck
+else
+    printf '\n  (shellcheck not installed, skipped. apk add shellcheck. actionlint cannot read run: blocks without it)\n'
+fi
+
+# GitHub's own secret scanning covers the pushed repository, but only for the
+# patterns of providers it partners with; this adds the generic ones and reads
+# the whole history. git mode, not dir: the working tree holds vendor/ and tool
+# caches, whose contents match the generic patterns by chance.
+if command -v gitleaks > /dev/null 2>&1; then
+    run_gate 'gitleaks' gitleaks git --no-banner --redact .
+else
+    printf '\n  (gitleaks not installed, skipped. https://github.com/gitleaks/gitleaks/releases)\n'
 fi
 
 if [ "$with_integration" -eq 1 ]; then
