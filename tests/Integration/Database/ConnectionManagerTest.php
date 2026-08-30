@@ -254,6 +254,33 @@ final class ConnectionManagerTest extends IntegrationTestCase
         }
     }
 
+    public function testDeleteReachesThePrefixedTableAgainstTheServer(): void
+    {
+        // delete('widgets') has to reach the prefixed table, which only shows
+        // up against a real server: an unprefixed name would be a missing
+        // table rather than a wrong string. Which route the statement took is
+        // not what this asserts: the pool declares no replica, so both routes
+        // resolve to the same connection here. That the write route asks for
+        // the primary is pinned in the unit suite instead, by
+        // testDeleteHandsTheBuilderTheWriteRoute.
+        $config           = self::defaultConfig();
+        $config['prefix'] = self::READ_ROUTE_PREFIX;
+
+        $manager = $this->manager($config);
+        $this->createReadRouteTable($manager->connection(writable: true));
+
+        try {
+            $removed = $manager->delete('widgets')->where('id', 1)->execute();
+
+            $this->assertSame(1, $removed);
+
+            $rows = $manager->select('label')->from('widgets')->orderBy('id')->execute();
+            $this->assertSame([['label' => 'second']], $rows->asArray());
+        } finally {
+            $manager->connection(writable: true)->statement('DROP TABLE IF EXISTS ' . self::READ_ROUTE_TABLE);
+        }
+    }
+
     public function testSelectAppliesThePoolsPrefixAgainstTheServer(): void
     {
         // from('widgets') has to reach the prefixed table, which only shows up

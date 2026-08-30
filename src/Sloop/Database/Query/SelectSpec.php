@@ -64,12 +64,10 @@ final readonly class SelectSpec
         public ?RowLock $lock = null,
     ) {
         $this->columns    = self::toColumns($columns);
-        $this->conditions = self::toConditions($conditions);
-        $this->orders     = self::toOrders($orders);
+        $this->conditions = ClauseParts::toConditions($conditions);
+        $this->orders     = ClauseParts::toOrders($orders);
 
-        if ($limit !== null && $limit < 0) {
-            throw new InvalidArgumentException('Limit must not be negative, got ' . $limit . '.');
-        }
+        ClauseParts::requireLimitNotNegative($limit);
 
         if ($offset !== null && $offset < 0) {
             throw new InvalidArgumentException('Offset must not be negative, got ' . $offset . '.');
@@ -102,53 +100,5 @@ final readonly class SelectSpec
         }
 
         return $selectable;
-    }
-
-    /**
-     * Reindex the conditions as a list and reject anything that is not a WherePart.
-     *
-     * @param  array<int|string, mixed> $conditions WherePart instances
-     * @return list<WherePart>          Parts of the WHERE clause as a list
-     * @throws InvalidArgumentException When an element is not a WherePart
-     */
-    private static function toConditions(array $conditions): array
-    {
-        $comparisons = [];
-
-        foreach (array_values($conditions) as $index => $condition) {
-            if (!$condition instanceof WherePart) {
-                throw new InvalidArgumentException(
-                    'Conditions must be a WherePart, got ' . get_debug_type($condition) . ' at index ' . $index . '.',
-                );
-            }
-
-            $comparisons[] = $condition;
-        }
-
-        return $comparisons;
-    }
-
-    /**
-     * Reindex the orders as a list and reject anything that is not an Order.
-     *
-     * @param  array<int|string, mixed> $orders Order instances
-     * @return list<Order>              Orders as a list
-     * @throws InvalidArgumentException When an element is not an Order
-     */
-    private static function toOrders(array $orders): array
-    {
-        $sorts = [];
-
-        foreach (array_values($orders) as $index => $order) {
-            if (!$order instanceof Order) {
-                throw new InvalidArgumentException(
-                    'Orders must be an Order, got ' . get_debug_type($order) . ' at index ' . $index . '.',
-                );
-            }
-
-            $sorts[] = $order;
-        }
-
-        return $sorts;
     }
 }

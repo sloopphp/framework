@@ -11,6 +11,7 @@ use Sloop\Database\Query\BetweenCondition;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Condition;
 use Sloop\Database\Query\Conjunction;
+use Sloop\Database\Query\DeleteSpec;
 use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
@@ -70,6 +71,41 @@ final class GrammarTest extends TestCase
 
         $this->assertSame('SELECT `id`, GREATEST(?, ?) FROM `users`', $compiled->sql);
         $this->assertSame([1, 2], $compiled->bindings);
+    }
+
+    public function testDeleteWithoutConditionsAddressesTheWholeTable(): void
+    {
+        $compiled = new Grammar()->compileDelete(new DeleteSpec(from: 'users'));
+
+        $this->assertSame('DELETE FROM `users`', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testDeleteWritesTheClausesInTheOrderMysqlTakesThem(): void
+    {
+        $compiled = new Grammar()->compileDelete(new DeleteSpec(
+            from:       'users',
+            conditions: [new Condition('status', '=', 'blocked')],
+            orders:     [new Order('id', Direction::Descending)],
+            limit:      2,
+        ));
+
+        $this->assertSame('DELETE FROM `users` WHERE `status` = ? ORDER BY `id` DESC LIMIT 2', $compiled->sql);
+        $this->assertSame(['blocked'], $compiled->bindings);
+    }
+
+    public function testDeleteWritesNoOffsetAlongsideTheLimit(): void
+    {
+        $compiled = new Grammar()->compileDelete(new DeleteSpec(from: 'users', limit: 1));
+
+        $this->assertSame('DELETE FROM `users` LIMIT 1', $compiled->sql);
+    }
+
+    public function testDeletePrefixesTheTable(): void
+    {
+        $compiled = new Grammar('app_')->compileDelete(new DeleteSpec(from: 'users'));
+
+        $this->assertSame('DELETE FROM `app_users`', $compiled->sql);
     }
 
     public function testPrefixIsAppliedToTheTable(): void
