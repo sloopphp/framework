@@ -233,7 +233,7 @@
                 // so only the work differs. Pinned to the line because the
                 // method's other return is killable. Same shape as the two
                 // Str cache hits above.
-                "Sloop\\Database\\ConnectionManager::resolvePool::506",
+                "Sloop\\Database\\ConnectionManager::resolvePool::525",
                 // Route::compilePattern returns early for patterns without a
                 // placeholder. Falling through compiles a regex that match()
                 // never consults, because it short-circuits on an empty

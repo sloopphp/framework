@@ -7,6 +7,7 @@ namespace Sloop\Database\Query;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
+use Sloop\Database\CastMode;
 use Sloop\Database\ConnectionRoute;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
@@ -66,6 +67,13 @@ class Select extends BuilderWhere
      * @var int|null
      */
     private ?int $timeoutMs = null;
+
+    /**
+     * Preset converting the values this statement reads, or null to use the connection's.
+     *
+     * @var CastMode|null
+     */
+    private ?CastMode $castMode = null;
 
     /**
      * Start a SELECT over the given columns.
@@ -228,6 +236,30 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Convert the values this statement reads under the given preset.
+     *
+     * What a pool is configured with applies to every statement on it; this
+     * changes one. Passing Off is how a statement opts out of a pool that
+     * converts, which a walk by a converted column has to do.
+     *
+     * The preset belongs to the builder rather than to one way of running it,
+     * so the shortcuts carry it too: first() and value() read under it just as
+     * execute() does.
+     *
+     * Nothing about it appears in toSql() or toRawSql(). The values are
+     * converted after the rows come back, so there is nothing to write in.
+     *
+     * @param  CastMode $mode Preset to read this statement under
+     * @return static   This builder
+     */
+    public function castMode(CastMode $mode): static
+    {
+        $this->castMode = $mode;
+
+        return $this;
+    }
+
+    /**
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
@@ -320,7 +352,7 @@ class Select extends BuilderWhere
     ): Result {
         $compiled = $this->compileReading($columns, $limit, $offset, $alsoWhere, $thenBy);
 
-        return $this->route->connection()->query($compiled->sql, $compiled->bindings, $this->timeoutMs);
+        return $this->route->connection()->query($compiled->sql, $compiled->bindings, $this->timeoutMs, $this->castMode);
     }
 
     /**

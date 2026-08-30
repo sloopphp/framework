@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database;
 
+use DateTimeImmutable;
 use Monolog\Handler\TestHandler;
 use Monolog\Level;
 use Monolog\Logger;
@@ -12,6 +13,7 @@ use PDOStatement;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
+use Sloop\Database\CastMode;
 use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
@@ -65,6 +67,28 @@ final class ConnectionManagerTest extends TestCase
     private function realConnection(): Connection
     {
         return new Connection(new PDO('sqlite::memory:'), 'test');
+    }
+
+    /**
+     * A connection whose one statement reads a DATETIME column back as a string.
+     *
+     * Sqlite reports no column type a cast mode acts on, so a stub is what
+     * shows whether the pool's preset reached the connection at all.
+     */
+    private function connectionReadingADatetimeColumn(): Connection
+    {
+        $statement = $this->createStub(PDOStatement::class);
+        $statement->method('execute')->willReturn(true);
+        $statement->method('fetchAll')->willReturn([['dt' => '2026-04-14 15:30:45']]);
+        $statement->method('columnCount')->willReturn(1);
+        $statement->method('getColumnMeta')->willReturn(
+            ['name' => 'dt', 'native_type' => 'DATETIME', 'len' => 19, 'flags' => []],
+        );
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('prepare')->willReturn($statement);
+
+        return new Connection($pdo, 'test');
     }
 
     private function pdoSeededWith(string $value): PDO
@@ -2693,5 +2717,68 @@ final class ConnectionManagerTest extends TestCase
 
         $this->assertTrue($replica->inTransaction());
         $this->assertSame([], $handler->getRecords());
+    }
+
+    public function testThePoolsCastModeReachesTheConnection(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $this->connectionReadingADatetimeColumn());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'casts'    => CastMode::Datetime,
+            ],
+        ], $factory);
+
+        $row = $manager->connection()->query('SELECT dt FROM t')->first();
+
+        $this->assertNotNull($row);
+        $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['dt']);
+    }
+
+    public function testAPoolWithoutACastModeReadsValuesAsTheDriverReturnsThem(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $this->connectionReadingADatetimeColumn());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $this->assertSame(
+            [['dt' => '2026-04-14 15:30:45']],
+            $manager->connection()->query('SELECT dt FROM t')->asArray(),
+        );
+    }
+
+    public function testAReplicaConvertsTheSameColumnsAsThePrimary(): void
+    {
+        // The preset belongs to the pool, so the type a column reads back as
+        // must not depend on which route answered.
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $this->connectionReadingADatetimeColumn());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'casts'        => CastMode::Datetime,
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $row = $manager->connection(writable: false)->query('SELECT dt FROM t')->first();
+
+        $this->assertNotNull($row);
+        $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['dt']);
     }
 }

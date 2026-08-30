@@ -11,7 +11,9 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Database\CastMode;
 use Sloop\Database\Connection;
+use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\ThrowsAssertions;
+use UnexpectedValueException;
 
 final class ConnectionCastModeTest extends TestCase
 {
@@ -232,5 +234,97 @@ final class ConnectionCastModeTest extends TestCase
 
         $this->assertNotNull($row);
         $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['x']);
+    }
+
+    public function testABuilderReadsUnderTheConnectionsMode(): void
+    {
+        $connection = $this->connectionReturning(
+            [['dt' => '2026-04-14 15:30:45']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+        $connection->setCastMode(CastMode::Datetime);
+
+        $row = $connection->select('dt')->from('t')->execute()->first();
+
+        $this->assertNotNull($row);
+        $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['dt']);
+    }
+
+    public function testABuilderCanNameAModeForItsOwnStatement(): void
+    {
+        $connection = $this->connectionReturning(
+            [['dt' => '2026-04-14 15:30:45']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+
+        $row = $connection->select('dt')->from('t')->castMode(CastMode::Datetime)->execute()->first();
+
+        $this->assertNotNull($row);
+        $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['dt']);
+    }
+
+    public function testABuilderCanTurnTheConnectionsModeOffForOneStatement(): void
+    {
+        $connection = $this->connectionReturning(
+            [['dt' => '2026-04-14 15:30:45']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+        $connection->setCastMode(CastMode::Datetime);
+
+        $row = $connection->select('dt')->from('t')->castMode(CastMode::Off)->execute()->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame('2026-04-14 15:30:45', $row['dt']);
+    }
+
+    public function testTheModeIsBuilderStateSoTheShortcutsCarryItToo(): void
+    {
+        // first() and value() run the statement themselves rather than going
+        // through execute(), so each has to reach the connection with the mode.
+        $connection = $this->connectionReturning(
+            [['dt' => '2026-04-14 15:30:45']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+        $select     = fn (): Select => $connection->select('dt')->from('t')->castMode(CastMode::Datetime);
+        $expected   = new DateTimeImmutable('2026-04-14 15:30:45');
+
+        $first = $select()->first();
+        $this->assertNotNull($first);
+        $this->assertEquals($expected, $first['dt']);
+        $this->assertEquals($expected, $select()->value('dt'));
+        $this->assertEquals([$expected], $select()->pluck('dt'));
+    }
+
+    public function testTheModeIsAbsentFromTheCompiledStatement(): void
+    {
+        // Conversion happens after the rows come back, so nothing about it is
+        // written into the SQL.
+        $connection = $this->connectionReturning([], [$this->meta('dt', 'DATETIME')]);
+
+        $select = $connection->select('dt')->from('t')->castMode(CastMode::Datetime);
+
+        $this->assertSame('SELECT `dt` FROM `t`', $select->toSql());
+        $this->assertSame('SELECT `dt` FROM `t`', $select->toRawSql());
+    }
+
+    public function testAWalkRefusesACursorTheCastsConvert(): void
+    {
+        // The cursor is bound into the statement that reads the next batch, so
+        // a DateTimeImmutable cannot carry the walk forward.
+        $connection = $this->connectionReturning(
+            [['id' => '2026-04-14 15:30:45']],
+            [$this->meta('id', 'DATETIME')],
+        );
+
+        $e = $this->assertThrows(
+            UnexpectedValueException::class,
+            static fn () => $connection->select('id')->from('t')
+                ->castMode(CastMode::Datetime)
+                ->chunkById(10, static fn (): bool => true),
+        );
+        $this->assertStringContainsString(
+            'the cast mode in effect turns it into DateTimeImmutable',
+            $e->getMessage(),
+        );
     }
 }
