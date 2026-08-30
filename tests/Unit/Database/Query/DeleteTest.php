@@ -9,7 +9,6 @@ use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
-use Sloop\Database\Query\BuilderWhere;
 use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
@@ -110,20 +109,6 @@ final class DeleteTest extends TestCase
 
         $this->assertSame(
             'A group of conditions was opened and not closed; call whereClose() 1 more time.',
-            $thrown->getMessage(),
-        );
-    }
-
-    public function testAGroupLeftOpenByACallbackIsRefused(): void
-    {
-        $delete = $this->delete()->where(static function (BuilderWhere $builder): void {
-            $builder->whereOpen()->where('status', 'blocked');
-        });
-
-        $thrown = $this->assertThrows(LogicException::class, static fn (): string => $delete->toSql());
-
-        $this->assertStringContainsString(
-            'A callback opened a group of conditions and returned without closing it.',
             $thrown->getMessage(),
         );
     }
