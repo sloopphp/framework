@@ -259,9 +259,9 @@ final class ConnectionManagerTest extends IntegrationTestCase
         // delete('widgets') has to reach the prefixed table, which only shows
         // up against a real server: an unprefixed name would be a missing
         // table rather than a wrong string. Which route the statement took is
-        // not what this asserts and cannot be seen from here — both routes
-        // name the same server and nothing stops a replica session from
-        // writing. That is pinned in the unit suite instead, by
+        // not what this asserts: the pool declares no replica, so both routes
+        // resolve to the same connection here. That the write route asks for
+        // the primary is pinned in the unit suite instead, by
         // testDeleteHandsTheBuilderTheWriteRoute.
         $config           = self::defaultConfig();
         $config['prefix'] = self::READ_ROUTE_PREFIX;
