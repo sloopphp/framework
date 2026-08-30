@@ -26,10 +26,10 @@ use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\FixedConnectionRoute;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Query;
-use Sloop\Database\Query\Select;
 use Sloop\Database\ReadConnectionRoute;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
+use Sloop\Database\WriteConnectionRoute;
 use Sloop\Tests\Support\MutableClock;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Database\Stub\AlwaysFailConnectionFactory;
@@ -100,23 +100,23 @@ final class ConnectionManagerTest extends TestCase
         return $pdo;
     }
 
-    private function routeBehind(Select $select): ConnectionRoute
+    private function routeBehind(Query $statement): ConnectionRoute
     {
         $reflection = new ReflectionProperty(Query::class, 'route');
-        $route      = $reflection->getValue($select);
+        $route      = $reflection->getValue($statement);
         $this->assertInstanceOf(ConnectionRoute::class, $route);
 
         return $route;
     }
 
-    private function connectionResolvedBy(Select $select): Connection
+    private function connectionResolvedBy(Query $statement): Connection
     {
         // Asking the route the way execute() asks it. Which route arrived is a
         // separate question, pinned by testSelectHandsTheBuilderTheReadRoute;
         // that the statement itself goes through the route rather than a
         // remembered connection is pinned by the three executes in
         // testOneBuilderAnswersFromWhicheverRouteItsTransactionStateSelects.
-        return $this->routeBehind($select)->connection();
+        return $this->routeBehind($statement)->connection();
     }
 
     private function connectionInTransaction(): Connection
@@ -529,6 +529,62 @@ final class ConnectionManagerTest extends TestCase
         $this->assertInstanceOf(
             FixedConnectionRoute::class,
             $this->routeBehind($manager->connection(writable: false)->select()),
+        );
+    }
+
+    public function testDeleteHandsTheBuilderTheWriteRoute(): void
+    {
+        // A write has no replica to choose between, so where it lands cannot
+        // be seen in the rows: both routes name servers that hold the same
+        // table, and nothing in this framework stops a replica connection from
+        // writing. What separates them is which route object the builder was
+        // given and which connection that route resolves to, so both are
+        // pinned here rather than through the rows a statement leaves behind.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $delete = $manager->delete('users');
+
+        $this->assertInstanceOf(WriteConnectionRoute::class, $this->routeBehind($delete));
+
+        // Building connects to nothing; the route is asked when the statement runs.
+        $this->assertSame([], $factory->invocations);
+
+        // The replica was never contacted, even though the pool declares one.
+        $this->assertSame($primary, $this->connectionResolvedBy($delete));
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testDeleteFromAConnectionStaysOnThatConnection(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertInstanceOf(
+            FixedConnectionRoute::class,
+            $this->routeBehind($manager->connection(writable: true)->delete('users')),
         );
     }
 

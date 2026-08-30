@@ -61,7 +61,7 @@ final class DeleteTest extends TestCase
         return $ids;
     }
 
-    public function testWithoutConditionsRemovesEveryRow(): void
+    public function testWithoutConditionsAddressesTheWholeTable(): void
     {
         $this->assertSame('DELETE FROM `users`', $this->delete()->toSql());
         $this->assertSame([], $this->delete()->toBindings());

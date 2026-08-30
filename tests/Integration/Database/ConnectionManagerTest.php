@@ -254,15 +254,16 @@ final class ConnectionManagerTest extends IntegrationTestCase
         }
     }
 
-    public function testDeleteWritesThroughThePrimaryEvenWhenAReplicaIsConfigured(): void
+    public function testDeleteReachesThePrefixedTableAgainstTheServer(): void
     {
-        // The pool declares a replica, so a statement that took the read route
-        // would land on the replica session. Both sessions here name the same
-        // server, so what shows the write went to the primary is that the row
-        // is gone and the statement did not fail against a route that has no
-        // business writing.
+        // delete('widgets') has to reach the prefixed table, which only shows
+        // up against a real server: an unprefixed name would be a missing
+        // table rather than a wrong string. Which route the statement took is
+        // not what this asserts and cannot be seen from here — both routes
+        // name the same server and nothing stops a replica session from
+        // writing. That is pinned in the unit suite instead, by
+        // testDeleteHandsTheBuilderTheWriteRoute.
         $config           = self::defaultConfig();
-        $config['read']   = [['host' => $config['host']]];
         $config['prefix'] = self::READ_ROUTE_PREFIX;
 
         $manager = $this->manager($config);
