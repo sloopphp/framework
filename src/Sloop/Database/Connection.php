@@ -549,6 +549,15 @@ final class Connection
     /**
      * Build the failure for a date column whose value cannot be read.
      *
+     * The value itself goes into the message, where narrowRow() reports only
+     * the type. The two say different things: there the value is the right
+     * shape and the wrong type, so naming the type is the whole answer, while
+     * here the value is what is wrong and the only thing to go on. What can
+     * reach this point is narrow — the servers write a date or a zero date
+     * into a date column whatever is handed to them, and an expression that
+     * mixes a date with something else comes back typed as a string, which is
+     * not converted at all.
+     *
      * @param  int|string               $column   Column the value came from
      * @param  string                   $value    Value as the driver returned it
      * @param  Throwable|null           $previous Parser failure, when there was one
