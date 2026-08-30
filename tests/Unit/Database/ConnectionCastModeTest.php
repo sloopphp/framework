@@ -132,6 +132,22 @@ final class ConnectionCastModeTest extends TestCase
         $this->assertSame([['n' => 42]], $connection->query('SELECT n FROM t')->asArray());
     }
 
+    public function testAColumnWhoseMetadataCarriesNoNativeTypeIsLeftAlone(): void
+    {
+        // The accepted metadata shape declares native_type optional, so a
+        // column can arrive without one and then there is nothing to decide
+        // on. The value is date shaped because that is the one a misfiring
+        // decision would convert. meta() always sets the key, so the array is
+        // written out here instead.
+        $connection = $this->connectionReturning(
+            [['x' => '2026-04-14 15:30:45']],
+            [['name' => 'x', 'len' => 0, 'flags' => []]],
+        );
+        $connection->setCastMode(CastMode::Aggressive);
+
+        $this->assertSame([['x' => '2026-04-14 15:30:45']], $connection->query('SELECT x FROM t')->asArray());
+    }
+
     public function testAggressiveAlsoConvertsDates(): void
     {
         // The presets are cumulative: Aggressive is Datetime plus booleans.

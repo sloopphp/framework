@@ -199,17 +199,20 @@ final class SelectCastModeTest extends IntegrationTestCase
         $this->assertSame('15:30:45', $row['x']);
     }
 
-    public function testAnExpressionColumnIsLeftAloneWhenTheServerReportsNoTypeForIt(): void
+    public function testAComputedColumnKeepsTheTypeTheServerReportsForIt(): void
     {
-        // A computed column is where the metadata is least like a table column,
-        // and reading it is what shows the conversion does not depend on there
-        // being a native type for every column.
-        $row = $this->connection->select('id')->from(self::TABLE)
-            ->where('id', 1)
-            ->castMode(CastMode::Aggressive)
-            ->first();
+        // A computed column is where the metadata is least like a table column.
+        // The server still names a type for it, and that name is what the
+        // preset reads: neither server calls this one a date or a one wide
+        // TINYINT, so the value comes back as the driver returned it.
+        $row = $this->connection->query(
+            'SELECT id + 0 AS n FROM ' . self::TABLE . ' WHERE id = 1',
+            [],
+            null,
+            CastMode::Aggressive,
+        )->first();
 
         $this->assertNotNull($row);
-        $this->assertSame(1, $row['id']);
+        $this->assertSame(1, $row['n']);
     }
 }

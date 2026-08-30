@@ -241,6 +241,16 @@
                 // out is equal to the one that went in. Pinned to the line
                 // because the method's other return is killable.
                 "Sloop\\Database\\Connection::castRow::443",
+                // Connection::castForColumn returns early when the driver
+                // reports no native type for the column. Falling through
+                // compares that missing type against DATE, DATETIME,
+                // TIMESTAMP and TINY, and null matches none of them, so the
+                // method reaches its closing return null with the same
+                // answer. Checked by hand over the ten metadata shapes the
+                // suite uses, across all three presets: 30 of 30 agree.
+                // Pinned to the line because the method's other return is
+                // killable.
+                "Sloop\\Database\\Connection::castForColumn::417",
                 // Route::compilePattern returns early for patterns without a
                 // placeholder. Falling through compiles a regex that match()
                 // never consults, because it short-circuits on an empty
