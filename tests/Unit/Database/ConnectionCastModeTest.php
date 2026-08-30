@@ -293,6 +293,36 @@ final class ConnectionCastModeTest extends TestCase
         $this->assertEquals(new DateTimeImmutable($value), $row['dt']);
     }
 
+    public function testAShapeCheckThatCannotRunIsReportedAsSuchRatherThanAsABadValue(): void
+    {
+        // PCRE gives up on its own limits and returns false, which is not the
+        // same answer as "this is not a date". Naming the limit is what keeps
+        // the reader from going after data that was never looked at.
+        $connection = $this->connectionReturning(
+            [['dt' => '2026-04-14 15:30:45']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+        $connection->setCastMode(CastMode::Datetime);
+
+        $previous = ini_set('pcre.backtrack_limit', '1');
+        self::assertIsString($previous);
+
+        try {
+            $e = $this->assertThrows(
+                UnexpectedValueException::class,
+                static fn () => $connection->query('SELECT dt FROM t'),
+            );
+        } finally {
+            ini_set('pcre.backtrack_limit', $previous);
+        }
+
+        $this->assertSame(
+            'Connection [test]: the check for date columns could not run (Backtrack limit exhausted),'
+                . ' so column "dt" was left unread.',
+            $e->getMessage(),
+        );
+    }
+
     public function testAValueTheParserRefusesCarriesItsFailureAsTheCause(): void
     {
         // This one has the shape, so it reaches the parser and is refused

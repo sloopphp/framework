@@ -275,9 +275,9 @@ final class Connection
      * @return Result                   Fetched rows
      * @throws InvalidArgumentException When the timeout is not positive, or the statement cannot carry one
      * @throws DatabaseException        When the statement fails
-     * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC, when a conversion is
-     *                                  asked for and the driver reports no column metadata, or when a value
-     *                                  cannot be converted
+     * @throws UnexpectedValueException When PDO returns a row or a value outside what the drivers contract to
+     *                                  return, when a conversion is asked for and the driver reports no column
+     *                                  metadata, or when a value cannot be converted
      */
     public function query(string $sql, array $bindings = [], ?int $timeoutMs = null, ?CastMode $casts = null): Result
     {
@@ -507,11 +507,24 @@ final class Connection
      * @param  int|string               $column Column name, for the message when this fails
      * @param  string                   $value  Value as the driver returned it
      * @return DateTimeImmutable        The parsed value
-     * @throws UnexpectedValueException When the value is not a date PHP reads unambiguously
+     * @throws UnexpectedValueException When the value is not a date PHP reads unambiguously, or when the
+     *                                  pattern that checks the shape could not run
      */
     private function toDateTime(int|string $column, string $value): DateTimeImmutable
     {
-        if (preg_match(self::DATE_SHAPE, $value) !== 1) {
+        $shaped = preg_match(self::DATE_SHAPE, $value);
+        if ($shaped === false) {
+            // Separate from a value that does not match: the pattern did not
+            // run at all. PCRE gives up on its own resource limits, and saying
+            // the value is not a date would send the reader after the data
+            // instead of after the limit that stopped the check.
+            throw new UnexpectedValueException(
+                'Connection [' . $this->connectionName . ']: the check for date columns could not run ('
+                    . preg_last_error_msg() . '), so column "' . $column . '" was left unread.',
+            );
+        }
+
+        if ($shaped === 0) {
             throw $this->unreadableDate($column, $value);
         }
 
