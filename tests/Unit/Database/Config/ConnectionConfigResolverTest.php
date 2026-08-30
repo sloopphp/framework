@@ -8,8 +8,10 @@ use PDO;
 use Pdo\Mysql as PdoMysql;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\CastMode;
 use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\IsolationLevel;
 use Sloop\Tests\Support\ThrowsAssertions;
 
 final class ConnectionConfigResolverTest extends TestCase
@@ -1544,6 +1546,96 @@ final class ConnectionConfigResolverTest extends TestCase
         $this->assertSame(
             'Connection [mydb.read[0]]: unsupported charset "gbk". Only charsets that the server accepts as a client charset, '
             . 'and whose multi-byte characters cannot end in a backtick byte, are allowed.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidatePoolAcceptsCasts(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'casts'    => CastMode::Datetime,
+        ]);
+
+        $this->assertSame(CastMode::Datetime, $pool->casts);
+    }
+
+    public function testValidatePoolDefaultsCastsToOffWhenOmitted(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+        ]);
+
+        $this->assertSame(CastMode::Off, $pool->casts);
+    }
+
+    // Off is also what an omitted key resolves to, so this only shows that
+    // writing it out is accepted rather than treated as a missing value.
+    public function testValidatePoolAcceptsAnExplicitOffCasts(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+            'casts'    => CastMode::Off,
+        ]);
+
+        $this->assertSame(CastMode::Off, $pool->casts);
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function invalidCastsProvider(): array
+    {
+        return [
+            // The name of a case rather than the case: the config is PHP, so
+            // the enum itself is what a caller can write.
+            'case name'  => ['datetime'],
+            'other enum' => [IsolationLevel::Serializable],
+            'int'        => [1],
+            'null'       => [null],
+            'array'      => [[CastMode::Datetime]],
+        ];
+    }
+
+    #[DataProvider('invalidCastsProvider')]
+    public function testValidatePoolRejectsCastsThatIsNotACastMode(mixed $casts): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'casts'    => $casts,
+            ]),
+        );
+        $this->assertSame(
+            'Connection [mydb]: config key "casts" must be a ' . CastMode::class . ' case.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidatePoolRejectsCastsInsideAReplica(): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 'casts' => CastMode::Datetime],
+                ],
+            ]),
+        );
+        $this->assertSame(
+            'Connection [mydb]: "read[0]" has unsupported key "casts". Pool-level keys must be set on the pool itself, not inside read[].',
             $e->getMessage(),
         );
     }

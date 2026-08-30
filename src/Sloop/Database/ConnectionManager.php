@@ -190,6 +190,7 @@ final class ConnectionManager
             $this->applyLogger($connection, $pool);
             $this->applyQueryTimeout($connection, $pool);
             $this->applyGrammar($connection, $pool);
+            $this->applyCastMode($connection, $pool);
             $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
@@ -243,6 +244,7 @@ final class ConnectionManager
                 $this->applyLogger($connection, $pool);
                 $this->applyQueryTimeout($connection, $pool);
                 $this->applyGrammar($connection, $pool);
+                $this->applyCastMode($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -382,6 +384,23 @@ final class ConnectionManager
     private function applyGrammar(Connection $connection, PoolConfig $pool): void
     {
         $connection->setGrammar($this->grammarFor($pool));
+    }
+
+    /**
+     * Hand the Connection the pool's conversion preset.
+     *
+     * Applied unconditionally rather than only when one is configured, because
+     * a pool that converts nothing says so with Off rather than by leaving the
+     * key out. Probe connections built by probeReplicas() are bypassed for the
+     * same reason as the grammar: they send a `DO 1` and read no rows.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config supplying the conversion preset
+     * @return void
+     */
+    private function applyCastMode(Connection $connection, PoolConfig $pool): void
+    {
+        $connection->setCastMode($pool->casts);
     }
 
     /**
