@@ -275,9 +275,9 @@ final class Connection
      * @return Result                   Fetched rows
      * @throws InvalidArgumentException When the timeout is not positive, or the statement cannot carry one
      * @throws DatabaseException        When the statement fails
-     * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
-     * @throws UnexpectedValueException When a conversion is asked for and the driver reports no column metadata,
-     *                                  or a value cannot be converted
+     * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC, when a conversion is
+     *                                  asked for and the driver reports no column metadata, or when a value
+     *                                  cannot be converted
      */
     public function query(string $sql, array $bindings = [], ?int $timeoutMs = null, ?CastMode $casts = null): Result
     {
@@ -480,14 +480,25 @@ final class Connection
     }
 
     /**
+     * The shape both servers write a DATE, DATETIME or TIMESTAMP in.
+     *
+     * Anchored at both ends. Matching a shape rather than rejecting a list of
+     * bad values is what keeps this from being a losing game: the parser reads
+     * some non-values as the current time (the empty string, a lone space, a
+     * non-breaking space) and refuses others (a form feed, an ideographic
+     * space), and which is which is not something to encode here.
+     */
+    private const string DATE_SHAPE = '/\A\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d+)?)?\z/';
+
+    /**
      * Read one date column's value, failing on anything PHP would guess at.
      *
-     * DateTimeImmutable is lenient in ways that turn bad data into a plausible
-     * date rather than an error: a value that is empty or only whitespace
-     * becomes the current time, and a zero date becomes -0001-11-30. Both are read back as a real timestamp
-     * with nothing to notice them by, so they are rejected here instead. The
-     * out-of-range dates the parser rolls forward (2026-02-31 becoming March 3)
-     * raise a warning, which is what the error counts are checked for.
+     * Two things are checked, because either alone lets bad data through as a
+     * real timestamp. The shape catches what is not a date at all, including
+     * the values the parser silently reads as the current time. What the parser
+     * itself reports catches the rest: it throws on a month past 12 or an hour
+     * past 23, and warns on a zero date, which it reads as -0001-11-30, and on
+     * a day past the end of its month, which it rolls into the next one.
      *
      * @param  int|string               $column Column name, for the message when this fails
      * @param  string                   $value  Value as the driver returned it
@@ -496,9 +507,7 @@ final class Connection
      */
     private function toDateTime(int|string $column, string $value): DateTimeImmutable
     {
-        // Not just the empty string: the parser reads a value that is only
-        // spaces or tabs as the current time in the same way.
-        if (trim($value) === '') {
+        if (preg_match(self::DATE_SHAPE, $value) !== 1) {
             throw $this->unreadableDate($column, $value);
         }
 
@@ -508,8 +517,12 @@ final class Connection
             throw $this->unreadableDate($column, $value, $e);
         }
 
-        $errors = DateTimeImmutable::getLastErrors();
-        if ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+        // Reaching here means the value parsed, and a parse that produced an
+        // error threw instead, so what is left to find is a warning: the zero
+        // date read as -0001-11-30, or a day rolled into the next month. The
+        // counts are not read separately because false is already the answer
+        // for a value the parser had nothing to say about.
+        if (DateTimeImmutable::getLastErrors() !== false) {
             throw $this->unreadableDate($column, $value);
         }
 

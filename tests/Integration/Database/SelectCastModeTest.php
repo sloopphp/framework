@@ -167,6 +167,38 @@ final class SelectCastModeTest extends IntegrationTestCase
         $this->assertEquals(new DateTimeImmutable('2026-06-01 12:00:00'), $rows[1]['nullable_dt']);
     }
 
+    public function testTwoColumnsSharingALabelConvertByTheOneThatSurvives(): void
+    {
+        // The cast map is keyed by column name, which only lines up with the
+        // values if the server and PDO agree on which of two columns sharing a
+        // label is the one FETCH_ASSOC keeps. The unit tests write that
+        // agreement into a stub; this is where it is observed.
+        $row = $this->connection->query(
+            'SELECT tm AS x, dt AS x FROM ' . self::TABLE . ' WHERE id = 1',
+            [],
+            null,
+            CastMode::Datetime,
+        )->first();
+
+        $this->assertNotNull($row);
+        $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['x']);
+    }
+
+    public function testTheSurvivingColumnCanAlsoBeTheOneLeftAlone(): void
+    {
+        // The mirror: the rightmost column is a TIME, which no preset converts,
+        // so the DATETIME on the left must not reach the value that survives.
+        $row = $this->connection->query(
+            'SELECT dt AS x, tm AS x FROM ' . self::TABLE . ' WHERE id = 1',
+            [],
+            null,
+            CastMode::Datetime,
+        )->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame('15:30:45', $row['x']);
+    }
+
     public function testAnExpressionColumnIsLeftAloneWhenTheServerReportsNoTypeForIt(): void
     {
         // A computed column is where the metadata is least like a table column,

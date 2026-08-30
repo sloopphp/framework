@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database;
 
+use DateMalformedStringException;
 use DateTimeImmutable;
 use PDO;
 use PDOStatement;
@@ -221,16 +222,28 @@ final class ConnectionCastModeTest extends TestCase
     public static function unreadableDateProvider(): array
     {
         return [
-            // Each of these is read by DateTimeImmutable as a real timestamp
-            // rather than refused, which is why they are checked for by hand.
-            'empty'      => [''],
-            'space'      => [' '],
-            'tab'        => ["\t"],
-            'zero date'  => ['0000-00-00 00:00:00'],
-            'rolls over' => ['2026-02-31 00:00:00'],
-            // This one the parser does refuse; the point is that it arrives as
-            // the same failure as the rest rather than as a parser exception.
-            'not a date' => ['not a date at all'],
+            // The first three the parser reads as the current time rather
+            // than refusing, which is what the shape check is for. They are
+            // not one class of value to PHP: trim() drops a space and a tab
+            // but keeps a non-breaking space, and the parser refuses an
+            // ideographic space while accepting the other two.
+            'empty'             => [''],
+            'space'             => [' '],
+            'tab'               => ["\t"],
+            'non-breaking'      => ["\u{00A0}"],
+            'space then nbsp'   => [" \u{00A0}"],
+            'ideographic'       => ["\u{3000}"],
+            // These have the shape but are not dates. The parser reads the
+            // first as -0001-11-30 and rolls the second into March.
+            'zero date'         => ['0000-00-00 00:00:00'],
+            'zero date no time' => ['0000-00-00'],
+            'rolls over'        => ['2026-02-31 00:00:00'],
+            // Shaped like a date but out of range on its own terms.
+            'month 13'          => ['2026-13-01 00:00:00'],
+            // Neither the shape nor the parser accepts these.
+            'not a date'        => ['not a date at all'],
+            'trailing text'     => ['2026-04-14 15:30:45 and more'],
+            'iso T separator'   => ['2026-04-14T15:30:45'],
         ];
     }
 
@@ -248,6 +261,42 @@ final class ConnectionCastModeTest extends TestCase
             'Connection [test]: column "dt" holds "' . $value . '", which is not a date PHP can read.',
             $e->getMessage(),
         );
+        $this->assertSame(0, $e->getCode());
+    }
+
+    public function testAValueTheParserRefusesCarriesItsFailureAsTheCause(): void
+    {
+        // This one has the shape, so it reaches the parser and is refused
+        // there. Keeping the parser's own failure as the cause is what lets a
+        // caller see which part of the value it objected to.
+        $connection = $this->connectionReturning(
+            [['dt' => '2026-13-01 00:00:00']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+        $connection->setCastMode(CastMode::Datetime);
+
+        $e = $this->assertThrows(
+            UnexpectedValueException::class,
+            static fn () => $connection->query('SELECT dt FROM t'),
+        );
+        $this->assertInstanceOf(DateMalformedStringException::class, $e->getPrevious());
+    }
+
+    public function testAValueRefusedByItsShapeHasNoCause(): void
+    {
+        // The mirror: nothing reached the parser, so there is no failure to
+        // carry. Pinned so that the two paths stay distinguishable.
+        $connection = $this->connectionReturning(
+            [['dt' => 'not a date at all']],
+            [$this->meta('dt', 'DATETIME')],
+        );
+        $connection->setCastMode(CastMode::Datetime);
+
+        $e = $this->assertThrows(
+            UnexpectedValueException::class,
+            static fn () => $connection->query('SELECT dt FROM t'),
+        );
+        $this->assertNull($e->getPrevious());
     }
 
     public function testTheLastOfTwoColumnsSharingANameDecidesTheConversion(): void
@@ -352,8 +401,11 @@ final class ConnectionCastModeTest extends TestCase
                 ->castMode(CastMode::Datetime)
                 ->chunkById(10, static fn (): bool => true),
         );
-        $this->assertStringContainsString(
-            'the cast mode in effect turns it into DateTimeImmutable',
+        $this->assertSame(
+            'chunkById() walks by "id", and the cast mode in effect turns it into DateTimeImmutable.'
+                . ' The walk binds this value into the statement that reads the next batch, so it has to be'
+                . ' a number or a string. Walk by a column the casts leave alone, or read this statement'
+                . ' under CastMode::Off.',
             $e->getMessage(),
         );
     }
