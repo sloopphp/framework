@@ -276,7 +276,7 @@ final class Connection
      * @throws InvalidArgumentException When the timeout is not positive, or the statement cannot carry one
      * @throws DatabaseException        When the statement fails
      * @throws UnexpectedValueException When PDO returns a non-array row under FETCH_ASSOC (driver contract violation)
-     * @throws RuntimeException         When a conversion is asked for and the driver reports no column metadata,
+     * @throws UnexpectedValueException When a conversion is asked for and the driver reports no column metadata,
      *                                  or a value cannot be converted
      */
     public function query(string $sql, array $bindings = [], ?int $timeoutMs = null, ?CastMode $casts = null): Result
@@ -359,7 +359,7 @@ final class Connection
      * @param  PDOStatement                 $stmt Executed statement to read the column types of
      * @param  CastMode                     $mode Preset deciding which columns qualify
      * @return array<array-key, ColumnCast> Conversion by column name; empty when nothing is converted
-     * @throws RuntimeException             When the driver reports no metadata for a column
+     * @throws UnexpectedValueException     When the driver reports no metadata for a column
      */
     private function columnCasts(PDOStatement $stmt, CastMode $mode): array
     {
@@ -373,17 +373,27 @@ final class Connection
         for ($index = 0; $index < $count; $index++) {
             $meta = $stmt->getColumnMeta($index);
             if ($meta === false) {
-                throw new RuntimeException(
+                throw new UnexpectedValueException(
                     'Connection [' . $this->connectionName . ']: the driver reports no metadata for column '
                         . $index . ', so casts cannot be applied. Set the pool\'s "casts" to CastMode::Off '
                         . 'to read this statement.',
                 );
             }
 
+            $name = $meta['name'];
             $cast = self::castForColumn($meta, $mode);
-            if ($cast !== null) {
-                $casts[$meta['name']] = $cast;
+
+            // The rightmost decision replaces the earlier one, and that
+            // includes deciding to leave the column alone: skipping the
+            // assignment instead would leave the earlier column's conversion
+            // pointed at a value it was not read from.
+            if ($cast === null) {
+                unset($casts[$name]);
+
+                continue;
             }
+
+            $casts[$name] = $cast;
         }
 
         return $casts;
@@ -425,7 +435,7 @@ final class Connection
      * @param  array<array-key, int|float|string|null>                        $row   Row as the driver returned it
      * @param  array<array-key, ColumnCast>                                   $casts Conversion by column name
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> The row with the converted columns replaced
-     * @throws RuntimeException                                               When a value cannot be converted
+     * @throws UnexpectedValueException                                       When a value cannot be converted
      */
     private function castRow(array $row, array $casts): array
     {
@@ -455,7 +465,7 @@ final class Connection
      * @param  int|float|string|null       $value  Value as the driver returned it
      * @param  ColumnCast                  $cast   Conversion to apply
      * @return bool|DateTimeImmutable|null The converted value
-     * @throws RuntimeException            When the value cannot be converted
+     * @throws UnexpectedValueException    When the value cannot be converted
      */
     private function castValue(int|string $column, int|float|string|null $value, ColumnCast $cast): bool|DateTimeImmutable|null
     {
@@ -473,20 +483,22 @@ final class Connection
      * Read one date column's value, failing on anything PHP would guess at.
      *
      * DateTimeImmutable is lenient in ways that turn bad data into a plausible
-     * date rather than an error: an empty string becomes the current time, and
-     * a zero date becomes -0001-11-30. Both are read back as a real timestamp
+     * date rather than an error: a value that is empty or only whitespace
+     * becomes the current time, and a zero date becomes -0001-11-30. Both are read back as a real timestamp
      * with nothing to notice them by, so they are rejected here instead. The
      * out-of-range dates the parser rolls forward (2026-02-31 becoming March 3)
      * raise a warning, which is what the error counts are checked for.
      *
-     * @param  int|string        $column Column name, for the message when this fails
-     * @param  string            $value  Value as the driver returned it
-     * @return DateTimeImmutable The parsed value
-     * @throws RuntimeException  When the value is not a date PHP reads unambiguously
+     * @param  int|string               $column Column name, for the message when this fails
+     * @param  string                   $value  Value as the driver returned it
+     * @return DateTimeImmutable        The parsed value
+     * @throws UnexpectedValueException When the value is not a date PHP reads unambiguously
      */
     private function toDateTime(int|string $column, string $value): DateTimeImmutable
     {
-        if ($value === '') {
+        // Not just the empty string: the parser reads a value that is only
+        // spaces or tabs as the current time in the same way.
+        if (trim($value) === '') {
             throw $this->unreadableDate($column, $value);
         }
 
@@ -507,14 +519,14 @@ final class Connection
     /**
      * Build the failure for a date column whose value cannot be read.
      *
-     * @param  int|string       $column   Column the value came from
-     * @param  string           $value    Value as the driver returned it
-     * @param  Throwable|null   $previous Parser failure, when there was one
-     * @return RuntimeException The failure to throw
+     * @param  int|string               $column   Column the value came from
+     * @param  string                   $value    Value as the driver returned it
+     * @param  Throwable|null           $previous Parser failure, when there was one
+     * @return UnexpectedValueException The failure to throw
      */
-    private function unreadableDate(int|string $column, string $value, ?Throwable $previous = null): RuntimeException
+    private function unreadableDate(int|string $column, string $value, ?Throwable $previous = null): UnexpectedValueException
     {
-        return new RuntimeException(
+        return new UnexpectedValueException(
             'Connection [' . $this->connectionName . ']: column "' . $column . '" holds "' . $value
                 . '", which is not a date PHP can read.',
             0,

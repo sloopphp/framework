@@ -187,10 +187,13 @@ final readonly class Result implements IteratorAggregate, Countable
      * no matching parameter is ignored, which lets one class read a subset of a
      * wider result set.
      *
-     * Values are handed over as the driver returned them; converting a DATETIME
-     * string into a date object, or a flag into an enum, is the constructor's
-     * job. A value the constructor cannot accept surfaces as the TypeError it
-     * raises, naming the parameter.
+     * Values are handed over as they reach the result, which is after the
+     * connection's cast mode has run: under Datetime a DATETIME column arrives
+     * as a DateTimeImmutable rather than a string, so the parameter has to be
+     * declared for what the mode produces. Converting anything the mode leaves
+     * alone, such as a flag into an enum, is still the constructor's job. A
+     * value the constructor cannot accept surfaces as the TypeError it raises,
+     * naming the parameter.
      *
      * @template T of object
      * @param  class-string<T>          $class Class to hydrate each row into

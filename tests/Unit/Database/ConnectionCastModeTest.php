@@ -7,8 +7,8 @@ namespace Sloop\Tests\Unit\Database;
 use DateTimeImmutable;
 use PDO;
 use PDOStatement;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Sloop\Database\CastMode;
 use Sloop\Database\Connection;
 use Sloop\Database\Query\Select;
@@ -191,7 +191,7 @@ final class ConnectionCastModeTest extends TestCase
         $connection->setCastMode(CastMode::Datetime);
 
         $e = $this->assertThrows(
-            RuntimeException::class,
+            UnexpectedValueException::class,
             static fn () => $connection->query('SELECT dt FROM t'),
         );
         $this->assertSame(
@@ -201,21 +201,51 @@ final class ConnectionCastModeTest extends TestCase
         );
     }
 
-    public function testAnUnparsableDateNamesTheColumnAndTheValue(): void
+    public function testALaterColumnSharingANameCanAlsoDecideAgainstConverting(): void
     {
-        // A zero date is what a column filled before strict mode was on holds.
+        // The mirror of the case below. The rightmost column is the one whose
+        // value survives, so when the preset leaves that column alone, the
+        // earlier column's conversion must not be applied to what is left.
         $connection = $this->connectionReturning(
-            [['dt' => '0000-00-00 00:00:00']],
-            [$this->meta('dt', 'DATETIME')],
+            [['x' => '2020']],
+            [$this->meta('x', 'DATETIME'), $this->meta('x', 'VAR_STRING')],
         );
         $connection->setCastMode(CastMode::Datetime);
 
+        $this->assertSame([['x' => '2020']], $connection->query('SELECT a.x, b.x FROM a JOIN b')->asArray());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function unreadableDateProvider(): array
+    {
+        return [
+            // Each of these is read by DateTimeImmutable as a real timestamp
+            // rather than refused, which is why they are checked for by hand.
+            'empty'      => [''],
+            'space'      => [' '],
+            'tab'        => ["\t"],
+            'zero date'  => ['0000-00-00 00:00:00'],
+            'rolls over' => ['2026-02-31 00:00:00'],
+            // This one the parser does refuse; the point is that it arrives as
+            // the same failure as the rest rather than as a parser exception.
+            'not a date' => ['not a date at all'],
+        ];
+    }
+
+    #[DataProvider('unreadableDateProvider')]
+    public function testAValueThatIsNotAReadableDateFails(string $value): void
+    {
+        $connection = $this->connectionReturning([['dt' => $value]], [$this->meta('dt', 'DATETIME')]);
+        $connection->setCastMode(CastMode::Datetime);
+
         $e = $this->assertThrows(
-            RuntimeException::class,
+            UnexpectedValueException::class,
             static fn () => $connection->query('SELECT dt FROM t'),
         );
         $this->assertSame(
-            'Connection [test]: column "dt" holds "0000-00-00 00:00:00", which is not a date PHP can read.',
+            'Connection [test]: column "dt" holds "' . $value . '", which is not a date PHP can read.',
             $e->getMessage(),
         );
     }
