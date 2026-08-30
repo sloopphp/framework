@@ -487,8 +487,12 @@ final class Connection
      * some non-values as the current time (the empty string, a lone space, a
      * non-breaking space) and refuses others (a form feed, an ideographic
      * space), and which is which is not something to encode here.
+     *
+     * The fraction is capped at six digits because that is the widest a column
+     * can declare, and both servers pad or round to the declared width rather
+     * than handing back more.
      */
-    private const string DATE_SHAPE = '/\A\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d+)?)?\z/';
+    private const string DATE_SHAPE = '/\A\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)?\z/';
 
     /**
      * Read one date column's value, failing on anything PHP would guess at.

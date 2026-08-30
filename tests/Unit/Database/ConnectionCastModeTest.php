@@ -244,6 +244,8 @@ final class ConnectionCastModeTest extends TestCase
             'not a date'        => ['not a date at all'],
             'trailing text'     => ['2026-04-14 15:30:45 and more'],
             'iso T separator'   => ['2026-04-14T15:30:45'],
+            // Wider than any column can declare, so no server writes it.
+            'seven digit frac'  => ['2026-04-14 15:30:45.1234567'],
         ];
     }
 
@@ -262,6 +264,33 @@ final class ConnectionCastModeTest extends TestCase
             $e->getMessage(),
         );
         $this->assertSame(0, $e->getCode());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function fractionWidthProvider(): array
+    {
+        // A column declares its own width, and both servers write the value out
+        // padded to it, so every width from none to six arrives at some point.
+        return [
+            'no fraction' => ['2026-04-14 15:30:45'],
+            'one digit'   => ['2026-04-14 15:30:45.1'],
+            'three'       => ['2026-04-14 15:30:45.123'],
+            'six'         => ['2026-04-14 15:30:45.123456'],
+        ];
+    }
+
+    #[DataProvider('fractionWidthProvider')]
+    public function testEveryFractionWidthAColumnCanDeclareIsRead(string $value): void
+    {
+        $connection = $this->connectionReturning([['dt' => $value]], [$this->meta('dt', 'DATETIME')]);
+        $connection->setCastMode(CastMode::Datetime);
+
+        $row = $connection->query('SELECT dt FROM t')->first();
+
+        $this->assertNotNull($row);
+        $this->assertEquals(new DateTimeImmutable($value), $row['dt']);
     }
 
     public function testAValueTheParserRefusesCarriesItsFailureAsTheCause(): void
