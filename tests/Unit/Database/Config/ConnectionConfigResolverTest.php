@@ -1269,7 +1269,7 @@ final class ConnectionConfigResolverTest extends TestCase
     /**
      * @return array<string, array{0: mixed}>
      */
-    public static function invalidPersistentProvider(): array
+    public static function invalidBooleanProvider(): array
     {
         return [
             'non-bool string' => ['yes'],
@@ -1281,7 +1281,7 @@ final class ConnectionConfigResolverTest extends TestCase
         ];
     }
 
-    #[DataProvider('invalidPersistentProvider')]
+    #[DataProvider('invalidBooleanProvider')]
     public function testValidatePoolRejectsInvalidPersistent(mixed $value): void
     {
         // extractOptionalBool rejects via !is_bool(): null / int / float /
@@ -1322,6 +1322,87 @@ final class ConnectionConfigResolverTest extends TestCase
         );
         $this->assertSame(
             'Connection [mydb]: "read[0]" has unsupported key "persistent". Pool-level keys must be set on the pool itself, not inside read[].',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidatePoolDefaultsStrictModeToFalse(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+        ]);
+
+        $this->assertFalse($pool->strictMode);
+    }
+
+    public function testValidatePoolAcceptsExplicitStrictModeTrue(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'      => 'mysql',
+            'host'        => 'primary.example.com',
+            'database'    => 'app',
+            'strict_mode' => true,
+        ]);
+
+        $this->assertTrue($pool->strictMode);
+    }
+
+    #[DataProvider('invalidBooleanProvider')]
+    public function testValidatePoolRejectsInvalidStrictMode(mixed $value): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validatePool('mydb', [
+                'driver'      => 'mysql',
+                'host'        => 'primary.example.com',
+                'database'    => 'app',
+                'strict_mode' => $value,
+            ]),
+        );
+        $this->assertSame(
+            'Connection [mydb]: config key "strict_mode" must be a boolean.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidatePoolRejectsStrictModeInsideReplica(): void
+    {
+        // strict_mode guards the tables the pool holds, so it belongs to the
+        // pool rather than to one of the servers that reach them.
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 'strict_mode' => true],
+                ],
+            ]),
+        );
+        $this->assertSame(
+            'Connection [mydb]: "read[0]" has unsupported key "strict_mode". Pool-level keys must be set on the pool itself, not inside read[].',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidateRejectsStrictModeOnASingleConnection(): void
+    {
+        // strict_mode is not in ALLOWED_KEYS: validate() covers one server's
+        // connection settings, and this is not one of them.
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validate('master', [
+                'driver'      => 'mysql',
+                'host'        => 'primary.example.com',
+                'database'    => 'app',
+                'strict_mode' => true,
+            ]),
+        );
+        $this->assertSame(
+            'Connection [master]: unsupported config key "strict_mode".',
             $e->getMessage(),
         );
     }

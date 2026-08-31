@@ -101,6 +101,16 @@ final class Connection
     private CastMode $castMode = CastMode::Off;
 
     /**
+     * Whether a query builder refuses to run an UPDATE or DELETE with no WHERE clause.
+     *
+     * Defaults to off; ConnectionManager replaces it with the pool's setting.
+     * A single statement can opt out of it through the builder that runs it.
+     *
+     * @var bool
+     */
+    private bool $strictMode = false;
+
+    /**
      * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
      *
      * @var int|null
@@ -230,6 +240,33 @@ final class Connection
     public function setCastMode(CastMode $mode): void
     {
         $this->castMode = $mode;
+    }
+
+    /**
+     * Set whether statements without a WHERE clause are refused on this connection.
+     *
+     * ConnectionManager calls this with the pool's `strict_mode` setting.
+     *
+     * @param  bool $strict Whether to refuse an unconditioned UPDATE or DELETE
+     * @return void
+     */
+    public function setStrictMode(bool $strict): void
+    {
+        $this->strictMode = $strict;
+    }
+
+    /**
+     * Whether this connection refuses an UPDATE or DELETE with no WHERE clause.
+     *
+     * Read by the query builders when a statement runs. It is a property of the
+     * connection rather than of the statement, so where a builder ends up
+     * decides whether the guard applies to it.
+     *
+     * @return bool
+     */
+    public function isStrictMode(): bool
+    {
+        return $this->strictMode;
     }
 
     /**

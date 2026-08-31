@@ -48,6 +48,7 @@ final class PoolConfigTest extends TestCase
             persistent: true,
             prefix: 'shop_',
             casts: CastMode::Datetime,
+            strictMode: false,
         );
 
         $this->assertSame('mydb', $pool->name);
@@ -83,6 +84,7 @@ final class PoolConfigTest extends TestCase
             persistent: false,
             prefix: '',
             casts: CastMode::Off,
+            strictMode: false,
         );
 
         $this->assertSame([], $pool->replicas);
@@ -118,6 +120,7 @@ final class PoolConfigTest extends TestCase
             persistent: false,
             prefix: '',
             casts: CastMode::Off,
+            strictMode: false,
         );
 
         $this->assertCount(1, $pool->replicas);
