@@ -111,6 +111,32 @@ class Grammar
     }
 
     /**
+     * Compile an UPDATE statement and the bindings its placeholders need.
+     *
+     * The assignments come before the conditions, which is the order MySQL
+     * reads the clauses in and so the order the placeholders stand in.
+     *
+     * ORDER BY and LIMIT are written for the same reason they are on a DELETE:
+     * they say which rows go first when only some of the matches are to change.
+     *
+     * @param  UpdateSpec               $spec Parts of the statement
+     * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    public function compileUpdate(UpdateSpec $spec): CompiledSql
+    {
+        $set     = $this->compileSet($spec->assignments);
+        $where   = $this->compileWhere($spec->conditions);
+        $orderBy = $this->compileOrderBy($spec->orders);
+        $limit   = $this->compileLimit($spec->limit, null);
+
+        return new CompiledSql(
+            'UPDATE ' . $this->quoteTable($spec->table) . $set->sql . $where->sql . $orderBy->sql . $limit->sql,
+            array_merge($set->bindings, $where->bindings, $orderBy->bindings, $limit->bindings),
+        );
+    }
+
+    /**
      * Compile a DELETE statement and the bindings its placeholders need.
      *
      * ORDER BY and LIMIT are written for the same reason MySQL takes them
@@ -221,6 +247,40 @@ class Grammar
     protected function compileFrom(string $table): CompiledSql
     {
         return new CompiledSql(' FROM ' . $this->quoteTable($table));
+    }
+
+    /**
+     * Compile the SET clause.
+     *
+     * A value is bound wherever it can be, so what a column is set to is read
+     * as a value and never as SQL. An Expression is written out instead, which
+     * is what lets a column be set from what it already holds.
+     *
+     * Null is written as a bound value rather than refused: setting a column to
+     * NULL is what the statement is for, unlike a comparison against one, where
+     * a placeholder would match no rows however the column stands.
+     *
+     * @param  list<Assignment>         $assignments Columns to write and the values going into them
+     * @return CompiledSql              SET clause led by a space, empty when there is nothing to write
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileSet(array $assignments): CompiledSql
+    {
+        if ($assignments === []) {
+            return new CompiledSql('');
+        }
+
+        $parts    = [];
+        $bindings = [];
+
+        foreach ($assignments as $assignment) {
+            $column   = $this->compileColumnReference($assignment->column);
+            $value    = $this->compileValue($assignment->value);
+            $parts[]  = $column->sql . ' = ' . $value->sql;
+            $bindings = array_merge($bindings, $column->bindings, $value->bindings);
+        }
+
+        return new CompiledSql(' SET ' . implode(', ', $parts), $bindings);
     }
 
     /**
