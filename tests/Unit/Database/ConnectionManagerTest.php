@@ -588,6 +588,58 @@ final class ConnectionManagerTest extends TestCase
         );
     }
 
+    public function testUpdateHandsTheBuilderTheWriteRoute(): void
+    {
+        // Pinned the same way the DELETE above is, and for the same reason:
+        // where a write lands cannot be read back from the rows.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $update = $manager->update('users');
+
+        $this->assertInstanceOf(WriteConnectionRoute::class, $this->routeBehind($update));
+
+        // Building connects to nothing; the route is asked when the statement runs.
+        $this->assertSame([], $factory->invocations);
+
+        // The replica was never contacted, even though the pool declares one.
+        $this->assertSame($primary, $this->connectionResolvedBy($update));
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testUpdateFromAConnectionStaysOnThatConnection(): void
+    {
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertInstanceOf(
+            FixedConnectionRoute::class,
+            $this->routeBehind($manager->connection(writable: true)->update('users')),
+        );
+    }
+
     public function testSelectFallsBackToThePrimaryWhenThePoolDeclaresNoReplica(): void
     {
         $primary = $this->realConnection();

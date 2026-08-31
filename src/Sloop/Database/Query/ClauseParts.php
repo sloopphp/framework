@@ -43,6 +43,34 @@ final class ClauseParts
     }
 
     /**
+     * Reindex the assignments as a list and reject anything that is not an Assignment.
+     *
+     * The keys a builder collects assignments under name the columns, which is
+     * how a second mention of one replaces the first. Only their order matters
+     * by the time they arrive here, so they are dropped.
+     *
+     * @param  array<int|string, mixed> $assignments Assignment instances
+     * @return list<Assignment>         Parts of the SET clause as a list
+     * @throws InvalidArgumentException When an element is not an Assignment
+     */
+    public static function toAssignments(array $assignments): array
+    {
+        $writes = [];
+
+        foreach (array_values($assignments) as $index => $assignment) {
+            if (!$assignment instanceof Assignment) {
+                throw new InvalidArgumentException(
+                    'Assignments must be an Assignment, got ' . get_debug_type($assignment) . ' at index ' . $index . '.',
+                );
+            }
+
+            $writes[] = $assignment;
+        }
+
+        return $writes;
+    }
+
+    /**
      * Reindex the orders as a list and reject anything that is not an Order.
      *
      * @param  array<int|string, mixed> $orders Order instances

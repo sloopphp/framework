@@ -7,6 +7,7 @@ namespace Sloop\Tests\Unit\Database\Query;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\Query\Assignment;
 use Sloop\Database\Query\BetweenCondition;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Condition;
@@ -20,6 +21,7 @@ use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\SelectSpec;
+use Sloop\Database\Query\UpdateSpec;
 use Sloop\Database\Query\WherePart;
 
 final class GrammarTest extends TestCase
@@ -106,6 +108,81 @@ final class GrammarTest extends TestCase
         $compiled = new Grammar('app_')->compileDelete(new DeleteSpec(from: 'users'));
 
         $this->assertSame('DELETE FROM `app_users`', $compiled->sql);
+    }
+
+    public function testUpdateWritesTheClausesInTheOrderMysqlTakesThem(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(
+            table:       'users',
+            assignments: [new Assignment('status', 'active'), new Assignment('score', 0)],
+            conditions:  [new Condition('status', '=', 'blocked')],
+            orders:      [new Order('id', Direction::Descending)],
+            limit:       2,
+        ));
+
+        $this->assertSame(
+            'UPDATE `users` SET `status` = ?, `score` = ? WHERE `status` = ? ORDER BY `id` DESC LIMIT 2',
+            $compiled->sql,
+        );
+        $this->assertSame(['active', 0, 'blocked'], $compiled->bindings);
+    }
+
+    public function testUpdateWritesAnExpressionAssignmentWithItsBindings(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(
+            table:       'users',
+            assignments: [new Assignment('score', Expression::of('score + ?', [5]))],
+        ));
+
+        $this->assertSame('UPDATE `users` SET `score` = score + ?', $compiled->sql);
+        $this->assertSame([5], $compiled->bindings);
+    }
+
+    public function testUpdateWritesNoOffsetAlongsideTheLimit(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(
+            table:       'users',
+            assignments: [new Assignment('score', 0)],
+            limit:       1,
+        ));
+
+        $this->assertSame('UPDATE `users` SET `score` = ? LIMIT 1', $compiled->sql);
+    }
+
+    public function testUpdatePrefixesTheTable(): void
+    {
+        $compiled = new Grammar('app_')->compileUpdate(new UpdateSpec(
+            table:       'users',
+            assignments: [new Assignment('score', 0)],
+        ));
+
+        $this->assertSame('UPDATE `app_users` SET `score` = ?', $compiled->sql);
+    }
+
+    public function testSubclassCanReplaceTheSetClause(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileSet(array $assignments): CompiledSql
+            {
+                return new CompiledSql(' SET (' . \count($assignments) . ' columns)');
+            }
+        };
+
+        $compiled = $grammar->compileUpdate(new UpdateSpec(
+            table:       'users',
+            assignments: [new Assignment('score', 0)],
+        ));
+
+        $this->assertSame('UPDATE `users` SET (1 columns)', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testUpdateWithNothingToAssignWritesNoSetClause(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(table: 'users'));
+
+        $this->assertSame('UPDATE `users`', $compiled->sql, 'the Update builder refuses this before it is compiled');
+        $this->assertSame([], $compiled->bindings);
     }
 
     public function testPrefixIsAppliedToTheTable(): void

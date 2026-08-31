@@ -16,6 +16,7 @@ use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
+use Sloop\Database\Query\Update;
 use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 
@@ -188,6 +189,25 @@ final class ConnectionManager
     public function delete(string $table): Delete
     {
         return new Delete(
+            new WriteConnectionRoute($this),
+            $this->grammarFor($this->resolvePool($this->defaultName)),
+            $table,
+        );
+    }
+
+    /**
+     * Start an UPDATE on the default pool's primary.
+     *
+     * The connection is resolved when the statement runs rather than here, as
+     * it is for delete().
+     *
+     * @param  string                 $table Table to update, optionally schema qualified
+     * @return Update                 Builder for the statement
+     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     */
+    public function update(string $table): Update
+    {
+        return new Update(
             new WriteConnectionRoute($this),
             $this->grammarFor($this->resolvePool($this->defaultName)),
             $table,

@@ -23,6 +23,7 @@ use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
+use Sloop\Database\Query\Update;
 use Throwable;
 use UnexpectedValueException;
 
@@ -164,6 +165,21 @@ final class Connection
     public function delete(string $table): Delete
     {
         return new Delete(new FixedConnectionRoute($this), $this->grammar, $table);
+    }
+
+    /**
+     * Start an UPDATE statement over this connection.
+     *
+     * As with delete(), the builder is handed this connection's grammar, so
+     * the table prefix comes from the pool the connection belongs to, and the
+     * statement runs on this connection with nothing left to route.
+     *
+     * @param  string $table Table to update, optionally schema qualified
+     * @return Update Builder for the statement
+     */
+    public function update(string $table): Update
+    {
+        return new Update(new FixedConnectionRoute($this), $this->grammar, $table);
     }
 
     /**
