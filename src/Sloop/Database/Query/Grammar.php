@@ -137,6 +137,30 @@ class Grammar
     }
 
     /**
+     * Compile an INSERT statement and the bindings its placeholders need.
+     *
+     * The columns are named once and the rows follow as tuples in that order,
+     * which is the form MySQL takes for several rows and reads the same for
+     * one. The bindings run row by row, so they arrive in the order the
+     * placeholders stand in.
+     *
+     * @param  InsertSpec               $spec Parts of the statement
+     * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    public function compileInsert(InsertSpec $spec): CompiledSql
+    {
+        $columns = $this->compileInsertColumns($spec->columns);
+        $rows    = $this->compileInsertRows($spec->rows);
+
+        return new CompiledSql(
+            'INSERT ' . ($spec->ignore ? 'IGNORE ' : '') . 'INTO ' . $this->quoteTable($spec->table)
+                . $columns->sql . ' VALUES ' . $rows->sql,
+            array_merge($columns->bindings, $rows->bindings),
+        );
+    }
+
+    /**
      * Compile a DELETE statement and the bindings its placeholders need.
      *
      * ORDER BY and LIMIT are written for the same reason MySQL takes them
@@ -247,6 +271,56 @@ class Grammar
     protected function compileFrom(string $table): CompiledSql
     {
         return new CompiledSql(' FROM ' . $this->quoteTable($table));
+    }
+
+    /**
+     * Compile the column list of an INSERT.
+     *
+     * @param  list<string>             $columns Columns being written, in the order they are written in
+     * @return CompiledSql              Parenthesised column list, led by a space
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileInsertColumns(array $columns): CompiledSql
+    {
+        $quoted = [];
+
+        foreach ($columns as $column) {
+            $quoted[] = $this->quoteIdentifier($column);
+        }
+
+        return new CompiledSql(' (' . implode(', ', $quoted) . ')');
+    }
+
+    /**
+     * Compile the tuples of an INSERT.
+     *
+     * @param  list<list<string|int|float|bool|Expression|null>> $rows Rows in the order they were added
+     * @return CompiledSql                                       Tuples separated by commas, with the bindings they need
+     */
+    protected function compileInsertRows(array $rows): CompiledSql
+    {
+        $tuples   = [];
+        $bindings = [];
+
+        foreach ($rows as $row) {
+            $parts = [];
+
+            foreach ($row as $value) {
+                $compiled = $this->compileValue($value);
+                $parts[]  = $compiled->sql;
+
+                // Appended rather than merged: this loop runs once per value
+                // rather than once per clause, so copying the whole array each
+                // time costs the square of the values written.
+                foreach ($compiled->bindings as $binding) {
+                    $bindings[] = $binding;
+                }
+            }
+
+            $tuples[] = '(' . implode(', ', $parts) . ')';
+        }
+
+        return new CompiledSql(implode(', ', $tuples), $bindings);
     }
 
     /**

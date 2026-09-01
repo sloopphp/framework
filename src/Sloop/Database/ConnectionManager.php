@@ -15,6 +15,7 @@ use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Insert;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Query\Update;
 use Sloop\Database\Replica\DeadReplicaCache;
@@ -208,6 +209,25 @@ final class ConnectionManager
     public function update(string $table): Update
     {
         return new Update(
+            new WriteConnectionRoute($this),
+            $this->grammarFor($this->resolvePool($this->defaultName)),
+            $table,
+        );
+    }
+
+    /**
+     * Start an INSERT on the default pool's primary.
+     *
+     * The connection is resolved when the statement runs rather than here, as
+     * it is for update().
+     *
+     * @param  string                 $table Table to insert into, optionally schema qualified
+     * @return Insert                 Builder for the statement
+     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     */
+    public function insert(string $table): Insert
+    {
+        return new Insert(
             new WriteConnectionRoute($this),
             $this->grammarFor($this->resolvePool($this->defaultName)),
             $table,
