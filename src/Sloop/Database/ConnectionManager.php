@@ -233,6 +233,7 @@ final class ConnectionManager
             $this->applyQueryTimeout($connection, $pool);
             $this->applyGrammar($connection, $pool);
             $this->applyCastMode($connection, $pool);
+            $this->applyStrictMode($connection, $pool);
             $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
@@ -287,6 +288,7 @@ final class ConnectionManager
                 $this->applyQueryTimeout($connection, $pool);
                 $this->applyGrammar($connection, $pool);
                 $this->applyCastMode($connection, $pool);
+                $this->applyStrictMode($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -443,6 +445,22 @@ final class ConnectionManager
     private function applyCastMode(Connection $connection, PoolConfig $pool): void
     {
         $connection->setCastMode($pool->casts);
+    }
+
+    /**
+     * Hand a new connection the pool's strict-mode setting.
+     *
+     * Applied to replicas as well as to the primary: nothing stops a write from
+     * being run over a replica connection, so the guard has to travel with every
+     * connection the pool hands out rather than with the write route.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config supplying the setting
+     * @return void
+     */
+    private function applyStrictMode(Connection $connection, PoolConfig $pool): void
+    {
+        $connection->setStrictMode($pool->strictMode);
     }
 
     /**

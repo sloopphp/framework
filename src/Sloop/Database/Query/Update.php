@@ -28,9 +28,9 @@ use Sloop\Database\Exception\InvalidConfigException;
  * ```
  *
  * A statement with no conditions writes to every row in the table. That is
- * what UPDATE means and the builder writes it as asked; the guard that refuses
- * it unless it was asked for deliberately arrives with the `strict_mode`
- * config key.
+ * what UPDATE means and the builder writes it as asked, unless the pool sets
+ * `strict_mode`, which refuses an unconditioned statement at the point it would
+ * run. allowWithoutWhere() says that the whole table is what was meant.
  */
 class Update extends BuilderWhere
 {
@@ -94,6 +94,26 @@ class Update extends BuilderWhere
     }
 
     /**
+     * Say that this statement is meant to address every row.
+     *
+     * Only has an effect where the connection runs in strict mode, which
+     * otherwise refuses an UPDATE carrying no WHERE clause. Saying it on a
+     * statement that is narrowed anyway changes nothing.
+     *
+     * The opt-out is per statement rather than per connection so that a batch
+     * job can name itself as one without the setting being lifted for
+     * everything else running over the same pool.
+     *
+     * @return static This builder
+     */
+    public function allowWithoutWhere(): static
+    {
+        $this->allowWithoutWhere = true;
+
+        return $this;
+    }
+
+    /**
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
@@ -137,7 +157,7 @@ class Update extends BuilderWhere
      * so where this runs is whatever the route answers now.
      *
      * @return int                         Rows changed
-     * @throws LogicException              When there is nothing to assign, a group of conditions was left open, or an offset was set
+     * @throws LogicException              When there is nothing to assign, a group of conditions was left open, an offset was set, or the connection is in strict mode and nothing narrows the statement
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -145,9 +165,12 @@ class Update extends BuilderWhere
      */
     public function execute(): int
     {
-        $compiled = $this->compile();
+        $compiled   = $this->compile();
+        $connection = $this->route->connection();
 
-        return $this->route->connection()->statement($compiled->sql, $compiled->bindings);
+        $this->requireWhereUnderStrictMode($connection, 'UPDATE');
+
+        return $connection->statement($compiled->sql, $compiled->bindings);
     }
 
     /**

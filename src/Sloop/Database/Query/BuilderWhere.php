@@ -7,6 +7,7 @@ namespace Sloop\Database\Query;
 use Closure;
 use InvalidArgumentException;
 use LogicException;
+use Sloop\Database\Connection;
 
 /**
  * The clauses that narrow a statement down to a set of rows.
@@ -84,6 +85,17 @@ abstract class BuilderWhere extends Builder
      * @var int|null
      */
     protected ?int $offset = null;
+
+    /**
+     * Whether this statement was told it may run without a WHERE clause.
+     *
+     * Only read when the connection has strict mode on. Set through the
+     * allowWithoutWhere() that each statement able to run unconditioned
+     * declares for itself.
+     *
+     * @var bool
+     */
+    protected bool $allowWithoutWhere = false;
 
     /**
      * Add one condition, several at once, or a parenthesised group.
@@ -460,6 +472,39 @@ abstract class BuilderWhere extends Builder
         $this->offset = $offset;
 
         return $this;
+    }
+
+    /**
+     * Refuse to run without a WHERE clause when the connection asks for one.
+     *
+     * What counts is whether a WHERE clause reaches the server, not whether
+     * anything was added: a group that stayed empty, from a when() that did not
+     * fire or an opened and closed pair, leaves boundaries behind that compile
+     * to no clause at all. Those are passed over here for the same reason the
+     * grammar drops them.
+     *
+     * @param  Connection     $connection Connection the statement is about to run on
+     * @param  string         $statement  Statement kind to name in the message
+     * @return void
+     * @throws LogicException When strict mode is on, nothing narrows the statement, and it was not allowed
+     */
+    protected function requireWhereUnderStrictMode(Connection $connection, string $statement): void
+    {
+        if (!$connection->isStrictMode() || $this->allowWithoutWhere) {
+            return;
+        }
+
+        foreach ($this->conditions as $condition) {
+            if (!$condition instanceof GroupBoundary) {
+                return;
+            }
+        }
+
+        throw new LogicException(
+            'This connection runs in strict mode, and this ' . $statement . ' carries no WHERE clause,'
+                . ' so it would address every row. Narrow it with where(), or call allowWithoutWhere()'
+                . ' to say that addressing the whole table is what was meant.',
+        );
     }
 
     /**

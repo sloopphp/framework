@@ -44,6 +44,10 @@ final readonly class PoolConfig
      * @param CastMode              $casts                 How far fetched values are converted away from the driver's types.
      *                                                     Pool-level because the return types of a read must not depend on
      *                                                     which server answered it
+     * @param bool                  $strictMode            Whether a query builder refuses to run an UPDATE or DELETE that
+     *                                                     carries no WHERE clause. Pool-level rather than per server,
+     *                                                     because it guards the tables the pool holds rather than the
+     *                                                     connection that reaches them
      */
     public function __construct(
         public string $name,
@@ -60,6 +64,7 @@ final readonly class PoolConfig
         public bool $persistent,
         public string $prefix,
         public CastMode $casts,
+        public bool $strictMode,
     ) {
     }
 }

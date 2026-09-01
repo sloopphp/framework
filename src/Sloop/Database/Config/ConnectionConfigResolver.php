@@ -70,6 +70,7 @@ final class ConnectionConfigResolver
         'persistent',
         'prefix',
         'casts',
+        'strict_mode',
     ];
 
     /**
@@ -207,6 +208,13 @@ final class ConnectionConfigResolver
     private const bool DEFAULT_PERSISTENT = false;
 
     /**
+     * Default for `strict_mode` when omitted: a statement without a WHERE clause runs as written.
+     *
+     * @var bool
+     */
+    private const bool DEFAULT_STRICT_MODE = false;
+
+    /**
      * Default table prefix when omitted: table names are used as written.
      *
      * @var string
@@ -277,13 +285,14 @@ final class ConnectionConfigResolver
         $deadCacheTtl    = self::extractOptionalPositiveInt($name, $config, 'dead_cache_ttl_seconds') ?? self::DEFAULT_DEAD_CACHE_TTL_SECONDS;
         $selector        = self::extractOptionalReplicaSelector($name, $config) ?? self::DEFAULT_REPLICA_SELECTOR;
         $maxAttempts     = self::extractOptionalPositiveInt($name, $config, 'max_connection_attempts') ?? (\count($replicas) + 1);
-        $logBindings     = self::extractOptionalBool($name, $config, 'log_bindings') ?? self::DEFAULT_LOG_BINDINGS;
-        $logAllQueries   = self::extractOptionalBool($name, $config, 'log_all_queries') ?? self::DEFAULT_LOG_ALL_QUERIES;
+        $logBindings     = self::extractBool($name, $config, 'log_bindings', self::DEFAULT_LOG_BINDINGS);
+        $logAllQueries   = self::extractBool($name, $config, 'log_all_queries', self::DEFAULT_LOG_ALL_QUERIES);
         $slowThresholdMs = self::extractOptionalPositiveInt($name, $config, 'slow_query_threshold_ms');
         $queryTimeoutMs  = self::extractOptionalPositiveInt($name, $config, 'query_timeout_ms');
-        $persistent      = self::extractOptionalBool($name, $config, 'persistent') ?? self::DEFAULT_PERSISTENT;
+        $persistent      = self::extractBool($name, $config, 'persistent', self::DEFAULT_PERSISTENT);
         $prefix          = self::extractOptionalPrefix($name, $config) ?? self::DEFAULT_PREFIX;
         $casts           = self::extractOptionalCastMode($name, $config) ?? self::DEFAULT_CASTS;
+        $strictMode      = self::extractBool($name, $config, 'strict_mode', self::DEFAULT_STRICT_MODE);
 
         return new PoolConfig(
             name:                  $name,
@@ -300,6 +309,7 @@ final class ConnectionConfigResolver
             persistent:            $persistent,
             prefix:                $prefix,
             casts:                 $casts,
+            strictMode:            $strictMode,
         );
     }
 
@@ -856,6 +866,25 @@ final class ConnectionConfigResolver
         }
 
         return $value;
+    }
+
+    /**
+     * Extract a boolean config value, falling back to the key's default when it is absent.
+     *
+     * The pool carries several booleans whose absence means a documented
+     * default rather than "unset", so the fallback lives here instead of being
+     * spelled out at each call site.
+     *
+     * @param  string                  $name    Pool name for error messages
+     * @param  array<array-key, mixed> $config  Pool config array
+     * @param  string                  $key     Key to extract
+     * @param  bool                    $default Value the key stands for when it is absent
+     * @return bool                    The configured value, or the default
+     * @throws InvalidConfigException  When the key is present but not a boolean
+     */
+    private static function extractBool(string $name, array $config, string $key, bool $default): bool
+    {
+        return self::extractOptionalBool($name, $config, $key) ?? $default;
     }
 
     /**

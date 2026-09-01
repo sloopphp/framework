@@ -2889,4 +2889,58 @@ final class ConnectionManagerTest extends TestCase
         $this->assertNotNull($row);
         $this->assertEquals(new DateTimeImmutable('2026-04-14 15:30:45'), $row['dt']);
     }
+
+    public function testThePoolsStrictModeReachesTheConnection(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'      => 'mysql',
+                'host'        => 'primary.internal',
+                'database'    => 'app',
+                'strict_mode' => true,
+            ],
+        ], $factory);
+
+        $this->assertTrue($manager->connection()->isStrictMode());
+    }
+
+    public function testAPoolWithoutStrictModeLeavesTheConnectionUnguarded(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+            ],
+        ], $factory);
+
+        $this->assertFalse($manager->connection()->isStrictMode());
+    }
+
+    public function testAReplicaCarriesTheSameStrictModeAsThePrimary(): void
+    {
+        // Nothing stops a write from being run over a replica connection, so
+        // the guard has to travel with every connection the pool hands out.
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'strict_mode'  => true,
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertTrue($manager->connection(writable: false)->isStrictMode());
+    }
 }
