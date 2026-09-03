@@ -295,7 +295,7 @@ final class InsertTest extends TestCase
         // and is pinned in the integration test instead.
         $insert = $this->insert()->set(['name' => 'alice']);
 
-        $thrown = $this->assertThrows(QueryException::class, static fn (): int => $insert->executeIgnore());
+        $thrown = $this->assertThrows(QueryException::class, static fn (): int|string => $insert->executeIgnore());
 
         $this->assertSame('INSERT IGNORE INTO `users` (`name`) VALUES (?)', $thrown->sql);
     }

@@ -130,14 +130,14 @@ class Insert extends Builder
      * from that same connection, since it is that connection's last id and not
      * the server's.
      *
-     * @return int                         Id of the first row inserted, or 0 when the table has no AUTO_INCREMENT column
+     * @return int|string                  Id of the first row inserted, or 0 when the table has no AUTO_INCREMENT column; see Connection::lastInsertId() for when it is a string
      * @throws LogicException              When no row was given
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */
-    public function execute(): int
+    public function execute(): int|string
     {
         return $this->run($this->compileWith(ignore: false));
     }
@@ -160,14 +160,14 @@ class Insert extends Builder
      * was skipped nor what was coerced is visible in what comes back. Where
      * every row was skipped there is no new id and the value is 0.
      *
-     * @return int                         Id of the first row inserted, or 0 when no row was written or the table has no AUTO_INCREMENT column
+     * @return int|string                  Id of the first row inserted, or 0 when no row was written or the table has no AUTO_INCREMENT column; see Connection::lastInsertId() for when it is a string
      * @throws LogicException              When no row was given
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */
-    public function executeIgnore(): int
+    public function executeIgnore(): int|string
     {
         return $this->run($this->compileWith(ignore: true));
     }
@@ -200,12 +200,12 @@ class Insert extends Builder
      * Run a compiled statement and read back the id it gave the first row.
      *
      * @param  CompiledSql                 $compiled Statement to run
-     * @return int                         Id of the first row inserted, or 0 when there is none to report
+     * @return int|string                  Id of the first row inserted, or 0 when there is none to report
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */
-    private function run(CompiledSql $compiled): int
+    private function run(CompiledSql $compiled): int|string
     {
         $connection = $this->route->connection();
 

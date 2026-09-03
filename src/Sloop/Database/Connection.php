@@ -706,11 +706,22 @@ final class Connection
      * which under this framework's ERRMODE_EXCEPTION is an exception rather
      * than a value.
      *
-     * @return int Id of the last inserted row, or 0 when there is none to report
+     * An id that fits a PHP int comes back as one. A BIGINT UNSIGNED column
+     * counts past what a PHP int holds, so an id beyond that comes back as its
+     * digits in a string. Code that reads the id either accepts both types or
+     * writes it somewhere that takes a string.
+     *
+     * @return int|string Id of the last inserted row as an int, its digits as a string when it does not fit one, or 0 when there is none to report
      */
-    public function lastInsertId(): int
+    public function lastInsertId(): int|string
     {
-        return (int) $this->pdo->lastInsertId();
+        $id = $this->pdo->lastInsertId();
+
+        if ($id === false) {
+            return 0;
+        }
+
+        return $id === (string) (int) $id ? (int) $id : $id;
     }
 
     /**

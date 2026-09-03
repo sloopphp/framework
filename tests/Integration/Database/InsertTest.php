@@ -15,6 +15,23 @@ final class InsertTest extends TransactionalIntegrationTestCase
 {
     use ThrowsAssertions;
 
+    private const string BIG_ID_TABLE = 'sloop_big_id_rows';
+
+    protected static function setUpSharedFixtures(): void
+    {
+        $connection = static::openConnection();
+        $connection->statement('DROP TABLE IF EXISTS ' . self::BIG_ID_TABLE);
+        $connection->statement(
+            'CREATE TABLE ' . self::BIG_ID_TABLE . ' ('
+                . 'id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, '
+                . 'label VARCHAR(50) NOT NULL'
+                . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $connection->statement(
+            'ALTER TABLE ' . self::BIG_ID_TABLE . ' AUTO_INCREMENT = 9223372036854775808',
+        );
+    }
+
     /**
      * @return list<array{id: int, name: string, email: string}>
      */
@@ -71,7 +88,7 @@ final class InsertTest extends TransactionalIntegrationTestCase
         $insert = $this->connection->insert('users')
             ->set(['name' => 'bob', 'email' => 'alice@example.com', 'created_at' => Expression::of('NOW()')]);
 
-        $this->assertThrows(UniqueConstraintViolationException::class, static fn (): int => $insert->execute());
+        $this->assertThrows(UniqueConstraintViolationException::class, static fn (): int|string => $insert->execute());
         $this->assertCount(1, $this->users(), 'the refused row was not written');
     }
 
@@ -101,7 +118,7 @@ final class InsertTest extends TransactionalIntegrationTestCase
         $refused = $this->connection->insert('users')
             ->set(['name' => $tooLong, 'email' => 'alice@example.com', 'created_at' => Expression::of('NOW()')]);
 
-        $this->assertThrows(QueryException::class, static fn (): int => $refused->execute());
+        $this->assertThrows(QueryException::class, static fn (): int|string => $refused->execute());
 
         $this->connection->insert('users')
             ->set(['name' => $tooLong, 'email' => 'alice@example.com', 'created_at' => Expression::of('NOW()')])
@@ -121,7 +138,7 @@ final class InsertTest extends TransactionalIntegrationTestCase
         $refused = $this->connection->insert('users')
             ->set(['name' => null, 'email' => 'alice@example.com', 'created_at' => Expression::of('NOW()')]);
 
-        $this->assertThrows(ConstraintViolationException::class, static fn (): int => $refused->execute());
+        $this->assertThrows(ConstraintViolationException::class, static fn (): int|string => $refused->execute());
 
         $this->connection->insert('users')
             ->set(['name' => null, 'email' => 'alice@example.com', 'created_at' => Expression::of('NOW()')])
@@ -158,5 +175,23 @@ final class InsertTest extends TransactionalIntegrationTestCase
             ->execute();
 
         $this->assertSame([['id' => $id, 'name' => 'alice', 'email' => 'alice@example.com']], $this->users());
+    }
+
+    public function testAnIdBeyondWhatAnIntHoldsIsReportedAsItsDigits(): void
+    {
+        $id = $this->connection->insert(self::BIG_ID_TABLE)
+            ->set(['label' => 'alice'])
+            ->execute();
+
+        $this->assertSame('9223372036854775808', $id);
+    }
+
+    public function testAnIdThatFitsAnIntIsReportedAsOne(): void
+    {
+        $id = $this->connection->insert('users')
+            ->set(['name' => 'alice', 'email' => 'alice@example.com', 'created_at' => Expression::of('NOW()')])
+            ->execute();
+
+        $this->assertIsInt($id);
     }
 }

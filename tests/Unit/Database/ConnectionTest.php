@@ -1541,4 +1541,47 @@ final class ConnectionTest extends TestCase
         $this->assertSame(Level::Error, $records[0]->level);
         $this->assertStringStartsWith('failed to apply query timeout: ', $records[0]->message);
     }
+
+    public function testLastInsertIdIsAnIntWhenTheIdFitsOne(): void
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('lastInsertId')->willReturn('42');
+
+        $connection = new Connection($pdo, 'test');
+
+        $this->assertSame(42, $connection->lastInsertId());
+    }
+
+    public function testLastInsertIdKeepsTheDigitsOfAnIdTooLargeForAnInt(): void
+    {
+        // A BIGINT UNSIGNED column counts past PHP_INT_MAX, and casting such an
+        // id to int silently pins it to PHP_INT_MAX. The digits come back as a
+        // string instead so the value survives.
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('lastInsertId')->willReturn('9223372036854775808');
+
+        $connection = new Connection($pdo, 'test');
+
+        $this->assertSame('9223372036854775808', $connection->lastInsertId());
+    }
+
+    public function testLastInsertIdIsAnIntAtTheLargestValueAnIntHolds(): void
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('lastInsertId')->willReturn((string) PHP_INT_MAX);
+
+        $connection = new Connection($pdo, 'test');
+
+        $this->assertSame(PHP_INT_MAX, $connection->lastInsertId());
+    }
+
+    public function testLastInsertIdIsZeroWhenThereIsNoIdToReport(): void
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('lastInsertId')->willReturn('0');
+
+        $connection = new Connection($pdo, 'test');
+
+        $this->assertSame(0, $connection->lastInsertId());
+    }
 }
