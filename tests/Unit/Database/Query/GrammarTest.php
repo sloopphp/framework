@@ -7,6 +7,7 @@ namespace Sloop\Tests\Unit\Database\Query;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\Dialect;
 use Sloop\Database\Query\Assignment;
 use Sloop\Database\Query\BetweenCondition;
 use Sloop\Database\Query\CompiledSql;
@@ -98,6 +99,223 @@ final class GrammarTest extends TestCase
         ));
 
         $this->assertSame('INSERT IGNORE INTO `users` (`name`) VALUES (?)', $compiled->sql);
+    }
+
+    public function testInsertWithNothingToOverwriteWritesNoUpdateClause(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name'],
+            rows:    [['alice']],
+        ));
+
+        $this->assertSame('INSERT INTO `users` (`name`) VALUES (?)', $compiled->sql);
+    }
+
+    public function testInsertNamesTheIncomingValueThroughValuesWhenThereIsNoRowAlias(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['email', 'name', 'score'],
+            rows:    [['a@example.com', 'alice', 10]],
+            upsert:  ['name', 'score'],
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `users` (`email`, `name`, `score`) VALUES (?, ?, ?)'
+                . ' ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `score` = VALUES(`score`)',
+            $compiled->sql,
+        );
+        $this->assertSame(['a@example.com', 'alice', 10], $compiled->bindings);
+    }
+
+    public function testInsertNamesTheIncomingValueThroughTheRowAliasWhenTheServerReadsOne(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:    'users',
+            columns:  ['email', 'score'],
+            rows:     [['a@example.com', 10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `users` (`email`, `score`) VALUES (?, ?)'
+                . ' AS `sloop_upsert` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert`.`score`',
+            $compiled->sql,
+        );
+        $this->assertSame(['a@example.com', 10], $compiled->bindings);
+    }
+
+    public function testUpsertPrefixesNeitherTheAliasNorTheColumns(): void
+    {
+        $compiled = new Grammar('wp_')->compileInsert(new InsertSpec(
+            table:    'users',
+            columns:  ['email', 'score'],
+            rows:     [['a@example.com', 10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `wp_users` (`email`, `score`) VALUES (?, ?)'
+                . ' AS `sloop_upsert` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testSubclassCanReplaceTheUpdateClauseOfAnUpsert(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileUpsert(array $columns, ?string $alias): CompiledSql
+            {
+                return new CompiledSql(' /* ' . implode('|', $columns) . ' */');
+            }
+        };
+
+        $compiled = $grammar->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['email', 'score'],
+            rows:    [['a@example.com', 10]],
+            upsert:  ['score'],
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `users` (`email`, `score`) VALUES (?, ?) /* score */',
+            $compiled->sql,
+        );
+    }
+
+    public function testSubclassCanChooseTheRowAlias(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function rowAliasFor(string $quotedTable): string
+            {
+                return '`incoming`';
+            }
+        };
+
+        $compiled = $grammar->compileInsert(new InsertSpec(
+            table:    'users',
+            columns:  ['email', 'score'],
+            rows:     [['a@example.com', 10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `users` (`email`, `score`) VALUES (?, ?)'
+                . ' AS `incoming` ON DUPLICATE KEY UPDATE `score` = `incoming`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testTheRowAliasStepsAsideFromATableOfItsOwnName(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:    'sloop_upsert',
+            columns:  ['email', 'score'],
+            rows:     [['a@example.com', 10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `sloop_upsert` (`email`, `score`) VALUES (?, ?)'
+                . ' AS `sloop_upsert_row` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert_row`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testTheRowAliasStepsAsideFromATableThePrefixNamedAfterIt(): void
+    {
+        // The alias is compared against the name the server sees, so a caller
+        // who never writes the alias can still land on it through the prefix.
+        $compiled = new Grammar('sloop_')->compileInsert(new InsertSpec(
+            table:    'upsert',
+            columns:  ['email', 'score'],
+            rows:     [['a@example.com', 10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `sloop_upsert` (`email`, `score`) VALUES (?, ?)'
+                . ' AS `sloop_upsert_row` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert_row`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testTheRowAliasStepsAsideFromATableThatDiffersOnlyInCase(): void
+    {
+        // Whether the two are the same name is the server's to decide: MySQL
+        // folds table names when lower_case_table_names is not 0, and refuses
+        // this pairing with 1066 (measured on 8.0.46 with the setting at 1).
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:    'Sloop_Upsert',
+            columns:  ['score'],
+            rows:     [[10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `Sloop_Upsert` (`score`) VALUES (?)'
+                . ' AS `sloop_upsert_row` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert_row`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testOnlyTheTableOfTheStatementPushesTheRowAliasAside(): void
+    {
+        // A schema of the alias's name shares no namespace with it.
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:    'sloop_upsert.users',
+            columns:  ['score'],
+            rows:     [[10]],
+            upsert:   ['score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `sloop_upsert`.`users` (`score`) VALUES (?)'
+                . ' AS `sloop_upsert` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    /**
+     * @param Dialect $dialect  Server the statement would go to
+     * @param string  $version  What that server answers to SELECT VERSION()
+     * @param bool    $expected Whether the alias form is expected to be written
+     */
+    #[DataProvider('rowAliasSupport')]
+    public function testTheRowAliasIsWrittenOnlyForAMysqlThatReadsIt(
+        Dialect $dialect,
+        string $version,
+        bool $expected,
+    ): void {
+        $this->assertSame($expected, new Grammar()->supportsRowAlias($dialect, $version));
+    }
+
+    /**
+     * @return array<string, array{Dialect, string, bool}>
+     */
+    public static function rowAliasSupport(): array
+    {
+        return [
+            'the MySQL the alias arrived in'      => [Dialect::MySQL, '8.0.19', true],
+            'a later MySQL'                       => [Dialect::MySQL, '8.0.46', true],
+            'the MySQL just before it'            => [Dialect::MySQL, '8.0.18', false],
+            'a MySQL 5.7'                         => [Dialect::MySQL, '5.7.44', false],
+            'a MySQL 9'                           => [Dialect::MySQL, '9.1.0', true],
+            'a build suffix after the version'    => [Dialect::MySQL, '8.0.46-log', true],
+            'MariaDB, whichever version'          => [Dialect::MariaDB, '10.11.18-MariaDB', false],
+            'a MariaDB numbered above the MySQL'  => [Dialect::MariaDB, '11.4.2-MariaDB', false],
+            'a version string with no numbers'    => [Dialect::MySQL, 'who knows', false],
+            'a version too short to compare'      => [Dialect::MySQL, '8.0', false],
+            'an empty version'                    => [Dialect::MySQL, '', false],
+        ];
     }
 
     public function testInsertEmbedsAnExpressionWithItsBindings(): void

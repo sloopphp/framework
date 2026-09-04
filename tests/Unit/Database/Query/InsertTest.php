@@ -8,8 +8,11 @@ use InvalidArgumentException;
 use LogicException;
 use PDO;
 use Pdo\Sqlite;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
+use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
@@ -54,6 +57,28 @@ final class InsertTest extends TestCase
         }
 
         return $rows;
+    }
+
+    private function failingRoute(): ConnectionRoute
+    {
+        return new class () implements ConnectionRoute {
+            public function connection(): Connection
+            {
+                throw new DatabaseConnectionException('no connection for this test');
+            }
+        };
+    }
+
+    private function connectionReporting(string $version): Connection
+    {
+        $sqlite = new Sqlite('sqlite::memory:', null, null, [
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        $sqlite->createFunction('VERSION', static fn (): string => $version);
+
+        return new Connection($sqlite, 'insert_test');
     }
 
     public function testOneRowBecomesAColumnListAndOneTuple(): void
@@ -306,5 +331,146 @@ final class InsertTest extends TestCase
             'INSERT INTO `users` (`name`) VALUES (?)',
             $this->insert()->set(['name' => 'alice'])->toSql(),
         );
+    }
+
+    public function testUpsertAddsAnUpdateClauseNamingTheColumnsToOverwrite(): void
+    {
+        $insert = $this->insert()->set(['name' => 'alice', 'score' => 10])->upsert(['score']);
+
+        $this->assertSame(
+            'INSERT INTO `users` (`name`, `score`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `score` = VALUES(`score`)',
+            $insert->toSql(),
+        );
+        $this->assertSame(['alice', 10], $insert->toBindings());
+    }
+
+    public function testCallingUpsertAgainReplacesTheColumnsRatherThanAddingToThem(): void
+    {
+        $insert = $this->insert()
+            ->set(['name' => 'alice', 'score' => 10])
+            ->upsert(['name', 'score'])
+            ->upsert(['score']);
+
+        $this->assertSame(
+            'INSERT INTO `users` (`name`, `score`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `score` = VALUES(`score`)',
+            $insert->toSql(),
+        );
+    }
+
+    public function testAStatementWithNoRowIsRefusedBeforeAConnectionIsAskedFor(): void
+    {
+        // A statement that cannot be written should say so, rather than
+        // reporting whatever obtaining a connection ran into. Update and Delete
+        // compile before they resolve their route, which puts them here too.
+        $insert = new Insert($this->failingRoute(), new Grammar(), 'users');
+
+        $this->assertThrows(LogicException::class, static fn (): int|string => $insert->execute());
+        $this->assertThrows(LogicException::class, static fn (): int|string => $insert->executeIgnore());
+    }
+
+    public function testUpsertCanBeNamedBeforeTheRowsThatSettleTheColumns(): void
+    {
+        // Which columns the statement writes is not known until a row arrives,
+        // which is why the check that an overwritten column is one of them sits
+        // in the spec rather than here. Calling upsert() first has to reach the
+        // same statement for that to hold.
+        $insert = $this->insert()->upsert(['score'])->set(['name' => 'alice', 'score' => 10]);
+
+        $this->assertSame(
+            'INSERT INTO `users` (`name`, `score`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `score` = VALUES(`score`)',
+            $insert->toSql(),
+        );
+    }
+
+    public function testUpsertNamingNoColumnIsRefused(): void
+    {
+        $insert = $this->insert();
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): Insert => $insert->upsert([]),
+        );
+
+        $this->assertSame(
+            'An upsert names the columns to overwrite on a collision, and this one names none.'
+                . ' To let the server pass over a colliding row instead, run the statement with executeIgnore().',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testUpsertNamingAColumnTheStatementDoesNotWriteIsRefused(): void
+    {
+        $insert = $this->insert()->set(['name' => 'alice'])->upsert(['score']);
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): string => $insert->toSql(),
+        );
+
+        $this->assertSame(
+            'A column overwritten on a collision takes the value this statement was writing for it, so it has'
+                . ' to be one of the columns being written; "score" is not among "name".',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testUpsertCannotBeRunAsIgnoreBecauseTheServersDisagreeOnWhichWins(): void
+    {
+        $insert = $this->insert()->set(['name' => 'alice', 'score' => 10])->upsert(['score']);
+
+        $thrown = $this->assertThrows(
+            LogicException::class,
+            static fn (): int|string => $insert->executeIgnore(),
+        );
+
+        $this->assertSame(
+            'IGNORE and ON DUPLICATE KEY UPDATE ask for opposite things on a collision, and the servers do not'
+                . ' agree on which wins: MySQL 8.0 passes the row over and MariaDB 10.11 applies the update.'
+                . ' Run this with execute() to update on a collision, or drop the upsert() call to skip the row.',
+            $thrown->getMessage(),
+        );
+    }
+
+    /**
+     * @param string $version Value the connection's VERSION() answers with
+     * @param string $clause  Update clause the statement is expected to carry
+     */
+    #[DataProvider('serverVersions')]
+    public function testTheUpdateClauseTakesTheFormTheConnectedServerReads(string $version, string $clause): void
+    {
+        // The statement never runs: SQLite rejects ON DUPLICATE KEY UPDATE
+        // whichever form it is in, so what was sent is read off the exception.
+        // VERSION() is registered on the handle to stand in for the server the
+        // route would have answered with.
+        $insert = $this->connectionReporting($version)
+            ->insert('users')
+            ->set(['name' => 'alice', 'score' => 10])
+            ->upsert(['score']);
+
+        $thrown = $this->assertThrows(QueryException::class, static fn (): int|string => $insert->execute());
+
+        $this->assertSame(
+            'INSERT INTO `users` (`name`, `score`) VALUES (?, ?)' . $clause,
+            $thrown->sql,
+        );
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function serverVersions(): array
+    {
+        $alias  = ' AS `sloop_upsert` ON DUPLICATE KEY UPDATE `score` = `sloop_upsert`.`score`';
+        $values = ' ON DUPLICATE KEY UPDATE `score` = VALUES(`score`)';
+
+        return [
+            'MySQL where the alias arrived'      => ['8.0.19', $alias],
+            'a later MySQL'                      => ['8.0.46', $alias],
+            'a MySQL before the alias'           => ['8.0.18', $values],
+            'MySQL 5.7'                          => ['5.7.44', $values],
+            'MariaDB, which rejects the alias'   => ['10.11.18-MariaDB-ubu2204', $values],
+            'MariaDB behind the version prefix'  => ['5.5.5-10.11.18-MariaDB', $values],
+            'a version string that cannot be read' => ['who knows', $values],
+        ];
     }
 }

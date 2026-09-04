@@ -7,9 +7,12 @@ namespace Sloop\Tests\Unit\Database\Query;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Query\InsertSpec;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class InsertSpecTest extends TestCase
 {
+    use ThrowsAssertions;
+
     public function testEmptyClausesAreTheDefault(): void
     {
         $spec = new InsertSpec(table: 'users');
@@ -91,5 +94,78 @@ final class InsertSpecTest extends TestCase
         $spec = new InsertSpec(table: 'users', columns: ['name'], rows: [['alice']], ignore: true);
 
         $this->assertTrue($spec->ignore);
+    }
+
+    public function testTheColumnsToOverwriteAreReindexedAsAList(): void
+    {
+        $spec = new InsertSpec(
+            table:   'users',
+            columns: ['email', 'name'],
+            rows:    [['a@example.com', 'alice']],
+            upsert:  [3 => 'name'],
+        );
+
+        $this->assertSame(['name'], $spec->upsert);
+    }
+
+    public function testNothingIsOverwrittenByDefault(): void
+    {
+        $spec = new InsertSpec(table: 'users');
+
+        $this->assertSame([], $spec->upsert);
+        $this->assertFalse($spec->rowAlias);
+    }
+
+    public function testTheRowAliasFlagIsCarriedAsGiven(): void
+    {
+        $spec = new InsertSpec(table: 'users', rowAlias: true);
+
+        $this->assertTrue($spec->rowAlias);
+    }
+
+    public function testRejectsAColumnToOverwriteThatTheStatementDoesNotWrite(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): InsertSpec => new InsertSpec(
+                table:   'users',
+                columns: ['email', 'name'],
+                rows:    [['a@example.com', 'alice']],
+                upsert:  ['score'],
+            ),
+        );
+
+        $this->assertSame(
+            'A column overwritten on a collision takes the value this statement was writing for it, so it has'
+                . ' to be one of the columns being written; "score" is not among "email", "name".',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testRejectsAColumnToOverwriteWhenTheStatementWritesNone(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): InsertSpec => new InsertSpec(table: 'users', upsert: ['score']),
+        );
+
+        $this->assertSame(
+            'A column overwritten on a collision takes the value this statement was writing for it, so it has'
+                . ' to be one of the columns being written; "score" is not among any.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testRejectsAColumnToOverwriteThatIsNotAString(): void
+    {
+        $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): InsertSpec => new InsertSpec(
+                table:   'users',
+                columns: ['name'],
+                rows:    [['alice']],
+                upsert:  [42],
+            ),
+        );
     }
 }
