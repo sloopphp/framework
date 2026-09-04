@@ -209,6 +209,84 @@ final class Connection
     }
 
     /**
+     * Write many rows as several INSERT statements rather than one.
+     *
+     * A statement carrying every row of a large import is refused by the
+     * server, and building it holds all of the rows in memory at once. This
+     * sends one INSERT per $chunkSize rows and keeps only the current chunk,
+     * so $rows may be a Generator reading a file a line at a time.
+     *
+     * What refuses the oversized statement is usually the number of
+     * placeholders rather than `max_allowed_packet`: both servers cap a
+     * prepared statement at 65,535 of them, which $chunkSize rows of a wide
+     * table reach while the packet is still nearly empty. Measured on MySQL
+     * 8.0.46 and MariaDB 10.11.18, both with the default $chunkSize: 65
+     * columns went in and 66 answered 1390, with the packet limit at 64 MB and
+     * 16 MB. A table wide enough for that wants a smaller $chunkSize.
+     *
+     * ```php
+     * $written = $connection->insertChunked('users', $rowsFromCsv, chunkSize: 500);
+     * ```
+     *
+     * Every row writes the same columns, as it does for a single INSERT: the
+     * first row settles which they are and a later one naming a different set
+     * is refused. Whether two rows land in the same chunk is a matter of
+     * $chunkSize, so the check is made across the whole call rather than within
+     * a chunk — otherwise the same rows would be accepted or refused depending
+     * on a number chosen for how much to send at once.
+     *
+     * $atomicBatch says what a failure part way through leaves behind. True
+     * wraps the whole call in one transaction, so a chunk that fails takes the
+     * ones before it with it. False sends the chunks as they come and each is
+     * committed on its own, which is what an import too large to hold open
+     * wants; the rows written before the failure stay, and $onProgress is how
+     * the caller knows where it stopped.
+     *
+     * Neither opens a transaction when this connection is already in one. The
+     * rows then belong to that transaction and are committed or rolled back
+     * with it, which means $atomicBatch = false does not commit per chunk
+     * there. Nesting is not available (there are no savepoints), and taking
+     * the caller's transaction over would be the more surprising of the two.
+     *
+     * $onProgress is called after each chunk is written, with the number of
+     * rows written so far — the value this returns, once the last chunk is
+     * done — and the index of the chunk, counting from 0. It is not called for
+     * an empty $rows, which writes nothing and returns 0.
+     *
+     * @param  string                      $table       Table to insert into, optionally schema qualified
+     * @param  iterable<array-key, mixed>  $rows        Rows, each a column-name-to-value array
+     * @param  int                         $chunkSize   Rows per INSERT
+     * @param  bool                        $atomicBatch Whether to wrap the whole call in one transaction
+     * @param  Closure(int, int):void|null $onProgress  Called after each chunk with rows written so far and the chunk index
+     * @return int                         Number of rows written
+     * @throws LogicException              When $chunkSize is below 1
+     * @throws InvalidArgumentException    When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
+     * @throws DatabaseException           When a statement fails, or a transaction cannot be started, committed or rolled back
+     *
+     * @noinspection PhpDocMissingThrowsInspection — callback-thrown exceptions rethrown unchanged per coding-standards
+     * @noinspection PhpUnhandledExceptionInspection
+     */
+    public function insertChunked(
+        string $table,
+        iterable $rows,
+        int $chunkSize = 1000,
+        bool $atomicBatch = true,
+        ?Closure $onProgress = null,
+    ): int {
+        if ($chunkSize < 1) {
+            throw new LogicException('chunkSize must be at least 1, got ' . $chunkSize . '.');
+        }
+
+        if ($atomicBatch && !$this->pdo->inTransaction()) {
+            return $this->transaction(
+                static fn (self $connection): int => $connection->writeChunks($table, $rows, $chunkSize, $onProgress),
+            );
+        }
+
+        return $this->writeChunks($table, $rows, $chunkSize, $onProgress);
+    }
+
+    /**
      * Replace the grammar handed to the query builders this connection starts.
      *
      * ConnectionManager calls this with a grammar carrying the pool's table
@@ -958,6 +1036,123 @@ final class Connection
     public function ping(): void
     {
         $this->execSimple('DO 1');
+    }
+
+    /**
+     * Send the rows one INSERT per chunk, counting what went in.
+     *
+     * The buffer holds at most one chunk, so a Generator handed to
+     * insertChunked() is read a chunk at a time rather than drawn out in full.
+     *
+     * @param  string                      $table      Table to insert into
+     * @param  iterable<array-key, mixed>  $rows       Rows, each a column-name-to-value array
+     * @param  int                         $chunkSize  Rows per INSERT, at least 1
+     * @param  Closure(int, int):void|null $onProgress Called after each chunk with rows written so far and the chunk index
+     * @return int                         Number of rows written
+     * @throws InvalidArgumentException    When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
+     * @throws DatabaseException           When a statement fails
+     */
+    private function writeChunks(string $table, iterable $rows, int $chunkSize, ?Closure $onProgress): int
+    {
+        $buffer     = [];
+        $columns    = null;
+        $written    = 0;
+        $chunkIndex = 0;
+        $index      = 0;
+
+        foreach ($rows as $row) {
+            $columns  = $this->requireSameColumns($row, $columns, $index);
+            $buffer[] = $row;
+            $index++;
+
+            if (\count($buffer) < $chunkSize) {
+                continue;
+            }
+
+            $written += $this->writeChunk($table, $buffer);
+            $onProgress?->__invoke($written, $chunkIndex);
+
+            $buffer = [];
+            $chunkIndex++;
+        }
+
+        if ($buffer !== []) {
+            $written += $this->writeChunk($table, $buffer);
+            $onProgress?->__invoke($written, $chunkIndex);
+        }
+
+        return $written;
+    }
+
+    /**
+     * Write one chunk as a single INSERT and report how many rows it wrote.
+     *
+     * @param  string                   $chunkTable Table to insert into
+     * @param  list<mixed>              $chunk      Rows of this chunk, never empty
+     * @return int                      Number of rows written
+     * @throws InvalidArgumentException When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first of the chunk
+     * @throws DatabaseException        When the statement fails
+     */
+    private function writeChunk(string $chunkTable, array $chunk): int
+    {
+        $compiled = $this->insert($chunkTable)->values($chunk)->compile();
+
+        return $this->statement($compiled->sql, $compiled->bindings);
+    }
+
+    /**
+     * Check one row against the columns already settled, or settle them from it.
+     *
+     * Every row is checked here rather than only the first of each chunk, so
+     * that the index a message names counts from the start of the call rather
+     * than from the start of whichever chunk the row fell into. What is
+     * checked is the shape of the row: that it is an array, and that it names
+     * the columns the first row named. The values it carries are left to
+     * Insert::values(), and a message about one of those counts from the start
+     * of its chunk.
+     *
+     * @param  mixed                    $row     Row to check
+     * @param  list<array-key>|null     $columns Columns settled by the first row of the call, or null before it
+     * @param  int                      $index   Position of the row among all the rows given, to name in a message
+     * @return list<array-key>          The settled columns, taken from this row where there were none
+     * @throws InvalidArgumentException When the row is not an array, or names different columns than the first
+     */
+    private function requireSameColumns(mixed $row, ?array $columns, int $index): array
+    {
+        if (!\is_array($row)) {
+            throw new InvalidArgumentException(
+                'insertChunked() writes a row per element, so each element must be an array, got '
+                . get_debug_type($row) . ' at index ' . $index . '.',
+            );
+        }
+
+        $keys = array_keys($row);
+
+        if ($columns === null) {
+            return $keys;
+        }
+
+        if ($keys !== $columns) {
+            throw new InvalidArgumentException(
+                'Every row of insertChunked() writes the same columns, since a chunk is one INSERT and the chunks'
+                . ' are split by count rather than by what the rows name. The first row names '
+                . self::describeColumns($columns) . ' and the row at index ' . $index . ' names '
+                . self::describeColumns($keys) . '.',
+            );
+        }
+
+        return $columns;
+    }
+
+    /**
+     * Name a set of columns the way a message reads them.
+     *
+     * @param  list<array-key> $columns Column names in the order they were given
+     * @return string          The names quoted and joined, or a word for none
+     */
+    private static function describeColumns(array $columns): string
+    {
+        return $columns === [] ? 'no column' : '"' . implode('", "', $columns) . '"';
     }
 
     /**
