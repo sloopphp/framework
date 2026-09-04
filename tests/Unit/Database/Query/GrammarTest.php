@@ -147,6 +147,56 @@ final class GrammarTest extends TestCase
         $this->assertSame(['a@example.com', 10], $compiled->bindings);
     }
 
+    public function testUpsertReachesAQualifiedColumnThroughTheAliasByItsNameAlone(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:    'users',
+            columns:  ['users.score'],
+            rows:     [[10]],
+            upsert:   ['users.score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `users` (`users`.`score`) VALUES (?)'
+                . ' AS `sloop_upsert` ON DUPLICATE KEY UPDATE `users`.`score` = `sloop_upsert`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testUpsertReachesASchemaQualifiedColumnThroughTheAliasByItsNameAlone(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:    'shop.users',
+            columns:  ['shop.users.score'],
+            rows:     [[10]],
+            upsert:   ['shop.users.score'],
+            rowAlias: true,
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `shop`.`users` (`shop`.`users`.`score`) VALUES (?)'
+                . ' AS `sloop_upsert` ON DUPLICATE KEY UPDATE `shop`.`users`.`score` = `sloop_upsert`.`score`',
+            $compiled->sql,
+        );
+    }
+
+    public function testValuesFormRepeatsTheWholeQualifiedColumn(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['users.score'],
+            rows:    [[10]],
+            upsert:  ['users.score'],
+        ));
+
+        $this->assertSame(
+            'INSERT INTO `users` (`users`.`score`) VALUES (?)'
+                . ' ON DUPLICATE KEY UPDATE `users`.`score` = VALUES(`users`.`score`)',
+            $compiled->sql,
+        );
+    }
+
     public function testUpsertPrefixesNeitherTheAliasNorTheColumns(): void
     {
         $compiled = new Grammar('wp_')->compileInsert(new InsertSpec(

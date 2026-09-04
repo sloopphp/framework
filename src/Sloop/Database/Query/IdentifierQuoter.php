@@ -32,10 +32,12 @@ final class IdentifierQuoter
      * Split a possibly qualified identifier into its segments.
      *
      * Every segment has to be non-empty, which rejects the shapes that would
-     * otherwise produce the empty identifier '``'.
+     * otherwise produce the empty identifier '``'. There is always at least one
+     * segment, since a name without a dot is the whole of it; that is what lets
+     * a caller reading the last one take it as a string.
      *
      * @param  string                   $identifier Identifier, optionally qualified ('users.score')
-     * @return list<string>             Segments in written order
+     * @return non-empty-list<string>   Segments in written order
      * @throws InvalidArgumentException When any segment is empty
      */
     public static function split(string $identifier): array
