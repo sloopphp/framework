@@ -242,9 +242,7 @@ final class Log implements LoggerInterface
      */
     private static function getInstance(): self
     {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
+        self::$instance ??= new self();
 
         return self::$instance;
     }

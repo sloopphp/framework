@@ -282,7 +282,7 @@
                 // LogManager::resolveChannelProcessors returns early when the
                 // channel declares no processor names. Falling through iterates
                 // an empty name list and returns the same empty array.
-                "Sloop\\Log\\LogManager::resolveChannelProcessors::242",
+                "Sloop\\Log\\LogManager::resolveChannelProcessors::240",
                 // Arr::last returns end($array) for the callback-less case. The
                 // fall-through calls first() on the reversed array with a null
                 // callback, which resolves to the same element.

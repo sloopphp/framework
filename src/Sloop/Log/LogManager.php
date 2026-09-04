@@ -103,9 +103,7 @@ final class LogManager
     {
         $name ??= $this->defaultChannel;
 
-        if (!isset($this->channels[$name])) {
-            $this->channels[$name] = $this->createLogger($name);
-        }
+        $this->channels[$name] ??= $this->createLogger($name);
 
         return $this->channels[$name];
     }
