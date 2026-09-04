@@ -334,6 +334,37 @@ final class InsertTest extends TransactionalIntegrationTestCase
         );
     }
 
+    public function testUpsertOverwritesAColumnNamedWithItsTable(): void
+    {
+        // Behind the row alias the column is reached by its name alone. Naming
+        // the table there again would read as a schema and the server answers
+        // 1054, which no unit test of the compiled text can tell from a form
+        // this server happens to take.
+        $this->connection->insert('users')
+            ->set([
+                'name'        => 'alice',
+                'email'       => 'alice@example.com',
+                'users.score' => 10,
+                'created_at'  => '2026-01-01 00:00:00',
+            ])
+            ->execute();
+
+        $this->connection->insert('users')
+            ->set([
+                'name'        => 'alice the second',
+                'email'       => 'alice@example.com',
+                'users.score' => 99,
+                'created_at'  => '2026-02-02 00:00:00',
+            ])
+            ->upsert(['users.score'])
+            ->execute();
+
+        $this->assertSame(
+            [['name' => 'alice', 'email' => 'alice@example.com', 'score' => 99]],
+            $this->scoredUsers(),
+        );
+    }
+
     public function testUpsertWritesTheRowWhenNothingCollidesWithIt(): void
     {
         $this->connection->insert('users')

@@ -395,6 +395,13 @@ class Grammar
      * the server takes. Nothing is bound here: the values are already in the
      * tuples and the clause only points at them.
      *
+     * A column named with its table (`users.score`) stands on the left as it
+     * was written, since that is the column of the target table. Behind the
+     * alias only the name is written: the alias already stands for the row, so
+     * qualifying again names a column of something else. MySQL 8.0.46 answers
+     * `alias.users.score` with 1054, reading it as a column `score` of a table
+     * `users` in a schema `alias`.
+     *
      * @param  list<string>             $columns Columns to overwrite on a collision; empty for a plain INSERT
      * @param  string|null              $alias   Alias to give the incoming row, or null to reach it through VALUES()
      * @return CompiledSql              The clause led by a space, empty when there is nothing to overwrite
@@ -409,10 +416,16 @@ class Grammar
         $assignments = [];
 
         foreach ($columns as $column) {
-            $quoted        = $this->quoteIdentifier($column);
-            $assignments[] = $alias === null
-                ? $quoted . ' = VALUES(' . $quoted . ')'
-                : $quoted . ' = ' . $alias . '.' . $quoted;
+            $quoted = $this->quoteIdentifier($column);
+
+            if ($alias === null) {
+                $assignments[] = $quoted . ' = VALUES(' . $quoted . ')';
+
+                continue;
+            }
+
+            $segments      = IdentifierQuoter::split($column);
+            $assignments[] = $quoted . ' = ' . $alias . '.' . IdentifierQuoter::quoteSegment(end($segments));
         }
 
         return new CompiledSql(
