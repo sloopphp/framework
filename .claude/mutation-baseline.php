@@ -560,9 +560,7 @@ final class ScopeIndex
             }
 
             if ($token === '{') {
-                if ($start === null) {
-                    $start = self::lineOf($tokens, $cursor);
-                }
+                $start ??= self::lineOf($tokens, $cursor);
 
                 $depth++;
 
