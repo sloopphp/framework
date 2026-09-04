@@ -22,6 +22,7 @@ use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Insert;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Query\Update;
 use Throwable;
@@ -190,6 +191,21 @@ final class Connection
     public function update(string $table): Update
     {
         return new Update(new FixedConnectionRoute($this), $this->grammar, $table);
+    }
+
+    /**
+     * Start an INSERT statement over this connection.
+     *
+     * As with update(), the builder is handed this connection's grammar, so
+     * the table prefix comes from the pool the connection belongs to, and the
+     * statement runs on this connection with nothing left to route.
+     *
+     * @param  string $table Table to insert into, optionally schema qualified
+     * @return Insert Builder for the statement
+     */
+    public function insert(string $table): Insert
+    {
+        return new Insert(new FixedConnectionRoute($this), $this->grammar, $table);
     }
 
     /**
@@ -672,6 +688,40 @@ final class Connection
         }
 
         return $stmt->rowCount();
+    }
+
+    /**
+     * The id this connection's last INSERT gave the first row it wrote.
+     *
+     * It belongs to the connection rather than to the server, so it answers for
+     * the statements run over this connection alone. A statement that wrote no
+     * row with an AUTO_INCREMENT column leaves it at 0.
+     *
+     * A persistent connection carries the value over from the request that
+     * used it before, which is why it is read straight after the INSERT that
+     * set it rather than kept for later.
+     *
+     * A driver with no id to give answers `'0'`, which comes back as 0. A
+     * driver that does not support the call at all reports SQLSTATE IM001,
+     * which under this framework's ERRMODE_EXCEPTION is an exception rather
+     * than a value.
+     *
+     * An id that fits a PHP int comes back as one. A BIGINT UNSIGNED column
+     * counts past what a PHP int holds, so an id beyond that comes back as its
+     * digits in a string. Code that reads the id either accepts both types or
+     * writes it somewhere that takes a string.
+     *
+     * @return int|string Id of the last inserted row as an int, its digits as a string when it does not fit one, or 0 when there is none to report
+     */
+    public function lastInsertId(): int|string
+    {
+        $id = $this->pdo->lastInsertId();
+
+        if ($id === false) {
+            return 0;
+        }
+
+        return $id === (string) (int) $id ? (int) $id : $id;
     }
 
     /**
