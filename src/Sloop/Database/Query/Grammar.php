@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Database\Query;
 
 use InvalidArgumentException;
+use Sloop\Database\Dialect;
 
 /**
  * Turns the parts of a query into MySQL text and the bindings that go with it.
@@ -37,6 +38,40 @@ class Grammar
      * @var string
      */
     private const string PREFIX_PATTERN = '/\A[a-zA-Z0-9_]*\z/';
+
+    /**
+     * Name the row being inserted is given when the alias form is written.
+     *
+     * Prefixed rather than named for what it is, because the alias shares a
+     * namespace with the table: MySQL answers an INSERT into a table of the
+     * same name with 1066, and the alias is chosen here rather than by the
+     * caller, who would have no way out but to rename the table. The prefix
+     * makes that unlikely; rowAliasFor() is what makes it impossible.
+     *
+     * Backtick-quoted so a server that would otherwise read it as a keyword
+     * takes it as the name it is.
+     *
+     * @var string
+     */
+    private const string ROW_ALIAS = '`sloop_upsert`';
+
+    /**
+     * Alias used where a table of the same name would otherwise be shadowed.
+     *
+     * Only ever needed against the one table the statement inserts into, so a
+     * single stand-in is enough: it differs from ROW_ALIAS, and the table equals
+     * ROW_ALIAS in the only case this is reached.
+     *
+     * @var string
+     */
+    private const string ROW_ALIAS_STAND_IN = '`sloop_upsert_row`';
+
+    /**
+     * First MySQL release that reads the row alias form of ON DUPLICATE KEY UPDATE.
+     *
+     * @var string
+     */
+    private const string ROW_ALIAS_MINIMUM = '8.0.19';
 
     /**
      * Comparison operators this grammar writes, and what each takes on the right.
@@ -150,14 +185,75 @@ class Grammar
      */
     public function compileInsert(InsertSpec $spec): CompiledSql
     {
+        $table   = $this->quoteTable($spec->table);
         $columns = $this->compileInsertColumns($spec->columns);
         $rows    = $this->compileInsertRows($spec->rows);
+        $upsert  = $this->compileUpsert($spec->upsert, $spec->rowAlias ? $this->rowAliasFor($table) : null);
 
         return new CompiledSql(
-            'INSERT ' . ($spec->ignore ? 'IGNORE ' : '') . 'INTO ' . $this->quoteTable($spec->table)
-                . $columns->sql . ' VALUES ' . $rows->sql,
-            array_merge($columns->bindings, $rows->bindings),
+            'INSERT ' . ($spec->ignore ? 'IGNORE ' : '') . 'INTO ' . $table
+                . $columns->sql . ' VALUES ' . $rows->sql . $upsert->sql,
+            array_merge($columns->bindings, $rows->bindings, $upsert->bindings),
         );
+    }
+
+    /**
+     * Pick the alias to give the incoming row, stepping aside from the table.
+     *
+     * An alias and the table it stands beside share a namespace, so a statement
+     * inserting into a table of the alias's own name is refused (MySQL 1066).
+     * The name reaching here is the quoted one, which is what the table prefix
+     * has already been applied to: a caller who never writes the alias can
+     * still land on it through `prefix` plus a table name.
+     *
+     * Names that differ only in case count as the same one, because whether
+     * they do is the server's to decide: MySQL folds table names when
+     * `lower_case_table_names` is not 0, and answers `Sloop_Upsert` beside this
+     * alias with the same 1066 (measured on 8.0.46 with the setting at 1).
+     * Stepping aside on a server that would have kept them apart costs nothing
+     * but the longer alias.
+     *
+     * @param  string $quotedTable Table of the statement, quoted and prefixed
+     * @return string The alias, quoted, differing from the table it stands beside
+     */
+    protected function rowAliasFor(string $quotedTable): string
+    {
+        $segments = explode('.', $quotedTable);
+
+        return strcasecmp(end($segments), self::ROW_ALIAS) === 0
+            ? self::ROW_ALIAS_STAND_IN
+            : self::ROW_ALIAS;
+    }
+
+    /**
+     * Whether the server reads the row alias form of ON DUPLICATE KEY UPDATE.
+     *
+     * MySQL takes `VALUES (...) AS alias ... = alias.col` from 8.0.19 and warns
+     * on the older `VALUES(col)` from 8.0.20 (warning 1287, saying the function
+     * will be removed). MariaDB 10.11 has no row alias at all — it answers that
+     * form with a syntax error — and takes `VALUES(col)` without a warning, so
+     * it stays on that one. What MariaDB added instead is the singular
+     * `VALUE(col)`, which MySQL in turn refuses, so writing it would trade one
+     * server for the other rather than serving both.
+     *
+     * A version this cannot read is treated as not supporting the alias, since
+     * the older form runs on both servers and only warns.
+     *
+     * @param  Dialect $dialect       Server the statement is going to
+     * @param  string  $serverVersion Raw `SELECT VERSION()` output of that server
+     * @return bool    True to write the alias form
+     */
+    public function supportsRowAlias(Dialect $dialect, string $serverVersion): bool
+    {
+        if ($dialect !== Dialect::MySQL) {
+            return false;
+        }
+
+        if (preg_match('/\A\d+\.\d+\.\d+/', $serverVersion, $matches) !== 1) {
+            return false;
+        }
+
+        return version_compare($matches[0], self::ROW_ALIAS_MINIMUM, '>=');
     }
 
     /**
@@ -289,6 +385,40 @@ class Grammar
         }
 
         return new CompiledSql(' (' . implode(', ', $quoted) . ')');
+    }
+
+    /**
+     * Compile the ON DUPLICATE KEY UPDATE clause of an INSERT.
+     *
+     * Each column is given the value this statement was carrying for it, read
+     * back either through the row alias or through VALUES(), depending on what
+     * the server takes. Nothing is bound here: the values are already in the
+     * tuples and the clause only points at them.
+     *
+     * @param  list<string>             $columns Columns to overwrite on a collision; empty for a plain INSERT
+     * @param  string|null              $alias   Alias to give the incoming row, or null to reach it through VALUES()
+     * @return CompiledSql              The clause led by a space, empty when there is nothing to overwrite
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileUpsert(array $columns, ?string $alias): CompiledSql
+    {
+        if ($columns === []) {
+            return new CompiledSql('');
+        }
+
+        $assignments = [];
+
+        foreach ($columns as $column) {
+            $quoted        = $this->quoteIdentifier($column);
+            $assignments[] = $alias === null
+                ? $quoted . ' = VALUES(' . $quoted . ')'
+                : $quoted . ' = ' . $alias . '.' . $quoted;
+        }
+
+        return new CompiledSql(
+            ($alias === null ? '' : ' AS ' . $alias)
+                . ' ON DUPLICATE KEY UPDATE ' . implode(', ', $assignments),
+        );
     }
 
     /**

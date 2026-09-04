@@ -6,6 +6,7 @@ namespace Sloop\Database\Query;
 
 use InvalidArgumentException;
 use LogicException;
+use Sloop\Database\Connection;
 use Sloop\Database\ConnectionRoute;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
@@ -29,6 +30,10 @@ use Sloop\Database\Exception\InvalidConfigException;
  * whole statement. The first row settles which columns those are, and a later
  * row naming a different set is refused rather than written with a column left
  * to its default.
+ *
+ * A row that collides with one already there ends the statement, unless
+ * upsert() named columns to overwrite instead, or executeIgnore() was used to
+ * pass the row over.
  */
 class Insert extends Builder
 {
@@ -45,6 +50,16 @@ class Insert extends Builder
      * @var list<list<string|int|float|bool|Expression|null>>
      */
     protected array $rows = [];
+
+    /**
+     * Columns to overwrite when a row collides with one already there.
+     *
+     * Empty until upsert() is called, which is what tells a plain INSERT from
+     * one that updates on a collision.
+     *
+     * @var list<string>
+     */
+    protected array $upsert = [];
 
     /**
      * Start an INSERT against the given table.
@@ -106,15 +121,54 @@ class Insert extends Builder
     }
 
     /**
+     * Overwrite the named columns when a row collides with one already there.
+     *
+     * A collision is any unique key the row would duplicate, not a key named
+     * here: MySQL and MariaDB both fire ON DUPLICATE KEY UPDATE for whichever
+     * unique index the row ran into. There is no way to ask the server to
+     * watch only one of them, which is why this takes no list of keys.
+     *
+     * Each named column is given the value this statement was carrying for it
+     * in the colliding row. Writing something else on a collision — keeping
+     * the larger of the two scores, say — is not expressible here; that is
+     * planned for a later version.
+     *
+     * Calling this again replaces the columns rather than adding to them.
+     *
+     * @param  array<int|string, mixed> $update Columns to overwrite, named as they are in the rows
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the list is empty or a name is not a string
+     */
+    public function upsert(array $update): static
+    {
+        if ($update === []) {
+            throw new InvalidArgumentException(
+                'An upsert names the columns to overwrite on a collision, and this one names none.'
+                . ' To let the server pass over a colliding row instead, run the statement with executeIgnore().',
+            );
+        }
+
+        $this->upsert = ClauseParts::toColumnNames($update);
+
+        return $this;
+    }
+
+    /**
      * Write this statement as SQL together with the values its placeholders need.
+     *
+     * An upsert is written in the form both servers take, which is the one
+     * MySQL warns about from 8.0.20 (`VALUES(col)`). Choosing the newer form
+     * means knowing which server this is going to, and compiling asks for no
+     * connection; execute() knows and does switch. So the text here is what
+     * runs anywhere rather than what this particular statement will send.
      *
      * @return CompiledSql
      * @throws LogicException           When no row was given
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @throws InvalidArgumentException When an identifier is malformed or a column to overwrite is not being written
      */
     public function compile(): CompiledSql
     {
-        return $this->compileWith(ignore: false);
+        return $this->compileWith(ignore: false, connection: null);
     }
 
     /**
@@ -130,16 +184,32 @@ class Insert extends Builder
      * from that same connection, since it is that connection's last id and not
      * the server's.
      *
-     * @return int|string                  Id of the first row inserted, or 0 when the table has no AUTO_INCREMENT column; see Connection::lastInsertId() for when it is a string
+     * Where upsert() named columns, the update clause is written in the form
+     * this connection's server takes: the row alias from MySQL 8.0.19, and
+     * VALUES() everywhere else. That is why the text sent can differ from what
+     * compile() writes, which has no connection to ask.
+     *
+     * Under an upsert the id names a row the statement touched, which for a
+     * single row is the one it wrote or overwrote. Which one it is where
+     * several rows were given is the server's to decide and need not be the
+     * first of them, so read the rows back rather than working from the id. A
+     * collision that left every named column at the value it already held
+     * touches no row and reports 0. The cases are measured in docs/ja/database.md.
+     *
+     * @return int|string                  Id of a row the statement wrote or overwrote, or 0 when there is none to report; see Connection::lastInsertId() for when it is a string
      * @throws LogicException              When no row was given
-     * @throws InvalidArgumentException    When an identifier is malformed
+     * @throws InvalidArgumentException    When an identifier is malformed or a column to overwrite is not being written
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */
     public function execute(): int|string
     {
-        return $this->run($this->compileWith(ignore: false));
+        $this->requireRows();
+
+        $connection = $this->route->connection();
+
+        return $this->runOn($connection, $this->compileWith(ignore: false, connection: $connection));
     }
 
     /**
@@ -160,8 +230,10 @@ class Insert extends Builder
      * was skipped nor what was coerced is visible in what comes back. Where
      * every row was skipped there is no new id and the value is 0.
      *
+     * This and upsert() cannot be combined; see the message for why.
+     *
      * @return int|string                  Id of the first row inserted, or 0 when no row was written or the table has no AUTO_INCREMENT column; see Connection::lastInsertId() for when it is a string
-     * @throws LogicException              When no row was given
+     * @throws LogicException              When no row was given, or upsert() named columns to overwrite
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -169,49 +241,87 @@ class Insert extends Builder
      */
     public function executeIgnore(): int|string
     {
-        return $this->run($this->compileWith(ignore: true));
+        if ($this->upsert !== []) {
+            throw new LogicException(
+                'IGNORE and ON DUPLICATE KEY UPDATE ask for opposite things on a collision, and the servers do not'
+                . ' agree on which wins: MySQL 8.0 passes the row over and MariaDB 10.11 applies the update.'
+                . ' Run this with execute() to update on a collision, or drop the upsert() call to skip the row.',
+            );
+        }
+
+        $this->requireRows();
+
+        $connection = $this->route->connection();
+
+        return $this->runOn($connection, $this->compileWith(ignore: true, connection: $connection));
     }
 
     /**
      * Write this statement as SQL, saying whether the server may skip a row it refuses.
      *
-     * @param  bool                     $ignore Whether to write INSERT IGNORE
+     * Which form the update clause of an upsert takes is settled here, since
+     * it is the one part of the statement that depends on the server: with a
+     * connection to ask, the newer form goes to a server that reads it, and
+     * without one the portable form is written. A statement with nothing to
+     * overwrite never asks, so compiling one costs no round trip.
+     *
+     * @param  bool                     $ignore     Whether to write INSERT IGNORE
+     * @param  Connection|null          $connection Connection the statement is headed for, or null when compiling for no server in particular
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
      * @throws LogicException           When no row was given
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @throws InvalidArgumentException When an identifier is malformed or a column to overwrite is not being written
+     * @throws DatabaseException        When the server version cannot be read
      */
-    private function compileWith(bool $ignore): CompiledSql
+    private function compileWith(bool $ignore, ?Connection $connection): CompiledSql
     {
-        if ($this->rows === []) {
-            throw new LogicException(
-                'An INSERT writes at least one row, and this one carries none; call set() or values() before running it.',
-            );
-        }
+        $this->requireRows();
+
+        $rowAlias = $this->upsert !== []
+            && $connection !== null
+            && $this->grammar->supportsRowAlias($connection->dialect(), $connection->serverVersion());
 
         return $this->grammar->compileInsert(new InsertSpec(
-            table:   $this->into,
-            columns: $this->columns,
-            rows:    $this->rows,
-            ignore:  $ignore,
+            table:    $this->into,
+            columns:  $this->columns,
+            rows:     $this->rows,
+            ignore:   $ignore,
+            upsert:   $this->upsert,
+            rowAlias: $rowAlias,
         ));
     }
 
     /**
      * Run a compiled statement and read back the id it gave the first row.
      *
-     * @param  CompiledSql                 $compiled Statement to run
-     * @return int|string                  Id of the first row inserted, or 0 when there is none to report
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException When the connection cannot be obtained
-     * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
+     * @param  Connection        $connection Connection the route answered with, already asked for by the caller
+     * @param  CompiledSql       $compiled   Statement to run
+     * @return int|string        Id of the first row inserted, or 0 when there is none to report
+     * @throws DatabaseException When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */
-    private function run(CompiledSql $compiled): int|string
+    private function runOn(Connection $connection, CompiledSql $compiled): int|string
     {
-        $connection = $this->route->connection();
-
         $connection->statement($compiled->sql, $compiled->bindings);
 
         return $connection->lastInsertId();
+    }
+
+    /**
+     * Refuse a statement that has no row to write.
+     *
+     * Called before the route is asked for a connection, so that a statement
+     * which cannot be written is reported as such rather than behind whatever
+     * obtaining the connection ran into.
+     *
+     * @return void
+     * @throws LogicException When no row was given
+     */
+    private function requireRows(): void
+    {
+        if ($this->rows === []) {
+            throw new LogicException(
+                'An INSERT writes at least one row, and this one carries none; call set() or values() before running it.',
+            );
+        }
     }
 
     /**

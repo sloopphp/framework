@@ -37,21 +37,61 @@ final readonly class InsertSpec
     public array $rows;
 
     /**
+     * Columns to overwrite when a row collides with an existing one.
+     *
+     * Empty for a plain INSERT. Every name here is also in $columns, since the
+     * value written is the one this statement was carrying for that row.
+     *
+     * @var list<string>
+     */
+    public array $upsert;
+
+    /**
      * Describe one INSERT statement.
      *
-     * @param  string                   $table   Table to insert into, optionally schema qualified
-     * @param  array<int|string, mixed> $columns Column names
-     * @param  array<int|string, mixed> $rows    Rows, each a list of values in the column order
-     * @param  bool                     $ignore  Whether to write INSERT IGNORE
-     * @throws InvalidArgumentException When a column is not a string, a row is not a list of writable values, or a row does not match the columns
+     * @param  string                   $table    Table to insert into, optionally schema qualified
+     * @param  array<int|string, mixed> $columns  Column names
+     * @param  array<int|string, mixed> $rows     Rows, each a list of values in the column order
+     * @param  bool                     $ignore   Whether to write INSERT IGNORE
+     * @param  array<int|string, mixed> $upsert   Columns to overwrite on a collision; empty for a plain INSERT
+     * @param  bool                     $rowAlias Whether the server reads the row alias form of the update
+     * @throws InvalidArgumentException When a column is not a string, a row is not a list of writable values, a row does not match the columns, or an upsert column is not among them
      */
     public function __construct(
         public string $table,
         array $columns = [],
         array $rows = [],
         public bool $ignore = false,
+        array $upsert = [],
+        public bool $rowAlias = false,
     ) {
         $this->columns = ClauseParts::toColumnNames($columns);
         $this->rows    = ClauseParts::toValueRows($rows, \count($this->columns));
+        $this->upsert  = self::toUpsertColumns($upsert, $this->columns);
+    }
+
+    /**
+     * Check the columns to overwrite against the ones the statement writes.
+     *
+     * @param  array<int|string, mixed> $upsert  Columns to overwrite on a collision
+     * @param  list<string>             $columns Columns the statement writes
+     * @return list<string>             The names, reindexed
+     * @throws InvalidArgumentException When a name is not a string, or names a column the statement does not write
+     */
+    private static function toUpsertColumns(array $upsert, array $columns): array
+    {
+        $names = ClauseParts::toColumnNames($upsert);
+
+        foreach ($names as $name) {
+            if (!\in_array($name, $columns, true)) {
+                throw new InvalidArgumentException(
+                    'A column overwritten on a collision takes the value this statement was writing for it, so it has'
+                    . ' to be one of the columns being written; "' . $name . '" is not among '
+                    . ($columns === [] ? 'any' : '"' . implode('", "', $columns) . '"') . '.',
+                );
+            }
+        }
+
+        return $names;
     }
 }
