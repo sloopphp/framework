@@ -618,6 +618,36 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame(['primary.internal:0'], $factory->invocations);
     }
 
+    public function testInsertHandsTheBuilderTheWriteRoute(): void
+    {
+        // Pinned the same way DELETE and UPDATE are: where a write lands cannot
+        // be read back from the rows.
+        $primary = $this->realConnection();
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $insert = $manager->insert('users');
+
+        $this->assertInstanceOf(WriteConnectionRoute::class, $this->routeBehind($insert));
+
+        // Building connects to nothing; the route is asked when the statement runs.
+        $this->assertSame([], $factory->invocations);
+
+        // The replica was never contacted, even though the pool declares one.
+        $this->assertSame($primary, $this->connectionResolvedBy($insert));
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
     public function testUpdateFromAConnectionStaysOnThatConnection(): void
     {
         $primary = $this->realConnection();

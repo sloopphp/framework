@@ -47,13 +47,14 @@ abstract class Query
     /**
      * Run this statement.
      *
-     * A statement answers either with the rows it read or with the number of
-     * rows it changed, which is why both shapes appear here; each kind of
-     * statement narrows the return type to the one it produces.
+     * A statement answers with the rows it read, with the number of rows it
+     * changed, or with the id it gave a row it wrote, which is why these
+     * shapes appear here; each kind of statement narrows the return type to
+     * the shapes it produces.
      *
-     * @return Result|int
+     * @return Result|int|string
      */
-    abstract public function execute(): Result|int;
+    abstract public function execute(): Result|int|string;
 
     /**
      * The SQL of this statement, with the placeholders left in place.

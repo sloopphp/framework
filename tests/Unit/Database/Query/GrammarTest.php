@@ -17,6 +17,7 @@ use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\InCondition;
+use Sloop\Database\Query\InsertSpec;
 use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
@@ -73,6 +74,94 @@ final class GrammarTest extends TestCase
 
         $this->assertSame('SELECT `id`, GREATEST(?, ?) FROM `users`', $compiled->sql);
         $this->assertSame([1, 2], $compiled->bindings);
+    }
+
+    public function testInsertNamesTheColumnsOnceAndFollowsWithATuplePerRow(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name', 'score'],
+            rows:    [['alice', 10], ['bob', 20]],
+        ));
+
+        $this->assertSame('INSERT INTO `users` (`name`, `score`) VALUES (?, ?), (?, ?)', $compiled->sql);
+        $this->assertSame(['alice', 10, 'bob', 20], $compiled->bindings);
+    }
+
+    public function testInsertWritesIgnoreWhenTheSpecAsksForIt(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name'],
+            rows:    [['alice']],
+            ignore:  true,
+        ));
+
+        $this->assertSame('INSERT IGNORE INTO `users` (`name`) VALUES (?)', $compiled->sql);
+    }
+
+    public function testInsertEmbedsAnExpressionWithItsBindings(): void
+    {
+        $compiled = new Grammar()->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name', 'score'],
+            rows:    [['alice', Expression::of('ABS(?)', [-5])]],
+        ));
+
+        $this->assertSame('INSERT INTO `users` (`name`, `score`) VALUES (?, ABS(?))', $compiled->sql);
+        $this->assertSame(['alice', -5], $compiled->bindings);
+    }
+
+    public function testInsertPrefixesTheTableButNotTheColumns(): void
+    {
+        $compiled = new Grammar('app_')->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name'],
+            rows:    [['alice']],
+        ));
+
+        $this->assertSame('INSERT INTO `app_users` (`name`) VALUES (?)', $compiled->sql);
+    }
+
+    public function testSubclassCanReplaceTheInsertColumnList(): void
+    {
+        // The column list carries bindings so a dialect writing a placeholder
+        // there has somewhere to put the value; compileInsert keeps them ahead
+        // of the ones the rows need.
+        $grammar = new class () extends Grammar {
+            protected function compileInsertColumns(array $columns): CompiledSql
+            {
+                return new CompiledSql(' (?)', [\count($columns)]);
+            }
+        };
+
+        $compiled = $grammar->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name'],
+            rows:    [['alice']],
+        ));
+
+        $this->assertSame('INSERT INTO `users` (?) VALUES (?)', $compiled->sql);
+        $this->assertSame([1, 'alice'], $compiled->bindings);
+    }
+
+    public function testSubclassCanReplaceTheInsertTuples(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileInsertRows(array $rows): CompiledSql
+            {
+                return new CompiledSql('(' . \count($rows) . ' rows)');
+            }
+        };
+
+        $compiled = $grammar->compileInsert(new InsertSpec(
+            table:   'users',
+            columns: ['name'],
+            rows:    [['alice'], ['bob']],
+        ));
+
+        $this->assertSame('INSERT INTO `users` (`name`) VALUES (2 rows)', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
     }
 
     public function testDeleteWithoutConditionsAddressesTheWholeTable(): void
