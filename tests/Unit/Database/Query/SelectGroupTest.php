@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Select;
+use Sloop\Database\Result;
 use Sloop\Tests\Support\ThrowsAssertions;
 
 final class SelectGroupTest extends TestCase
@@ -19,6 +20,9 @@ final class SelectGroupTest extends TestCase
     use ThrowsAssertions;
 
     private Connection $connection;
+
+    /** @var list<int> */
+    private array $batchSizes = [];
 
     protected function setUp(): void
     {
@@ -28,6 +32,9 @@ final class SelectGroupTest extends TestCase
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
         $sqlite->createFunction('version', static fn (): string => '8.0.37');
+        $sqlite->exec('CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, status TEXT NOT NULL)');
+        $sqlite->exec("INSERT INTO orders (id, user_id, status) VALUES (1, 10, 'paid'),"
+            . " (2, 20, 'paid'), (3, 30, 'open')");
 
         $this->connection = new Connection($sqlite, 'group_test');
     }
@@ -335,6 +342,29 @@ final class SelectGroupTest extends TestCase
         $select = $this->select()->groupBy('user_id')->havingOpen()->havingClose();
 
         $this->assertStringNotContainsString('HAVING', $select->toSql());
+    }
+
+    public function testCountIsAllowedWhenTheOnlyHavingPartsAreAnEmptyGroup(): void
+    {
+        $select = $this->select()
+            ->havingOpen()
+            ->when(false, static fn (Select $q) => $q->having('user_id', 1))
+            ->havingClose();
+
+        $this->assertStringNotContainsString('HAVING', $select->toSql());
+        $this->assertSame(3, $select->count());
+    }
+
+    public function testChunkByIdIsAllowedWhenTheOnlyHavingPartsAreAnEmptyGroup(): void
+    {
+        $this->select()
+            ->havingOpen()
+            ->havingClose()
+            ->chunkById(2, function (Result $batch): void {
+                $this->batchSizes[] = \count($batch->asArray());
+            }, 'user_id');
+
+        $this->assertSame([2, 1], $this->batchSizes);
     }
 
     public function testCountIsRefusedWhileTheStatementGroups(): void

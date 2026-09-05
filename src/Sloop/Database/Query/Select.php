@@ -1529,13 +1529,25 @@ class Select extends BuilderWhere
      * Tell whether this statement folds its rows into groups.
      *
      * A HAVING clause with no GROUP BY folds them into a single group, so it
-     * counts here as well.
+     * counts here as well. A parenthesis with nothing in it does not: it is
+     * dropped before the clause is written, as requireWhereUnderStrictMode()
+     * reads the WHERE clause.
      *
      * @return bool True when the rows reach the caller as groups
      */
     private function groupsRows(): bool
     {
-        return $this->groupings !== [] || $this->having !== [];
+        if ($this->groupings !== []) {
+            return true;
+        }
+
+        foreach ($this->having as $part) {
+            if (!$part instanceof GroupBoundary) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
