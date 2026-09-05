@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database;
 
+use ArrayObject;
 use DateTimeImmutable;
+use Generator;
 use Monolog\Handler\TestHandler;
 use Monolog\Level;
 use Monolog\Logger;
@@ -646,6 +648,73 @@ final class ConnectionManagerTest extends TestCase
         // The replica was never contacted, even though the pool declares one.
         $this->assertSame($primary, $this->connectionResolvedBy($insert));
         $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testInsertChunkedWritesOnThePrimaryAsItIsCalled(): void
+    {
+        // insert() hands back a builder and asks for a connection when the
+        // statement runs; this one writes as it is called, so the primary is
+        // asked for here rather than later.
+        $primary = $this->realConnection();
+        $primary->statement('CREATE TABLE users (name TEXT NOT NULL)');
+
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+                'read'         => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $written = $manager->insertChunked('users', [['name' => 'alice'], ['name' => 'bob']], chunkSize: 1);
+
+        $this->assertSame(2, $written);
+        $this->assertSame(['primary.internal:0'], $factory->invocations);
+    }
+
+    public function testInsertChunkedPassesItsDefaultsThroughUnchanged(): void
+    {
+        // The defaults are declared twice, here and on Connection, so a change
+        // to one of them has to show up as a difference the other side sees:
+        // where the chunk boundary falls, and whether a transaction is open
+        // while the chunks are written.
+        $primary = $this->realConnection();
+        $primary->statement('CREATE TABLE users (name TEXT NOT NULL)');
+
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $primary);
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'       => 'mysql',
+                'host'         => 'primary.internal',
+                'database'     => 'app',
+                'health_check' => false,
+            ],
+        ], $factory);
+
+        /** @var ArrayObject<int, array{int, int, bool}> $chunks */
+        $chunks = new ArrayObject();
+
+        $written = $manager->insertChunked(
+            'users',
+            (static function (): Generator {
+                for ($i = 1; $i <= 1001; $i++) {
+                    yield ['name' => 'row-' . $i];
+                }
+            })(),
+            onProgress: static function (int $inserted, int $chunkIndex) use ($chunks, $primary): void {
+                $chunks->append([$inserted, $chunkIndex, $primary->inTransaction()]);
+            },
+        );
+
+        $this->assertSame(1001, $written);
+        $this->assertSame([[1000, 0, true], [1001, 1, true]], $chunks->getArrayCopy());
     }
 
     public function testUpdateFromAConnectionStaysOnThatConnection(): void

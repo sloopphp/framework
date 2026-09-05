@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Database;
 
+use Closure;
+use InvalidArgumentException;
+use LogicException;
 use Psr\Log\LoggerInterface;
 use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Config\PoolConfig;
@@ -232,6 +235,38 @@ final class ConnectionManager
             $this->grammarFor($this->resolvePool($this->defaultName)),
             $table,
         );
+    }
+
+    /**
+     * Write many rows to the default pool's primary in chunks.
+     *
+     * Unlike insert(), which hands back a builder that resolves a connection
+     * when it runs, this writes as it is called and so asks for the primary
+     * here. See Connection::insertChunked() for what the arguments mean.
+     *
+     * @param  string                      $table       Table to insert into, optionally schema qualified
+     * @param  iterable<array-key, mixed>  $rows        Rows, each a column-name-to-value array
+     * @param  int                         $chunkSize   Rows per INSERT
+     * @param  bool                        $atomicBatch Whether to wrap the whole call in one transaction
+     * @param  Closure(int, int):void|null $onProgress  Called after each chunk with rows written so far and the chunk index
+     * @return int                         Number of rows written
+     * @throws LogicException              When $chunkSize is below 1
+     * @throws InvalidArgumentException    When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
+     * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException When the connection cannot be obtained
+     * @throws DatabaseException           When a statement fails, or a transaction cannot be started, committed or rolled back
+     *
+     * @noinspection PhpDocMissingThrowsInspection — callback-thrown exceptions rethrown unchanged per coding-standards
+     * @noinspection PhpUnhandledExceptionInspection
+     */
+    public function insertChunked(
+        string $table,
+        iterable $rows,
+        int $chunkSize = 1000,
+        bool $atomicBatch = true,
+        ?Closure $onProgress = null,
+    ): int {
+        return $this->connection(writable: true)->insertChunked($table, $rows, $chunkSize, $atomicBatch, $onProgress);
     }
 
     /**
