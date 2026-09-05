@@ -7,6 +7,7 @@ namespace Sloop\Tests\Unit\Database\Query;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Query\Condition;
+use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Join;
 use Sloop\Database\Query\JoinType;
 use Sloop\Database\Query\Order;
@@ -23,6 +24,8 @@ final class SelectSpecTest extends TestCase
         $this->assertSame([], $spec->columns);
         $this->assertSame([], $spec->joins);
         $this->assertSame([], $spec->conditions);
+        $this->assertSame([], $spec->groupings);
+        $this->assertSame([], $spec->having);
         $this->assertSame([], $spec->orders);
         $this->assertNull($spec->limit);
         $this->assertNull($spec->offset);
@@ -65,6 +68,47 @@ final class SelectSpecTest extends TestCase
         }
 
         $this->fail('Expected an InvalidArgumentException, none was thrown.');
+    }
+
+    public function testGroupingsAreReindexedAsAList(): void
+    {
+        $spec = new SelectSpec(from: 'users', groupings: [4 => 'status']);
+
+        $this->assertSame(['status'], $spec->groupings);
+    }
+
+    public function testGroupingsAcceptAnExpression(): void
+    {
+        $year = Expression::of('YEAR(created_at)');
+
+        $spec = new SelectSpec(from: 'users', groupings: [$year]);
+
+        $this->assertSame([$year], $spec->groupings);
+    }
+
+    public function testRejectsAGroupingThatIsNeitherStringNorExpression(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('GROUP BY terms must be a string or an Expression, got int at index 1.');
+
+        new SelectSpec(from: 'users', groupings: ['status', 42]);
+    }
+
+    public function testHavingIsReindexedAsAList(): void
+    {
+        $condition = new Condition('total', '>', 10);
+
+        $spec = new SelectSpec(from: 'users', having: [5 => $condition]);
+
+        $this->assertSame([$condition], $spec->having);
+    }
+
+    public function testRejectsAHavingPartOfTheWrongType(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Conditions must be a WherePart, got string at index 0.');
+
+        new SelectSpec(from: 'users', having: ['total > 10']);
     }
 
     public function testOrdersAreReindexedAsAList(): void

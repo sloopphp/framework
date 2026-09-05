@@ -43,6 +43,20 @@ final readonly class SelectSpec
     public array $conditions;
 
     /**
+     * Terms of the GROUP BY clause, in the order they were added.
+     *
+     * @var list<string|Expression>
+     */
+    public array $groupings;
+
+    /**
+     * Parts of the HAVING clause, in the order they were added.
+     *
+     * @var list<WherePart>
+     */
+    public array $having;
+
+    /**
      * Terms of the ORDER BY clause, in the order they were added.
      *
      * @var list<Order>
@@ -56,6 +70,8 @@ final readonly class SelectSpec
      * @param  array<int|string, mixed> $columns    Column names or Expressions; empty selects everything
      * @param  array<int|string, mixed> $joins      Join instances, in the order they are written
      * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
+     * @param  array<int|string, mixed> $groupings  Column names or Expressions for the GROUP BY clause
+     * @param  array<int|string, mixed> $having     WherePart instances for the HAVING clause
      * @param  array<int|string, mixed> $orders     Order instances for the ORDER BY clause
      * @param  int|null                 $limit      Maximum number of rows, or null for no limit
      * @param  int|null                 $offset     Rows to skip; needs a limit
@@ -67,6 +83,8 @@ final readonly class SelectSpec
         array $columns = [],
         array $joins = [],
         array $conditions = [],
+        array $groupings = [],
+        array $having = [],
         array $orders = [],
         public ?int $limit = null,
         public ?int $offset = null,
@@ -75,6 +93,8 @@ final readonly class SelectSpec
         $this->columns    = self::toColumns($columns);
         $this->joins      = ClauseParts::toJoins($joins);
         $this->conditions = ClauseParts::toConditions($conditions);
+        $this->groupings  = ClauseParts::toColumnReferences('GROUP BY terms', $groupings);
+        $this->having     = ClauseParts::toConditions($having);
         $this->orders     = ClauseParts::toOrders($orders);
 
         ClauseParts::requireLimitNotNegative($limit);
@@ -97,18 +117,6 @@ final readonly class SelectSpec
      */
     private static function toColumns(array $columns): array
     {
-        $selectable = [];
-
-        foreach (array_values($columns) as $index => $column) {
-            if (!\is_string($column) && !$column instanceof Expression) {
-                throw new InvalidArgumentException(
-                    'Columns must be a string or an Expression, got ' . get_debug_type($column) . ' at index ' . $index . '.',
-                );
-            }
-
-            $selectable[] = $column;
-        }
-
-        return $selectable;
+        return ClauseParts::toColumnReferences('Columns', $columns);
     }
 }
