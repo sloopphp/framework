@@ -8,6 +8,8 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Query\Assignment;
 use Sloop\Database\Query\Condition;
+use Sloop\Database\Query\Join;
+use Sloop\Database\Query\JoinType;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\UpdateSpec;
 
@@ -18,6 +20,7 @@ final class UpdateSpecTest extends TestCase
         $spec = new UpdateSpec(table: 'users');
 
         $this->assertSame('users', $spec->table);
+        $this->assertSame([], $spec->joins);
         $this->assertSame([], $spec->assignments);
         $this->assertSame([], $spec->conditions);
         $this->assertSame([], $spec->orders);
@@ -40,6 +43,31 @@ final class UpdateSpecTest extends TestCase
         $spec = new UpdateSpec(table: 'users', conditions: [5 => $condition]);
 
         $this->assertSame([$condition], $spec->conditions);
+    }
+
+    public function testJoinsAreReindexedAsAList(): void
+    {
+        $join = new Join(JoinType::Left, 'posts');
+
+        $spec = new UpdateSpec(table: 'users', joins: [9 => $join]);
+
+        $this->assertSame([$join], $spec->joins);
+    }
+
+    public function testRejectsAJoinOfTheWrongType(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Joins must be a Join, got string at index 0.');
+
+        new UpdateSpec(table: 'users', joins: ['posts']);
+    }
+
+    public function testReportsTheJoinPositionNotTheOriginalKey(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Joins must be a Join, got string at index 1.');
+
+        new UpdateSpec(table: 'users', joins: [5 => new Join(JoinType::Inner, 'posts'), 9 => 'posts']);
     }
 
     public function testOrdersAreReindexedAsAList(): void

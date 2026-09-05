@@ -509,6 +509,82 @@ final class GrammarTest extends TestCase
         $this->assertSame('UPDATE `users` SET `score` = ? LIMIT 1', $compiled->sql);
     }
 
+    public function testUpdateWritesItsJoinsBetweenTheTableAndTheSetClause(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(
+            table:       'users',
+            joins:       [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+            assignments: [new Assignment('users.status', 'vip')],
+            conditions:  [new Condition('posts.views', '>', 100)],
+        ));
+
+        $this->assertSame(
+            'UPDATE `users` JOIN `posts` ON `posts`.`user_id` = `users`.`id`'
+                . ' SET `users`.`status` = ? WHERE `posts`.`views` > ?',
+            $compiled->sql,
+        );
+        $this->assertSame(['vip', 100], $compiled->bindings);
+    }
+
+    public function testUpdateBindsTheJoinsBeforeTheAssignmentsAndTheConditions(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(
+            table:       'users',
+            joins:       [
+                new Join(JoinType::Inner, 'posts', [
+                    new JoinCondition('posts.user_id', '=', Expression::of('?', ['first'])),
+                ]),
+                new Join(JoinType::Left, 'comments', [
+                    new JoinCondition('comments.post_id', '=', Expression::of('?', ['second'])),
+                ]),
+            ],
+            assignments: [new Assignment('users.status', 'third')],
+            conditions:  [new Condition('users.id', '=', 'fourth')],
+            orders:      [new Order('users.id')],
+        ));
+
+        $this->assertSame(['first', 'second', 'third', 'fourth'], $compiled->bindings);
+    }
+
+    public function testUpdateWritesAJoinAlongsideOrderByBecauseTheBuilderIsWhatRefusesThatPairing(): void
+    {
+        $compiled = new Grammar()->compileUpdate(new UpdateSpec(
+            table:       'users',
+            joins:       [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+            assignments: [new Assignment('users.status', 'vip')],
+            orders:      [new Order('users.id')],
+            limit:       2,
+        ));
+
+        $this->assertSame(
+            'UPDATE `users` JOIN `posts` ON `posts`.`user_id` = `users`.`id`'
+                . ' SET `users`.`status` = ? ORDER BY `users`.`id` ASC LIMIT 2',
+            $compiled->sql,
+            'MySQL refuses this at run time; the Update builder refuses it before it is compiled',
+        );
+    }
+
+    public function testUpdatePrefixesTheJoinedTableAndItsOnClause(): void
+    {
+        $compiled = new Grammar('app_')->compileUpdate(new UpdateSpec(
+            table:       'users',
+            joins:       [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+            assignments: [new Assignment('users.status', 'vip')],
+        ));
+
+        $this->assertSame(
+            'UPDATE `app_users` JOIN `app_posts` ON `app_posts`.`user_id` = `app_users`.`id`'
+                . ' SET `app_users`.`status` = ?',
+            $compiled->sql,
+        );
+    }
+
     public function testUpdatePrefixesTheTable(): void
     {
         $compiled = new Grammar('app_')->compileUpdate(new UpdateSpec(
