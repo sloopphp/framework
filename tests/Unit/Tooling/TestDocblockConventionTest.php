@@ -63,7 +63,8 @@ final class TestDocblockConventionTest extends TestCase
      *
      * @param  list<array{0:int,1:string,2:int}|string> $tokens Full token stream
      * @param  int                                      $index  Offset of the T_ATTRIBUTE
-     * @return int                                      Offset of the matching ']'
+     * @return int                                      Offset of the matching ']', or of the
+     *                                                  last token when the stream ends first
      */
     private function attributeEnd(array $tokens, int $index): int
     {
@@ -229,7 +230,9 @@ final class TestDocblockConventionTest extends TestCase
             . "    /**\n     * Explains the case.\n     */\n    public function testThing(): void\n    {\n    }\n\n"
             . "    /**\n     * Explains the provided case.\n     *\n     * @param string \$value\n     */\n"
             . "    #[DataProvider('cases')]\n    public function testProvided(string \$value): void\n    {\n    }\n\n"
-            . "    /**\n     * Explains the implicit case.\n     */\n    function testImplicit(): void\n    {\n    }\n}\n";
+            . "    /**\n     * Explains the implicit case.\n     */\n    function testImplicit(): void\n    {\n    }\n\n"
+            . "    /**\n     * Explains the table case.\n     */\n"
+            . "    #[TestWith([1, 2])]\n    public function testTable(int \$a, int \$b): void\n    {\n    }\n}\n";
 
         self::assertSame(
             [
@@ -239,6 +242,7 @@ final class TestDocblockConventionTest extends TestCase
                 '22: testThing() carries a prose docblock',
                 '29: testProvided() carries a prose docblock',
                 '39: testImplicit() carries a prose docblock',
+                '46: testTable() carries a prose docblock',
             ],
             $this->violations($offending),
         );
@@ -248,6 +252,8 @@ final class TestDocblockConventionTest extends TestCase
             . "    public static function cases(): array\n    {\n        return [];\n    }\n\n"
             . "    /**\n     * @param string \$value\n     */\n"
             . "    #[DataProvider('cases')]\n    public function testProvided(string \$value): void\n    {\n    }\n\n"
+            . "    /**\n     * @param int \$a\n     */\n"
+            . "    #[TestWith([1, 2])]\n    public function testTable(int \$a): void\n    {\n    }\n\n"
             . "    /**\n     * Why this fixture is shaped this way.\n     */\n"
             . "    private function testDouble(): void\n    {\n    }\n}\n\n"
             . "/**\n * A stub the test drives.\n */\nfinal class FooStub\n{\n"
