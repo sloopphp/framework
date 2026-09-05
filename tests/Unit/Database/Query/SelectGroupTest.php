@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database\Query;
 
+use InvalidArgumentException;
 use LogicException;
 use PDO;
 use Pdo\Sqlite;
@@ -220,6 +221,115 @@ final class SelectGroupTest extends TestCase
         );
     }
 
+    public function testACallbackCannotCloseAHavingGroupItDidNotOpen(): void
+    {
+        $select = $this->select()
+            ->groupBy('user_id')
+            ->havingOpen()
+            ->having('user_id', 1);
+
+        $thrown = $this->assertThrows(
+            LogicException::class,
+            static fn () => $select->when(true, static fn (Select $q) => $q->havingClose()),
+        );
+
+        $this->assertSame(
+            'This group of HAVING conditions was opened outside the callback holding the builder,'
+            . ' so the callback cannot close it.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testACallbackMayOpenAndCloseAHavingGroupOfItsOwn(): void
+    {
+        $select = $this->select()
+            ->groupBy('user_id')
+            ->having('user_id', '>', 1)
+            ->when(true, static fn (Select $q) => $q
+                ->orHavingOpen()
+                ->having('user_id', '<', 10)
+                ->andHaving('user_id', '>', 5)
+                ->havingClose());
+
+        $this->assertStringContainsString(
+            'HAVING `user_id` > ? OR (`user_id` < ? AND `user_id` > ?)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAHavingGroupLeftOpenByACallbackIsReportedWhenTheStatementIsCompiled(): void
+    {
+        $select = $this->select()
+            ->groupBy('user_id')
+            ->when(true, static fn (Select $q) => $q->havingOpen()->having('user_id', 1));
+
+        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->toSql());
+
+        $this->assertSame(
+            'A callback opened a group of HAVING conditions and returned without closing it.'
+            . ' Close it inside the callback.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testAHavingGroupLeftOpenByACallbackIsClosedForItSoALaterCloseTakesNothing(): void
+    {
+        $select = $this->select()
+            ->groupBy('user_id')
+            ->when(true, static fn (Select $q) => $q->havingOpen()->having('user_id', 1));
+
+        // The group the callback left open is closed for it, so the depth is
+        // what it was before the callback ran and this close finds nothing.
+        // Left open, it would take the callback's group and the conditions
+        // written here would land inside its parentheses.
+        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->havingClose());
+
+        $this->assertSame(
+            'No group of HAVING conditions is open, so there is nothing to close.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testTheHavingFloorIsPutBackWhenTheCallbackReturns(): void
+    {
+        $select = $this->select()
+            ->groupBy('user_id')
+            ->havingOpen()
+            ->having('user_id', '>', 1)
+            ->when(true, static fn (Select $q) => $q->andHaving('user_id', '<', 100))
+            ->havingClose();
+
+        $this->assertStringContainsString('HAVING (`user_id` > ? AND `user_id` < ?)', $select->toSql());
+    }
+
+    public function testHavingRefusesAColumnWithNothingToCompareAgainst(): void
+    {
+        $select = $this->select()->groupBy('user_id');
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $select->having('user_id'),
+        );
+
+        $this->assertSame(
+            'A comparison needs something to compare against, but only a column was given.'
+            . ' Pass a value, or an operator and a value.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testHavingRefusesAnOperatorThatIsNotAString(): void
+    {
+        $select = $this->select()->groupBy('user_id');
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $select->having('user_id', 10, 20),
+        );
+
+        $this->assertSame('A comparison operator must be a string, got int.', $thrown->getMessage());
+    }
+
     public function testAnEmptyHavingGroupWritesNoClause(): void
     {
         $select = $this->select()->groupBy('user_id')->havingOpen()->havingClose();
@@ -263,6 +373,35 @@ final class SelectGroupTest extends TestCase
             'count() counts the rows a statement matches, but this one groups them',
             $thrown->getMessage(),
         );
+    }
+
+    public function testChunkByIdIsRefusedWhileTheStatementGroups(): void
+    {
+        $select = $this->select()->groupBy('user_id');
+
+        $thrown = $this->assertThrows(
+            LogicException::class,
+            static fn () => $select->chunkById(2, static fn (): bool => true, 'user_id'),
+        );
+
+        $this->assertSame(
+            'chunkById() carries its place between batches as a condition, which the server reads before it'
+            . ' groups the rows, so a group split across a batch boundary comes back twice and grouping'
+            . ' by more than one term drops whole groups. Walk a grouped statement with chunk().',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testChunkByIdIsRefusedWhileTheStatementOnlyHasAHavingClause(): void
+    {
+        $select = $this->select()->having(Expression::of('COUNT(*)'), '>', 5);
+
+        $thrown = $this->assertThrows(
+            LogicException::class,
+            static fn () => $select->chunkById(2, static fn (): bool => true),
+        );
+
+        $this->assertStringContainsString('Walk a grouped statement with chunk().', $thrown->getMessage());
     }
 
     public function testGroupByComesAfterTheWhereClauseAndBeforeTheOrderBy(): void

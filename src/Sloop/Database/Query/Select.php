@@ -76,6 +76,34 @@ class Select extends BuilderWhere
     private int $openHavingGroups = 0;
 
     /**
+     * Depth of HAVING groups below which the code running now may not close.
+     *
+     * No HAVING method hands this builder to a callback, but where() and
+     * when() do, and what they hand over is this same builder with every
+     * HAVING method on it. Without a floor a callback could close a group the
+     * chain that called it had opened, and the conditions that chain writes
+     * afterwards would land inside the parentheses the callback opened — with
+     * the count of parentheses still balanced, so nothing downstream reports
+     * it. What changes is not only where the brackets sit but what the clause
+     * means: `(a OR b) AND c` written that way reaches the server as
+     * `a OR (b AND c)`, which holds for a different set of groups.
+     *
+     * @var int
+     */
+    private int $havingFloor = 0;
+
+    /**
+     * Whether a callback returned with a HAVING group of its own still open.
+     *
+     * Remembered rather than raised where it happens, for the reason
+     * BuilderWhere gives about the WHERE clause: the failure the callback was
+     * already carrying would be replaced by this one.
+     *
+     * @var bool
+     */
+    private bool $havingLeftOpenInCallback = false;
+
+    /**
      * How to hold the rows read, or null to hold nothing.
      *
      * @var RowLock|null
@@ -382,7 +410,7 @@ class Select extends BuilderWhere
      * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
      * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
      * @return static                                This builder
-     * @throws InvalidArgumentException              When the operator is not a supported comparison, or null stands where the operator cannot read it
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     public function having(
         string|Expression $column,
@@ -402,7 +430,7 @@ class Select extends BuilderWhere
      * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
      * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
      * @return static                                This builder
-     * @throws InvalidArgumentException              When the operator is not a supported comparison, or null stands where the operator cannot read it
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     public function andHaving(
         string|Expression $column,
@@ -419,7 +447,7 @@ class Select extends BuilderWhere
      * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
      * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
      * @return static                                This builder
-     * @throws InvalidArgumentException              When the operator is not a supported comparison, or null stands where the operator cannot read it
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     public function orHaving(
         string|Expression $column,
@@ -1121,6 +1149,12 @@ class Select extends BuilderWhere
      * complete: rows sharing the value the batch ended on are above nothing and
      * are stepped over. A primary key is the usual choice, and is the default.
      *
+     * A statement that groups its rows is refused: the cursor is a condition,
+     * which the server reads before it groups, so it cuts the rows going into
+     * the groups rather than the groups themselves. requireWalkableByCursor()
+     * says what that does to the answer. Walk a grouped statement with
+     * chunk().
+     *
      * The callback is given the batch and its 0-based number, and returning
      * false from it stops the walk.
      *
@@ -1128,7 +1162,7 @@ class Select extends BuilderWhere
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window or a sort is already set, no table has been named, or a group of conditions was left open
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, or the statement groups its rows
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1139,6 +1173,7 @@ class Select extends BuilderWhere
     {
         $this->requireNoRowWindow('chunkById');
         $this->requireBatchSize($size);
+        $this->requireWalkableByCursor();
 
         if ($this->orders !== []) {
             throw new LogicException(
@@ -1261,6 +1296,47 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Hold the HAVING clause at the depth the callback finds it.
+     *
+     * @return int Floor that was in force before the callback was handed over
+     */
+    protected function enterCallbackScope(): int
+    {
+        $outerScope        = $this->havingFloor;
+        $this->havingFloor = $this->openHavingGroups;
+
+        return $outerScope;
+    }
+
+    /**
+     * Put back the depth that stood before the callback was handed over.
+     *
+     * A group the callback left open is closed for it, so the depth is what it
+     * was before it ran and a later close cannot take a group it did not open.
+     * The mistake itself is remembered and reported when the statement is
+     * compiled.
+     *
+     * @param  int  $outerScope Floor enterCallbackScope() answered with
+     * @return void
+     */
+    protected function leaveCallbackScope(int $outerScope): void
+    {
+        $depth = $this->havingFloor;
+
+        $this->havingLeftOpenInCallback = $this->havingLeftOpenInCallback || $this->openHavingGroups !== $depth;
+        $this->havingFloor              = $outerScope;
+
+        // Counted down on a local rather than read back off the property each
+        // time. Both forms close the same groups, but with the property as the
+        // condition, dropping the call inside leaves the loop with nothing to
+        // end it, and a mutation that hangs is reported as a timeout instead of
+        // as the failure the test below it already names.
+        for ($open = $this->openHavingGroups; $open > $depth; $open--) {
+            $this->closeHavingGroup();
+        }
+    }
+
+    /**
      * Record the opening of a group of HAVING conditions.
      *
      * @param  Conjunction $conjunction How the group joins to what precedes it
@@ -1281,17 +1357,21 @@ class Select extends BuilderWhere
      * BuilderWhere gives: a close with nothing to close is a mistake in the
      * chain, and the line that made it is still the line being executed.
      *
-     * There is no floor of the kind the WHERE clause keeps, because no HAVING
-     * method hands this builder to a callback: every close belongs to the chain
-     * that wrote it.
+     * Inside a callback the refusal starts at the depth the callback found, as
+     * it does on the WHERE clause. $havingFloor says why.
      *
      * @return static         This builder
-     * @throws LogicException When no group is open
+     * @throws LogicException When no group is open, or the open group was not opened by the code closing it
      */
     private function closeHavingGroup(): static
     {
-        if ($this->openHavingGroups === 0) {
-            throw new LogicException('No group of HAVING conditions is open, so there is nothing to close.');
+        if ($this->openHavingGroups <= $this->havingFloor) {
+            throw new LogicException(
+                $this->openHavingGroups === 0
+                    ? 'No group of HAVING conditions is open, so there is nothing to close.'
+                    : 'This group of HAVING conditions was opened outside the callback holding the builder,'
+                        . ' so the callback cannot close it.',
+            );
         }
 
         $this->having[] = new GroupBoundary(GroupEdge::Close);
@@ -1355,6 +1435,13 @@ class Select extends BuilderWhere
      */
     private function requireHavingGroupsClosed(): void
     {
+        if ($this->havingLeftOpenInCallback) {
+            throw new LogicException(
+                'A callback opened a group of HAVING conditions and returned without closing it.'
+                . ' Close it inside the callback.',
+            );
+        }
+
         if ($this->openHavingGroups > 0) {
             throw new LogicException(
                 'A group of HAVING conditions was opened and not closed; call havingClose() '
@@ -1386,7 +1473,7 @@ class Select extends BuilderWhere
      */
     private function requireUngrouped(string $method): void
     {
-        if ($this->groupings === [] && $this->having === []) {
+        if (!$this->groupsRows()) {
             return;
         }
 
@@ -1395,6 +1482,60 @@ class Select extends BuilderWhere
                 . ' answer with one count per group and the first of those would be read as the whole.'
                 . ' Count the rows of get(), or read the groups and count those.',
         );
+    }
+
+    /**
+     * Refuse to walk a statement whose rows are folded into groups by a cursor.
+     *
+     * chunkById() carries its place between batches as a condition on the
+     * column it walks, and a condition is read before the rows are grouped.
+     * The cursor therefore cuts the rows going into the groups rather than the
+     * groups themselves, and a group whose rows fall on both sides of the cut
+     * is read twice.
+     *
+     * Walking by a grouping term does not save it. With more than one term the
+     * cursor moves past every group sharing the value it stopped at, so a
+     * batch boundary inside such a run drops the rest of them: over the groups
+     * (a=1,b=1) (a=1,b=2) (a=2,b=1), walking `a` a batch at a time reads two
+     * groups where a batch of two reads all three. Which groups come back
+     * depends on the batch size, and nothing in the answer says any are
+     * missing.
+     *
+     * MySQL refuses the usual shape of this outright, because walking a column
+     * outside the grouping puts it in the ORDER BY as well and its sql_mode
+     * carries ONLY_FULL_GROUP_BY. MariaDB's does not, so there it runs and
+     * answers with the duplicates.
+     *
+     * chunk() walks a grouped statement correctly: it cuts with LIMIT and
+     * OFFSET, which the server applies to the groups.
+     *
+     * @return void
+     * @throws LogicException When the statement folds its rows into groups
+     */
+    private function requireWalkableByCursor(): void
+    {
+        if (!$this->groupsRows()) {
+            return;
+        }
+
+        throw new LogicException(
+            'chunkById() carries its place between batches as a condition, which the server reads before it'
+                . ' groups the rows, so a group split across a batch boundary comes back twice and grouping'
+                . ' by more than one term drops whole groups. Walk a grouped statement with chunk().',
+        );
+    }
+
+    /**
+     * Tell whether this statement folds its rows into groups.
+     *
+     * A HAVING clause with no GROUP BY folds them into a single group, so it
+     * counts here as well.
+     *
+     * @return bool True when the rows reach the caller as groups
+     */
+    private function groupsRows(): bool
+    {
+        return $this->groupings !== [] || $this->having !== [];
     }
 
     /**
