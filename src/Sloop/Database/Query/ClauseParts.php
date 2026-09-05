@@ -43,6 +43,30 @@ final class ClauseParts
     }
 
     /**
+     * Reindex the joins as a list and reject anything that is not a Join.
+     *
+     * @param  array<int|string, mixed> $joins Join instances
+     * @return list<Join>               Joins as a list
+     * @throws InvalidArgumentException When an element is not a Join
+     */
+    public static function toJoins(array $joins): array
+    {
+        $joined = [];
+
+        foreach (array_values($joins) as $index => $join) {
+            if (!$join instanceof Join) {
+                throw new InvalidArgumentException(
+                    'Joins must be a Join, got ' . get_debug_type($join) . ' at index ' . $index . '.',
+                );
+            }
+
+            $joined[] = $join;
+        }
+
+        return $joined;
+    }
+
+    /**
      * Reindex the assignments as a list and reject anything that is not an Assignment.
      *
      * The keys a builder collects assignments under name the columns, which is

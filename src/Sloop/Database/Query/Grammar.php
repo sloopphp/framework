@@ -127,16 +127,19 @@ class Grammar
     {
         $columns = $this->compileColumns($spec->columns);
         $from    = $this->compileFrom($spec->from);
+        $joins   = $this->compileJoin($spec->joins);
         $where   = $this->compileWhere($spec->conditions);
         $orderBy = $this->compileOrderBy($spec->orders);
         $limit   = $this->compileLimit($spec->limit, $spec->offset);
         $lock    = $this->compileLock($spec->lock);
 
         return new CompiledSql(
-            'SELECT ' . $columns->sql . $from->sql . $where->sql . $orderBy->sql . $limit->sql . $lock->sql,
+            'SELECT ' . $columns->sql . $from->sql . $joins->sql . $where->sql . $orderBy->sql
+                . $limit->sql . $lock->sql,
             array_merge(
                 $columns->bindings,
                 $from->bindings,
+                $joins->bindings,
                 $where->bindings,
                 $orderBy->bindings,
                 $limit->bindings,
@@ -370,6 +373,34 @@ class Grammar
     }
 
     /**
+     * Compile the joins of a statement, each with its ON clause.
+     *
+     * A join whose ON clause holds nothing is written without one, which the
+     * server reads as a cross join. A builder refuses to compile such a join
+     * before it reaches here, so what arrives with an empty clause is a spec
+     * built by hand, and it is written as it was described rather than being
+     * second-guessed.
+     *
+     * @param  list<Join>               $joins Joins in the order they were added
+     * @return CompiledSql              Joins led by a space, empty when there are none
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileJoin(array $joins): CompiledSql
+    {
+        $sql      = '';
+        $bindings = [];
+
+        foreach ($joins as $join) {
+            $on = $this->compileConditionList($join->conditions, ' ON ');
+
+            $sql     .= ' ' . $join->type->value . ' ' . $this->quoteTable($join->table) . $on->sql;
+            $bindings = array_merge($bindings, $on->bindings);
+        }
+
+        return new CompiledSql($sql, $bindings);
+    }
+
+    /**
      * Compile the column list of an INSERT.
      *
      * @param  list<string>             $columns Columns being written, in the order they are written in
@@ -503,8 +534,8 @@ class Grammar
     /**
      * Compile the WHERE clause.
      *
-     * The conjunction of the first part is ignored, and so is that of the first
-     * part inside a group: in both places there is nothing before it to join to.
+     * How the parts are read is described by compileConditionList(), which the
+     * ON clause of a join goes through as well.
      *
      * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @return CompiledSql              WHERE clause led by a space, empty when there are no conditions
@@ -512,13 +543,35 @@ class Grammar
      */
     protected function compileWhere(array $conditions): CompiledSql
     {
+        return $this->compileConditionList($conditions, ' WHERE ');
+    }
+
+    /**
+     * Compile a list of conditions under the keyword that introduces it.
+     *
+     * WHERE and ON are the same clause under two names: comparisons joined by
+     * AND and OR, grouped by parentheses, in the order they were written. They
+     * are compiled here together so that the two cannot come to disagree about
+     * what `a OR b AND c` means, or about which parenthesis a conjunction
+     * belongs to.
+     *
+     * The conjunction of the first part is ignored, and so is that of the first
+     * part inside a group: in both places there is nothing before it to join to.
+     *
+     * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
+     * @param  string                   $lead       Keyword introducing the clause, spaced as it is written
+     * @return CompiledSql              The clause led by the keyword, empty when nothing would reach the server
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileConditionList(array $conditions, string $lead): CompiledSql
+    {
         $parts = self::withoutEmptyGroups($conditions);
 
         if ($parts === []) {
             return new CompiledSql('');
         }
 
-        $sql           = ' WHERE ';
+        $sql           = $lead;
         $bindings      = [];
         $atClauseStart = true;
 
@@ -561,6 +614,7 @@ class Grammar
     {
         return match (true) {
             $part instanceof Condition        => $this->compileComparison($part),
+            $part instanceof JoinCondition    => $this->compileJoinComparison($part),
             $part instanceof InCondition      => $this->compileIn($part),
             $part instanceof BetweenCondition => $this->compileBetween($part),
             $part instanceof RawCondition     => new CompiledSql(
@@ -629,6 +683,95 @@ class Grammar
         }
 
         return new Condition($column, $canonical, $value, $conjunction);
+    }
+
+    /**
+     * Build one comparison between two columns, refusing an operator that
+     * cannot stand between them.
+     *
+     * The operators are the ones comparisonOperators() lists, minus those that
+     * read a keyword on the right: what follows IS is one of NULL, TRUE or
+     * FALSE, so a column there is a syntax error rather than a comparison.
+     *
+     * @param  string|Expression        $column      Column on the left, or an expression standing in for one
+     * @param  string                   $operator    Comparison operator; matched case-insensitively
+     * @param  string|Expression        $reference   Column on the right, or an expression standing in for one
+     * @param  Conjunction              $conjunction How this joins to the preceding condition
+     * @return JoinCondition            The comparison, ready for a builder to collect
+     * @throws InvalidArgumentException When the operator is not one this grammar writes, or reads a keyword rather than a column
+     */
+    public function joinComparison(
+        string|Expression $column,
+        string $operator,
+        string|Expression $reference,
+        Conjunction $conjunction = Conjunction::And,
+    ): JoinCondition {
+        $canonical = strtoupper($operator);
+
+        self::requireColumnOperand($this->operandOf($canonical, $operator), $canonical);
+
+        return new JoinCondition($column, $canonical, $reference, $conjunction);
+    }
+
+    /**
+     * Compile one comparison between two columns.
+     *
+     * The operator is checked again here for the reason compileComparison()
+     * gives: a JoinCondition can be built without passing through
+     * joinComparison(), and one carrying an operator that reads a keyword would
+     * write SQL the server refuses.
+     *
+     * @param  JoinCondition            $condition Comparison to compile
+     * @return CompiledSql              The comparison as SQL, with the bindings of any Expression in it
+     * @throws InvalidArgumentException When an identifier is malformed, or the operator is not one this grammar writes between columns
+     */
+    protected function compileJoinComparison(JoinCondition $condition): CompiledSql
+    {
+        self::requireColumnOperand(
+            $this->operandOf($condition->operator, $condition->operator),
+            $condition->operator,
+        );
+
+        $column    = $this->compileColumnReference($condition->column);
+        $reference = $this->compileColumnReference($condition->reference);
+
+        return new CompiledSql(
+            $column->sql . ' ' . $condition->operator . ' ' . $reference->sql,
+            array_merge($column->bindings, $reference->bindings),
+        );
+    }
+
+    /**
+     * Read what an operator takes on its right, refusing one this grammar does
+     * not write.
+     *
+     * @param  string                   $canonical Operator upper-cased, as the operator table keys it
+     * @param  string                   $asWritten Operator as the caller spelled it, for the message
+     * @return Operand                  What the operator reads on its right
+     * @throws InvalidArgumentException When the operator is not one this grammar writes
+     */
+    private function operandOf(string $canonical, string $asWritten): Operand
+    {
+        return $this->comparisonOperators()[$canonical]
+            ?? throw new InvalidArgumentException('Unsupported comparison operator "' . $asWritten . '".');
+    }
+
+    /**
+     * Refuse an operator that reads a keyword where a column has to stand.
+     *
+     * @param  Operand                  $operand  What the operator reads on its right
+     * @param  string                   $operator Operator, upper-cased, for the message
+     * @return void
+     * @throws InvalidArgumentException When the operator reads a keyword
+     */
+    private static function requireColumnOperand(Operand $operand, string $operator): void
+    {
+        if ($operand === Operand::Keyword) {
+            throw new InvalidArgumentException(
+                $operator . ' tests against a keyword, so it compares a column against NULL, TRUE or FALSE'
+                . ' rather than against another column; it has no meaning in an ON clause.',
+            );
+        }
     }
 
     /**

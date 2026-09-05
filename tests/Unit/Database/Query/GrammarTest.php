@@ -19,6 +19,9 @@ use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\InCondition;
 use Sloop\Database\Query\InsertSpec;
+use Sloop\Database\Query\Join;
+use Sloop\Database\Query\JoinCondition;
+use Sloop\Database\Query\JoinType;
 use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
@@ -1477,5 +1480,237 @@ final class GrammarTest extends TestCase
 
         $this->assertSame('SELECT * FROM `users` FOR UPDATE WAIT ?', $compiled->sql);
         $this->assertSame([5], $compiled->bindings);
+    }
+
+    public function testSelectWritesJoinsBetweenTheTableAndTheConditions(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            joins:      [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+            conditions: [new Condition('users.status', '=', 'active')],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` JOIN `posts` ON `posts`.`user_id` = `users`.`id`'
+            . ' WHERE `users`.`status` = ?',
+            $compiled->sql,
+        );
+        $this->assertSame(['active'], $compiled->bindings);
+    }
+
+    public function testSelectCarriesTheBindingsOfAJoinBeforeThoseOfTheConditions(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            joins:      [new Join(JoinType::Left, 'posts', [
+                new JoinCondition('posts.user_id', '=', Expression::of('?', [7])),
+            ])],
+            conditions: [new Condition('users.status', '=', 'active')],
+        ));
+
+        $this->assertSame([7, 'active'], $compiled->bindings);
+    }
+
+    public function testAJoinWithoutConditionsIsWrittenWithoutAnOnClause(): void
+    {
+        // A builder refuses such a join before it reaches the grammar, so this
+        // pins what a spec built by hand compiles to rather than a shape the
+        // fluent API can produce.
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:  'users',
+            joins: [new Join(JoinType::Inner, 'posts')],
+        ));
+
+        $this->assertSame('SELECT * FROM `users` JOIN `posts`', $compiled->sql);
+    }
+
+    public function testTheTablePrefixReachesAJoinedTable(): void
+    {
+        $compiled = new Grammar('app_')->compileSelect(new SelectSpec(
+            from:  'users',
+            joins: [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `app_users` JOIN `app_posts` ON `app_posts`.`user_id` = `app_users`.`id`',
+            $compiled->sql,
+        );
+    }
+
+    public function testASubclassCanReplaceTheWayJoinsAreCompiled(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileJoin(array $joins): CompiledSql
+            {
+                return new CompiledSql(' STRAIGHT_JOIN `posts` ON `posts`.`user_id` = ?', [1]);
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:  'users',
+            joins: [new Join(JoinType::Inner, 'posts')],
+        ));
+
+        $this->assertSame('SELECT * FROM `users` STRAIGHT_JOIN `posts` ON `posts`.`user_id` = ?', $compiled->sql);
+        $this->assertSame([1], $compiled->bindings);
+    }
+
+    public function testJoinComparisonKeepsTheSpellingTheOperatorTableLists(): void
+    {
+        $condition = new Grammar()->joinComparison('posts.user_id', 'like', 'users.name', Conjunction::Or);
+
+        $this->assertSame('LIKE', $condition->operator);
+        $this->assertSame(Conjunction::Or, $condition->conjunction);
+        $this->assertSame('posts.user_id', $condition->column);
+        $this->assertSame('users.name', $condition->reference);
+    }
+
+    public function testJoinComparisonRefusesAnOperatorReadingAKeyword(): void
+    {
+        $grammar = new Grammar();
+
+        try {
+            $grammar->joinComparison('posts.user_id', 'IS NOT', 'users.id');
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame(
+                'IS NOT tests against a keyword, so it compares a column against NULL, TRUE or FALSE'
+                . ' rather than against another column; it has no meaning in an ON clause.',
+                $e->getMessage(),
+            );
+
+            return;
+        }
+
+        $this->fail('Expected an InvalidArgumentException, none was thrown.');
+    }
+
+    public function testAJoinConditionBuiltAroundTheGrammarIsRefusedWhenItIsCompiled(): void
+    {
+        // The check in joinComparison() can be bypassed by building the
+        // condition directly, so compiling one carries the same refusal.
+        $grammar = new Grammar();
+        $spec    = new SelectSpec(from: 'users', joins: [new Join(JoinType::Inner, 'posts', [
+            new JoinCondition('posts.user_id', 'IS', 'users.id'),
+        ])]);
+
+        try {
+            $grammar->compileSelect($spec);
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('it has no meaning in an ON clause.', $e->getMessage());
+
+            return;
+        }
+
+        $this->fail('Expected an InvalidArgumentException, none was thrown.');
+    }
+
+    public function testAJoinConditionCarryingAnUnknownOperatorIsRefusedWhenItIsCompiled(): void
+    {
+        $grammar = new Grammar();
+        $spec    = new SelectSpec(from: 'users', joins: [new Join(JoinType::Inner, 'posts', [
+            new JoinCondition('posts.user_id', '=>', 'users.id'),
+        ])]);
+
+        try {
+            $grammar->compileSelect($spec);
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('Unsupported comparison operator "=>".', $e->getMessage());
+
+            return;
+        }
+
+        $this->fail('Expected an InvalidArgumentException, none was thrown.');
+    }
+
+    public function testSelectCarriesTheBindingsOfEveryJoinInOrder(): void
+    {
+        // Two joins each carrying a binding: with only one of them the merge
+        // could be dropped and the remaining binding would still line up.
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:  'users',
+            joins: [
+                new Join(JoinType::Inner, 'posts', [
+                    new JoinCondition('posts.user_id', '=', Expression::of('?', [1])),
+                ]),
+                new Join(JoinType::Left, 'comments', [
+                    new JoinCondition('comments.post_id', '=', Expression::of('?', [2])),
+                ]),
+            ],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` JOIN `posts` ON `posts`.`user_id` = ?'
+            . ' LEFT JOIN `comments` ON `comments`.`post_id` = ?',
+            $compiled->sql,
+        );
+        $this->assertSame([1, 2], $compiled->bindings);
+    }
+
+    public function testAJoinComparisonCarriesTheBindingsOfBothSides(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:  'users',
+            joins: [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition(Expression::of('IFNULL(`posts`.`user_id`, ?)', [0]), '=', Expression::of('?', [1])),
+            ])],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` JOIN `posts` ON IFNULL(`posts`.`user_id`, ?) = ?',
+            $compiled->sql,
+        );
+        $this->assertSame([0, 1], $compiled->bindings);
+    }
+
+    public function testASubclassCanReplaceTheWayAConditionListIsCompiled(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileConditionList(array $conditions, string $lead): CompiledSql
+            {
+                $compiled = parent::compileConditionList($conditions, $lead);
+
+                return new CompiledSql($compiled->sql . ' /* ' . trim($lead) . ' */', $compiled->bindings);
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:       'users',
+            joins:      [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+            conditions: [new Condition('users.status', '=', 'active')],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` JOIN `posts` ON `posts`.`user_id` = `users`.`id` /* ON */'
+            . ' WHERE `users`.`status` = ? /* WHERE */',
+            $compiled->sql,
+        );
+    }
+
+    public function testASubclassCanReplaceTheWayAJoinComparisonIsCompiled(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileJoinComparison(JoinCondition $condition): CompiledSql
+            {
+                return new CompiledSql('BINARY ' . parent::compileJoinComparison($condition)->sql);
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:  'users',
+            joins: [new Join(JoinType::Inner, 'posts', [
+                new JoinCondition('posts.user_id', '=', 'users.id'),
+            ])],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `users` JOIN `posts` ON BINARY `posts`.`user_id` = `users`.`id`',
+            $compiled->sql,
+        );
     }
 }

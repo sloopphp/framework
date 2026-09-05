@@ -121,6 +121,200 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Join a table, keeping only the rows that the ON clause pairs.
+     *
+     * The join becomes the one that on() and the methods beside it add
+     * conditions to, until the next join() starts another. A join carries at
+     * least one condition: one without any pairs every row with every other,
+     * so the statement is refused when it is compiled rather than run.
+     *
+     * @param  string         $table Table to join, optionally schema qualified
+     * @return static         This builder
+     * @throws LogicException When the join before this one left a group of ON conditions open
+     */
+    public function join(string $table): static
+    {
+        return $this->addJoin(JoinType::Inner, $table);
+    }
+
+    /**
+     * Join a table, keeping every row read so far whether it pairs or not.
+     *
+     * Columns of the joined table read back as null for a row that found no
+     * match.
+     *
+     * @param  string         $table Table to join, optionally schema qualified
+     * @return static         This builder
+     * @throws LogicException When the join before this one left a group of ON conditions open
+     */
+    public function leftJoin(string $table): static
+    {
+        return $this->addJoin(JoinType::Left, $table);
+    }
+
+    /**
+     * Join a table, keeping every row of it whether it pairs or not.
+     *
+     * @param  string         $table Table to join, optionally schema qualified
+     * @return static         This builder
+     * @throws LogicException When the join before this one left a group of ON conditions open
+     */
+    public function rightJoin(string $table): static
+    {
+        return $this->addJoin(JoinType::Right, $table);
+    }
+
+    /**
+     * Pair rows on a comparison between two columns.
+     *
+     * Called with two arguments the second one is the column to compare
+     * against and the comparison is `=`; called with three the second one is
+     * the operator.
+     *
+     * Both sides name columns: an ON clause pairs rows by comparing what they
+     * hold, so a string here is read as an identifier and never as a value. A
+     * comparison against a value belongs in where(), which keeps it out of the
+     * pairing; where the value has to take part in the pairing itself — the
+     * usual reason being a left join that would otherwise lose its unmatched
+     * rows — write it as an Expression carrying its own binding, as in
+     * `Expression::of('?', [$status])`.
+     *
+     * @param  string|Expression        $column    Column on the left, or an expression standing in for one
+     * @param  string|Expression        $operator  Operator when a column follows, otherwise the column to compare against
+     * @param  string|Expression|null   $reference Column on the right, when an operator was given
+     * @return static                   This builder
+     * @throws LogicException           When no join has been started
+     * @throws InvalidArgumentException When the operator is not a supported comparison, or reads a keyword rather than a column
+     */
+    public function on(
+        string|Expression $column,
+        string|Expression $operator,
+        string|Expression|null $reference = null,
+    ): static {
+        return $this->addOn(Conjunction::And, $column, $operator, $reference, \func_num_args());
+    }
+
+    /**
+     * Pair rows on a comparison, joined to the one before it with AND.
+     *
+     * Same as on(); spelled out for a chain that reads better with the
+     * conjunction named at every step.
+     *
+     * @param  string|Expression        $column    Column on the left, or an expression standing in for one
+     * @param  string|Expression        $operator  Operator when a column follows, otherwise the column to compare against
+     * @param  string|Expression|null   $reference Column on the right, when an operator was given
+     * @return static                   This builder
+     * @throws LogicException           When no join has been started
+     * @throws InvalidArgumentException When the operator is not a supported comparison, or reads a keyword rather than a column
+     */
+    public function andOn(
+        string|Expression $column,
+        string|Expression $operator,
+        string|Expression|null $reference = null,
+    ): static {
+        return $this->addOn(Conjunction::And, $column, $operator, $reference, \func_num_args());
+    }
+
+    /**
+     * Pair rows on a comparison, joined to the one before it with OR.
+     *
+     * MySQL binds AND tighter than OR, so a comparison added after this one
+     * joins to it rather than to the clause as a whole. Where the alternative
+     * has to stay one whatever follows, open a group with orOnOpen().
+     *
+     * @param  string|Expression        $column    Column on the left, or an expression standing in for one
+     * @param  string|Expression        $operator  Operator when a column follows, otherwise the column to compare against
+     * @param  string|Expression|null   $reference Column on the right, when an operator was given
+     * @return static                   This builder
+     * @throws LogicException           When no join has been started
+     * @throws InvalidArgumentException When the operator is not a supported comparison, or reads a keyword rather than a column
+     */
+    public function orOn(
+        string|Expression $column,
+        string|Expression $operator,
+        string|Expression|null $reference = null,
+    ): static {
+        return $this->addOn(Conjunction::Or, $column, $operator, $reference, \func_num_args());
+    }
+
+    /**
+     * Open a group of ON conditions, joined to what precedes it with AND.
+     *
+     * Everything added until the matching onClose() goes inside the
+     * parentheses. The group belongs to the join being written now: the next
+     * join() refuses to start while one is open.
+     *
+     * @return static         This builder
+     * @throws LogicException When no join has been started
+     */
+    public function onOpen(): static
+    {
+        return $this->openOnGroup(Conjunction::And);
+    }
+
+    /**
+     * Open a group of ON conditions, joined to what precedes it with AND.
+     *
+     * Same as onOpen(); spelled out for a chain that names the conjunction at
+     * every step.
+     *
+     * @return static         This builder
+     * @throws LogicException When no join has been started
+     */
+    public function andOnOpen(): static
+    {
+        return $this->openOnGroup(Conjunction::And);
+    }
+
+    /**
+     * Open a group of ON conditions, joined to what precedes it with OR.
+     *
+     * @return static         This builder
+     * @throws LogicException When no join has been started
+     */
+    public function orOnOpen(): static
+    {
+        return $this->openOnGroup(Conjunction::Or);
+    }
+
+    /**
+     * Close the group of ON conditions opened last.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open
+     */
+    public function onClose(): static
+    {
+        return $this->closeOnGroup();
+    }
+
+    /**
+     * Close the group of ON conditions opened last.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open
+     */
+    public function andOnClose(): static
+    {
+        return $this->closeOnGroup();
+    }
+
+    /**
+     * Close the group of ON conditions opened last.
+     *
+     * The conjunction of a group is decided where it opens, so this reads the
+     * same as onClose() and exists to end a chain that opened with orOnOpen()
+     * in the matching spelling.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open
+     */
+    public function orOnClose(): static
+    {
+        return $this->closeOnGroup();
+    }
+
+    /**
      * Hold every row this statement reads against reading and writing by others.
      *
      * The lock lasts as long as the transaction that took it, so this only
@@ -308,6 +502,7 @@ class Select extends BuilderWhere
         }
 
         $this->requireGroupsClosed();
+        $this->requireJoinsUsable();
 
         $conditions = $alsoWhere === null ? $this->conditions : [
             new GroupBoundary(GroupEdge::Open),
@@ -319,6 +514,7 @@ class Select extends BuilderWhere
         return $this->grammar->compileSelect(new SelectSpec(
             from:       $this->from,
             columns:    $columns,
+            joins:      $this->joins,
             conditions: $conditions,
             orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
             limit:      $limit,

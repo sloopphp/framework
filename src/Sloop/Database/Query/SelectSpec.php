@@ -29,6 +29,13 @@ final readonly class SelectSpec
     public array $columns;
 
     /**
+     * Joins, in the order they were added.
+     *
+     * @var list<Join>
+     */
+    public array $joins;
+
+    /**
      * Parts of the WHERE clause, in the order they were added.
      *
      * @var list<WherePart>
@@ -47,6 +54,7 @@ final readonly class SelectSpec
      *
      * @param  string                   $from       Table to select from, optionally schema qualified
      * @param  array<int|string, mixed> $columns    Column names or Expressions; empty selects everything
+     * @param  array<int|string, mixed> $joins      Join instances, in the order they are written
      * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
      * @param  array<int|string, mixed> $orders     Order instances for the ORDER BY clause
      * @param  int|null                 $limit      Maximum number of rows, or null for no limit
@@ -57,6 +65,7 @@ final readonly class SelectSpec
     public function __construct(
         public string $from,
         array $columns = [],
+        array $joins = [],
         array $conditions = [],
         array $orders = [],
         public ?int $limit = null,
@@ -64,6 +73,7 @@ final readonly class SelectSpec
         public ?RowLock $lock = null,
     ) {
         $this->columns    = self::toColumns($columns);
+        $this->joins      = ClauseParts::toJoins($joins);
         $this->conditions = ClauseParts::toConditions($conditions);
         $this->orders     = ClauseParts::toOrders($orders);
 
