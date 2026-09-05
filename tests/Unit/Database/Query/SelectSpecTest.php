@@ -7,6 +7,8 @@ namespace Sloop\Tests\Unit\Database\Query;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Query\Condition;
+use Sloop\Database\Query\Join;
+use Sloop\Database\Query\JoinType;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\SelectSpec;
@@ -19,6 +21,7 @@ final class SelectSpecTest extends TestCase
 
         $this->assertSame('users', $spec->from);
         $this->assertSame([], $spec->columns);
+        $this->assertSame([], $spec->joins);
         $this->assertSame([], $spec->conditions);
         $this->assertSame([], $spec->orders);
         $this->assertNull($spec->limit);
@@ -40,6 +43,28 @@ final class SelectSpecTest extends TestCase
         $spec = new SelectSpec(from: 'users', conditions: [5 => $condition]);
 
         $this->assertSame([$condition], $spec->conditions);
+    }
+
+    public function testJoinsAreReindexedAsAList(): void
+    {
+        $join = new Join(JoinType::Left, 'posts');
+
+        $spec = new SelectSpec(from: 'users', joins: [9 => $join]);
+
+        $this->assertSame([$join], $spec->joins);
+    }
+
+    public function testAJoinsArrayHoldingSomethingElseIsRefused(): void
+    {
+        try {
+            new SelectSpec(from: 'users', joins: ['posts']);
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('Joins must be a Join, got string at index 0.', $e->getMessage());
+
+            return;
+        }
+
+        $this->fail('Expected an InvalidArgumentException, none was thrown.');
     }
 
     public function testOrdersAreReindexedAsAList(): void
@@ -115,6 +140,14 @@ final class SelectSpecTest extends TestCase
         $this->expectExceptionMessageIsOrContains('Conditions must be a WherePart, got string at index 1.');
 
         new SelectSpec(from: 'users', conditions: [5 => new Condition('id', '=', 1), 9 => 'id = 1']);
+    }
+
+    public function testReportsTheJoinPositionNotTheOriginalKey(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('Joins must be a Join, got string at index 1.');
+
+        new SelectSpec(from: 'users', joins: [5 => new Join(JoinType::Inner, 'posts'), 9 => 'posts']);
     }
 
     public function testReportsTheOrderPositionNotTheOriginalKey(): void
