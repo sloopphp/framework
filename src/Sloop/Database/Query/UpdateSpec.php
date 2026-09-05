@@ -23,6 +23,13 @@ use InvalidArgumentException;
 final readonly class UpdateSpec
 {
     /**
+     * Tables joined to the one being updated, in the order they were added.
+     *
+     * @var list<Join>
+     */
+    public array $joins;
+
+    /**
      * Columns being written and the values going into them, in the order they were first named.
      *
      * @var list<Assignment>
@@ -47,6 +54,7 @@ final readonly class UpdateSpec
      * Describe one UPDATE statement.
      *
      * @param  string                   $table       Table to update, optionally schema qualified
+     * @param  array<int|string, mixed> $joins       Join instances naming the tables joined to it
      * @param  array<int|string, mixed> $assignments Assignment instances for the SET clause
      * @param  array<int|string, mixed> $conditions  WherePart instances for the WHERE clause
      * @param  array<int|string, mixed> $orders      Order instances for the ORDER BY clause
@@ -55,11 +63,13 @@ final readonly class UpdateSpec
      */
     public function __construct(
         public string $table,
+        array $joins = [],
         array $assignments = [],
         array $conditions = [],
         array $orders = [],
         public ?int $limit = null,
     ) {
+        $this->joins       = ClauseParts::toJoins($joins);
         $this->assignments = ClauseParts::toAssignments($assignments);
         $this->conditions  = ClauseParts::toConditions($conditions);
         $this->orders      = ClauseParts::toOrders($orders);

@@ -151,11 +151,15 @@ class Grammar
     /**
      * Compile an UPDATE statement and the bindings its placeholders need.
      *
-     * The assignments come before the conditions, which is the order MySQL
+     * Joined tables come between the table being updated and the assignments,
+     * and the assignments before the conditions, which is the order MySQL
      * reads the clauses in and so the order the placeholders stand in.
      *
      * ORDER BY and LIMIT are written for the same reason they are on a DELETE:
      * they say which rows go first when only some of the matches are to change.
+     * Written together with a join they are refused by MySQL rather than here,
+     * since a Grammar writes the statement it is handed; Update refuses that
+     * pairing where it is built.
      *
      * @param  UpdateSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
@@ -163,14 +167,22 @@ class Grammar
      */
     public function compileUpdate(UpdateSpec $spec): CompiledSql
     {
+        $joins   = $this->compileJoin($spec->joins);
         $set     = $this->compileSet($spec->assignments);
         $where   = $this->compileWhere($spec->conditions);
         $orderBy = $this->compileOrderBy($spec->orders);
         $limit   = $this->compileLimit($spec->limit, null);
 
         return new CompiledSql(
-            'UPDATE ' . $this->quoteTable($spec->table) . $set->sql . $where->sql . $orderBy->sql . $limit->sql,
-            array_merge($set->bindings, $where->bindings, $orderBy->bindings, $limit->bindings),
+            'UPDATE ' . $this->quoteTable($spec->table)
+                . $joins->sql . $set->sql . $where->sql . $orderBy->sql . $limit->sql,
+            array_merge(
+                $joins->bindings,
+                $set->bindings,
+                $where->bindings,
+                $orderBy->bindings,
+                $limit->bindings,
+            ),
         );
     }
 
