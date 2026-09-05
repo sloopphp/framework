@@ -361,7 +361,7 @@ class Update extends BuilderWhere
      * so where this runs is whatever the route answers now.
      *
      * @return int                         Rows changed
-     * @throws LogicException              When there is nothing to assign, a group of conditions was left open, an offset was set, or the connection is in strict mode and nothing narrows the statement
+     * @throws LogicException              When there is nothing to assign, a group of conditions or of ON conditions was left open, a join carries no ON condition, a join is paired with ORDER BY or LIMIT, an offset was set, or the connection is in strict mode and nothing narrows the statement
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
