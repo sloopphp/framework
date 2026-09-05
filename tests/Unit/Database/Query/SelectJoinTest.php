@@ -303,6 +303,37 @@ final class SelectJoinTest extends TestCase
         );
     }
 
+    public function testAnExpressionCannotStandWhereTheOperatorGoes(): void
+    {
+        $select = $this->select()->join('posts');
+
+        $exception = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $select->on('posts.user_id', Expression::of('='), 'users.id'),
+        );
+
+        $this->assertSame(
+            'A comparison operator must be a string, got Sloop\\Database\\Query\\Expression.',
+            $exception->getMessage(),
+        );
+    }
+
+    public function testAnOnConditionWithoutARightHandSideIsRefused(): void
+    {
+        $select = $this->select()->join('posts');
+
+        $exception = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $select->on('posts.user_id', '=', null),
+        );
+
+        $this->assertSame(
+            'An ON condition compares two columns, so the right-hand side cannot be null.'
+            . ' Write a column, or an Expression carrying the value it stands for.',
+            $exception->getMessage(),
+        );
+    }
+
     public function testAnUnsupportedOperatorIsRefusedOnAJoin(): void
     {
         $select = $this->select()->join('posts');
