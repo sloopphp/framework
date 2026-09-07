@@ -981,6 +981,137 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Add up one column over the rows this statement matches.
+     *
+     * The value comes back the way the driver hands it over: MySQL and MariaDB
+     * answer a SUM over an integer column with a DECIMAL, which PDO gives as a
+     * string, so a total wider than a PHP int keeps every digit. Nothing is
+     * converted here, for the reason Connection::lastInsertId() gives.
+     *
+     * Which type that is can differ between servers when the expression holds
+     * a placeholder: MariaDB decides at prepare time, before the parameter's
+     * type is known, and answers with a float. What each server returns for
+     * which shape is measured in the database guide.
+     *
+     * @param  string|Expression                            $column What to add up: a column name, or an expression to total
+     * @return int|float|string|bool|DateTimeImmutable|null The total, or null when nothing matched
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     */
+    public function sum(string|Expression $column): int|float|string|bool|DateTimeImmutable|null
+    {
+        return $this->aggregate('SUM', 'sum', $column);
+    }
+
+    /**
+     * Average one column over the rows this statement matches.
+     *
+     * Rows holding null in the column are left out of both the total and the
+     * count, so the average is taken over the rows that have a value. The
+     * result arrives as sum() describes.
+     *
+     * @param  string|Expression                            $column What to average: a column name, or an expression to average
+     * @return int|float|string|bool|DateTimeImmutable|null The average, or null when nothing matched
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     */
+    public function avg(string|Expression $column): int|float|string|bool|DateTimeImmutable|null
+    {
+        return $this->aggregate('AVG', 'avg', $column);
+    }
+
+    /**
+     * Read the smallest value of one column over the rows this statement matches.
+     *
+     * MIN keeps the column's own type rather than producing a number of its
+     * own, so a date column answers with a date and a text column with the
+     * value that sorts first under the column's collation.
+     *
+     * @param  string|Expression                            $column What to take the smallest of: a column name, or an expression
+     * @return int|float|string|bool|DateTimeImmutable|null The smallest value, or null when nothing matched
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     */
+    public function min(string|Expression $column): int|float|string|bool|DateTimeImmutable|null
+    {
+        return $this->aggregate('MIN', 'min', $column);
+    }
+
+    /**
+     * Read the largest value of one column over the rows this statement matches.
+     *
+     * The counterpart of min(), including how it keeps the column's type.
+     *
+     * @param  string|Expression                            $column What to take the largest of: a column name, or an expression
+     * @return int|float|string|bool|DateTimeImmutable|null The largest value, or null when nothing matched
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     */
+    public function max(string|Expression $column): int|float|string|bool|DateTimeImmutable|null
+    {
+        return $this->aggregate('MAX', 'max', $column);
+    }
+
+    /**
+     * Run one aggregate call over the rows this statement matches.
+     *
+     * The select list is replaced by the call, so the server folds the rows
+     * rather than sending them back, and the row window is dropped for the
+     * reason count() drops it: LIMIT and OFFSET would apply to the single row
+     * the call produces, so an offset would throw away the only answer.
+     *
+     * The lock is left alone. Under NOWAIT an aggregate reports the failure
+     * rather than answering short — that swallowing is COUNT keeping its own
+     * tally, as requireCountableLock() describes — so there is nothing here to
+     * refuse.
+     *
+     * @param  string                                       $function SQL function to call, as it is written
+     * @param  string                                       $method   Name of the method being asked for
+     * @param  string|Expression                            $column   What to aggregate: a column name, or an expression
+     * @return int|float|string|bool|DateTimeImmutable|null Value the call produced, or null when nothing matched
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                  When the connection cannot be obtained
+     * @throws DatabaseException                            When the statement fails
+     * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
+     */
+    private function aggregate(
+        string $function,
+        string $method,
+        string|Expression $column,
+    ): int|float|string|bool|DateTimeImmutable|null {
+        $this->requireUngroupedAggregate($method);
+
+        $call = $column instanceof Expression
+            ? Expression::of($function . '(' . $column->sql() . ')', $column->bindings())
+            : Expression::of($function . '(' . IdentifierQuoter::quote($column) . ')');
+
+        $row = $this->runReading([$call], null, null)->first();
+
+        // The select list held one call, so the row holds one value. Reading it
+        // by position rather than by name keeps this working for a call written
+        // over a qualified column, which comes back keyed as it was written.
+        return array_values($row ?? [])[0] ?? null;
+    }
+
+    /**
      * Read one column across every matching row.
      *
      * With a key column, the two columns are read together and the first keys
@@ -1481,6 +1612,41 @@ class Select extends BuilderWhere
             $method . '() counts the rows a statement matches, but this one groups them, so the server would'
                 . ' answer with one count per group and the first of those would be read as the whole.'
                 . ' Count the rows of get(), or read the groups and count those.',
+        );
+    }
+
+    /**
+     * Refuse an aggregate over a statement whose rows are folded into groups.
+     *
+     * A GROUP BY makes the server take the call once per group and answer with
+     * one row for each of them, so reading the first of those rows gives the
+     * value for the first group rather than for everything the statement
+     * matches. Nothing in that answer says it is one of many.
+     *
+     * Aggregating per group is what execute() is for: it reads every row the
+     * grouped statement produces, and a HAVING clause narrows which groups
+     * reach it.
+     *
+     * A HAVING clause with no GROUP BY folds the rows into a single group. That
+     * one group covers every matching row, so the value would be right, but it
+     * is right by accident: adding a grouping term later changes the answer
+     * without changing the call. It is refused here for that reason, the same
+     * way count() refuses it.
+     *
+     * @param  string         $method Name of the method being asked for
+     * @return void
+     * @throws LogicException When the statement folds its rows into groups
+     */
+    private function requireUngroupedAggregate(string $method): void
+    {
+        if (!$this->groupsRows()) {
+            return;
+        }
+
+        throw new LogicException(
+            $method . '() reads one value over the rows a statement matches, but this one groups them, so'
+                . ' the server would answer with one value per group and the first of those would be read'
+                . ' as the whole. Aggregate the rows of get(), or read the groups with execute().',
         );
     }
 
