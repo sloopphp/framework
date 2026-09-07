@@ -1104,7 +1104,7 @@ class Select extends BuilderWhere
 
         $call = $column instanceof Expression
             ? Expression::of($function . '(' . $column->sql() . ')', $column->bindings())
-            : Expression::of($function . '(' . IdentifierQuoter::quote($column) . ')');
+            : Expression::of($function . '(' . $this->grammar->quoteIdentifier($column) . ')');
 
         $row = $this->runReading([$call], null, null)->first();
 

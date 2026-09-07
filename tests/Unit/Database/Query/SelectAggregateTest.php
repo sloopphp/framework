@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database\Query;
 
+use InvalidArgumentException;
 use LogicException;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
@@ -12,8 +13,10 @@ use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
+use Sloop\Database\Exception\QueryException;
 use Sloop\Database\LoggingOptions;
 use Sloop\Database\Query\Expression;
+use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -177,6 +180,41 @@ final class SelectAggregateTest extends TestCase
         // name would miss it. Held with a value rather than only the SQL, so
         // that reading by position is what the test depends on.
         $this->assertSame(390, $this->select()->sum('orders.amount'));
+    }
+
+    #[DataProvider('aggregateMethods')]
+    public function testAggregateAppliesTheTablePrefixToAQualifiedColumn(string $method, string $function): void
+    {
+        // The call goes through the grammar rather than quoting on its own, so
+        // a prefixed pool reaches the same table the rest of the statement
+        // does. Quoting directly would name the unprefixed table and the
+        // server would answer that the column is unknown.
+        $this->connection->setGrammar(new Grammar('app_'));
+        $handler = $this->attachLogger();
+
+        try {
+            $this->select()->{$method}('orders.amount');
+        } catch (QueryException) {
+            // The prefixed table does not exist in this fixture; the statement
+            // that was sent is what this holds.
+        }
+
+        $this->assertSame(
+            'SELECT ' . $function . '(`app_orders`.`amount`) FROM `app_orders`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testAggregateRefusesAnIdentifierWithMoreSegmentsThanAColumnCanHave(): void
+    {
+        // The grammar caps an identifier at schema.table.column. Quoting
+        // directly would let a fourth segment through to the server.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn () => $this->select()->sum('a.b.c.d'),
+        );
+
+        $this->assertStringContainsString('at most three segments', $thrown->getMessage());
     }
 
     #[DataProvider('aggregateMethods')]
