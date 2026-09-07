@@ -937,8 +937,18 @@ class Grammar
     protected function compileIn(InCondition $condition): CompiledSql
     {
         $column   = $this->compileColumnReference($condition->column);
-        $parts    = [];
         $bindings = $column->bindings;
+
+        if ($condition->values instanceof SubQuery) {
+            $inner = $condition->values->compile();
+
+            return new CompiledSql(
+                $column->sql . ($condition->negated ? ' NOT IN (' : ' IN (') . $inner->sql . ')',
+                array_merge($bindings, $inner->bindings),
+            );
+        }
+
+        $parts = [];
 
         foreach ($condition->values as $value) {
             $compiled = $this->compileValue($value);
