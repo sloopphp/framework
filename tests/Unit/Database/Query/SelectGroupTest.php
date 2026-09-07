@@ -344,6 +344,16 @@ final class SelectGroupTest extends TestCase
         $this->assertStringNotContainsString('HAVING', $select->toSql());
     }
 
+    public function testAnEmptyHavingGroupDoesNotTakeTheConditionsAfterItWithIt(): void
+    {
+        $select = $this->select()
+            ->havingOpen()
+            ->havingClose()
+            ->having('user_id', '>', 1);
+
+        $this->assertSame('SELECT `user_id` FROM `orders` HAVING `user_id` > ?', $select->toSql());
+    }
+
     public function testCountIsAllowedWhenTheOnlyHavingPartsAreAnEmptyGroup(): void
     {
         $select = $this->select()
@@ -360,8 +370,14 @@ final class SelectGroupTest extends TestCase
         $this->select()
             ->havingOpen()
             ->havingClose()
-            ->chunkById(2, function (Result $batch): void {
+            ->chunkById(2, function (Result $batch): bool {
                 $this->batchSizes[] = \count($batch->asArray());
+
+                // The walk ends on its own after two batches. The bound is here
+                // so that a build in which the cursor stops narrowing the rows
+                // fails on the assertion below instead of reading the same
+                // batch forever.
+                return \count($this->batchSizes) < 4;
             }, 'user_id');
 
         $this->assertSame([2, 1], $this->batchSizes);
