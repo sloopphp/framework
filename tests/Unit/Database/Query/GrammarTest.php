@@ -17,6 +17,8 @@ use Sloop\Database\Query\DeleteSpec;
 use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\GroupBoundary;
+use Sloop\Database\Query\GroupEdge;
 use Sloop\Database\Query\InCondition;
 use Sloop\Database\Query\InsertSpec;
 use Sloop\Database\Query\Join;
@@ -78,6 +80,169 @@ final class GrammarTest extends TestCase
 
         $this->assertSame('SELECT `id`, GREATEST(?, ?) FROM `users`', $compiled->sql);
         $this->assertSame([1, 2], $compiled->bindings);
+    }
+
+    public function testSelectWritesTheGroupByClause(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:      'orders',
+            columns:   ['user_id'],
+            groupings: ['user_id'],
+        ));
+
+        $this->assertSame('SELECT `user_id` FROM `orders` GROUP BY `user_id`', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testSelectWritesEveryGroupingSeparatedByCommas(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: ['user_id', 'status'],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` GROUP BY `user_id`, `status`', $compiled->sql);
+    }
+
+    public function testSelectWritesAGroupingExpressionAsGivenAndKeepsItsBindings(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: [Expression::of('DATE_FORMAT(created_at, ?)', ['%Y-%m'])],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` GROUP BY DATE_FORMAT(created_at, ?)', $compiled->sql);
+        $this->assertSame(['%Y-%m'], $compiled->bindings);
+    }
+
+    public function testSelectQualifiesAGroupingWithThePrefix(): void
+    {
+        $compiled = new Grammar('app_')->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: ['orders.user_id'],
+        ));
+
+        $this->assertSame('SELECT * FROM `app_orders` GROUP BY `app_orders`.`user_id`', $compiled->sql);
+    }
+
+    public function testSelectWithoutGroupingsWritesNoGroupByClause(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(from: 'orders'));
+
+        $this->assertStringNotContainsString('GROUP BY', $compiled->sql);
+    }
+
+    public function testSelectWritesTheHavingClause(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: ['user_id'],
+            having:    [new Condition(Expression::of('COUNT(*)'), '>', 5)],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` GROUP BY `user_id` HAVING COUNT(*) > ?', $compiled->sql);
+        $this->assertSame([5], $compiled->bindings);
+    }
+
+    public function testSelectWritesHavingConjunctionsAndGroupsLikeAWhereClause(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: ['user_id'],
+            having:    [
+                new Condition(Expression::of('COUNT(*)'), '>', 5),
+                new GroupBoundary(GroupEdge::Open, Conjunction::Or),
+                new Condition(Expression::of('SUM(total)'), '>', 100),
+                new Condition('user_id', '<', 10, Conjunction::And),
+                new GroupBoundary(GroupEdge::Close),
+            ],
+        ));
+
+        $this->assertSame(
+            'SELECT * FROM `orders` GROUP BY `user_id`'
+            . ' HAVING COUNT(*) > ? OR (SUM(total) > ? AND `user_id` < ?)',
+            $compiled->sql,
+        );
+        $this->assertSame([5, 100, 10], $compiled->bindings);
+    }
+
+    public function testSelectWritesHavingWithoutAGroupByClause(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:   'orders',
+            having: [new Condition(Expression::of('COUNT(*)'), '>', 5)],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` HAVING COUNT(*) > ?', $compiled->sql);
+    }
+
+    public function testSelectCarriesTheBindingsOfEveryGroupingTerm(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: [Expression::of('IFNULL(`a`, ?)', [1]), Expression::of('IFNULL(`b`, ?)', [2])],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` GROUP BY IFNULL(`a`, ?), IFNULL(`b`, ?)', $compiled->sql);
+        $this->assertSame([1, 2], $compiled->bindings);
+    }
+
+    public function testSubclassCanReplaceTheGroupByClause(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileGroupBy(array $groupings): CompiledSql
+            {
+                return new CompiledSql(' GROUP BY (' . \count($groupings) . ' terms)');
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:      'orders',
+            groupings: ['user_id', 'status'],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` GROUP BY (2 terms)', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testSubclassCanReplaceTheHavingClause(): void
+    {
+        $grammar = new class () extends Grammar {
+            protected function compileHaving(array $conditions): CompiledSql
+            {
+                return new CompiledSql(' HAVING (' . \count($conditions) . ' conditions)');
+            }
+        };
+
+        $compiled = $grammar->compileSelect(new SelectSpec(
+            from:   'orders',
+            having: [new Condition('total', '>', 10)],
+        ));
+
+        $this->assertSame('SELECT * FROM `orders` HAVING (1 conditions)', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testSelectWritesTheClausesInTheOrderTheServerReadsThem(): void
+    {
+        $compiled = new Grammar()->compileSelect(new SelectSpec(
+            from:       'orders',
+            columns:    ['user_id'],
+            joins:      [new Join(JoinType::Inner, 'users', [new JoinCondition('orders.user_id', '=', 'users.id')])],
+            conditions: [new Condition('orders.status', '=', 'paid')],
+            groupings:  ['orders.user_id'],
+            having:     [new Condition(Expression::of('COUNT(*)'), '>', 2)],
+            orders:     [new Order('orders.user_id', Direction::Descending)],
+            limit:      10,
+        ));
+
+        $this->assertSame(
+            'SELECT `user_id` FROM `orders` JOIN `users` ON `orders`.`user_id` = `users`.`id`'
+            . ' WHERE `orders`.`status` = ? GROUP BY `orders`.`user_id` HAVING COUNT(*) > ?'
+            . ' ORDER BY `orders`.`user_id` DESC LIMIT 10',
+            $compiled->sql,
+        );
+        $this->assertSame(['paid', 2], $compiled->bindings);
     }
 
     public function testInsertNamesTheColumnsOnceAndFollowsWithATuplePerRow(): void
@@ -1763,7 +1928,7 @@ final class GrammarTest extends TestCase
 
         $this->assertSame(
             'SELECT * FROM `users` JOIN `posts` ON `posts`.`user_id` = `users`.`id` /* ON */'
-            . ' WHERE `users`.`status` = ? /* WHERE */',
+            . ' WHERE `users`.`status` = ? /* WHERE */ /* HAVING */',
             $compiled->sql,
         );
     }

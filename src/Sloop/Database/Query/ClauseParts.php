@@ -119,6 +119,36 @@ final class ClauseParts
     }
 
     /**
+     * Reindex references to columns as a list and reject anything that is not one.
+     *
+     * A clause naming columns takes either the name or an Expression standing
+     * in for it, so that a term the grammar has no words for — a function call
+     * over the column, say — can still be written where a column is expected.
+     *
+     * @param  string                   $noun    What the clause calls these, to name them in the message
+     * @param  array<int|string, mixed> $columns Column names or Expressions
+     * @return list<string|Expression>  References as a list
+     * @throws InvalidArgumentException When an element is neither a string nor an Expression
+     */
+    public static function toColumnReferences(string $noun, array $columns): array
+    {
+        $references = [];
+
+        foreach (array_values($columns) as $index => $column) {
+            if (!\is_string($column) && !$column instanceof Expression) {
+                throw new InvalidArgumentException(
+                    $noun . ' must be a string or an Expression, got ' . get_debug_type($column)
+                    . ' at index ' . $index . '.',
+                );
+            }
+
+            $references[] = $column;
+        }
+
+        return $references;
+    }
+
+    /**
      * Reindex the column names as a list and reject anything that is not a string.
      *
      * @param  array<int|string, mixed> $columns Column names

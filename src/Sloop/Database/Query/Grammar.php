@@ -129,18 +129,22 @@ class Grammar
         $from    = $this->compileFrom($spec->from);
         $joins   = $this->compileJoin($spec->joins);
         $where   = $this->compileWhere($spec->conditions);
+        $groupBy = $this->compileGroupBy($spec->groupings);
+        $having  = $this->compileHaving($spec->having);
         $orderBy = $this->compileOrderBy($spec->orders);
         $limit   = $this->compileLimit($spec->limit, $spec->offset);
         $lock    = $this->compileLock($spec->lock);
 
         return new CompiledSql(
-            'SELECT ' . $columns->sql . $from->sql . $joins->sql . $where->sql . $orderBy->sql
-                . $limit->sql . $lock->sql,
+            'SELECT ' . $columns->sql . $from->sql . $joins->sql . $where->sql . $groupBy->sql
+                . $having->sql . $orderBy->sql . $limit->sql . $lock->sql,
             array_merge(
                 $columns->bindings,
                 $from->bindings,
                 $joins->bindings,
                 $where->bindings,
+                $groupBy->bindings,
+                $having->bindings,
                 $orderBy->bindings,
                 $limit->bindings,
                 $lock->bindings,
@@ -541,6 +545,57 @@ class Grammar
         }
 
         return new CompiledSql(' SET ' . implode(', ', $parts), $bindings);
+    }
+
+    /**
+     * Compile the GROUP BY clause.
+     *
+     * The terms are written in the order they were added, since that order
+     * decides how the groups nest and so what each aggregate is taken over.
+     *
+     * No sort direction is written here. MySQL 8.0 removed `GROUP BY x DESC`
+     * and answers a statement carrying it with a syntax error, while MariaDB
+     * still takes it, so a builder offering the direction would compile on one
+     * server and not on the other. Sorting the groups is what ORDER BY is for.
+     *
+     * @param  list<string|Expression>  $groupings Terms to group by, in the order they were added
+     * @return CompiledSql              GROUP BY clause led by a space, empty when there is nothing to group by
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileGroupBy(array $groupings): CompiledSql
+    {
+        if ($groupings === []) {
+            return new CompiledSql('');
+        }
+
+        $parts    = [];
+        $bindings = [];
+
+        foreach ($groupings as $grouping) {
+            $compiled = $this->compileColumnReference($grouping);
+            $parts[]  = $compiled->sql;
+            $bindings = array_merge($bindings, $compiled->bindings);
+        }
+
+        return new CompiledSql(' GROUP BY ' . implode(', ', $parts), $bindings);
+    }
+
+    /**
+     * Compile the HAVING clause.
+     *
+     * HAVING narrows what the grouping produced, and reads as a WHERE clause
+     * does, so it goes through compileConditionList() under its own keyword.
+     *
+     * It is written whether or not the statement groups: with no GROUP BY the
+     * rows form a single group, which both servers accept.
+     *
+     * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
+     * @return CompiledSql              HAVING clause led by a space, empty when there are no conditions
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileHaving(array $conditions): CompiledSql
+    {
+        return $this->compileConditionList($conditions, ' HAVING ');
     }
 
     /**

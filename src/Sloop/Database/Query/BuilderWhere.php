@@ -761,6 +761,7 @@ abstract class BuilderWhere extends Builder
         $depth            = $this->openGroups;
         $floor            = $this->groupFloor;
         $this->groupFloor = $depth;
+        $outerScope       = $this->enterCallbackScope();
 
         try {
             $callback($this);
@@ -771,7 +772,40 @@ abstract class BuilderWhere extends Builder
             while ($this->openGroups > $depth) {
                 $this->closeGroup();
             }
+
+            $this->leaveCallbackScope($outerScope);
         }
+    }
+
+    /**
+     * Note that a callback is about to be handed this builder.
+     *
+     * A statement carrying a second clause that groups by parentheses — the
+     * HAVING clause of a SELECT is the one there is — has the problem the
+     * floor above solves for the WHERE clause. The callback holds this
+     * builder, so every public method on it is within reach whether or not
+     * the method that handed it over has anything to do with that clause.
+     *
+     * The depth that clause stands at now is the depth the callback may not
+     * close past. What the depth is belongs to whichever class keeps the
+     * clause, so it is read and written there; the marker is carried on the
+     * stack here so that callbacks inside callbacks each get their own.
+     *
+     * @return int Marker to hand back to leaveCallbackScope()
+     */
+    protected function enterCallbackScope(): int
+    {
+        return 0;
+    }
+
+    /**
+     * Note that the callback handed this builder has returned.
+     *
+     * @param  int  $outerScope Marker enterCallbackScope() answered with
+     * @return void
+     */
+    protected function leaveCallbackScope(int $outerScope): void
+    {
     }
 
     /**

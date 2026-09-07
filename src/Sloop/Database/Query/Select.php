@@ -55,6 +55,55 @@ class Select extends BuilderWhere
     private ?string $from = null;
 
     /**
+     * Terms of the GROUP BY clause, in the order they were added.
+     *
+     * @var list<string|Expression>
+     */
+    private array $groupings = [];
+
+    /**
+     * Parts of the HAVING clause, in the order they were added.
+     *
+     * @var list<WherePart>
+     */
+    private array $having = [];
+
+    /**
+     * Groups opened by havingOpen() and not yet closed.
+     *
+     * @var int
+     */
+    private int $openHavingGroups = 0;
+
+    /**
+     * Depth of HAVING groups below which the code running now may not close.
+     *
+     * No HAVING method hands this builder to a callback, but where() and
+     * when() do, and what they hand over is this same builder with every
+     * HAVING method on it. Without a floor a callback could close a group the
+     * chain that called it had opened, and the conditions that chain writes
+     * afterwards would land inside the parentheses the callback opened — with
+     * the count of parentheses still balanced, so nothing downstream reports
+     * it. What changes is not only where the brackets sit but what the clause
+     * means: `(a OR b) AND c` written that way reaches the server as
+     * `a OR (b AND c)`, which holds for a different set of groups.
+     *
+     * @var int
+     */
+    private int $havingFloor = 0;
+
+    /**
+     * Whether a callback returned with a HAVING group of its own still open.
+     *
+     * Remembered rather than raised where it happens, for the reason
+     * BuilderWhere gives about the WHERE clause: the failure the callback was
+     * already carrying would be replaced by this one.
+     *
+     * @var bool
+     */
+    private bool $havingLeftOpenInCallback = false;
+
+    /**
      * How to hold the rows read, or null to hold nothing.
      *
      * @var RowLock|null
@@ -315,6 +364,208 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Fold the matching rows into one row per distinct set of these terms.
+     *
+     * The terms are added to whatever earlier calls collected, so grouping by
+     * two columns can be written as one call or as two. Calling this with
+     * nothing adds nothing, which lets a set of terms built up at runtime be
+     * handed over without the caller checking whether anything ended up in it.
+     *
+     * A term may be an Expression where the grouping is over something the
+     * grammar has no words for, such as `Expression::of('YEAR(created_at)')`.
+     *
+     * No sort direction is taken. MySQL 8.0 removed `GROUP BY x DESC` and
+     * answers a statement carrying it with a syntax error while MariaDB still
+     * takes it, so a builder offering the direction would compile on one server
+     * and not on the other. Sort the groups with orderBy().
+     *
+     * @param  string|Expression ...$columns Columns to group by, or expressions standing in for them
+     * @return static            This builder
+     */
+    public function groupBy(string|Expression ...$columns): static
+    {
+        foreach ($columns as $column) {
+            $this->groupings[] = $column;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Narrow the groups down to those the comparison holds for.
+     *
+     * Called with two arguments the second one is the value and the comparison
+     * is `=`; called with three the second one is the operator.
+     *
+     * Where a WHERE clause picks the rows that go into the groups, this picks
+     * the groups themselves, so the left-hand side is usually an aggregate
+     * written as an Expression: `having(Expression::of('COUNT(*)'), '>', 5)`. A
+     * plain string is read as a column, and the server takes only one it was
+     * told to group by.
+     *
+     * Without a GROUP BY the rows form a single group, which both servers
+     * accept, so this can narrow an aggregate taken over the whole table.
+     *
+     * @param  string|Expression                     $column   Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
+     * @return static                                This builder
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     */
+    public function having(
+        string|Expression $column,
+        string|int|float|bool|Expression|null $operator = null,
+        string|int|float|bool|Expression|null $value = null,
+    ): static {
+        return $this->addHaving(Conjunction::And, $column, $operator, $value, \func_num_args());
+    }
+
+    /**
+     * Narrow the groups on a comparison, joined to the one before it with AND.
+     *
+     * Same as having(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  string|Expression                     $column   Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
+     * @return static                                This builder
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     */
+    public function andHaving(
+        string|Expression $column,
+        string|int|float|bool|Expression|null $operator = null,
+        string|int|float|bool|Expression|null $value = null,
+    ): static {
+        return $this->addHaving(Conjunction::And, $column, $operator, $value, \func_num_args());
+    }
+
+    /**
+     * Narrow the groups on a comparison, joined to the one before it with OR.
+     *
+     * @param  string|Expression                     $column   Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
+     * @return static                                This builder
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     */
+    public function orHaving(
+        string|Expression $column,
+        string|int|float|bool|Expression|null $operator = null,
+        string|int|float|bool|Expression|null $value = null,
+    ): static {
+        return $this->addHaving(Conjunction::Or, $column, $operator, $value, \func_num_args());
+    }
+
+    /**
+     * Narrow the groups on a condition written as SQL.
+     *
+     * What is given here goes into the statement as written, for the reason
+     * whereRaw() gives. Values belong in the bindings.
+     *
+     * @param  string                   $sql      SQL of the condition, with `?` where its values go
+     * @param  array<int|string, mixed> $bindings Values for the placeholders, in order
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the bindings are not a list
+     */
+    public function havingRaw(string $sql, array $bindings = []): static
+    {
+        $this->having[] = new RawCondition(Expression::of($sql, $bindings), Conjunction::And);
+
+        return $this;
+    }
+
+    /**
+     * Narrow the groups on a condition written as SQL, joined with OR.
+     *
+     * @param  string                   $sql      SQL of the condition, with `?` where its values go
+     * @param  array<int|string, mixed> $bindings Values for the placeholders, in order
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the bindings are not a list
+     */
+    public function orHavingRaw(string $sql, array $bindings = []): static
+    {
+        $this->having[] = new RawCondition(Expression::of($sql, $bindings), Conjunction::Or);
+
+        return $this;
+    }
+
+    /**
+     * Open a group of HAVING conditions, joined to what precedes it with AND.
+     *
+     * Everything added until the matching havingClose() goes inside the
+     * parentheses, as whereOpen() describes for the WHERE clause.
+     *
+     * @return static This builder
+     */
+    public function havingOpen(): static
+    {
+        return $this->openHavingGroup(Conjunction::And);
+    }
+
+    /**
+     * Open a group of HAVING conditions, joined to what precedes it with AND.
+     *
+     * Same as havingOpen(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @return static This builder
+     */
+    public function andHavingOpen(): static
+    {
+        return $this->openHavingGroup(Conjunction::And);
+    }
+
+    /**
+     * Open a group of HAVING conditions, joined to what precedes it with OR.
+     *
+     * @return static This builder
+     */
+    public function orHavingOpen(): static
+    {
+        return $this->openHavingGroup(Conjunction::Or);
+    }
+
+    /**
+     * Close the group of HAVING conditions opened last.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open
+     */
+    public function havingClose(): static
+    {
+        return $this->closeHavingGroup();
+    }
+
+    /**
+     * Close the group of HAVING conditions opened last.
+     *
+     * Same as havingClose(). How the group joins to what precedes it was
+     * settled when it was opened, so naming the conjunction here only reads
+     * back what the chain already said.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open
+     */
+    public function andHavingClose(): static
+    {
+        return $this->closeHavingGroup();
+    }
+
+    /**
+     * Close the group of HAVING conditions opened last.
+     *
+     * Same as havingClose(), for the reason andHavingClose() gives.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open
+     */
+    public function orHavingClose(): static
+    {
+        return $this->closeHavingGroup();
+    }
+
+    /**
      * Hold every row this statement reads against reading and writing by others.
      *
      * The lock lasts as long as the transaction that took it, so this only
@@ -497,12 +748,15 @@ class Select extends BuilderWhere
         ?WherePart $alsoWhere = null,
         ?Order $thenBy = null,
     ): CompiledSql {
-        if ($this->from === null) {
-            throw new LogicException('A SELECT reads from a table; call from() before compiling the statement.');
-        }
+        // Held rather than read again at the end: the guards below are methods,
+        // and calling one declared on this class rather than inherited loses
+        // what the check above established about the property.
+        $from = $this->from
+            ?? throw new LogicException('A SELECT reads from a table; call from() before compiling the statement.');
 
         $this->requireGroupsClosed();
         $this->requireJoinsUsable();
+        $this->requireHavingGroupsClosed();
 
         $conditions = $alsoWhere === null ? $this->conditions : [
             new GroupBoundary(GroupEdge::Open),
@@ -512,10 +766,12 @@ class Select extends BuilderWhere
         ];
 
         return $this->grammar->compileSelect(new SelectSpec(
-            from:       $this->from,
+            from:       $from,
             columns:    $columns,
             joins:      $this->joins,
             conditions: $conditions,
+            groupings:  $this->groupings,
+            having:     $this->having,
             orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
             limit:      $limit,
             offset:     $offset,
@@ -665,6 +921,7 @@ class Select extends BuilderWhere
     public function count(): int
     {
         $this->requireCountableLock('count');
+        $this->requireUngrouped('count');
 
         $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
 
@@ -817,6 +1074,7 @@ class Select extends BuilderWhere
         // would otherwise take its locks and only then be told the count cannot
         // be had, leaving the caller holding rows for a statement that failed.
         $this->requireCountableLock('paginate');
+        $this->requireUngrouped('paginate');
 
         $items = $this->runReading($this->columns, $perPage, ($page - 1) * $perPage);
 
@@ -891,6 +1149,12 @@ class Select extends BuilderWhere
      * complete: rows sharing the value the batch ended on are above nothing and
      * are stepped over. A primary key is the usual choice, and is the default.
      *
+     * A statement that groups its rows is refused: the cursor is a condition,
+     * which the server reads before it groups, so it cuts the rows going into
+     * the groups rather than the groups themselves. requireWalkableByCursor()
+     * says what that does to the answer. Walk a grouped statement with
+     * chunk().
+     *
      * The callback is given the batch and its 0-based number, and returning
      * false from it stops the walk.
      *
@@ -898,7 +1162,7 @@ class Select extends BuilderWhere
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window or a sort is already set, no table has been named, or a group of conditions was left open
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, or the statement groups its rows
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -909,6 +1173,7 @@ class Select extends BuilderWhere
     {
         $this->requireNoRowWindow('chunkById');
         $this->requireBatchSize($size);
+        $this->requireWalkableByCursor();
 
         if ($this->orders !== []) {
             throw new LogicException(
@@ -1028,6 +1293,261 @@ class Select extends BuilderWhere
                 . ' cannot keep the ones already on this builder. Drop the limit()/offset() call, or read'
                 . ' that slice on its own with execute().',
         );
+    }
+
+    /**
+     * Hold the HAVING clause at the depth the callback finds it.
+     *
+     * @return int Floor that was in force before the callback was handed over
+     */
+    protected function enterCallbackScope(): int
+    {
+        $outerScope        = $this->havingFloor;
+        $this->havingFloor = $this->openHavingGroups;
+
+        return $outerScope;
+    }
+
+    /**
+     * Put back the depth that stood before the callback was handed over.
+     *
+     * A group the callback left open is closed for it, so the depth is what it
+     * was before it ran and a later close cannot take a group it did not open.
+     * The mistake itself is remembered and reported when the statement is
+     * compiled.
+     *
+     * @param  int  $outerScope Floor enterCallbackScope() answered with
+     * @return void
+     */
+    protected function leaveCallbackScope(int $outerScope): void
+    {
+        $depth = $this->havingFloor;
+
+        $this->havingLeftOpenInCallback = $this->havingLeftOpenInCallback || $this->openHavingGroups !== $depth;
+        $this->havingFloor              = $outerScope;
+
+        // Counted down on a local rather than read back off the property each
+        // time. Both forms close the same groups, but with the property as the
+        // condition, dropping the call inside leaves the loop with nothing to
+        // end it, and a mutation that hangs is reported as a timeout instead of
+        // as the failure the test below it already names.
+        for ($open = $this->openHavingGroups; $open > $depth; $open--) {
+            $this->closeHavingGroup();
+        }
+    }
+
+    /**
+     * Record the opening of a group of HAVING conditions.
+     *
+     * @param  Conjunction $conjunction How the group joins to what precedes it
+     * @return static      This builder
+     */
+    private function openHavingGroup(Conjunction $conjunction): static
+    {
+        $this->having[] = new GroupBoundary(GroupEdge::Open, $conjunction);
+        $this->openHavingGroups++;
+
+        return $this;
+    }
+
+    /**
+     * Record the closing of the group of HAVING conditions opened last.
+     *
+     * Refused here rather than when the statement is compiled, for the reason
+     * BuilderWhere gives: a close with nothing to close is a mistake in the
+     * chain, and the line that made it is still the line being executed.
+     *
+     * Inside a callback the refusal starts at the depth the callback found, as
+     * it does on the WHERE clause. $havingFloor says why.
+     *
+     * @return static         This builder
+     * @throws LogicException When no group is open, or the open group was not opened by the code closing it
+     */
+    private function closeHavingGroup(): static
+    {
+        if ($this->openHavingGroups <= $this->havingFloor) {
+            throw new LogicException(
+                $this->openHavingGroups === 0
+                    ? 'No group of HAVING conditions is open, so there is nothing to close.'
+                    : 'This group of HAVING conditions was opened outside the callback holding the builder,'
+                        . ' so the callback cannot close it.',
+            );
+        }
+
+        $this->having[] = new GroupBoundary(GroupEdge::Close);
+        $this->openHavingGroups--;
+
+        return $this;
+    }
+
+    /**
+     * Read what the having methods were given and record it.
+     *
+     * The number of arguments is what tells the two shapes apart rather than
+     * the type of the second one, for the reason BuilderWhere gives: a caller
+     * comparing against a value that happens to spell an operator means that
+     * value.
+     *
+     * @param  Conjunction                           $conjunction   How what is added joins to what precedes it
+     * @param  string|Expression                     $column        Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|null $operator      Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|null $value         Value to compare against, when an operator was given
+     * @param  int                                   $argumentCount Number of arguments the caller passed
+     * @return static                                This builder
+     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     */
+    private function addHaving(
+        Conjunction $conjunction,
+        string|Expression $column,
+        string|int|float|bool|Expression|null $operator,
+        string|int|float|bool|Expression|null $value,
+        int $argumentCount,
+    ): static {
+        if ($argumentCount < 2) {
+            throw new InvalidArgumentException(
+                'A comparison needs something to compare against, but only a column was given.'
+                . ' Pass a value, or an operator and a value.',
+            );
+        }
+
+        if ($argumentCount < 3) {
+            $this->having[] = $this->grammar->comparison($column, '=', $operator, $conjunction);
+
+            return $this;
+        }
+
+        if (!\is_string($operator)) {
+            throw new InvalidArgumentException(
+                'A comparison operator must be a string, got ' . get_debug_type($operator) . '.',
+            );
+        }
+
+        $this->having[] = $this->grammar->comparison($column, $operator, $value, $conjunction);
+
+        return $this;
+    }
+
+    /**
+     * Refuse a chain that opened a group of HAVING conditions and never closed it.
+     *
+     * @return void
+     * @throws LogicException When a group is still open
+     */
+    private function requireHavingGroupsClosed(): void
+    {
+        if ($this->havingLeftOpenInCallback) {
+            throw new LogicException(
+                'A callback opened a group of HAVING conditions and returned without closing it.'
+                . ' Close it inside the callback.',
+            );
+        }
+
+        if ($this->openHavingGroups > 0) {
+            throw new LogicException(
+                'A group of HAVING conditions was opened and not closed; call havingClose() '
+                . $this->openHavingGroups . ' more time' . ($this->openHavingGroups === 1 ? '' : 's') . '.',
+            );
+        }
+    }
+
+    /**
+     * Refuse to count a statement whose rows are folded into groups.
+     *
+     * COUNT(*) beside a GROUP BY is taken per group, so the server answers with
+     * one row for each of them and the first of those rows holds the size of
+     * the first group — not the number of groups, and not the number of rows
+     * the statement matches. Nothing in that answer says it is one of many, so
+     * a caller reading it is told a smaller number with nothing to say it is
+     * the wrong one.
+     *
+     * Counting the groups means wrapping the grouped statement in one that
+     * counts its rows, which is a subquery and waits for the builder to be able
+     * to write one.
+     *
+     * A HAVING clause with no GROUP BY folds the rows into a single group,
+     * which has the same effect on the count, so it is refused here as well.
+     *
+     * @param  string         $method Name of the method being asked for
+     * @return void
+     * @throws LogicException When the statement folds its rows into groups
+     */
+    private function requireUngrouped(string $method): void
+    {
+        if (!$this->groupsRows()) {
+            return;
+        }
+
+        throw new LogicException(
+            $method . '() counts the rows a statement matches, but this one groups them, so the server would'
+                . ' answer with one count per group and the first of those would be read as the whole.'
+                . ' Count the rows of get(), or read the groups and count those.',
+        );
+    }
+
+    /**
+     * Refuse to walk a statement whose rows are folded into groups by a cursor.
+     *
+     * chunkById() carries its place between batches as a condition on the
+     * column it walks, and a condition is read before the rows are grouped.
+     * The cursor therefore cuts the rows going into the groups rather than the
+     * groups themselves, and a group whose rows fall on both sides of the cut
+     * is read twice.
+     *
+     * Walking by a grouping term does not save it. With more than one term the
+     * cursor moves past every group sharing the value it stopped at, so a
+     * batch boundary inside such a run drops the rest of them: over the groups
+     * (a=1,b=1) (a=1,b=2) (a=2,b=1), walking `a` a batch at a time reads two
+     * groups where a batch of two reads all three. Which groups come back
+     * depends on the batch size, and nothing in the answer says any are
+     * missing.
+     *
+     * MySQL refuses the usual shape of this outright, because walking a column
+     * outside the grouping puts it in the ORDER BY as well and its sql_mode
+     * carries ONLY_FULL_GROUP_BY. MariaDB's does not, so there it runs and
+     * answers with the duplicates.
+     *
+     * chunk() walks a grouped statement correctly: it cuts with LIMIT and
+     * OFFSET, which the server applies to the groups.
+     *
+     * @return void
+     * @throws LogicException When the statement folds its rows into groups
+     */
+    private function requireWalkableByCursor(): void
+    {
+        if (!$this->groupsRows()) {
+            return;
+        }
+
+        throw new LogicException(
+            'chunkById() carries its place between batches as a condition, which the server reads before it'
+                . ' groups the rows, so a group split across a batch boundary comes back twice and grouping'
+                . ' by more than one term drops whole groups. Walk a grouped statement with chunk().',
+        );
+    }
+
+    /**
+     * Tell whether this statement folds its rows into groups.
+     *
+     * A HAVING clause with no GROUP BY folds them into a single group, so it
+     * counts here as well. A parenthesis with nothing in it does not: it is
+     * dropped before the clause is written, as requireWhereUnderStrictMode()
+     * reads the WHERE clause.
+     *
+     * @return bool True when the rows reach the caller as groups
+     */
+    private function groupsRows(): bool
+    {
+        if ($this->groupings !== []) {
+            return true;
+        }
+
+        foreach ($this->having as $part) {
+            if (!$part instanceof GroupBoundary) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
