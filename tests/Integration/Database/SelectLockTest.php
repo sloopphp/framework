@@ -325,4 +325,20 @@ final class SelectLockTest extends IntegrationTestCase
 
         $this->reader->select()->from(self::TABLE)->where('id', 1)->forUpdate(noWait: true)->{$method}('id');
     }
+
+    public function testAnAggregateUnderSkipLockedCoversOnlyTheRowsItCouldTake(): void
+    {
+        // The reading the docblock describes, pinned against the server. Three
+        // rows are there and one is held, so the total is short by that row
+        // with nothing in the answer saying so. count() reports what it could
+        // take in the same way, which is why an aggregate is not refused here
+        // either.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $select = $this->reader->select()->from(self::TABLE)->forUpdate(skipLocked: true);
+
+        $this->assertSame('5', $select->sum('id'));
+        $this->assertSame(2, $select->min('id'));
+    }
 }

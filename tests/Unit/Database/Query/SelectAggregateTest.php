@@ -79,6 +79,14 @@ final class SelectAggregateTest extends TestCase
         ];
     }
 
+    /**
+     * @return list<array{string}>
+     */
+    public static function aggregateMethodNames(): array
+    {
+        return [['sum'], ['avg'], ['min'], ['max']];
+    }
+
     #[DataProvider('aggregateMethods')]
     public function testAggregateReplacesTheSelectListWithItsOwnCall(string $method, string $function): void
     {
@@ -112,8 +120,8 @@ final class SelectAggregateTest extends TestCase
         $this->assertSame('SELECT ' . $function . '(`amount`) FROM `orders`', $this->loggedSql($handler));
     }
 
-    #[DataProvider('aggregateMethods')]
-    public function testAggregateReadsEveryMatchThroughARowWindow(string $method, string $function): void
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateReadsEveryMatchThroughARowWindow(string $method): void
     {
         // The window would have applied to the single row the aggregate
         // produces, throwing it away rather than narrowing what was read.
@@ -144,8 +152,8 @@ final class SelectAggregateTest extends TestCase
         $this->assertSame(250, $this->select()->max('amount'));
     }
 
-    #[DataProvider('aggregateMethods')]
-    public function testAggregateIsNullWhenNothingMatched(string $method, string $function): void
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateIsNullWhenNothingMatched(string $method): void
     {
         $this->assertNull($this->select()->where('status', 'missing')->{$method}('amount'));
     }
@@ -200,8 +208,8 @@ final class SelectAggregateTest extends TestCase
         $this->assertSame(700, $value);
     }
 
-    #[DataProvider('aggregateMethods')]
-    public function testAggregateLeavesTheBuilderAsItWas(string $method, string $function): void
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateLeavesTheBuilderAsItWas(string $method): void
     {
         $select = $this->select()->where('status', 'paid')->limit(2);
 
@@ -210,8 +218,8 @@ final class SelectAggregateTest extends TestCase
         $this->assertSame('SELECT `id` FROM `orders` WHERE `status` = ? LIMIT 2', $select->toSql());
     }
 
-    #[DataProvider('aggregateMethods')]
-    public function testAggregateIsRefusedWhileTheStatementGroups(string $method, string $function): void
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateIsRefusedWhileTheStatementGroups(string $method): void
     {
         $select = $this->select()->groupBy('user_id');
 
@@ -225,8 +233,8 @@ final class SelectAggregateTest extends TestCase
         );
     }
 
-    #[DataProvider('aggregateMethods')]
-    public function testAggregateIsRefusedWhileTheStatementOnlyHasAHavingClause(string $method, string $function): void
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateIsRefusedWhileTheStatementOnlyHasAHavingClause(string $method): void
     {
         $select = $this->select()->having(Expression::of('COUNT(*)'), '>', 1);
 
@@ -235,8 +243,8 @@ final class SelectAggregateTest extends TestCase
         $this->assertStringContainsString('but this one groups them', $thrown->getMessage());
     }
 
-    #[DataProvider('aggregateMethods')]
-    public function testAggregateIsAllowedWhenTheOnlyHavingPartsAreAnEmptyGroup(string $method, string $function): void
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateIsAllowedWhenTheOnlyHavingPartsAreAnEmptyGroup(string $method): void
     {
         $select = $this->select()
             ->havingOpen()

@@ -25,7 +25,8 @@ final class SelectAggregateTest extends TransactionalIntegrationTestCase
         $connection->statement(
             'CREATE TABLE ' . self::WIDE_TABLE . ' ('
                 . 'id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, '
-                . 'wide BIGINT UNSIGNED NOT NULL'
+                . 'wide BIGINT UNSIGNED NOT NULL, '
+                . 'maybe INT NULL'
                 . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
     }
@@ -129,10 +130,25 @@ final class SelectAggregateTest extends TransactionalIntegrationTestCase
         $this->assertNull($value);
     }
 
-    public function testAggregateSkipsTheRowsHoldingNullRatherThanCountingThem(): void
+    public function testAvgDividesByTheRowsThatHoldAValueRatherThanByEveryRow(): void
     {
-        // Two of the three rows hold null, and the average is the remaining
-        // value rather than a third of it.
+        // The row holding null is left out of the total and of the count, so
+        // the average is 15 rather than the 10 that counting it would give.
+        $this->connection->statement(
+            'INSERT INTO ' . self::WIDE_TABLE . ' (wide, maybe) VALUES (0, ?), (0, NULL), (0, ?)',
+            [10, 20],
+        );
+
+        $this->assertSame(
+            '15.0000',
+            $this->connection->select()->from(self::WIDE_TABLE)->avg('maybe'),
+        );
+    }
+
+    public function testMinReadsPastTheRowsHoldingNullToTheSmallestValue(): void
+    {
+        // Two of the three rows hold null in this column, and the smallest of
+        // what is left comes back rather than null.
         $this->assertSame(
             '2022-03-03 03:03:03',
             $this->connection->select()->from('users')->min('deleted_at'),

@@ -1079,7 +1079,10 @@ class Select extends BuilderWhere
      * The lock is left alone. Under NOWAIT an aggregate reports the failure
      * rather than answering short — that swallowing is COUNT keeping its own
      * tally, as requireCountableLock() describes — so there is nothing here to
-     * refuse.
+     * refuse. Under SKIP LOCKED the value covers the rows that were free to
+     * take: one another session holds is passed over, so it is left out with
+     * nothing in the answer saying so, the way count() reports what it could
+     * take rather than what is there.
      *
      * @param  string                                       $function SQL function to call, as it is written
      * @param  string                                       $method   Name of the method being asked for
