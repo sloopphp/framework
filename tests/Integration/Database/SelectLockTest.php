@@ -291,4 +291,54 @@ final class SelectLockTest extends IntegrationTestCase
         $this->assertFalse($query()->forUpdate(skipLocked: true)->exists());
         $this->assertTrue($query()->exists());
     }
+
+    /**
+     * @return list<array{string}>
+     */
+    public static function provideAggregateMethods(): array
+    {
+        return [['sum'], ['avg'], ['min'], ['max']];
+    }
+
+    #[DataProvider('provideAggregateMethods')]
+    public function testAnAggregateUnderANoWaitLockReportsTheFailureInsteadOfAnswering(string $method): void
+    {
+        // Why sum() and its siblings do not carry count()'s refusal. The
+        // swallowing above is COUNT keeping a tally of its own; an aggregate
+        // that reaches the held row aborts and says so, on both servers, so
+        // there is nothing for the builder to guard against. Written against
+        // the server so that the day one of them starts answering short, this
+        // fails rather than the framework quietly returning a wrong number.
+        //
+        // The condition is what makes the row part of the answer. Whether an
+        // aggregate reaches a given row is the plan's to decide: MAX(id) over
+        // this table walks the primary key from the end and never reads the
+        // first row, so it takes no lock there and answers correctly. That is
+        // a right answer rather than a short one, which is why it needs no
+        // guard either.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $this->expectException($this->reader->dialect() === Dialect::MySQL
+            ? LockNotAvailableException::class
+            : LockWaitTimeoutException::class);
+
+        $this->reader->select()->from(self::TABLE)->where('id', 1)->forUpdate(noWait: true)->{$method}('id');
+    }
+
+    public function testAnAggregateUnderSkipLockedCoversOnlyTheRowsItCouldTake(): void
+    {
+        // The reading the docblock describes, pinned against the server. Three
+        // rows are there and one is held, so the total is short by that row
+        // with nothing in the answer saying so. count() reports what it could
+        // take in the same way, which is why an aggregate is not refused here
+        // either.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $select = $this->reader->select()->from(self::TABLE)->forUpdate(skipLocked: true);
+
+        $this->assertSame('5', $select->sum('id'));
+        $this->assertSame(2, $select->min('id'));
+    }
 }
