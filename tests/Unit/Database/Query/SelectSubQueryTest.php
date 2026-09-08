@@ -105,6 +105,28 @@ final class SelectSubQueryTest extends TestCase
         $this->assertSame([1, 1], $select->toBindings());
     }
 
+    public function testASubqueryMayHoldOneOfItsOwn(): void
+    {
+        // The grammar reaches a nested statement the same way at any depth, so
+        // this holds the binding order rather than the nesting itself: each
+        // statement's values stand where its own placeholders are.
+        $inner = $this->connection->select('user_id')->from('orders')->where('paid', 2);
+
+        $select = $this->connection->select('id')
+            ->from('users')
+            ->where('status', 'active')
+            ->whereIn('id', $this->paidUserIds()->whereIn('user_id', $inner))
+            ->where('name', '!=', 'dave');
+
+        $this->assertSame(
+            'SELECT `id` FROM `users` WHERE `status` = ? AND `id` IN'
+            . ' (SELECT `user_id` FROM `orders` WHERE `paid` = ? AND `user_id` IN'
+            . ' (SELECT `user_id` FROM `orders` WHERE `paid` = ?)) AND `name` != ?',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 1, 2, 'dave'], $select->toBindings());
+    }
+
     public function testWhereInReadsTheRowsTheSubqueryMatches(): void
     {
         $ids = $this->connection->select('id')->from('users')->whereIn('id', $this->paidUserIds())->pluck('id');

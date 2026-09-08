@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Database\Query;
 
 use InvalidArgumentException;
+use LogicException;
 use Sloop\Database\Dialect;
 
 /**
@@ -121,6 +122,7 @@ class Grammar
      *
      * @param  SelectSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileSelect(SelectSpec $spec): CompiledSql
@@ -167,6 +169,7 @@ class Grammar
      *
      * @param  UpdateSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileUpdate(UpdateSpec $spec): CompiledSql
@@ -285,6 +288,7 @@ class Grammar
      *
      * @param  DeleteSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileDelete(DeleteSpec $spec): CompiledSql
@@ -606,6 +610,7 @@ class Grammar
      *
      * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @return CompiledSql              WHERE clause led by a space, empty when there are no conditions
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileWhere(array $conditions): CompiledSql
@@ -628,6 +633,7 @@ class Grammar
      * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @param  string                   $lead       Keyword introducing the clause, spaced as it is written
      * @return CompiledSql              The clause led by the keyword, empty when nothing would reach the server
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileConditionList(array $conditions, string $lead): CompiledSql
@@ -675,6 +681,7 @@ class Grammar
      *
      * @param  WherePart                $part Part to compile
      * @return CompiledSql              The part as SQL, with the bindings it needs
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileWherePart(WherePart $part): CompiledSql
@@ -932,6 +939,7 @@ class Grammar
      *
      * @param  InCondition              $condition Membership test to compile
      * @return CompiledSql              The test as SQL, with the bindings it needs
+     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileIn(InCondition $condition): CompiledSql

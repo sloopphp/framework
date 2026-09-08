@@ -208,6 +208,12 @@ abstract class BuilderWhere extends Builder
      * compiled, so a condition added to it afterwards is part of what runs. It
      * has to return a single column; the server says so if it does not.
      *
+     * On an UPDATE or a DELETE, a statement that reads the table being written
+     * is refused by MySQL and run by MariaDB. Neither is wrong: the syntax is
+     * standard and MySQL does not implement it, so this is left as each server
+     * answers it rather than refused here. The database guide says what to
+     * write instead when both have to work.
+     *
      * @param  string|Expression               $column Column to test, or an expression standing in for one
      * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
      * @return static                          This builder

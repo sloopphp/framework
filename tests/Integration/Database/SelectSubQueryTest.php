@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Integration\Database;
 
+use Sloop\Database\Dialect;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\ThrowsAssertions;
@@ -122,6 +123,28 @@ final class SelectSubQueryTest extends TransactionalIntegrationTestCase
             ['archived'],
             $this->connection->select('status')->from('users')->where('id', 1)->pluck('status'),
         );
+    }
+
+    public function testTheServersDisagreeOnAWriteThatReadsTheTableItWrites(): void
+    {
+        // The one shape where leaving the check to the server does not mean the
+        // same thing on both. MySQL refuses it with 1093; MariaDB runs it and
+        // updates the rows. SQLAlchemy's test requirements name this an
+        // ANSI-standard syntax MySQL cannot handle, resolved in MariaDB 10.3,
+        // so the builder does not refuse what one server supports.
+        $update = $this->connection->update('users')
+            ->set(['status' => 'archived'])
+            ->whereIn('id', $this->connection->select('id')->from('users')->where('status', 'active'));
+
+        if ($this->connection->dialect() === Dialect::MySQL) {
+            $thrown = $this->assertThrows(QueryException::class, static fn () => $update->execute());
+
+            $this->assertStringContainsString('1093', $thrown->getMessage());
+
+            return;
+        }
+
+        $this->assertSame(2, $update->execute());
     }
 
     public function testDeleteReachesTheSameMachineryThroughTheSharedBase(): void
