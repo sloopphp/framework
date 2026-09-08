@@ -82,9 +82,9 @@ final class SelectWindowTest extends TransactionalIntegrationTestCase
                 ->get(),
         );
 
-        $this->assertStringContainsString(
-            $this->connection->dialect() === Dialect::MySQL ? '3593' : '4015',
-            $thrown->getMessage(),
+        $this->assertSame(
+            $this->connection->dialect() === Dialect::MySQL ? 3593 : 4015,
+            $thrown->driverCode,
         );
     }
 

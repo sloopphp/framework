@@ -12,9 +12,9 @@ use Sloop\Database\Query\Expression;
 
 // Window functions have no builder of their own: they are written with
 // Expression and reach the statement through the ordinary select list and
-// ORDER BY. Nothing in src names them, so a change to the clause order, to
-// compileColumns() or to how an Expression carries its bindings could stop
-// them working without any test noticing. These pin that they still do.
+// ORDER BY. SelectTest already pins that machinery for any raw column, so what
+// is left here is the shape itself -- that an OVER (...) written this way
+// compiles and comes back numbered -- which nothing in src names.
 final class SelectWindowTest extends TestCase
 {
     private Connection $connection;
