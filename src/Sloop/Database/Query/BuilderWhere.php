@@ -202,31 +202,56 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column is one of the given values.
+     * Keep only rows whose column is one of the given values, or one the given statement returns.
      *
-     * @param  string|Expression        $column Column to test, or an expression standing in for one
-     * @param  array<int|string, mixed> $values Values making up the set; must not be empty or hold null
-     * @return static                   This builder
-     * @throws InvalidArgumentException When the set is empty, holds null, or holds a value that cannot be compared
+     * A statement stands where a set does and is read when this one is
+     * compiled, so a condition added to it afterwards is part of what runs. It
+     * has to return a single column; the server says so if it does not.
+     *
+     * On an UPDATE or a DELETE, a statement that reads the table being written
+     * is refused by MySQL and run by MariaDB. Neither is wrong: the syntax is
+     * standard and MySQL does not implement it, so this is left as each server
+     * answers it rather than refused here. The database guide says what to
+     * write instead when both have to work.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
      */
-    public function whereIn(string|Expression $column, array $values): static
+    public function whereIn(string|Expression $column, array|Select $values): static
     {
-        $this->conditions[] = new InCondition($column, $values, negated: false, conjunction: Conjunction::And);
+        $this->conditions[] = new InCondition(
+            $column,
+            $values instanceof Select ? new SubQuery($values) : $values,
+            negated: false,
+            conjunction: Conjunction::And,
+        );
 
         return $this;
     }
 
     /**
-     * Keep only rows whose column is none of the given values.
+     * Keep only rows whose column is none of the given values, and none the given statement returns.
      *
-     * @param  string|Expression        $column Column to test, or an expression standing in for one
-     * @param  array<int|string, mixed> $values Values making up the set; must not be empty or hold null
-     * @return static                   This builder
-     * @throws InvalidArgumentException When the set is empty, holds null, or holds a value that cannot be compared
+     * A statement stands where a set does, as whereIn() describes. Note that a
+     * null among the rows it returns makes this test match no row at all —
+     * the guard that refuses null in a written-out set cannot reach a set that
+     * is not known until it runs.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
      */
-    public function whereNotIn(string|Expression $column, array $values): static
+    public function whereNotIn(string|Expression $column, array|Select $values): static
     {
-        $this->conditions[] = new InCondition($column, $values, negated: true, conjunction: Conjunction::And);
+        $this->conditions[] = new InCondition(
+            $column,
+            $values instanceof Select ? new SubQuery($values) : $values,
+            negated: true,
+            conjunction: Conjunction::And,
+        );
 
         return $this;
     }
