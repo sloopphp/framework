@@ -66,7 +66,7 @@ final readonly class SelectSpec
     /**
      * Describe one SELECT statement.
      *
-     * @param  string                   $from       Table to select from, optionally schema qualified
+     * @param  string|TableSource       $from       Table to select from, optionally schema qualified, or what to read from with its alias, which may be a statement
      * @param  array<int|string, mixed> $columns    Column names or Expressions; empty selects everything
      * @param  array<int|string, mixed> $joins      Join instances, in the order they are written
      * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
@@ -79,7 +79,7 @@ final readonly class SelectSpec
      * @throws InvalidArgumentException When a clause holds the wrong type, a bound is negative, or an offset has no limit
      */
     public function __construct(
-        public string $from,
+        public string|TableSource $from,
         array $columns = [],
         array $joins = [],
         array $conditions = [],

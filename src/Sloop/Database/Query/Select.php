@@ -48,11 +48,11 @@ class Select extends BuilderWhere
     private array $columns;
 
     /**
-     * Table to read from, or null until from() names one.
+     * What to read from, or null until from() names it.
      *
-     * @var string|null
+     * @var TableSource|null
      */
-    private ?string $from = null;
+    private ?TableSource $from = null;
 
     /**
      * Terms of the GROUP BY clause, in the order they were added.
@@ -139,14 +139,30 @@ class Select extends BuilderWhere
     }
 
     /**
-     * Name the table to read from.
+     * Name what to read from: a table, or a statement standing in for one.
      *
-     * @param  string $table Table name, optionally schema qualified
-     * @return static This builder
+     * A statement read as a table needs an alias, because its rows have no
+     * name of their own and both servers refuse it without one. A table name
+     * may take an alias as well, and then that is the name qualified columns
+     * are written against.
+     *
+     * An alias carries the table prefix the way a table name does, so a column
+     * written as `sub.id` reaches the same name the FROM clause introduced.
+     *
+     * The statement is read when this one is compiled, so a condition added to
+     * it after it was handed over is part of what runs.
+     *
+     * @param  string|Select            $table Table name, optionally schema qualified, or a statement standing in for a table
+     * @param  string|null              $alias Name to refer to the rows by, or null to refer to them by the table name
+     * @return static                   This builder
+     * @throws InvalidArgumentException When a statement is given without an alias, or an alias is not a single name
      */
-    public function from(string $table): static
+    public function from(string|Select $table, ?string $alias = null): static
     {
-        $this->from = $table;
+        $this->from = new TableSource(
+            $table instanceof self ? new SubQuery($table) : $table,
+            $alias,
+        );
 
         return $this;
     }
