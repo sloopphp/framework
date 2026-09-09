@@ -27,6 +27,7 @@ use Sloop\Database\Query\JoinType;
 use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
+use Sloop\Database\Query\SelectedColumn;
 use Sloop\Database\Query\SelectSpec;
 use Sloop\Database\Query\TableSource;
 use Sloop\Database\Query\UpdateSpec;
@@ -1211,6 +1212,13 @@ final class GrammarTest extends TestCase
                 return new CompiledSql('/*columns*/' . $compiled->sql, $compiled->bindings);
             }
 
+            protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
+            {
+                $compiled = parent::compileSelectedColumn($column);
+
+                return new CompiledSql('/*named*/' . $compiled->sql, $compiled->bindings);
+            }
+
             protected function compileFrom(string|TableSource $table): CompiledSql
             {
                 $compiled = parent::compileFrom($table);
@@ -1258,14 +1266,14 @@ final class GrammarTest extends TestCase
 
         $compiled = $grammar->compileSelect(new SelectSpec(
             from:       'users',
-            columns:    ['id'],
+            columns:    ['id', new SelectedColumn('name', 'label')],
             conditions: [new Condition('status', '=', 'active')],
             orders:     [new Order('name')],
             limit:      5,
         ));
 
         $this->assertSame(
-            'SELECT /*columns*//*reference*/`id` FROM `app_users`/*from*/'
+            'SELECT /*columns*//*reference*/`id`, /*named*//*reference*/`name` AS `label` FROM `app_users`/*from*/'
             . ' WHERE /*reference*/`status` = /*value*/?/*where*/'
             . ' ORDER BY /*reference*/`name` ASC/*order*/'
             . ' LIMIT 5/*limit*/',

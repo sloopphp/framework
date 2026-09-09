@@ -165,11 +165,15 @@ final class ConnectionManager
      * Compiling needs no connection, so toSql() and toBindings() answer without
      * opening one. toRawSql() opens one, because the quoting is the driver's.
      *
-     * @param  string|Expression      ...$columns Columns to select; none selects every column
-     * @return Select                 Builder for the statement
-     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     * A column may be given as a pair of what to select and the name to return
+     * it under, written `[$column, $name]`.
+     *
+     * @param  string|Expression|array<int|string, mixed>|Select ...$columns Columns to select, each on its own or paired with a name; none selects every column
+     * @return Select                                            Builder for the statement
+     * @throws InvalidConfigException                            When the default pool name is not defined or its config is malformed
+     * @throws InvalidArgumentException                          When a statement is given without a name, a pair is not two elements, its name is not a string, or what it selects cannot be selected
      */
-    public function select(string|Expression ...$columns): Select
+    public function select(string|Expression|array|Select ...$columns): Select
     {
         return new Select(
             new ReadConnectionRoute($this),

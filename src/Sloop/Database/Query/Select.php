@@ -39,11 +39,15 @@ class Select extends BuilderWhere
     /**
      * Columns to select; empty selects every column.
      *
+     * A column paired with a name to return it under arrives here as the one
+     * value that pairing makes, so what the Grammar reads is the same shape
+     * whether the caller named the column or not.
+     *
      * Keyed rather than a list because PHP hands a variadic whatever keys the
      * call produced. SelectSpec discards them when the statement is compiled,
      * so they never reach the SQL.
      *
-     * @var array<array-key, string|Expression>
+     * @var array<array-key, string|Expression|SelectedColumn>
      */
     private array $columns;
 
@@ -127,15 +131,70 @@ class Select extends BuilderWhere
     /**
      * Start a SELECT over the given columns.
      *
-     * @param ConnectionRoute   $route      Route asked for a connection when the statement runs
-     * @param Grammar           $grammar    Grammar that turns the collected parts into SQL
-     * @param string|Expression ...$columns Columns to select; none selects every column
+     * A column may be given as a pair of what to select and the name to return
+     * it under, written `[$column, $name]`. What stands in the first place may
+     * be a column name, an expression, or a statement returning one value.
+     *
+     * @param  ConnectionRoute                                 $route      Route asked for a connection when the statement runs
+     * @param  Grammar                                         $grammar    Grammar that turns the collected parts into SQL
+     * @param  string|Expression|array<int|string, mixed>|self ...$columns Columns to select, each on its own or paired with a name; none selects every column
+     * @throws InvalidArgumentException                        When a statement is given without a name, a pair is not two elements, its name is not a string, or what it selects cannot be selected
      */
-    public function __construct(ConnectionRoute $route, Grammar $grammar, string|Expression ...$columns)
+    public function __construct(ConnectionRoute $route, Grammar $grammar, string|Expression|array|self ...$columns)
     {
         parent::__construct($route, $grammar);
 
-        $this->columns = $columns;
+        $this->columns = array_map(self::toColumn(...), $columns);
+    }
+
+    /**
+     * Read one argument of the select list, turning a pair into the column it names.
+     *
+     * A statement is only selectable as part of a pair. Both servers accept one
+     * without a name, but then the column comes back keyed by the text of the
+     * whole statement, so what the caller reads the rows by would change with
+     * every edit to it.
+     *
+     * @param  string|Expression|array<int|string, mixed>|self $column What to select, on its own or paired with the name to return it under
+     * @return string|Expression|SelectedColumn                The column, or the pair as one value
+     * @throws InvalidArgumentException                        When a statement is given without a name, a pair is not two elements, its name is not a string, or what it selects cannot be selected
+     */
+    private static function toColumn(string|Expression|array|self $column): string|Expression|SelectedColumn
+    {
+        if ($column instanceof self) {
+            throw new InvalidArgumentException(
+                'A statement in the select list needs a name, because the server would return it under its own text;'
+                . ' write it as [$statement, $name].',
+            );
+        }
+
+        if (!\is_array($column)) {
+            return $column;
+        }
+
+        if (array_keys($column) !== [0, 1]) {
+            throw new InvalidArgumentException(
+                'A named column is written as [$column, $name], so it has exactly two elements in order, got '
+                . \count($column) . '.',
+            );
+        }
+
+        [$source, $alias] = $column;
+
+        if (!\is_string($alias)) {
+            throw new InvalidArgumentException(
+                'The name a column is returned under must be a string, got ' . get_debug_type($alias) . '.',
+            );
+        }
+
+        if (!\is_string($source) && !$source instanceof Expression && !$source instanceof self) {
+            throw new InvalidArgumentException(
+                'A named column selects a column name, an Expression, or a statement, got '
+                . get_debug_type($source) . '.',
+            );
+        }
+
+        return new SelectedColumn($source instanceof self ? new SubQuery($source) : $source, $alias);
     }
 
     /**
@@ -748,14 +807,14 @@ class Select extends BuilderWhere
      * The parentheses that avoid that are dropped again when the builder holds
      * no conditions, since an empty pair is not valid SQL.
      *
-     * @param  array<array-key, string|Expression> $columns   Columns to read
-     * @param  int|null                            $limit     Most rows to read, or null for all of them
-     * @param  int|null                            $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                      $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                          $thenBy    Sort term to add after the builder's own, or null for none
+     * @param  array<array-key, string|Expression|SelectedColumn> $columns   Columns to read
+     * @param  int|null                                           $limit     Most rows to read, or null for all of them
+     * @param  int|null                                           $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                     $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                         $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                      When no table has been named, or a group of conditions was left open
-     * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
+     * @throws LogicException                                     When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                           When an identifier is malformed or the row window is inconsistent
      */
     private function compileReading(
         array $columns,
@@ -798,18 +857,18 @@ class Select extends BuilderWhere
     /**
      * Run a statement that reads the given columns and row count.
      *
-     * @param  array<array-key, string|Expression> $columns   Columns to read
-     * @param  int|null                            $limit     Most rows to read, or null for all of them
-     * @param  int|null                            $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                      $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                          $thenBy    Sort term to add after the builder's own, or null for none
-     * @return Result                              Rows the statement read
-     * @throws LogicException                      When no table has been named, or a group of conditions was left open
-     * @throws InvalidArgumentException            When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException              When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException         When the connection cannot be obtained
-     * @throws DatabaseException                   When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
-     * @throws UnexpectedValueException            When the driver returns a value outside the types it contracts to
+     * @param  array<array-key, string|Expression|SelectedColumn> $columns   Columns to read
+     * @param  int|null                                           $limit     Most rows to read, or null for all of them
+     * @param  int|null                                           $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                     $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                         $thenBy    Sort term to add after the builder's own, or null for none
+     * @return Result                                             Rows the statement read
+     * @throws LogicException                                     When no table has been named, or a group of conditions was left open
+     * @throws InvalidArgumentException                           When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                             When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                        When the connection cannot be obtained
+     * @throws DatabaseException                                  When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
+     * @throws UnexpectedValueException                           When the driver returns a value outside the types it contracts to
      */
     private function runReading(
         array $columns,
