@@ -257,6 +257,59 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
+     * Keep only rows for which the given statement returns at least one row.
+     *
+     * Nothing is compared, so the columns the statement selects do not matter;
+     * only whether a row came back. The statement is read when this one is
+     * compiled, so a condition added to it afterwards is part of what runs.
+     *
+     * Naming a column of the row being tested — with an expression, since a
+     * column of the outer statement is not one this builder knows about — is
+     * what makes the test answered once per row rather than once:
+     *
+     * ```php
+     * $connection->select('id')->from('users')->whereExists(
+     *     $connection->select('id')->from('orders')
+     *         ->where('orders.user_id', '=', Expression::of('users.id')),
+     * );
+     * ```
+     *
+     * @param  Select $query Statement asked whether it returns a row
+     * @return static This builder
+     */
+    public function whereExists(Select $query): static
+    {
+        $this->conditions[] = new ExistsCondition(
+            new SubQuery($query),
+            negated: false,
+            conjunction: Conjunction::And,
+        );
+
+        return $this;
+    }
+
+    /**
+     * Keep only rows for which the given statement returns no row.
+     *
+     * The statement stands as whereExists() describes. A null among the rows it
+     * returns changes nothing here: the test reads whether a row came back, not
+     * what it holds, so a row of nulls still counts as one.
+     *
+     * @param  Select $query Statement asked whether it returns a row
+     * @return static This builder
+     */
+    public function whereNotExists(Select $query): static
+    {
+        $this->conditions[] = new ExistsCondition(
+            new SubQuery($query),
+            negated: true,
+            conjunction: Conjunction::And,
+        );
+
+        return $this;
+    }
+
+    /**
      * Keep only rows whose column falls between two bounds, both included.
      *
      * @param  string|Expression                $column Column to test, or an expression standing in for one
