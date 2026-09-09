@@ -383,13 +383,31 @@ class Grammar
     /**
      * Compile the FROM clause.
      *
-     * @param  string                   $table Table to select from
-     * @return CompiledSql              FROM clause, led by a space
-     * @throws InvalidArgumentException When the table name is malformed
+     * An alias carries the table prefix the way a table name does. A column
+     * written against it reaches the prefix through the rule that puts one on
+     * the table segment of a qualified name, so prefixing the alias is what
+     * keeps the name FROM introduces and the name a column reference uses the
+     * same spelling.
+     *
+     * @param  string|TableSource       $table What the statement reads from; a bare string names a table with no alias
+     * @return CompiledSql              FROM clause led by a space, with the bindings of a statement read as a table
+     * @throws LogicException           When a statement read as a table names none itself, or left a group of conditions open
+     * @throws InvalidArgumentException When the table name is malformed, or an identifier inside a statement read as a table is
      */
-    protected function compileFrom(string $table): CompiledSql
+    protected function compileFrom(string|TableSource $table): CompiledSql
     {
-        return new CompiledSql(' FROM ' . $this->quoteTable($table));
+        $source = $table instanceof TableSource ? $table : new TableSource($table);
+        $alias  = $source->alias === null
+            ? ''
+            : ' AS ' . IdentifierQuoter::quoteSegment($this->prefix . $source->alias);
+
+        if ($source->source instanceof SubQuery) {
+            $inner = $source->source->compile();
+
+            return new CompiledSql(' FROM (' . $inner->sql . ')' . $alias, $inner->bindings);
+        }
+
+        return new CompiledSql(' FROM ' . $this->quoteTable($source->source) . $alias);
     }
 
     /**

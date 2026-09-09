@@ -28,6 +28,7 @@ use Sloop\Database\Query\Operand;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\SelectSpec;
+use Sloop\Database\Query\TableSource;
 use Sloop\Database\Query\UpdateSpec;
 use Sloop\Database\Query\WherePart;
 
@@ -1153,10 +1154,10 @@ final class GrammarTest extends TestCase
         // The FROM half of the CompiledSql return type had no guard: dropping
         // $from->bindings from the merge left the whole suite green.
         $grammar = new class () extends Grammar {
-            protected function compileFrom(string $table): CompiledSql
+            protected function compileFrom(string|TableSource $table): CompiledSql
             {
                 return new CompiledSql(
-                    ' FROM (SELECT ? AS id) AS ' . $this->quoteTable($table),
+                    ' FROM (SELECT ? AS id) AS ' . $this->quoteTable('sub'),
                     ['seed'],
                 );
             }
@@ -1167,7 +1168,7 @@ final class GrammarTest extends TestCase
             conditions: [new Condition('id', '=', 1)],
         ));
 
-        $this->assertSame('SELECT * FROM (SELECT ? AS id) AS `users` WHERE `id` = ?', $compiled->sql);
+        $this->assertSame('SELECT * FROM (SELECT ? AS id) AS `sub` WHERE `id` = ?', $compiled->sql);
         $this->assertSame(['seed', 1], $compiled->bindings);
     }
 
@@ -1210,7 +1211,7 @@ final class GrammarTest extends TestCase
                 return new CompiledSql('/*columns*/' . $compiled->sql, $compiled->bindings);
             }
 
-            protected function compileFrom(string $table): CompiledSql
+            protected function compileFrom(string|TableSource $table): CompiledSql
             {
                 $compiled = parent::compileFrom($table);
 
