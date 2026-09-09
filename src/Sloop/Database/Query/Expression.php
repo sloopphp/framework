@@ -19,7 +19,10 @@ use InvalidArgumentException;
  * SQL text passed to `of()` is taken as-is.
  *
  * Columns are quoted by IdentifierQuoter, the same way a query builder quotes
- * the ones it is given.
+ * the ones it is given. That quoting does not carry the table prefix, which is
+ * why `over()` is the exception here: it returns a WindowExpression, whose
+ * columns a Grammar resolves when the statement is compiled and so reach the
+ * prefix the way any other column reference does.
  */
 final readonly class Expression
 {
@@ -110,6 +113,42 @@ final readonly class Expression
     }
 
     /**
+     * Build a window function call, such as `ROW_NUMBER() OVER (PARTITION BY ...)`.
+     *
+     * Everything here is named rather than written as SQL, so a Grammar quotes
+     * the columns and reaches them with the table prefix. That is the
+     * difference from writing the same call through `of()`, where the text is
+     * embedded as it stands and both are the caller's problem.
+     *
+     * Arguments tell columns from values apart by type: a string names a
+     * column, an Expression is written as it stands, and anything else is
+     * bound. `$orders` takes a column name for each term, with a direction
+     * where a string key gives one — `['score' => 'DESC', 'id']` sorts by score
+     * descending and then by id ascending.
+     *
+     * Unlike the other factories here this returns a WindowExpression, since
+     * what it describes is resolved when the statement is compiled rather than
+     * held as finished SQL.
+     *
+     * @param  string                   $function   Name of the window function, in any case
+     * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order
+     * @param  array<int|string, mixed> $partitions Columns to divide the rows by before the function runs
+     * @param  array<int|string, mixed> $orders     Sort terms within a partition, as column or column => direction
+     * @param  string|null              $alias      Name to read the result under, or null for none
+     * @return WindowExpression         The call, with its columns left for a Grammar to quote
+     * @throws InvalidArgumentException When the function name is empty, an element cannot stand where it is, a direction names none, or the alias is qualified
+     */
+    public static function over(
+        string $function,
+        array $arguments = [],
+        array $partitions = [],
+        array $orders = [],
+        ?string $alias = null,
+    ): WindowExpression {
+        return new WindowExpression($function, $arguments, $partitions, self::toOrders($orders), $alias);
+    }
+
+    /**
      * Build `` `column` + n ``, so the column is read and written in one statement.
      *
      * Unlike a read-then-write in PHP, this cannot lose a concurrent update.
@@ -160,6 +199,54 @@ final readonly class Expression
     public function bindings(): array
     {
         return $this->bindings;
+    }
+
+    /**
+     * Read the sort terms of a window as the Order instances a Grammar reads.
+     *
+     * A string key names the column and the value gives its direction; an
+     * integer key means the value is the column and it sorts ascending. That
+     * lets the common case stay a plain list of names while a term that needs
+     * DESC says so next to the column it applies to.
+     *
+     * @param  array<int|string, mixed> $orders Sort terms as the caller gave them
+     * @return list<Order>              Sort terms in written order
+     * @throws InvalidArgumentException When a column is not a name or an expression, or a direction names none
+     */
+    private static function toOrders(array $orders): array
+    {
+        $list = [];
+
+        foreach ($orders as $key => $value) {
+            if (\is_string($key)) {
+                if (!\is_string($value)) {
+                    throw new InvalidArgumentException(
+                        'A sort direction is written as a string, got ' . get_debug_type($value)
+                        . ' for ' . $key . '.',
+                    );
+                }
+
+                $list[] = new Order($key, Direction::fromKeyword($value));
+
+                continue;
+            }
+
+            if (!\is_string($value) && !$value instanceof self) {
+                // Counted from the start of the list rather than reported under
+                // the key it was given, because the keys here are what tells a
+                // column from a column-and-direction: an integer one carries no
+                // meaning of its own and would send the reader looking for a
+                // position that is not the one they wrote.
+                throw new InvalidArgumentException(
+                    'A sort term names a column or is an Expression, got '
+                    . get_debug_type($value) . ' at index ' . \count($list) . '.',
+                );
+            }
+
+            $list[] = new Order($value);
+        }
+
+        return $list;
     }
 
     /**

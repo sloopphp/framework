@@ -89,7 +89,7 @@
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::202"
+                "Sloop\\Database\\Query\\Expression::placeholders::289"
             ]
         },
         "DecrementInteger": {
@@ -118,7 +118,7 @@
                 "Sloop\\Error\\SloopException::__construct::62",
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
-                "Sloop\\Database\\Query\\Expression::placeholders::202"
+                "Sloop\\Database\\Query\\Expression::placeholders::289"
             ]
         },
         "GreaterThan": {

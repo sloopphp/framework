@@ -480,20 +480,28 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Sort by a column, or by an expression producing the sort key.
+     * Sort by a column, by an expression producing the sort key, or by a window call.
      *
      * The direction is taken as the SQL keyword rather than as the Direction
      * enum: the enum names the values a Grammar writes and is internal to that
      * seam, so it is not part of what a caller has to reach for.
      *
-     * @param  string|Expression        $column    Column to sort by, or an expression producing the sort key
-     * @param  string                   $direction Sort direction as the SQL keyword, in any case
-     * @return static                   This builder
-     * @throws InvalidArgumentException When the direction is neither ASC nor DESC
+     * A window call is checked against the grammar here rather than once the
+     * statement is compiled, so a function this grammar does not write says so
+     * at the line that named it.
+     *
+     * @param  string|Expression|WindowExpression $column    Column to sort by, an expression producing the sort key, or a window call
+     * @param  string                             $direction Sort direction as the SQL keyword, in any case
+     * @return static                             This builder
+     * @throws InvalidArgumentException           When the direction is neither ASC nor DESC, or the grammar writes no such window function
      */
-    public function orderBy(string|Expression $column, string $direction = 'ASC'): static
+    public function orderBy(string|Expression|WindowExpression $column, string $direction = 'ASC'): static
     {
-        $this->orders[] = new Order($column, self::toDirection($direction));
+        if ($column instanceof WindowExpression) {
+            $this->grammar->windowFunction($column->function);
+        }
+
+        $this->orders[] = new Order($column, Direction::fromKeyword($direction));
 
         return $this;
     }
@@ -947,20 +955,5 @@ abstract class BuilderWhere extends Builder
         }
 
         return $this->grammar->comparison($column, $operator, $value, $conjunction);
-    }
-
-    /**
-     * Read a sort direction from the SQL keyword.
-     *
-     * @param  string                   $direction Direction as ASC / DESC in any case
-     * @return Direction                The direction as the enum a Grammar reads
-     * @throws InvalidArgumentException When the keyword names no direction
-     */
-    private static function toDirection(string $direction): Direction
-    {
-        return Direction::tryFrom(strtoupper($direction))
-            ?? throw new InvalidArgumentException(
-                'A sort direction is ASC or DESC, got "' . $direction . '".',
-            );
     }
 }
