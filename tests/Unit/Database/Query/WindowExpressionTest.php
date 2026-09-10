@@ -224,6 +224,67 @@ final class WindowExpressionTest extends TestCase
         );
     }
 
+    public function testASortTermWrittenAsSqlCarriesNoAppendedDirection(): void
+    {
+        // Order states it and orderByRaw() follows it: text that already says
+        // how it sorts gets no keyword appended. Appending one writes
+        // `... DESC ASC`, which the servers refuse.
+        $compiled = $this->connection
+            ->select(Expression::over('ROW_NUMBER', orders: [Expression::of('`amount` DESC')]))
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame(
+            'SELECT ROW_NUMBER() OVER (ORDER BY `amount` DESC) FROM `orders`',
+            $compiled->sql,
+        );
+    }
+
+    public function testADirectionStandingWhereAColumnIsNamedIsRefused(): void
+    {
+        // PHP turns a numeric string key into an integer, so ['5' => 'DESC']
+        // arrives as a term named DESC rather than as column 5 sorted
+        // descending. Sorting by a column called DESC is what that would
+        // silently do instead.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Expression::over('ROW_NUMBER', orders: ['5' => 'DESC']),
+        );
+
+        $this->assertSame(
+            'A sort direction stands where a column is named, got "DESC".'
+                . ' A column whose name is a number takes its direction as an Expression,'
+                . ' because PHP reads a numeric key as an integer.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testADirectionStandingWhereAColumnIsNamedIsRefusedInAnyCase(): void
+    {
+        // The direction is matched the way it is elsewhere -- without regard to
+        // case -- so the lower-case spelling is caught by the same check rather
+        // than sorting by a column called desc.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Expression::over('ROW_NUMBER', orders: ['5' => 'desc']),
+        );
+
+        $this->assertStringContainsString('A sort direction stands where a column is named', $thrown->getMessage());
+    }
+
+    public function testAColumnWhoseNameIsADirectionKeywordIsStillReachable(): void
+    {
+        // The refusal above is about where the value stands, not about the word
+        // itself: a string key stays a string, so a column actually called DESC
+        // sorts the way it is asked to.
+        $compiled = $this->connection
+            ->select(Expression::over('ROW_NUMBER', orders: ['DESC' => 'ASC']))
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame('SELECT ROW_NUMBER() OVER (ORDER BY `DESC` ASC) FROM `orders`', $compiled->sql);
+    }
+
     public function testAWindowCallCanDecideTheOrderOfTheRows(): void
     {
         $rows = $this->connection
@@ -503,8 +564,10 @@ final class WindowExpressionTest extends TestCase
             ->where('status', '=', 'paid')
             ->compile();
 
+        // No direction is appended: the SQL of the Expression already says how
+        // it sorts, which is the rule Order states and orderByRaw() follows.
         $this->assertSame(
-            'SELECT `id`, ROW_NUMBER() OVER (PARTITION BY `user_id` ORDER BY `amount` * ? ASC) AS `rn`'
+            'SELECT `id`, ROW_NUMBER() OVER (PARTITION BY `user_id` ORDER BY `amount` * ?) AS `rn`'
                 . ' FROM `orders` WHERE `status` = ?',
             $compiled->sql,
         );
@@ -529,7 +592,7 @@ final class WindowExpressionTest extends TestCase
             ->compile();
 
         $this->assertSame(
-            'SELECT `id`, NTILE(?) OVER (PARTITION BY `amount` > ? ORDER BY `amount` * ? ASC) AS `quartile`'
+            'SELECT `id`, NTILE(?) OVER (PARTITION BY `amount` > ? ORDER BY `amount` * ?) AS `quartile`'
                 . ' FROM `orders` WHERE `status` = ?',
             $compiled->sql,
         );

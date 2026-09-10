@@ -124,7 +124,11 @@ final readonly class Expression
      * column, an Expression is written as it stands, and anything else is
      * bound. `$orders` takes a column name for each term, with a direction
      * where a string key gives one — `['score' => 'DESC', 'id']` sorts by score
-     * descending and then by id ascending.
+     * descending and then by id ascending. An Expression stands as a term of
+     * its own and carries no direction, since its SQL already says how it
+     * sorts. A column whose name is written in digits cannot take a direction
+     * that way, because PHP reads such a key as an integer; write it as an
+     * Expression instead.
      *
      * Unlike the other factories here this returns a WindowExpression, since
      * what it describes is resolved when the statement is compiled rather than
@@ -205,9 +209,10 @@ final readonly class Expression
      * Read the sort terms of a window as the Order instances a Grammar reads.
      *
      * A string key names the column and the value gives its direction; an
-     * integer key means the value is the column and it sorts ascending. That
-     * lets the common case stay a plain list of names while a term that needs
-     * DESC says so next to the column it applies to.
+     * integer key means the value is the column and it sorts ascending, or an
+     * Expression whose SQL already carries one. That lets the common case stay
+     * a plain list of names while a term that needs DESC says so next to the
+     * column it applies to.
      *
      * @param  array<int|string, mixed> $orders Sort terms as the caller gave them
      * @return list<Order>              Sort terms in written order
@@ -243,7 +248,23 @@ final readonly class Expression
                 );
             }
 
-            $list[] = new Order($value);
+            // A column whose name is written in digits arrives under an integer
+            // key, because that is what PHP turns a numeric string into. The
+            // direction meant for it is then read as the column itself, so a
+            // term that looks like one says so rather than sorting by a column
+            // called ASC. Such a column takes its direction through an
+            // Expression, or through a key PHP keeps as a string.
+            if (\is_string($value) && Direction::tryFrom(strtoupper($value)) !== null) {
+                throw new InvalidArgumentException(
+                    'A sort direction stands where a column is named, got "' . $value
+                    . '". A column whose name is a number takes its direction as an Expression,'
+                    . ' because PHP reads a numeric key as an integer.',
+                );
+            }
+
+            // An Expression already says how it sorts, so no direction is
+            // appended to it -- the same rule orderByRaw() follows.
+            $list[] = $value instanceof self ? new Order($value, null) : new Order($value);
         }
 
         return $list;
