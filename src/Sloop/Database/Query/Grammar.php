@@ -708,6 +708,7 @@ class Grammar
             $part instanceof Condition        => $this->compileComparison($part),
             $part instanceof JoinCondition    => $this->compileJoinComparison($part),
             $part instanceof InCondition      => $this->compileIn($part),
+            $part instanceof ExistsCondition  => $this->compileExists($part),
             $part instanceof BetweenCondition => $this->compileBetween($part),
             $part instanceof RawCondition     => new CompiledSql(
                 $part->expression->sql(),
@@ -985,6 +986,27 @@ class Grammar
         return new CompiledSql(
             $column->sql . ($condition->negated ? ' NOT IN (' : ' IN (') . implode(', ', $parts) . ')',
             $bindings,
+        );
+    }
+
+    /**
+     * Compile a test for the presence of a row.
+     *
+     * No column stands on the left: the whole test is the keyword and the
+     * statement it asks about, so the bindings are that statement's alone.
+     *
+     * @param  ExistsCondition          $condition Presence test to compile
+     * @return CompiledSql              The test as SQL, with the bindings it needs
+     * @throws LogicException           When the nested statement names no table, or left a group of conditions open
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileExists(ExistsCondition $condition): CompiledSql
+    {
+        $inner = $condition->query->compile();
+
+        return new CompiledSql(
+            ($condition->negated ? 'NOT EXISTS (' : 'EXISTS (') . $inner->sql . ')',
+            $inner->bindings,
         );
     }
 
