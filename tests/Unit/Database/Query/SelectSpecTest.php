@@ -12,6 +12,7 @@ use Sloop\Database\Query\Join;
 use Sloop\Database\Query\JoinType;
 use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
+use Sloop\Database\Query\SelectedColumn;
 use Sloop\Database\Query\SelectSpec;
 
 final class SelectSpecTest extends TestCase
@@ -37,6 +38,15 @@ final class SelectSpecTest extends TestCase
         $spec = new SelectSpec(from: 'users', columns: [3 => 'id', 7 => 'name']);
 
         $this->assertSame(['id', 'name'], $spec->columns);
+    }
+
+    public function testAColumnCarryingTheNameItIsReturnedUnderStandsAmongTheOthers(): void
+    {
+        $named = new SelectedColumn('name', 'label');
+
+        $spec = new SelectSpec(from: 'users', columns: ['id', $named]);
+
+        $this->assertSame(['id', $named], $spec->columns);
     }
 
     public function testConditionsAreReindexedAsAList(): void
@@ -120,10 +130,10 @@ final class SelectSpecTest extends TestCase
         $this->assertSame([$order], $spec->orders);
     }
 
-    public function testRejectsAColumnThatIsNeitherStringNorExpression(): void
+    public function testRejectsAColumnThatIsNotSelectable(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Columns must be a string or an Expression, got int at index 1.');
+        $this->expectExceptionMessageIsOrContains('Columns must be a string, an Expression, or a SelectedColumn, got int at index 1.');
 
         new SelectSpec(from: 'users', columns: ['id', 42]);
     }
@@ -173,9 +183,17 @@ final class SelectSpecTest extends TestCase
     public function testReportsTheColumnPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Columns must be a string or an Expression, got int at index 1.');
+        $this->expectExceptionMessageIsOrContains('Columns must be a string, an Expression, or a SelectedColumn, got int at index 1.');
 
         new SelectSpec(from: 'users', columns: [5 => 'id', 9 => 42]);
+    }
+
+    public function testReportsTheGroupingPositionNotTheOriginalKey(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains('GROUP BY terms must be a string or an Expression, got int at index 1.');
+
+        new SelectSpec(from: 'users', groupings: [5 => 'status', 9 => 42]);
     }
 
     public function testReportsTheConditionPositionNotTheOriginalKey(): void

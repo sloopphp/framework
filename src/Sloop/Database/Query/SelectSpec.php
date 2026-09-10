@@ -24,7 +24,7 @@ final readonly class SelectSpec
     /**
      * Columns to select; an empty list selects everything.
      *
-     * @var list<string|Expression>
+     * @var list<string|Expression|SelectedColumn>
      */
     public array $columns;
 
@@ -67,7 +67,7 @@ final readonly class SelectSpec
      * Describe one SELECT statement.
      *
      * @param  string|TableSource       $from       Table to select from, optionally schema qualified, or what to read from with its alias, which may be a statement
-     * @param  array<int|string, mixed> $columns    Column names or Expressions; empty selects everything
+     * @param  array<int|string, mixed> $columns    Column names, Expressions, or SelectedColumn instances; empty selects everything
      * @param  array<int|string, mixed> $joins      Join instances, in the order they are written
      * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
      * @param  array<int|string, mixed> $groupings  Column names or Expressions for the GROUP BY clause
@@ -111,12 +111,29 @@ final readonly class SelectSpec
     /**
      * Reindex the columns as a list and reject anything that is not selectable.
      *
-     * @param  array<int|string, mixed> $columns Column names or Expressions
-     * @return list<string|Expression>  Columns as a list
-     * @throws InvalidArgumentException When an element is neither a string nor an Expression
+     * A named column stands on its own; one that carries a name to return it
+     * under arrives with that name already checked, since SelectedColumn takes
+     * it apart where it was given.
+     *
+     * @param  array<int|string, mixed>               $columns Column names, Expressions, or SelectedColumn instances
+     * @return list<string|Expression|SelectedColumn> Columns as a list
+     * @throws InvalidArgumentException               When an element is none of those
      */
     private static function toColumns(array $columns): array
     {
-        return ClauseParts::toColumnReferences('Columns', $columns);
+        $selected = [];
+
+        foreach (array_values($columns) as $index => $column) {
+            if (!\is_string($column) && !$column instanceof Expression && !$column instanceof SelectedColumn) {
+                throw new InvalidArgumentException(
+                    'Columns must be a string, an Expression, or a SelectedColumn, got '
+                    . get_debug_type($column) . ' at index ' . $index . '.',
+                );
+            }
+
+            $selected[] = $column;
+        }
+
+        return $selected;
     }
 }

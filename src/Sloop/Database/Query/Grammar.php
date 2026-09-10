@@ -358,9 +358,10 @@ class Grammar
     /**
      * Compile the select list.
      *
-     * @param  list<string|Expression>  $columns Columns to select; empty selects everything
-     * @return CompiledSql              Select list and the bindings of any Expression in it
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @param  list<string|Expression|SelectedColumn> $columns Columns to select; empty selects everything
+     * @return CompiledSql                            Select list and the bindings of anything in it that carries values
+     * @throws LogicException                         When a statement in the list names no table, or left a group of conditions open
+     * @throws InvalidArgumentException               When an identifier is malformed
      */
     protected function compileColumns(array $columns): CompiledSql
     {
@@ -372,12 +373,42 @@ class Grammar
         $bindings = [];
 
         foreach ($columns as $column) {
-            $compiled = $this->compileColumnReference($column, allowEveryColumn: true);
+            $compiled = $column instanceof SelectedColumn
+                ? $this->compileSelectedColumn($column)
+                : $this->compileColumnReference($column, allowEveryColumn: true);
             $parts[]  = $compiled->sql;
             $bindings = array_merge($bindings, $compiled->bindings);
         }
 
         return new CompiledSql(implode(', ', $parts), $bindings);
+    }
+
+    /**
+     * Compile one position of the select list together with the name it is returned under.
+     *
+     * The name gets no table prefix, unlike the one an alias in the FROM clause
+     * carries. That one is written again wherever a column is qualified by it,
+     * so both ends have to agree; this one is only ever a key in the rows that
+     * come back, and an unqualified name is left alone everywhere else too.
+     *
+     * @param  SelectedColumn           $column What to select and the name to return it under
+     * @return CompiledSql              The position as written, with the bindings of anything carrying values
+     * @throws LogicException           When a statement in the list names no table, or left a group of conditions open
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
+    {
+        $name = ' AS ' . IdentifierQuoter::quoteSegment($column->alias);
+
+        if ($column->source instanceof SubQuery) {
+            $inner = $column->source->compile();
+
+            return new CompiledSql('(' . $inner->sql . ')' . $name, $inner->bindings);
+        }
+
+        $compiled = $this->compileColumnReference($column->source);
+
+        return new CompiledSql($compiled->sql . $name, $compiled->bindings);
     }
 
     /**
