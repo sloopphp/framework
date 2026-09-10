@@ -175,6 +175,8 @@ final class SelectWhereExistsTest extends TestCase
             'SELECT `id` FROM `users` WHERE EXISTS (SELECT `id`, `user_id` FROM `orders`)',
             $select->toSql(),
         );
+        $select->orderBy('id');
+
         $this->assertSame([1, 2, 3], $select->pluck('id'));
     }
 

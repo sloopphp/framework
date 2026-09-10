@@ -263,6 +263,10 @@ abstract class BuilderWhere extends Builder
      * only whether a row came back. The statement is read when this one is
      * compiled, so a condition added to it afterwards is part of what runs.
      *
+     * On an UPDATE or a DELETE, a statement that reads the table being written
+     * is refused by MySQL and run by MariaDB, as it is under whereIn(). The
+     * database guide says what to write instead when both have to work.
+     *
      * Naming a column of the row being tested — with an expression, since a
      * column of the outer statement is not one this builder knows about — is
      * what makes the test answered once per row rather than once:

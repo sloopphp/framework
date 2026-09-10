@@ -97,8 +97,8 @@ final class SelectWhereExistsTest extends TransactionalIntegrationTestCase
 
     public function testAStatementReturningNullStillCountsAsARow(): void
     {
-        // Where NOT IN is undone by a null among the rows it reads, this test
-        // is not: deleted_at is null for every user, and the rows still count.
+        // deleted_at is null for every user, so this reads rows that hold
+        // nothing but null. They count as rows all the same.
         $ids = $this->connection->select('id')
             ->from('users')
             ->whereExists($this->connection->select('deleted_at')->from('users'))
@@ -106,6 +106,20 @@ final class SelectWhereExistsTest extends TransactionalIntegrationTestCase
             ->pluck('id');
 
         $this->assertSame([1, 2, 3], $ids);
+    }
+
+    public function testANullAmongTheRowsDoesNotUndoTheNegatedTest(): void
+    {
+        // The trap whereNotIn() falls into, measured on the negated side where
+        // it would show: a null among the rows it reads makes NOT IN match no
+        // row at all. Here the rows are counted rather than compared, so the
+        // statement returning them simply makes NOT EXISTS false.
+        $ids = $this->connection->select('id')
+            ->from('users')
+            ->whereNotExists($this->connection->select('deleted_at')->from('users'))
+            ->pluck('id');
+
+        $this->assertSame([], $ids);
     }
 
     public function testAStatementWithNoMatchingRowsLeavesTheOuterStatementEmpty(): void
