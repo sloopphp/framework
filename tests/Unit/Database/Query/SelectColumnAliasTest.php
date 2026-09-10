@@ -60,6 +60,23 @@ final class SelectColumnAliasTest extends TestCase
         $this->assertSame('SELECT COUNT(*) AS `total` FROM `users`', $select->toSql());
     }
 
+    public function testTheValuesOfANamedExpressionStandBeforeTheOnesOfTheConditions(): void
+    {
+        // The select list is written before WHERE, so an Expression carrying
+        // values inside a pair binds first. Without this the pair could drop
+        // its values and every other test would still pass, because the only
+        // other Expression written as a pair carries none.
+        $select = $this->connection->select([Expression::of('IF(`status` = ?, 1, 0)', ['active']), 'flag'])
+            ->from('users')
+            ->where('id', '>', 5);
+
+        $this->assertSame(
+            'SELECT IF(`status` = ?, 1, 0) AS `flag` FROM `users` WHERE `id` > ?',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 5], $select->toBindings());
+    }
+
     public function testAStatementStandsWhereAColumnWould(): void
     {
         $select = $this->connection->select('id', [$this->orderCount(), 'order_count'])->from('users');
@@ -170,7 +187,7 @@ final class SelectColumnAliasTest extends TestCase
         );
 
         $this->assertSame(
-            'A named column is written as [$column, $name], so it has exactly two elements in order, got 1.',
+            'A named column is written as [$column, $name], so it has exactly two elements, got 1.',
             $thrown->getMessage(),
         );
     }
@@ -183,20 +200,39 @@ final class SelectColumnAliasTest extends TestCase
         );
 
         $this->assertSame(
-            'A named column is written as [$column, $name], so it has exactly two elements in order, got 3.',
+            'A named column is written as [$column, $name], so it has exactly two elements, got 3.',
             $thrown->getMessage(),
         );
     }
 
     public function testAKeyedPairIsRefused(): void
     {
+        // Counting the elements would call this one well formed, so the keys
+        // are reported instead of the count.
         $thrown = $this->assertThrows(
             InvalidArgumentException::class,
             fn (): Select => $this->connection->select(['column' => 'name', 'as' => 'label']),
         );
 
         $this->assertSame(
-            'A named column is written as [$column, $name], so it has exactly two elements in order, got 2.',
+            'A named column is written as [$column, $name], so the column comes first and neither is keyed,'
+            . ' got column, as as keys.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testAPairGivenInTheOtherOrderIsRefused(): void
+    {
+        // The name reads as a column and the column as a name, so taking it as
+        // written would compile and return the wrong thing under the wrong key.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): Select => $this->connection->select([1 => 'name', 0 => 'label']),
+        );
+
+        $this->assertSame(
+            'A named column is written as [$column, $name], so the column comes first and neither is keyed,'
+            . ' got 1, 0 as keys.',
             $thrown->getMessage(),
         );
     }
