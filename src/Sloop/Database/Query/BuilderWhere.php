@@ -489,17 +489,20 @@ abstract class BuilderWhere extends Builder
      * An Expression is sorted by as it stands and takes no direction, which is
      * the rule Order states and orderByRaw() follows: text that already says
      * how it sorts would otherwise be written `... DESC ASC`, which neither
-     * server accepts. The direction given alongside one is ignored rather than
-     * refused, since it is what the parameter defaults to.
+     * server accepts. Naming one alongside an Expression is therefore refused
+     * rather than dropped — on an UPDATE or DELETE the sort decides which rows
+     * a row limit reaches, so a direction that goes unwritten addresses a
+     * different set than the caller asked for. Omitting it is what leaves the
+     * Expression to say how it sorts.
      *
      * A window call is checked against the grammar here rather than once the
      * statement is compiled, so a function this grammar does not write says so
      * at the line that named it.
      *
      * @param  string|Expression|WindowExpression $column    Column to sort by, an expression producing the sort key, or a window call
-     * @param  string                             $direction Sort direction as the SQL keyword, in any case; not written for an Expression
+     * @param  string                             $direction Sort direction as the SQL keyword, in any case; not to be given with an Expression
      * @return static                             This builder
-     * @throws InvalidArgumentException           When the direction is neither ASC nor DESC, or the grammar writes no such window function
+     * @throws InvalidArgumentException           When the direction is neither ASC nor DESC, when one is given for an Expression, or when the grammar writes no such window function
      */
     public function orderBy(string|Expression|WindowExpression $column, string $direction = 'ASC'): static
     {
@@ -511,7 +514,20 @@ abstract class BuilderWhere extends Builder
         // ASC nor DESC is refused the same way whatever the column is.
         $read = Direction::fromKeyword($direction);
 
-        $this->orders[] = new Order($column, $column instanceof Expression ? null : $read);
+        if ($column instanceof Expression) {
+            if (\func_num_args() > 1) {
+                throw new InvalidArgumentException(
+                    'A sort term written as SQL says how it sorts, so it takes no direction, got "'
+                    . $direction . '". Write the direction into the Expression instead.',
+                );
+            }
+
+            $this->orders[] = new Order($column, null);
+
+            return $this;
+        }
+
+        $this->orders[] = new Order($column, $read);
 
         return $this;
     }

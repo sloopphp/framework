@@ -182,7 +182,7 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         $rows = $this->connection->select(Expression::of('score DIV 20 AS band'), Expression::of('COUNT(*) AS n'))
             ->from('users')
             ->groupBy(Expression::of('score DIV 20'))
-            ->orderBy(Expression::of('score DIV 20'), 'ASC')
+            ->orderBy(Expression::of('score DIV 20'))
             ->get();
 
         $this->assertSame('0,1,2', self::column($rows, 'band'));

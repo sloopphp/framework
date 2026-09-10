@@ -309,18 +309,49 @@ final class SelectTest extends TestCase
         // which neither server accepts.
         $select = $this->connection->select()
             ->from('users')
-            ->orderBy(Expression::of('`score` DESC'), 'ASC');
+            ->orderBy(Expression::of('`score` DESC'));
 
         $this->assertSame('SELECT * FROM `users` ORDER BY `score` DESC', $select->toSql());
     }
 
+    public function testADirectionGivenAlongsideAnExpressionIsRefusedRatherThanDropped(): void
+    {
+        // Dropping it silently would sort the other way round from what was
+        // asked for, and on an UPDATE or DELETE carrying a row limit that
+        // decides which rows are reached.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): mixed => $this->connection->select()->from('users')
+                ->orderBy(Expression::of('`score`'), 'DESC'),
+        );
+
+        $this->assertSame(
+            'A sort term written as SQL says how it sorts, so it takes no direction, got "DESC".'
+                . ' Write the direction into the Expression instead.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testTheDefaultDirectionIsNotTakenAsOneGivenForAnExpression(): void
+    {
+        // Only an argument the caller wrote counts, so the parameter's own
+        // default does not make every Expression a mistake.
+        $select = $this->connection->select()->from('users')->orderBy(Expression::of('`score`'));
+
+        $this->assertSame('SELECT * FROM `users` ORDER BY `score`', $select->toSql());
+    }
+
     public function testADirectionNamingNeitherAscNorDescIsRefusedForAnExpressionToo(): void
     {
-        // The direction is read even where it is not written, so a caller who
-        // misspells it hears about it whatever the column is.
-        $this->expectException(InvalidArgumentException::class);
+        // The direction is read before it is turned down, so a caller who
+        // misspells it hears about that rather than about where it stood.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): mixed => $this->connection->select()->from('users')
+                ->orderBy(Expression::of('`score`'), 'sideways'),
+        );
 
-        $this->connection->select()->from('users')->orderBy(Expression::of('`score`'), 'sideways');
+        $this->assertStringContainsString('A sort direction is ASC or DESC', $thrown->getMessage());
     }
 
     public function testOrderByAcceptsAnExpressionAsTheSortKey(): void
