@@ -108,18 +108,23 @@ final class SelectWhereExistsTest extends TransactionalIntegrationTestCase
         $this->assertSame([1, 2, 3], $ids);
     }
 
-    public function testANullAmongTheRowsDoesNotUndoTheNegatedTest(): void
+    public function testARowOfNullsStillCountsWhenTheTestIsNegated(): void
     {
-        // The trap whereNotIn() falls into, measured on the negated side where
-        // it would show: a null among the rows it reads makes NOT IN match no
-        // row at all. Here the rows are counted rather than compared, so the
-        // statement returning them simply makes NOT EXISTS false.
+        // The sister of testWhereNotExistsReadsTheRowsTheStatementLeavesOut,
+        // with an inner statement that selects nothing but null. The answer is
+        // the same, because what decides it is whether a row came back and not
+        // what that row holds.
         $ids = $this->connection->select('id')
             ->from('users')
-            ->whereNotExists($this->connection->select('deleted_at')->from('users'))
+            ->whereNotExists(
+                $this->connection->select(Expression::of('NULL'))
+                    ->from('posts')
+                    ->where('posts.user_id', '=', Expression::of('users.id')),
+            )
+            ->orderBy('id')
             ->pluck('id');
 
-        $this->assertSame([], $ids);
+        $this->assertSame([3], $ids);
     }
 
     public function testAStatementWithNoMatchingRowsLeavesTheOuterStatementEmpty(): void
