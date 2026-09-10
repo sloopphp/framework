@@ -160,7 +160,7 @@ final class Connection
      *
      * @param  string|Expression|array<int|string, mixed>|Select ...$columns Columns to select, each on its own or paired with a name; none selects every column
      * @return Select                                            Builder for the statement
-     * @throws InvalidArgumentException                          When a statement is given without a name, a pair is not two elements or is keyed, its name is not a string or not a single name, or what it selects cannot be selected
+     * @throws InvalidArgumentException                          When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, or what it selects cannot be selected
      */
     public function select(string|Expression|array|Select ...$columns): Select
     {

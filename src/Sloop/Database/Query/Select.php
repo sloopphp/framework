@@ -138,7 +138,7 @@ class Select extends BuilderWhere
      * @param  ConnectionRoute                                 $route      Route asked for a connection when the statement runs
      * @param  Grammar                                         $grammar    Grammar that turns the collected parts into SQL
      * @param  string|Expression|array<int|string, mixed>|self ...$columns Columns to select, each on its own or paired with a name; none selects every column
-     * @throws InvalidArgumentException                        When a statement is given without a name, a pair is not two elements or is keyed, its name is not a string or not a single name, or what it selects cannot be selected
+     * @throws InvalidArgumentException                        When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, or what it selects cannot be selected
      */
     public function __construct(ConnectionRoute $route, Grammar $grammar, string|Expression|array|self ...$columns)
     {
@@ -157,7 +157,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression|array<int|string, mixed>|self $column What to select, on its own or paired with the name to return it under
      * @return string|Expression|SelectedColumn                The column, or the pair as one value
-     * @throws InvalidArgumentException                        When a statement is given without a name, a pair is not two elements or is keyed, its name is not a string or not a single name, or what it selects cannot be selected
+     * @throws InvalidArgumentException                        When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, or what it selects cannot be selected
      */
     private static function toColumn(string|Expression|array|self $column): string|Expression|SelectedColumn
     {
