@@ -126,9 +126,10 @@ final readonly class Expression
      * where a string key gives one — `['score' => 'DESC', 'id']` sorts by score
      * descending and then by id ascending. An Expression stands as a term of
      * its own and carries no direction, since its SQL already says how it
-     * sorts. A column whose name is written in digits cannot take a direction
-     * that way, because PHP reads such a key as an integer; write it as an
-     * Expression instead.
+     * sorts. A direction written anywhere but as the value under its own
+     * column is refused, since it would otherwise sort by a column of that
+     * name; a column whose name is written in digits therefore takes its
+     * direction as an Expression, PHP reading such a key as an integer.
      *
      * Unlike the other factories here this returns a WindowExpression, since
      * what it describes is resolved when the statement is compiled rather than
@@ -248,17 +249,17 @@ final readonly class Expression
                 );
             }
 
-            // A column whose name is written in digits arrives under an integer
-            // key, because that is what PHP turns a numeric string into. The
-            // direction meant for it is then read as the column itself, so a
-            // term that looks like one says so rather than sorting by a column
-            // called ASC. Such a column takes its direction through an
-            // Expression, or through a key PHP keeps as a string.
+            // Reaching here means a direction was written where the column
+            // goes, which happens three ways: as the value under a numeric
+            // string key, which PHP turns into an integer one; as the value
+            // after the column in a flat list; or on its own. None of them
+            // sorts the way it reads -- all three would sort by a column named
+            // ASC or DESC -- so the term says so instead.
             if (\is_string($value) && Direction::tryFrom(strtoupper($value)) !== null) {
                 throw new InvalidArgumentException(
                     'A sort direction stands where a column is named, got "' . $value
-                    . '". A column whose name is a number takes its direction as an Expression,'
-                    . ' because PHP reads a numeric key as an integer.',
+                    . '". Write the direction as the value under the column it applies to,'
+                    . ' or the whole term as an Expression.',
                 );
             }
 

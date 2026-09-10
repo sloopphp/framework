@@ -301,6 +301,28 @@ final class SelectTest extends TestCase
         $this->connection->select()->from('users')->orderBy('name', 'sideways');
     }
 
+    public function testAnExpressionSortedByCarriesNoAppendedDirection(): void
+    {
+        // Order states that a term written wholly as SQL says how it sorts by
+        // itself, and orderByRaw() builds one that way. Appending a keyword to
+        // an Expression whose SQL already ends in one writes `... DESC ASC`,
+        // which neither server accepts.
+        $select = $this->connection->select()
+            ->from('users')
+            ->orderBy(Expression::of('`score` DESC'), 'ASC');
+
+        $this->assertSame('SELECT * FROM `users` ORDER BY `score` DESC', $select->toSql());
+    }
+
+    public function testADirectionNamingNeitherAscNorDescIsRefusedForAnExpressionToo(): void
+    {
+        // The direction is read even where it is not written, so a caller who
+        // misspells it hears about it whatever the column is.
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->connection->select()->from('users')->orderBy(Expression::of('`score`'), 'sideways');
+    }
+
     public function testOrderByAcceptsAnExpressionAsTheSortKey(): void
     {
         $select = $this->connection->select()
@@ -308,7 +330,7 @@ final class SelectTest extends TestCase
             ->orderBy(Expression::field('status', ['active', 'pending']));
 
         $this->assertSame(
-            'SELECT * FROM `users` ORDER BY FIELD(`status`, ?, ?) ASC',
+            'SELECT * FROM `users` ORDER BY FIELD(`status`, ?, ?)',
             $select->toSql(),
         );
         $this->assertSame(['active', 'pending'], $select->toBindings());

@@ -139,7 +139,8 @@ final class WindowExpressionTest extends TestCase
     public function testTheValueTypeReindexesTheSortTermsItIsHandedDirectly(): void
     {
         // Expression::over() already passes a list, so the reindexing here only
-        // shows through the constructor -- which sub 10 will build on directly.
+        // shows through the constructor, which is the way a builder assembling
+        // the value step by step would reach it.
         $window = new WindowExpression('ROW_NUMBER', orders: [4 => new Order('score', Direction::Descending)]);
 
         $compiled = $this->connection->select($window)->from('orders')->compile();
@@ -253,8 +254,8 @@ final class WindowExpressionTest extends TestCase
 
         $this->assertSame(
             'A sort direction stands where a column is named, got "DESC".'
-                . ' A column whose name is a number takes its direction as an Expression,'
-                . ' because PHP reads a numeric key as an integer.',
+                . ' Write the direction as the value under the column it applies to,'
+                . ' or the whole term as an Expression.',
             $thrown->getMessage(),
         );
     }
@@ -270,6 +271,36 @@ final class WindowExpressionTest extends TestCase
         );
 
         $this->assertStringContainsString('A sort direction stands where a column is named', $thrown->getMessage());
+    }
+
+    public function testADirectionWrittenAfterItsColumnInAFlatListIsRefused(): void
+    {
+        // ['id', 'DESC'] reads as two columns, the second of them named DESC.
+        // The direction belongs under the column it applies to, which is what
+        // a string key is for.
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Expression::over('ROW_NUMBER', orders: ['id', 'DESC']),
+        );
+
+        $this->assertStringContainsString('A sort direction stands where a column is named', $thrown->getMessage());
+    }
+
+    public function testAColumnNamedAfterADirectionSortsWhenItIsWrittenAsOne(): void
+    {
+        // The refusals above are about a direction standing where a column
+        // goes, not about the word. A column really called desc is reachable
+        // through a string key, and everywhere else in the same call -- as an
+        // argument, or as a partition -- it needs nothing special.
+        $compiled = $this->connection
+            ->select(Expression::over('COUNT', ['desc'], partitions: ['desc'], orders: ['desc' => 'ASC']))
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame(
+            'SELECT COUNT(`desc`) OVER (PARTITION BY `desc` ORDER BY `desc` ASC) FROM `orders`',
+            $compiled->sql,
+        );
     }
 
     public function testAColumnWhoseNameIsADirectionKeywordIsStillReachable(): void
@@ -463,9 +494,9 @@ final class WindowExpressionTest extends TestCase
 
     public function testTheHeldPartsAreReadableForABuilderThatWrapsThem(): void
     {
-        // Sub 10 builds the same value fluently and hands it to the same
-        // grammar, so the parts stay reachable rather than being folded into
-        // SQL on the way in.
+        // The parts stay reachable rather than being folded into SQL on the
+        // way in, so a builder can read back what it was given and hand the
+        // same value to the same grammar.
         $window = Expression::over('SUM', ['amount'], partitions: ['user_id'], alias: 'total');
 
         $this->assertInstanceOf(WindowExpression::class, $window);

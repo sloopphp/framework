@@ -63,7 +63,11 @@ final readonly class WindowExpression
      *
      * The sort terms are Order instances, the same shape a Grammar reads an
      * ORDER BY clause from. Expression::over() is what turns the column and
-     * direction a caller writes into them.
+     * direction a caller writes into them, and it is the way to build one of
+     * these that checks what the terms hold. Handed an Order directly, this
+     * takes it as given: a term carrying a window call of its own, or an
+     * Expression carrying a direction, compiles to SQL that both servers
+     * refuse. Neither is reachable through the factory.
      *
      * @param  string                   $function   Name of the window function, in any case
      * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order

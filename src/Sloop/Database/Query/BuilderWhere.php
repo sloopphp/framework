@@ -486,12 +486,18 @@ abstract class BuilderWhere extends Builder
      * enum: the enum names the values a Grammar writes and is internal to that
      * seam, so it is not part of what a caller has to reach for.
      *
+     * An Expression is sorted by as it stands and takes no direction, which is
+     * the rule Order states and orderByRaw() follows: text that already says
+     * how it sorts would otherwise be written `... DESC ASC`, which neither
+     * server accepts. The direction given alongside one is ignored rather than
+     * refused, since it is what the parameter defaults to.
+     *
      * A window call is checked against the grammar here rather than once the
      * statement is compiled, so a function this grammar does not write says so
      * at the line that named it.
      *
      * @param  string|Expression|WindowExpression $column    Column to sort by, an expression producing the sort key, or a window call
-     * @param  string                             $direction Sort direction as the SQL keyword, in any case
+     * @param  string                             $direction Sort direction as the SQL keyword, in any case; not written for an Expression
      * @return static                             This builder
      * @throws InvalidArgumentException           When the direction is neither ASC nor DESC, or the grammar writes no such window function
      */
@@ -501,7 +507,11 @@ abstract class BuilderWhere extends Builder
             $this->grammar->windowFunction($column->function);
         }
 
-        $this->orders[] = new Order($column, Direction::fromKeyword($direction));
+        // Read even where it is not written, so that a direction naming neither
+        // ASC nor DESC is refused the same way whatever the column is.
+        $read = Direction::fromKeyword($direction);
+
+        $this->orders[] = new Order($column, $column instanceof Expression ? null : $read);
 
         return $this;
     }
