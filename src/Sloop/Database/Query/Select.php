@@ -895,7 +895,11 @@ class Select extends BuilderWhere
      * The shortcuts that change what is read — count(), exists(), the
      * aggregates, value(), pluck() and chunkById() — work over the combined
      * rows rather than the first statement, so a count is of the rows the
-     * union returns.
+     * union returns. Reading them from outside needs each column to have a
+     * name of its own: both servers refuse a first statement returning two
+     * columns under one name there, such as the `id` of two joined tables,
+     * where running the union itself goes through. Name them apart with
+     * `[$column, $name]`.
      *
      * @param  Select $query Statement whose rows are added
      * @return static This builder
@@ -950,7 +954,7 @@ class Select extends BuilderWhere
      */
     public function compile(): CompiledSql
     {
-        return $this->compileReading($this->columns, $this->limit, $this->offset);
+        return $this->compileReading(null, $this->limit, $this->offset);
     }
 
     /**
@@ -969,17 +973,17 @@ class Select extends BuilderWhere
      * The parentheses that avoid that are dropped again when the builder holds
      * no conditions, since an empty pair is not valid SQL.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression> $columns   Columns to read
-     * @param  int|null                                                            $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                            $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                      $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                                                          $thenBy    Sort term to add after the builder's own, or null for none
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression>|null $columns   Columns to read, or null for the ones the builder selects
+     * @param  int|null                                                                 $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                 $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                           $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
-     * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
+     * @throws LogicException                                                           When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
+     * @throws InvalidArgumentException                                                 When an identifier is malformed or the row window is inconsistent
      */
     private function compileReading(
-        array $columns,
+        ?array $columns,
         ?int $limit,
         ?int $offset,
         ?WherePart $alsoWhere = null,
@@ -996,7 +1000,7 @@ class Select extends BuilderWhere
         $this->requireHavingGroupsClosed();
 
         if ($this->unions !== []) {
-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null
+            return $columns === null && $alsoWhere === null && $thenBy === null
                 ? $this->compileUnion($from, $limit, $offset)
                 : $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy);
         }
@@ -1010,7 +1014,7 @@ class Select extends BuilderWhere
 
         return $this->grammar->compileSelect(new SelectSpec(
             from:       $from,
-            columns:    $columns,
+            columns:    $columns ?? $this->columns,
             joins:      $this->joins,
             conditions: $conditions,
             groupings:  $this->groupings,
@@ -1081,17 +1085,23 @@ class Select extends BuilderWhere
      * returns. The sort is written on the outer statement, among the rows it
      * reads.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression> $columns   Columns to read from the combined rows
-     * @param  int|null                                                            $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                            $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                      $alsoWhere Condition on the combined rows, or null for none
-     * @param  Order|null                                                          $thenBy    Sort term to add after the builder's own, or null for none
+     * The builder's own columns are read back as every column the combined
+     * rows carry rather than written out again. Outside the parentheses they
+     * go by the names the rows come back under, so a column the first
+     * statement wrote as `users.id` or `UPPER(name) AS n` could not be named
+     * there as it was written.
+     *
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression>|null $columns   Columns to read from the combined rows, or null for every one of them
+     * @param  int|null                                                                 $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                 $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                           $alsoWhere Condition on the combined rows, or null for none
+     * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                      When the statement holds a lock, a statement sorts inside its parentheses without a limit, or one added names no table or left a group of conditions open
-     * @throws InvalidArgumentException                                            When an identifier is malformed or a row window is inconsistent
+     * @throws LogicException                                                           When the statement holds a lock, a statement sorts inside its parentheses without a limit, or one added names no table or left a group of conditions open
+     * @throws InvalidArgumentException                                                 When an identifier is malformed or a row window is inconsistent
      */
     private function compileOverUnion(
-        array $columns,
+        ?array $columns,
         ?int $limit,
         ?int $offset,
         ?WherePart $alsoWhere,
@@ -1104,7 +1114,7 @@ class Select extends BuilderWhere
 
         return $this->grammar->compileSelect(new SelectSpec(
             from:       new TableSource(new SubQuery($combined), self::UNION_ALIAS),
-            columns:    $columns,
+            columns:    $columns ?? [],
             conditions: $alsoWhere === null ? [] : [$alsoWhere],
             orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
             limit:      $limit,
@@ -1139,21 +1149,21 @@ class Select extends BuilderWhere
     /**
      * Run a statement that reads the given columns and row count.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression> $columns   Columns to read
-     * @param  int|null                                                            $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                            $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                      $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                                                          $thenBy    Sort term to add after the builder's own, or null for none
-     * @return Result                                                              Rows the statement read
-     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
-     * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                                              When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException                                         When the connection cannot be obtained
-     * @throws DatabaseException                                                   When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
-     * @throws UnexpectedValueException                                            When the driver returns a value outside the types it contracts to
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression>|null $columns   Columns to read, or null for the ones the builder selects
+     * @param  int|null                                                                 $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                 $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                           $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
+     * @return Result                                                                   Rows the statement read
+     * @throws LogicException                                                           When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
+     * @throws InvalidArgumentException                                                 When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                                                   When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                                              When the connection cannot be obtained
+     * @throws DatabaseException                                                        When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
+     * @throws UnexpectedValueException                                                 When the driver returns a value outside the types it contracts to
      */
     private function runReading(
-        array $columns,
+        ?array $columns,
         ?int $limit,
         ?int $offset,
         ?WherePart $alsoWhere = null,
@@ -1182,7 +1192,7 @@ class Select extends BuilderWhere
      */
     public function execute(): Result
     {
-        return $this->runReading($this->columns, $this->limit, $this->offset);
+        return $this->runReading(null, $this->limit, $this->offset);
     }
 
     /**
@@ -1203,7 +1213,7 @@ class Select extends BuilderWhere
      */
     public function first(): ?array
     {
-        return $this->runReading($this->columns, 1, $this->offset)->first();
+        return $this->runReading(null, 1, $this->offset)->first();
     }
 
     /**
@@ -1567,7 +1577,7 @@ class Select extends BuilderWhere
         $this->requireCountableLock('paginate');
         $this->requireUngrouped('paginate');
 
-        $items = $this->runReading($this->columns, $perPage, ($page - 1) * $perPage);
+        $items = $this->runReading(null, $perPage, ($page - 1) * $perPage);
 
         // count() rather than a COUNT written here, so the check that the
         // server answered with an integer is not two things that have to agree.
@@ -1606,7 +1616,7 @@ class Select extends BuilderWhere
         $index  = 0;
 
         while (true) {
-            $batch = $this->runReading($this->columns, $size, $offset);
+            $batch = $this->runReading(null, $size, $offset);
 
             if ($batch->isEmpty()) {
                 return true;
@@ -1679,7 +1689,7 @@ class Select extends BuilderWhere
 
         while (true) {
             $batch = $this->runReading(
-                $this->columns,
+                null,
                 $size,
                 null,
                 $above === null ? null : $this->grammar->comparison($column, '>', $above),

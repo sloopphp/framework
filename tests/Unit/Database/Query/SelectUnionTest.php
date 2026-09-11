@@ -369,10 +369,8 @@ final class SelectUnionTest extends TestCase
         );
     }
 
-    public function testPluckOfTheColumnsTheStatementSelectsRunsItAsWritten(): void
+    public function testPluckWithAKeyReadsBothColumnsFromTheCombinedRows(): void
     {
-        // Nothing to change about what is read, so there is nothing to read
-        // from outside either.
         $this->results = [[['id' => 1, 'name' => 'alice']]];
 
         $names = $this->connection->select('id', 'name')
@@ -382,7 +380,10 @@ final class SelectUnionTest extends TestCase
 
         $this->assertSame([1 => 'alice'], $names);
         $this->assertSame(
-            ['(SELECT `id`, `name` FROM `users`) UNION (SELECT `id`, `name` FROM `admins`)'],
+            [
+                'SELECT `id`, `name` FROM ((SELECT `id`, `name` FROM `users`)'
+                    . ' UNION (SELECT `id`, `name` FROM `admins`)) AS `sloop_union`',
+            ],
             $this->prepared,
         );
     }
@@ -421,8 +422,29 @@ final class SelectUnionTest extends TestCase
         $this->assertTrue($walked);
         $this->assertSame(
             [
-                'SELECT `id` FROM (' . $this->combined() . ') AS `sloop_union` ORDER BY `id` ASC LIMIT 2',
-                'SELECT `id` FROM (' . $this->combined() . ') AS `sloop_union` WHERE `id` > ? ORDER BY `id` ASC LIMIT 2',
+                'SELECT * FROM (' . $this->combined() . ') AS `sloop_union` ORDER BY `id` ASC LIMIT 2',
+                'SELECT * FROM (' . $this->combined() . ') AS `sloop_union` WHERE `id` > ? ORDER BY `id` ASC LIMIT 2',
+            ],
+            $this->prepared,
+        );
+    }
+
+    public function testChunkByIdDoesNotWriteTheFirstStatementsColumnsOutsideTheParentheses(): void
+    {
+        // Written outside, `users`.`id` and the expression would name columns
+        // the combined rows do not have.
+        $this->results = [[['id' => 1, 'n' => 'ALICE']]];
+
+        $this->connection->select('users.id')
+            ->selectRaw('UPPER(name) AS n')
+            ->from('users')
+            ->union($this->connection->select('id', 'name')->from('admins'))
+            ->chunkById(10, static fn (): bool => true);
+
+        $this->assertSame(
+            [
+                'SELECT * FROM ((SELECT `users`.`id`, UPPER(name) AS n FROM `users`)'
+                    . ' UNION (SELECT `id`, `name` FROM `admins`)) AS `sloop_union` ORDER BY `id` ASC LIMIT 10',
             ],
             $this->prepared,
         );

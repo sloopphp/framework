@@ -212,6 +212,44 @@ final class SelectUnionTest extends TransactionalIntegrationTestCase
         $this->assertSame([1, 2, 3], $seen->getArrayCopy());
     }
 
+    public function testChunkByIdWalksAStatementSelectingQualifiedAndWrittenColumns(): void
+    {
+        /** @var ArrayObject<int, mixed> $seen */
+        $seen = new ArrayObject();
+
+        $this->connection->select('users.id')
+            ->selectRaw('UPPER(name) AS n')
+            ->from('users')
+            ->where('status', 'active')
+            ->union($this->connection->select('id', 'name')->from('users')->where('status', 'blocked'))
+            ->chunkById(2, static function (Result $batch) use ($seen): bool {
+                foreach ($batch->asArray() as $row) {
+                    $seen->append($row['id']);
+                }
+
+                return true;
+            });
+
+        $this->assertSame([1, 2, 3], $seen->getArrayCopy());
+    }
+
+    public function testAShortcutReadingTheCombinedRowsNeedsEachColumnNamedOnce(): void
+    {
+        // Running the union itself takes two columns named id; reading it from
+        // outside does not, on either server.
+        $select = $this->connection->select('users.id', 'posts.id')
+            ->from('users')
+            ->join('posts')
+            ->on('posts.user_id', '=', 'users.id')
+            ->union($this->connection->select('id', 'id')->from('users'));
+
+        $this->assertCount(4, $select->get());
+
+        $thrown = $this->assertThrows(QueryException::class, static fn () => $select->count());
+
+        $this->assertSame(1060, $thrown->driverCode);
+    }
+
     public function testSortingTheCombinedRowsByAQualifiedColumnIsRefusedByTheServer(): void
     {
         // The combined rows belong to no table, so both servers refuse the

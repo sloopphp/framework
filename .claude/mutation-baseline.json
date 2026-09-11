@@ -71,37 +71,37 @@
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "Identical",
-            "diff": "-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null\n+            return $columns !== $this->columns && $alsoWhere === null && $thenBy === null"
+            "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return $columns !== null && $alsoWhere === null && $thenBy === null"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "Identical",
-            "diff": "-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null\n+            return $columns === $this->columns && $alsoWhere !== null && $thenBy === null"
+            "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return $columns === null && $alsoWhere !== null && $thenBy === null"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "Identical",
-            "diff": "-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null\n+            return $columns === $this->columns && $alsoWhere === null && $thenBy !== null"
+            "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return $columns === null && $alsoWhere === null && $thenBy !== null"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "LogicalAndAllSubExprNegation",
-            "diff": "-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null\n+            return !($columns === $this->columns) && !($alsoWhere === null) && !($thenBy === null)"
+            "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return !($columns === null) && !($alsoWhere === null) && !($thenBy === null)"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "LogicalAndNegation",
-            "diff": "-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null\n+            return !($columns === $this->columns && $alsoWhere === null && $thenBy === null)"
+            "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return !($columns === null && $alsoWhere === null && $thenBy === null)"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "Ternary",
-            "diff": "-            return $columns === $this->columns && $alsoWhere === null && $thenBy === null\n-                ? $this->compileUnion($from, $limit, $offset)\n-                : $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy);\n+            return $columns === $this->columns && $alsoWhere === null && $thenBy === null ? $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy) : $this->compileUnion($from, $limit, $offset);"
+            "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n-                ? $this->compileUnion($from, $limit, $offset)\n-                : $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy);\n+            return $columns === null && $alsoWhere === null && $thenBy === null ? $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy) : $this->compileUnion($from, $limit, $offset);"
         },
         {
             "file": "src/Sloop/Database/Replica/ApcuDeadReplicaCache.php",
