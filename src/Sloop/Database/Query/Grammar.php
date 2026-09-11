@@ -206,6 +206,42 @@ class Grammar
     }
 
     /**
+     * Compile a SELECT statement combined with others.
+     *
+     * Every statement is written inside parentheses, the first one included.
+     * That is what lets a statement carry a sort and row window of its own: both
+     * servers refuse ORDER BY or LIMIT on a statement standing bare before UNION.
+     * What follows the last parenthesis sorts and cuts the combined rows.
+     *
+     * The bindings follow the statements from left to right, then the sort.
+     *
+     * @param  UnionSpec                $spec Parts of the combined statement
+     * @return CompiledSql              SQL and bindings, the bindings in placeholder order
+     * @throws LogicException           When a statement names no table, or left a group of conditions open
+     * @throws InvalidArgumentException When an identifier is malformed
+     */
+    public function compileUnion(UnionSpec $spec): CompiledSql
+    {
+        $first    = $this->compileSelect($spec->first);
+        $sql      = '(' . $first->sql . ')';
+        $bindings = $first->bindings;
+
+        foreach ($spec->unions as $union) {
+            $added    = $union->query->compile();
+            $sql     .= ($union->all ? ' UNION ALL (' : ' UNION (') . $added->sql . ')';
+            $bindings = array_merge($bindings, $added->bindings);
+        }
+
+        $orderBy = $this->compileOrderBy($spec->orders);
+        $limit   = $this->compileLimit($spec->limit, $spec->offset);
+
+        return new CompiledSql(
+            $sql . $orderBy->sql . $limit->sql,
+            array_merge($bindings, $orderBy->bindings, $limit->bindings),
+        );
+    }
+
+    /**
      * Compile an UPDATE statement and the bindings its placeholders need.
      *
      * Joined tables come between the table being updated and the assignments,

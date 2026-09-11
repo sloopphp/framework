@@ -37,6 +37,13 @@ use UnexpectedValueException;
 class Select extends BuilderWhere
 {
     /**
+     * Name the combined rows are read under when a shortcut reads them from outside.
+     *
+     * @var string
+     */
+    private const string UNION_ALIAS = 'sloop_union';
+
+    /**
      * Columns to select; empty selects every column.
      *
      * A column paired with a name to return it under arrives here as the one
@@ -127,6 +134,37 @@ class Select extends BuilderWhere
      * @var CastMode|null
      */
     private ?CastMode $castMode = null;
+
+    /**
+     * Statements whose rows are added to this one's, in the order they were given.
+     *
+     * @var list<array{query: Select, all: bool}>
+     */
+    private array $unions = [];
+
+    /**
+     * Sort terms written inside this statement's own parentheses once others are added.
+     *
+     * What orderBy() collected before the first union() call moves here, and
+     * what it collects afterwards sorts the combined rows.
+     *
+     * @var list<Order>
+     */
+    private array $ownOrders = [];
+
+    /**
+     * Row limit written inside this statement's own parentheses, or null for none.
+     *
+     * @var int|null
+     */
+    private ?int $ownLimit = null;
+
+    /**
+     * Rows skipped inside this statement's own parentheses, or null for none.
+     *
+     * @var int|null
+     */
+    private ?int $ownOffset = null;
 
     /**
      * Start a SELECT over the given columns.
@@ -839,10 +877,75 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Add the rows of another statement, dropping rows read twice.
+     *
+     * The sort and row window set before the first call stay with this
+     * statement and are written inside its own parentheses; those set after it
+     * sort and cut the combined rows. A sort inside the parentheses needs a
+     * limit beside it, since both servers drop one standing alone, so the
+     * statement is refused when compiled rather than run with the sort ignored.
+     * The same holds for the statement given here.
+     *
+     * A column the combined rows are sorted by is named as the rows come back,
+     * without a table in front: both servers refuse `users.id` there.
+     *
+     * The statement is read when this one is compiled, so a condition added to
+     * it after it was handed over is part of what runs.
+     *
+     * The shortcuts that change what is read — count(), exists(), the
+     * aggregates, value(), pluck() and chunkById() — work over the combined
+     * rows rather than the first statement, so a count is of the rows the
+     * union returns.
+     *
+     * @param  Select $query Statement whose rows are added
+     * @return static This builder
+     */
+    public function union(Select $query): static
+    {
+        return $this->addUnion($query, false);
+    }
+
+    /**
+     * Add the rows of another statement, keeping rows read twice.
+     *
+     * Otherwise the same as union().
+     *
+     * @param  Select $query Statement whose rows are added
+     * @return static This builder
+     */
+    public function unionAll(Select $query): static
+    {
+        return $this->addUnion($query, true);
+    }
+
+    /**
+     * Record a statement to add, moving the sort and row window aside on the first one.
+     *
+     * @param  Select $query Statement whose rows are added
+     * @param  bool   $all   Whether rows read twice are kept
+     * @return static This builder
+     */
+    private function addUnion(Select $query, bool $all): static
+    {
+        if ($this->unions === []) {
+            $this->ownOrders = $this->orders;
+            $this->ownLimit  = $this->limit;
+            $this->ownOffset = $this->offset;
+            $this->orders    = [];
+            $this->limit     = null;
+            $this->offset    = null;
+        }
+
+        $this->unions[] = ['query' => $query, 'all' => $all];
+
+        return $this;
+    }
+
+    /**
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
-     * @throws LogicException           When no table has been named, or a group of conditions was left open
+     * @throws LogicException           When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException When an identifier is malformed or the row window is inconsistent
      */
     public function compile(): CompiledSql
@@ -872,7 +975,7 @@ class Select extends BuilderWhere
      * @param  WherePart|null                                                      $alsoWhere Condition to require alongside the builder's own, or null for none
      * @param  Order|null                                                          $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                      When no table has been named, or a group of conditions was left open
+     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
      */
     private function compileReading(
@@ -891,6 +994,12 @@ class Select extends BuilderWhere
         $this->requireGroupsClosed();
         $this->requireJoinsUsable();
         $this->requireHavingGroupsClosed();
+
+        if ($this->unions !== []) {
+            return $columns === $this->columns && $alsoWhere === null && $thenBy === null
+                ? $this->compileUnion($from, $limit, $offset)
+                : $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy);
+        }
 
         $conditions = $alsoWhere === null ? $this->conditions : [
             new GroupBoundary(GroupEdge::Open),
@@ -914,6 +1023,120 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Write this statement together with the ones added to it.
+     *
+     * @param  TableSource              $from   What this statement reads from
+     * @param  int|null                 $limit  Most combined rows to read, or null for all of them
+     * @param  int|null                 $offset Combined rows to skip first, or null to start at the top
+     * @return CompiledSql
+     * @throws LogicException           When the statement holds a lock, a statement sorts inside its parentheses without a limit, or one added names no table or left a group of conditions open
+     * @throws InvalidArgumentException When an identifier is malformed or a row window is inconsistent
+     */
+    private function compileUnion(TableSource $from, ?int $limit, ?int $offset): CompiledSql
+    {
+        if ($this->lock !== null) {
+            throw new LogicException(
+                'A combined statement has no place for a lock that both servers read the same way:'
+                    . ' written after the last parenthesis, MariaDB refuses it and MySQL takes it.'
+                    . ' Drop the forUpdate()/sharedLock() call.',
+            );
+        }
+
+        self::requireSortBounded($this->ownOrders, $this->ownLimit);
+
+        $unions = [];
+
+        foreach ($this->unions as ['query' => $query, 'all' => $all]) {
+            self::requireSortBounded($query->orders, $query->limit);
+
+            $unions[] = new Union(new SubQuery($query), $all);
+        }
+
+        return $this->grammar->compileUnion(new UnionSpec(
+            first: new SelectSpec(
+                from:       $from,
+                columns:    $this->columns,
+                joins:      $this->joins,
+                conditions: $this->conditions,
+                groupings:  $this->groupings,
+                having:     $this->having,
+                orders:     $this->ownOrders,
+                limit:      $this->ownLimit,
+                offset:     $this->ownOffset,
+            ),
+            unions: $unions,
+            orders: $this->orders,
+            limit:  $limit,
+            offset: $offset,
+        ));
+    }
+
+    /**
+     * Write a statement reading the combined rows as a table of its own.
+     *
+     * Changing the select list of the first statement would reach no other:
+     * the servers would refuse the mismatched column counts, or a condition
+     * added to the first statement alone would narrow only its rows. Reading
+     * the combined rows from outside gives each shortcut the rows the union
+     * returns. The sort is written on the outer statement, among the rows it
+     * reads.
+     *
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression> $columns   Columns to read from the combined rows
+     * @param  int|null                                                            $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                            $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                      $alsoWhere Condition on the combined rows, or null for none
+     * @param  Order|null                                                          $thenBy    Sort term to add after the builder's own, or null for none
+     * @return CompiledSql
+     * @throws LogicException                                                      When the statement holds a lock, a statement sorts inside its parentheses without a limit, or one added names no table or left a group of conditions open
+     * @throws InvalidArgumentException                                            When an identifier is malformed or a row window is inconsistent
+     */
+    private function compileOverUnion(
+        array $columns,
+        ?int $limit,
+        ?int $offset,
+        ?WherePart $alsoWhere,
+        ?Order $thenBy,
+    ): CompiledSql {
+        $combined         = clone $this;
+        $combined->orders = [];
+        $combined->limit  = null;
+        $combined->offset = null;
+
+        return $this->grammar->compileSelect(new SelectSpec(
+            from:       new TableSource(new SubQuery($combined), self::UNION_ALIAS),
+            columns:    $columns,
+            conditions: $alsoWhere === null ? [] : [$alsoWhere],
+            orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
+            limit:      $limit,
+            offset:     $offset,
+        ));
+    }
+
+    /**
+     * Refuse a sort written inside a statement's parentheses without a limit beside it.
+     *
+     * Both servers drop such a sort without saying so, since the order rows take
+     * inside one statement says nothing about their order once combined.
+     *
+     * @param  list<Order>    $orders Sort terms inside the parentheses
+     * @param  int|null       $limit  Row limit inside the parentheses, or null for none
+     * @return void
+     * @throws LogicException When there is a sort and no limit
+     */
+    private static function requireSortBounded(array $orders, ?int $limit): void
+    {
+        if ($orders === [] || $limit !== null) {
+            return;
+        }
+
+        throw new LogicException(
+            'A statement combined with others sorts its own rows only to choose which of them a limit keeps;'
+                . ' without one, both servers drop the sort. Add a limit() before union(), or sort the'
+                . ' combined rows by calling orderBy() after it.',
+        );
+    }
+
+    /**
      * Run a statement that reads the given columns and row count.
      *
      * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression> $columns   Columns to read
@@ -922,7 +1145,7 @@ class Select extends BuilderWhere
      * @param  WherePart|null                                                      $alsoWhere Condition to require alongside the builder's own, or null for none
      * @param  Order|null                                                          $thenBy    Sort term to add after the builder's own, or null for none
      * @return Result                                                              Rows the statement read
-     * @throws LogicException                                                      When no table has been named, or a group of conditions was left open
+     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                                              When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                         When the connection cannot be obtained
@@ -950,7 +1173,7 @@ class Select extends BuilderWhere
      * can land on either route, which that method describes.
      *
      * @return Result                      Rows the statement read
-     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws LogicException              When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -971,7 +1194,7 @@ class Select extends BuilderWhere
      * offset(1)->first() reads the second row.
      *
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null>|null The row, or null when nothing matched
-     * @throws LogicException                                                      When no table has been named, or a group of conditions was left open
+     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                                              When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                         When the connection cannot be obtained
@@ -993,7 +1216,7 @@ class Select extends BuilderWhere
      *
      * @param  string                                       $column Column to read
      * @return int|float|string|bool|DateTimeImmutable|null Its value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, or a group of conditions was left open
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1017,7 +1240,7 @@ class Select extends BuilderWhere
      * The same rows execute() would return, without going through Result.
      *
      * @return list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> Rows in the order they were read
-     * @throws LogicException                                                       When no table has been named, or a group of conditions was left open
+     * @throws LogicException                                                       When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                                             When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                                               When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                          When the connection cannot be obtained
@@ -1045,7 +1268,7 @@ class Select extends BuilderWhere
      * then reports the wait, and SKIP LOCKED counts what it could take.
      *
      * @return int                         How many rows matched
-     * @throws LogicException              When no table has been named, a group of conditions was left open, or the lock is NOWAIT
+     * @throws LogicException              When no table has been named, a group of conditions was left open, the lock is NOWAIT, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1084,7 +1307,7 @@ class Select extends BuilderWhere
      * over, so a row that is present reads as absent while it is held.
      *
      * @return bool                        True when at least one row matched
-     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws LogicException              When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1102,7 +1325,7 @@ class Select extends BuilderWhere
      * The negation of exists(), including its reading under SKIP LOCKED.
      *
      * @return bool                        True when nothing matched
-     * @throws LogicException              When no table has been named, or a group of conditions was left open
+     * @throws LogicException              When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1129,7 +1352,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to add up: a column name, or an expression to total
      * @return int|float|string|bool|DateTimeImmutable|null The total, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1150,7 +1373,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to average: a column name, or an expression to average
      * @return int|float|string|bool|DateTimeImmutable|null The average, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1171,7 +1394,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to take the smallest of: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null The smallest value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1190,7 +1413,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to take the largest of: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null The largest value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1222,7 +1445,7 @@ class Select extends BuilderWhere
      * @param  string                                       $method   Name of the method being asked for
      * @param  string|Expression                            $column   What to aggregate: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null Value the call produced, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1259,7 +1482,7 @@ class Select extends BuilderWhere
      * @param  string                                                         $valueColumn Column whose values are returned
      * @param  string|null                                                    $keyColumn   Column whose values key them, or null for a list
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Values, keyed when a key column was given
-     * @throws LogicException                                                 When no table has been named, or a group of conditions was left open
+     * @throws LogicException                                                 When no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException                                       When an identifier is malformed, the row window is inconsistent, or a key cannot be an array key
      * @throws InvalidConfigException                                         When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                    When the connection cannot be obtained
@@ -1319,7 +1542,7 @@ class Select extends BuilderWhere
      * @param  int                         $perPage Most rows the page carries
      * @param  int                         $page    1-based number of the page to read
      * @return Paginator                   The page, with the size of the set it came from
-     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, or the rows are held with NOWAIT
+     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, the rows are held with NOWAIT, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When the page size or number is below one, an identifier is malformed, or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1367,7 +1590,7 @@ class Select extends BuilderWhere
      * @param  int                         $size     Most rows a batch carries
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window is already set, no table has been named, or a group of conditions was left open
+     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When the batch size is below one, an identifier is malformed, or the row window is inconsistent
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1430,7 +1653,7 @@ class Select extends BuilderWhere
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, or the statement groups its rows
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock or a sort without a limit
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1836,10 +2059,18 @@ class Select extends BuilderWhere
      * dropped before the clause is written, as requireWhereUnderStrictMode()
      * reads the WHERE clause.
      *
+     * A statement combined with others does not count either: the shortcuts
+     * read the combined rows as a table of their own, so what they count and
+     * walk are the rows the union returns, grouped or not.
+     *
      * @return bool True when the rows reach the caller as groups
      */
     private function groupsRows(): bool
     {
+        if ($this->unions !== []) {
+            return false;
+        }
+
         if ($this->groupings !== []) {
             return true;
         }

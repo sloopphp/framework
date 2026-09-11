@@ -1317,6 +1317,10 @@ final class Connection
      * refused here instead of on the server, so the same code is refused on
      * both flavors rather than on whichever one cannot parse the result.
      *
+     * A combined statement opens with its first SELECT inside a parenthesis,
+     * and takes the limit there as well: on both servers it cuts short a
+     * statement whose slow part is in a later SELECT.
+     *
      * @param  string                   $sql       SQL of the statement to limit
      * @param  int                      $timeoutMs Milliseconds the statement may run for
      * @return string                   The statement carrying the limit
@@ -1331,14 +1335,17 @@ final class Connection
             );
         }
 
-        if (!str_starts_with($sql, 'SELECT ')) {
-            throw new InvalidArgumentException(
+        $opening = match (true) {
+            str_starts_with($sql, 'SELECT ')  => 'SELECT ',
+            str_starts_with($sql, '(SELECT ') => '(SELECT ',
+            default                           => throw new InvalidArgumentException(
                 'A statement timeout is written into the SELECT it limits, so the statement has to open with it.',
-            );
-        }
+            ),
+        };
 
         return match ($this->dialect()) {
-            Dialect::MySQL   => 'SELECT /*+ MAX_EXECUTION_TIME(' . $timeoutMs . ') */ ' . substr($sql, 7),
+            Dialect::MySQL => $opening . '/*+ MAX_EXECUTION_TIME(' . $timeoutMs . ') */ '
+                . substr($sql, \strlen($opening)),
             Dialect::MariaDB => 'SET STATEMENT max_statement_time = '
                 . \sprintf('%.3F', $timeoutMs / 1000) . ' FOR ' . $sql,
         };

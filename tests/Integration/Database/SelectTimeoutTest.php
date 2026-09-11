@@ -115,6 +115,35 @@ final class SelectTimeoutTest extends IntegrationTestCase
         $this->assertStoppedEarly($this->runSlowStatement(self::LIMIT_MS));
     }
 
+    public function testTimeoutStopsACombinedStatementWhoseSlowPartIsNotTheFirst(): void
+    {
+        // The limit is written into the first statement of a union, so the
+        // slow work sits in the second one to show it reaches that far.
+        $select = $this->connection
+            ->select('id')
+            ->from(self::TABLE)
+            ->where('id', 1)
+            ->unionAll(
+                $this->connection
+                    ->select('id')
+                    ->from(self::TABLE)
+                    ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0')
+                    ->orderBy('id')
+                    ->limit(1),
+            )
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
     public function testTimeoutStillStopsAStatementThatTakesALock(): void
     {
         // Measured rather than assumed: a lock clause changes what the server

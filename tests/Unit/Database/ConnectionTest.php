@@ -1195,6 +1195,47 @@ final class ConnectionTest extends TestCase
         $this->assertSame([$expectedSql], $prepared->getArrayCopy());
     }
 
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function combinedStatementTimeoutProvider(): array
+    {
+        return [
+            'MySQL writes the hint into the first statement' => [
+                '8.0.37',
+                '(SELECT /*+ MAX_EXECUTION_TIME(400) */ `id` FROM `users`) UNION (SELECT `id` FROM `admins`)',
+            ],
+            'MariaDB scopes a SET to the whole statement' => [
+                '10.11.11-MariaDB',
+                'SET STATEMENT max_statement_time = 0.400 FOR (SELECT `id` FROM `users`) UNION (SELECT `id` FROM `admins`)',
+            ],
+        ];
+    }
+
+    #[DataProvider('combinedStatementTimeoutProvider')]
+    public function testStatementTimeoutReachesACombinedStatementThroughItsFirstSelect(
+        string $versionString,
+        string $expectedSql,
+    ): void {
+        $pdo = $this->createStub(PDO::class);
+        $this->scriptVersionQuery($pdo, $versionString);
+
+        /** @var ArrayObject<int, string> $prepared */
+        $prepared = new ArrayObject();
+        $pdo->method('prepare')->willReturnCallback(
+            function (string $sql) use ($prepared): PDOStatement {
+                $prepared->append($sql);
+
+                return $this->scriptedSelectStatement();
+            },
+        );
+
+        $connection = new Connection($pdo, 'test');
+        $connection->query('(SELECT `id` FROM `users`) UNION (SELECT `id` FROM `admins`)', [], 400);
+
+        $this->assertSame([$expectedSql], $prepared->getArrayCopy());
+    }
+
     public function testStatementTimeoutLeavesTheStatementAloneWhenNotGiven(): void
     {
         // Passing no timeout has to reach the server as the statement that was
