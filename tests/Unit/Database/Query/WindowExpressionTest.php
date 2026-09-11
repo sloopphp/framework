@@ -14,6 +14,7 @@ use Sloop\Database\Query\Direction;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Order;
+use Sloop\Database\Query\SelectedColumn;
 use Sloop\Database\Query\SelectSpec;
 use Sloop\Database\Query\WindowExpression;
 use Sloop\Tests\Support\ThrowsAssertions;
@@ -50,12 +51,11 @@ final class WindowExpressionTest extends TestCase
     public function testTheColumnsOfAWindowCallAreQuotedByTheGrammar(): void
     {
         $compiled = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'ROW_NUMBER',
                 partitions: ['user_id'],
                 orders: ['amount' => 'DESC'],
-                alias: 'rn',
-            ))
+            ), 'rn'])
             ->from('orders')
             ->compile();
 
@@ -73,7 +73,7 @@ final class WindowExpressionTest extends TestCase
         // there -- while the FROM clause, quoted by the grammar, has it.
         $compiled = new Grammar('p_')->compileSelect(new SelectSpec('orders', [
             'id',
-            Expression::over('ROW_NUMBER', partitions: ['orders.user_id'], alias: 'rn'),
+            new SelectedColumn(Expression::over('ROW_NUMBER', partitions: ['orders.user_id']), 'rn'),
         ]));
 
         $this->assertSame(
@@ -106,12 +106,11 @@ final class WindowExpressionTest extends TestCase
         // follow it. Stopping there instead writes a call short of what was
         // asked for, which the server may well accept as a different call.
         $compiled = $this->connection
-            ->select(Expression::over(
+            ->select([Expression::over(
                 'LEAD',
                 [Expression::of('`amount` * ?', [2]), 1],
                 orders: ['id'],
-                alias: 'next',
-            ))
+            ), 'next'])
             ->from('orders')
             ->compile();
 
@@ -125,7 +124,7 @@ final class WindowExpressionTest extends TestCase
     public function testAColumnArgumentIsNotTheEndOfTheArgumentListEither(): void
     {
         $compiled = $this->connection
-            ->select(Expression::over('NTH_VALUE', ['amount', 2], orders: ['id'], alias: 'second'))
+            ->select([Expression::over('NTH_VALUE', ['amount', 2], orders: ['id']), 'second'])
             ->from('orders')
             ->compile();
 
@@ -167,7 +166,7 @@ final class WindowExpressionTest extends TestCase
         // inside a window call has to arrive first. Getting this wrong pairs
         // each value with the wrong placeholder rather than failing.
         $compiled = $this->connection
-            ->select('id', Expression::over('NTILE', [4], partitions: ['user_id'], alias: 'quartile'))
+            ->select('id', [Expression::over('NTILE', [4], partitions: ['user_id']), 'quartile'])
             ->from('orders')
             ->where('status', '=', 'paid')
             ->compile();
@@ -182,7 +181,7 @@ final class WindowExpressionTest extends TestCase
     public function testAStarStandsAsTheSoleArgumentOfACall(): void
     {
         $compiled = $this->connection
-            ->select(Expression::over('COUNT', ['*'], partitions: ['user_id'], alias: 'per_user'))
+            ->select([Expression::over('COUNT', ['*'], partitions: ['user_id']), 'per_user'])
             ->from('orders')
             ->compile();
 
@@ -205,7 +204,7 @@ final class WindowExpressionTest extends TestCase
     public function testACallWithNeitherPartitionNorOrderRunsOverEveryRow(): void
     {
         $compiled = $this->connection
-            ->select(Expression::over('SUM', ['amount'], alias: 'total'))
+            ->select([Expression::over('SUM', ['amount']), 'total'])
             ->from('orders')
             ->compile();
 
@@ -330,12 +329,11 @@ final class WindowExpressionTest extends TestCase
     public function testTheRowNumbersStartOverInEachPartition(): void
     {
         $rows = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'ROW_NUMBER',
                 partitions: ['user_id'],
                 orders: ['amount' => 'DESC'],
-                alias: 'rn',
-            ))
+            ), 'rn'])
             ->from('orders')
             ->orderBy('id')
             ->get();
@@ -346,7 +344,7 @@ final class WindowExpressionTest extends TestCase
     public function testTheFunctionNameIsWrittenInTheSpellingTheGrammarLists(): void
     {
         $compiled = $this->connection
-            ->select(Expression::over('row_number', alias: 'rn'))
+            ->select([Expression::over('row_number'), 'rn'])
             ->from('orders')
             ->compile();
 
@@ -379,6 +377,19 @@ final class WindowExpressionTest extends TestCase
         );
     }
 
+    public function testACallTheGrammarDoesNotWriteIsRefusedWhenItIsNamedToo(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): mixed => $this->connection->select([Expression::over('GROUP_CONCAT', ['amount']), 'amounts']),
+        );
+
+        $this->assertSame(
+            'This grammar writes no window function called GROUP_CONCAT. Add it by overriding windowFunctions().',
+            $thrown->getMessage(),
+        );
+    }
+
     public function testASubclassAddsAWindowFunctionTheFrameworkDoesNotList(): void
     {
         $grammar = new class () extends Grammar {
@@ -395,19 +406,6 @@ final class WindowExpressionTest extends TestCase
         $this->assertSame(
             'SELECT GROUP_CONCAT(`amount`) OVER (PARTITION BY `user_id`) FROM `orders`',
             $compiled->sql,
-        );
-    }
-
-    public function testAnAliasIsOneNameSoAQualifiedOneIsRefused(): void
-    {
-        $thrown = $this->assertThrows(
-            InvalidArgumentException::class,
-            static fn (): mixed => Expression::over('ROW_NUMBER', alias: 'reporting.rn'),
-        );
-
-        $this->assertSame(
-            'An alias is one name, so it cannot be qualified, got reporting.rn.',
-            $thrown->getMessage(),
         );
     }
 
@@ -492,18 +490,28 @@ final class WindowExpressionTest extends TestCase
         $this->connection->select('id')->from('orders')->where(Expression::over('ROW_NUMBER'), '=', 1);
     }
 
+    public function testANamedWindowCallIsRefusedInOrderBy(): void
+    {
+        // A name belongs to the select list. Written into an ORDER BY term it
+        // reads `ORDER BY ROW_NUMBER() OVER (...) AS rn`, which MySQL 8.0 and
+        // MariaDB 10.11 both refuse with 1064.
+        $this->expectException(TypeError::class);
+
+        // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+        $this->connection->select('id')->from('orders')->orderBy([Expression::over('ROW_NUMBER'), 'rn']);
+    }
+
     public function testTheHeldPartsAreReadableForABuilderThatWrapsThem(): void
     {
         // The parts stay reachable rather than being folded into SQL on the
         // way in, so a builder can read back what it was given and hand the
         // same value to the same grammar.
-        $window = Expression::over('SUM', ['amount'], partitions: ['user_id'], alias: 'total');
+        $window = Expression::over('SUM', ['amount'], partitions: ['user_id']);
 
         $this->assertInstanceOf(WindowExpression::class, $window);
         $this->assertSame('SUM', $window->function);
         $this->assertSame(['amount'], $window->arguments);
         $this->assertSame(['user_id'], $window->partitions);
-        $this->assertSame('total', $window->alias);
         $this->assertSame([], $window->orders);
     }
 
@@ -552,7 +560,7 @@ final class WindowExpressionTest extends TestCase
     public function testEveryPartitionIsWrittenNotJustTheFirst(): void
     {
         $compiled = $this->connection
-            ->select(Expression::over('COUNT', ['*'], partitions: ['status', 'user_id'], alias: 'n'))
+            ->select([Expression::over('COUNT', ['*'], partitions: ['status', 'user_id']), 'n'])
             ->from('orders')
             ->compile();
 
@@ -565,12 +573,11 @@ final class WindowExpressionTest extends TestCase
     public function testAnExpressionInThePartitionCarriesItsBindings(): void
     {
         $compiled = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'COUNT',
                 ['*'],
                 partitions: [Expression::of('`amount` > ?', [100])],
-                alias: 'n',
-            ))
+            ), 'n'])
             ->from('orders')
             ->where('status', '=', 'paid')
             ->compile();
@@ -585,12 +592,11 @@ final class WindowExpressionTest extends TestCase
     public function testAnExpressionInTheSortTermsCarriesItsBindings(): void
     {
         $compiled = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'ROW_NUMBER',
                 partitions: ['user_id'],
                 orders: [Expression::of('`amount` * ?', [2])],
-                alias: 'rn',
-            ))
+            ), 'rn'])
             ->from('orders')
             ->where('status', '=', 'paid')
             ->compile();
@@ -611,13 +617,12 @@ final class WindowExpressionTest extends TestCase
         // placeholders appear in. Merging any one of them away, or putting a
         // later group first, pairs the values with the wrong placeholders.
         $compiled = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'NTILE',
                 [4],
                 partitions: [Expression::of('`amount` > ?', [100])],
                 orders: [Expression::of('`amount` * ?', [2])],
-                alias: 'quartile',
-            ))
+            ), 'quartile'])
             ->from('orders')
             ->where('status', '=', 'paid')
             ->compile();
@@ -633,7 +638,7 @@ final class WindowExpressionTest extends TestCase
     public function testTheFunctionNameIsReadWithoutSurroundingSpace(): void
     {
         $compiled = $this->connection
-            ->select(Expression::over('  ROW_NUMBER  ', alias: 'rn'))
+            ->select([Expression::over('  ROW_NUMBER  '), 'rn'])
             ->from('orders')
             ->compile();
 

@@ -39,12 +39,11 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
     public function testBothServersNumberRowsWithinEachPartition(): void
     {
         $rows = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'ROW_NUMBER',
                 partitions: ['status'],
                 orders: ['score' => 'DESC'],
-                alias: 'rn',
-            ))
+            ), 'rn'])
             ->from('users')
             ->orderBy('id')
             ->get();
@@ -59,12 +58,11 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
         // the unit test holds the prefixed spelling, and this holds that the
         // server accepts what that rule produces.
         $rows = $this->connection
-            ->select('id', Expression::over(
+            ->select('id', [Expression::over(
                 'ROW_NUMBER',
                 partitions: ['users.status'],
                 orders: ['users.score' => 'DESC'],
-                alias: 'rn',
-            ))
+            ), 'rn'])
             ->from('users')
             ->orderBy('id')
             ->get();
@@ -75,7 +73,7 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
     public function testAnArgumentBoundInsideACallReachesTheServerAsAValue(): void
     {
         $rows = $this->connection
-            ->select('id', Expression::over('NTILE', [2], orders: ['score'], alias: 'half'))
+            ->select('id', [Expression::over('NTILE', [2], orders: ['score']), 'half'])
             ->from('users')
             ->orderBy('id')
             ->get();
@@ -86,7 +84,7 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
     public function testBothServersTakeTwoArgumentsOfLagButOnlyMysqlTakesAThird(): void
     {
         $twoArguments = $this->connection
-            ->select('id', Expression::over('LAG', ['score', 1], orders: ['id'], alias: 'previous'))
+            ->select('id', [Expression::over('LAG', ['score', 1], orders: ['id']), 'previous'])
             ->from('users')
             ->orderBy('id')
             ->get();
@@ -98,7 +96,7 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
         // outright, so the allowlist does not fix how many arguments a name
         // takes -- doing so would close off what MySQL supports.
         $withDefault = fn (): array => $this->connection
-            ->select('id', Expression::over('LAG', ['score', 1, 0], orders: ['id'], alias: 'previous'))
+            ->select('id', [Expression::over('LAG', ['score', 1, 0], orders: ['id']), 'previous'])
             ->from('users')
             ->orderBy('id')
             ->get();
@@ -115,7 +113,7 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
     public function testOnlyMysqlAggregatesJsonOverAWindow(): void
     {
         $call = fn (): array => $this->connection
-            ->select(Expression::over('JSON_ARRAYAGG', ['score'], partitions: ['status'], alias: 'scores'))
+            ->select([Expression::over('JSON_ARRAYAGG', ['score'], partitions: ['status']), 'scores'])
             ->from('users')
             ->orderBy('id')
             ->get();
@@ -135,7 +133,7 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
     public function testMariadbRoundsTheSpreadItComputesOverAWindow(): void
     {
         $overWindow = $this->connection
-            ->select(Expression::over('STDDEV_SAMP', ['score'], partitions: ['status'], alias: 'spread'))
+            ->select([Expression::over('STDDEV_SAMP', ['score'], partitions: ['status']), 'spread'])
             ->from('users')
             ->orderBy('id')
             ->get();

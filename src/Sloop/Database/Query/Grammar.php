@@ -447,7 +447,7 @@ class Grammar
      * @param  SelectedColumn           $column What to select and the name to return it under
      * @return CompiledSql              The position as written, with the bindings of anything carrying values
      * @throws LogicException           When a statement in the list names no table, or left a group of conditions open
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @throws InvalidArgumentException When an identifier is malformed, or the grammar writes no such window call
      */
     protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
     {
@@ -459,7 +459,9 @@ class Grammar
             return new CompiledSql('(' . $inner->sql . ')' . $name, $inner->bindings);
         }
 
-        $compiled = $this->compileColumnReference($column->source);
+        $compiled = $column->source instanceof WindowExpression
+            ? $this->compileWindow($column->source)
+            : $this->compileColumnReference($column->source);
 
         return new CompiledSql($compiled->sql . $name, $compiled->bindings);
     }
@@ -1357,14 +1359,11 @@ class Grammar
             $bindings = array_merge($bindings, $orderBy->bindings);
         }
 
-        $sql = $this->windowFunction($window->function)
-            . '(' . implode(', ', $arguments) . ') OVER (' . implode(' ', $over) . ')';
-
-        if ($window->alias !== null) {
-            $sql .= ' AS ' . IdentifierQuoter::quoteSegment($window->alias);
-        }
-
-        return new CompiledSql($sql, $bindings);
+        return new CompiledSql(
+            $this->windowFunction($window->function)
+                . '(' . implode(', ', $arguments) . ') OVER (' . implode(' ', $over) . ')',
+            $bindings,
+        );
     }
 
     /**

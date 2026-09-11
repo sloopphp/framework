@@ -27,12 +27,12 @@ final readonly class SelectedColumn
     /**
      * Name one position of the select list.
      *
-     * @param  string|Expression|SubQuery $source Column name, optionally qualified, an expression, or a statement returning one value
-     * @param  string                     $alias  Name to return it under
-     * @throws InvalidArgumentException   When the name is not a single name
+     * @param  string|Expression|SubQuery|WindowExpression $source Column name, optionally qualified, an expression, a statement returning one value, or a window call
+     * @param  string                                      $alias  Name to return it under
+     * @throws InvalidArgumentException                    When the name is not a single name
      */
     public function __construct(
-        public string|Expression|SubQuery $source,
+        public string|Expression|SubQuery|WindowExpression $source,
         public string $alias,
     ) {
         if (\count(IdentifierQuoter::split($alias)) !== 1) {

@@ -133,7 +133,8 @@ class Select extends BuilderWhere
      *
      * A column may be given as a pair of what to select and the name to return
      * it under, written `[$column, $name]`. What stands in the first place may
-     * be a column name, an expression, or a statement returning one value.
+     * be a column name, an expression, a statement returning one value, or a
+     * window call.
      *
      * A window call is checked against the grammar here rather than once the
      * statement is compiled, so a function this grammar does not write says so
@@ -154,8 +155,10 @@ class Select extends BuilderWhere
         $this->columns = array_map(self::toColumn(...), $columns);
 
         foreach ($this->columns as $column) {
-            if ($column instanceof WindowExpression) {
-                $grammar->windowFunction($column->function);
+            $selected = $column instanceof SelectedColumn ? $column->source : $column;
+
+            if ($selected instanceof WindowExpression) {
+                $grammar->windowFunction($selected->function);
             }
         }
     }
@@ -208,9 +211,14 @@ class Select extends BuilderWhere
             );
         }
 
-        if (!\is_string($source) && !$source instanceof Expression && !$source instanceof self) {
+        if (
+            !\is_string($source)
+            && !$source instanceof Expression
+            && !$source instanceof WindowExpression
+            && !$source instanceof self
+        ) {
             throw new InvalidArgumentException(
-                'A named column selects a column name, an Expression, or a statement, got '
+                'A named column selects a column name, an Expression, a window call, or a statement, got '
                 . get_debug_type($source) . '.',
             );
         }

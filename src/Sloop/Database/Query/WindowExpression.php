@@ -17,9 +17,13 @@ use InvalidArgumentException;
  * whoever assembles the string.
  *
  * The function name is checked by a Grammar rather than here, because which
- * calls a server accepts is a property of the dialect. Everything else — the
- * shape of the arguments, the alias — is checked in the constructor, so a value
- * that cannot stand where it was put says so at the line that put it.
+ * calls a server accepts is a property of the dialect. The shape of the
+ * arguments is checked in the constructor, so a value that cannot stand where
+ * it was put says so at the line that put it.
+ *
+ * It carries no name to return the result under. That is given the way any
+ * other column's is, as `[$window, $name]` in the select list, which keeps the
+ * name out of an ORDER BY term where neither server accepts one.
  *
  * @see Expression::over() for the factory that builds one of these
  */
@@ -73,15 +77,13 @@ final readonly class WindowExpression
      * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order
      * @param  array<int|string, mixed> $partitions Columns to divide the rows by
      * @param  array<int|string, mixed> $orders     Order instances deciding the order within a partition
-     * @param  string|null              $alias      Name to read the result under, or null for none
-     * @throws InvalidArgumentException When the function name is empty, a list is not one, an element cannot stand where it is, or the alias is qualified
+     * @throws InvalidArgumentException When the function name is empty, a list is not one, or an element cannot stand where it is
      */
     public function __construct(
         string $function,
         array $arguments = [],
         array $partitions = [],
         array $orders = [],
-        public ?string $alias = null,
     ) {
         $this->function = trim($function);
 
@@ -92,12 +94,6 @@ final readonly class WindowExpression
         $this->arguments  = self::toArguments($arguments);
         $this->partitions = self::toPartitions($partitions);
         $this->orders     = self::toOrders($orders);
-
-        if ($alias !== null && \count(IdentifierQuoter::split($alias)) !== 1) {
-            throw new InvalidArgumentException(
-                'An alias is one name, so it cannot be qualified, got ' . $alias . '.',
-            );
-        }
     }
 
     /**

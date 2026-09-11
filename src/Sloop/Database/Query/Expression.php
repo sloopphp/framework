@@ -133,24 +133,23 @@ final readonly class Expression
      *
      * Unlike the other factories here this returns a WindowExpression, since
      * what it describes is resolved when the statement is compiled rather than
-     * held as finished SQL.
+     * held as finished SQL. The name to read the result under is given where it
+     * is selected, as `[$window, $name]`.
      *
      * @param  string                   $function   Name of the window function, in any case
      * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order
      * @param  array<int|string, mixed> $partitions Columns to divide the rows by before the function runs
      * @param  array<int|string, mixed> $orders     Sort terms within a partition, as column or column => direction
-     * @param  string|null              $alias      Name to read the result under, or null for none
      * @return WindowExpression         The call, with its columns left for a Grammar to quote
-     * @throws InvalidArgumentException When the function name is empty, an element cannot stand where it is, a direction names none, or the alias is qualified
+     * @throws InvalidArgumentException When the function name is empty, an element cannot stand where it is, or a direction names none
      */
     public static function over(
         string $function,
         array $arguments = [],
         array $partitions = [],
         array $orders = [],
-        ?string $alias = null,
     ): WindowExpression {
-        return new WindowExpression($function, $arguments, $partitions, self::toOrders($orders), $alias);
+        return new WindowExpression($function, $arguments, $partitions, self::toOrders($orders));
     }
 
     /**
