@@ -103,6 +103,57 @@ class Grammar
     ];
 
     /**
+     * Window functions this grammar writes, in the spelling it writes them.
+     *
+     * The name of a call reaches the SQL as it is spelled here, so — as with
+     * the comparison operators — the set is fixed rather than taken from the
+     * caller: a column picked from a request cannot turn into a function name
+     * that carries SQL of its own.
+     *
+     * These are the calls MySQL documents as taking an OVER clause: the eleven
+     * window functions, and the aggregates whose syntax admits one.
+     * GROUP_CONCAT() is not among them, and both servers refuse it over a
+     * window (1235), so it is left out rather than passed on to fail there.
+     * How many arguments each takes is not fixed here, because the servers
+     * disagree — MariaDB 10.11 refuses the third argument of LAG() and LEAD()
+     * that MySQL accepts, and refuses the JSON aggregates over a window
+     * entirely. Writing the call and letting the server answer keeps what one
+     * server supports from being closed off by the other.
+     *
+     * @var list<string>
+     */
+    private const array WINDOW_FUNCTIONS = [
+        'CUME_DIST',
+        'DENSE_RANK',
+        'FIRST_VALUE',
+        'LAG',
+        'LAST_VALUE',
+        'LEAD',
+        'NTH_VALUE',
+        'NTILE',
+        'PERCENT_RANK',
+        'RANK',
+        'ROW_NUMBER',
+        'AVG',
+        'BIT_AND',
+        'BIT_OR',
+        'BIT_XOR',
+        'COUNT',
+        'JSON_ARRAYAGG',
+        'JSON_OBJECTAGG',
+        'MAX',
+        'MIN',
+        'STD',
+        'STDDEV',
+        'STDDEV_POP',
+        'STDDEV_SAMP',
+        'SUM',
+        'VAR_POP',
+        'VAR_SAMP',
+        'VARIANCE',
+    ];
+
+    /**
      * Build a grammar for a connection.
      *
      * @param  string                   $prefix Prepended to every table name; empty for none
@@ -358,10 +409,10 @@ class Grammar
     /**
      * Compile the select list.
      *
-     * @param  list<string|Expression|SelectedColumn> $columns Columns to select; empty selects everything
-     * @return CompiledSql                            Select list and the bindings of anything in it that carries values
-     * @throws LogicException                         When a statement in the list names no table, or left a group of conditions open
-     * @throws InvalidArgumentException               When an identifier is malformed
+     * @param  list<string|Expression|SelectedColumn|WindowExpression> $columns Columns to select; empty selects everything
+     * @return CompiledSql                                             Select list and the bindings of anything in it that carries values
+     * @throws LogicException                                          When a statement in the list names no table, or left a group of conditions open
+     * @throws InvalidArgumentException                                When an identifier is malformed
      */
     protected function compileColumns(array $columns): CompiledSql
     {
@@ -373,9 +424,11 @@ class Grammar
         $bindings = [];
 
         foreach ($columns as $column) {
-            $compiled = $column instanceof SelectedColumn
-                ? $this->compileSelectedColumn($column)
-                : $this->compileColumnReference($column, allowEveryColumn: true);
+            $compiled = match (true) {
+                $column instanceof SelectedColumn   => $this->compileSelectedColumn($column),
+                $column instanceof WindowExpression => $this->compileWindow($column),
+                default                             => $this->compileColumnReference($column, allowEveryColumn: true),
+            };
             $parts[]  = $compiled->sql;
             $bindings = array_merge($bindings, $compiled->bindings);
         }
@@ -394,7 +447,7 @@ class Grammar
      * @param  SelectedColumn           $column What to select and the name to return it under
      * @return CompiledSql              The position as written, with the bindings of anything carrying values
      * @throws LogicException           When a statement in the list names no table, or left a group of conditions open
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @throws InvalidArgumentException When an identifier is malformed, or the grammar writes no such window call
      */
     protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
     {
@@ -406,7 +459,9 @@ class Grammar
             return new CompiledSql('(' . $inner->sql . ')' . $name, $inner->bindings);
         }
 
-        $compiled = $this->compileColumnReference($column->source);
+        $compiled = $column->source instanceof WindowExpression
+            ? $this->compileWindow($column->source)
+            : $this->compileColumnReference($column->source);
 
         return new CompiledSql($compiled->sql . $name, $compiled->bindings);
     }
@@ -772,6 +827,51 @@ class Grammar
     }
 
     /**
+     * Names of the window functions this grammar writes.
+     *
+     * A subclass adds one by returning it alongside these — a server-specific
+     * call, or one added by a later version. What it adds is written into the
+     * SQL as spelled and is trusted the same way the framework's own names
+     * are, so a name taken from a request never belongs here.
+     *
+     * Names are matched upper-cased, so list them upper-case: one listed in
+     * any other case cannot be reached through a builder.
+     *
+     * @return list<string> Function names in the spelling they are written with
+     */
+    protected function windowFunctions(): array
+    {
+        return self::WINDOW_FUNCTIONS;
+    }
+
+    /**
+     * Read the name of a window function, refusing one this grammar does not write.
+     *
+     * A builder calls this when a window expression is handed to it, so a name
+     * this grammar cannot write says so at the line that named it rather than
+     * once the statement is compiled.
+     *
+     * @param  string                   $function Name of the call, in any case
+     * @return string                   The name in the spelling this grammar writes
+     * @throws InvalidArgumentException When this grammar writes no such call
+     */
+    public function windowFunction(string $function): string
+    {
+        $wanted = strtoupper($function);
+
+        foreach ($this->windowFunctions() as $known) {
+            if ($known === $wanted) {
+                return $known;
+            }
+        }
+
+        throw new InvalidArgumentException(
+            'This grammar writes no window function called ' . $function
+            . '. Add it by overriding windowFunctions().',
+        );
+    }
+
+    /**
      * Build one comparison, refusing an operator this grammar does not write.
      *
      * The operator is matched without regard to case and kept in the spelling
@@ -1117,7 +1217,9 @@ class Grammar
         $bindings = [];
 
         foreach ($orders as $order) {
-            $column   = $this->compileColumnReference($order->column);
+            $column   = $order->column instanceof WindowExpression
+                ? $this->compileWindow($order->column)
+                : $this->compileColumnReference($order->column);
             $parts[]  = $column->sql . ($order->direction === null ? '' : ' ' . $order->direction->value);
             $bindings = array_merge($bindings, $column->bindings);
         }
@@ -1186,6 +1288,82 @@ class Grammar
         return $column instanceof Expression
             ? new CompiledSql($column->sql(), $column->bindings())
             : new CompiledSql($this->quoteIdentifier($column, $allowEveryColumn));
+    }
+
+    /**
+     * Compile one window function call.
+     *
+     * The columns named in the call are quoted here rather than by whoever
+     * built the expression, which is what puts them under the same prefix rule
+     * as any other column reference. Arguments are read by type: a string names
+     * a column, an Expression stands as written, and anything else is bound.
+     *
+     * `*` stands only as the sole argument of a call — `COUNT(*)` — since that
+     * is the one place a window function reads it as every column rather than
+     * as a name.
+     *
+     * The function name is looked up again here even though a builder checked
+     * it when it took the expression: a spec can be handed to a grammar without
+     * passing through one, and this is where the name reaches the SQL.
+     *
+     * @param  WindowExpression         $window Call to write
+     * @return CompiledSql              The call with its OVER clause, and the bindings its arguments need
+     * @throws InvalidArgumentException When the grammar writes no such call, or an identifier in it is malformed
+     */
+    protected function compileWindow(WindowExpression $window): CompiledSql
+    {
+        $arguments = [];
+        $bindings  = [];
+        $single    = \count($window->arguments) === 1;
+
+        foreach ($window->arguments as $argument) {
+            if (\is_string($argument)) {
+                $arguments[] = $this->quoteIdentifier($argument, allowEveryColumn: $single);
+
+                continue;
+            }
+
+            if ($argument instanceof Expression) {
+                $arguments[] = $argument->sql();
+                $bindings    = array_merge($bindings, $argument->bindings());
+
+                continue;
+            }
+
+            $arguments[] = '?';
+            $bindings[]  = $argument;
+        }
+
+        $over = [];
+
+        if ($window->partitions !== []) {
+            $partitions = [];
+
+            foreach ($window->partitions as $partition) {
+                $compiled     = $this->compileColumnReference($partition);
+                $partitions[] = $compiled->sql;
+                $bindings     = array_merge($bindings, $compiled->bindings);
+            }
+
+            $over[] = 'PARTITION BY ' . implode(', ', $partitions);
+        }
+
+        if ($window->orders !== []) {
+            // Written by compileOrderBy() so that a window sorts by the same
+            // rules a statement does, including how a subclass may have changed
+            // them. What that returns leads with the space that separates it
+            // from the clause before it, which inside the parentheses here has
+            // nothing to separate it from.
+            $orderBy  = $this->compileOrderBy($window->orders);
+            $over[]   = ltrim($orderBy->sql);
+            $bindings = array_merge($bindings, $orderBy->bindings);
+        }
+
+        return new CompiledSql(
+            $this->windowFunction($window->function)
+                . '(' . implode(', ', $arguments) . ') OVER (' . implode(' ', $over) . ')',
+            $bindings,
+        );
     }
 
     /**

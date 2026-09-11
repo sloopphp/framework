@@ -19,7 +19,10 @@ use InvalidArgumentException;
  * SQL text passed to `of()` is taken as-is.
  *
  * Columns are quoted by IdentifierQuoter, the same way a query builder quotes
- * the ones it is given.
+ * the ones it is given. That quoting does not carry the table prefix, which is
+ * why `over()` is the exception here: it returns a WindowExpression, whose
+ * columns a Grammar resolves when the statement is compiled and so reach the
+ * prefix the way any other column reference does.
  */
 final readonly class Expression
 {
@@ -110,6 +113,46 @@ final readonly class Expression
     }
 
     /**
+     * Build a window function call, such as `ROW_NUMBER() OVER (PARTITION BY ...)`.
+     *
+     * Everything here is named rather than written as SQL, so a Grammar quotes
+     * the columns and reaches them with the table prefix. That is the
+     * difference from writing the same call through `of()`, where the text is
+     * embedded as it stands and both are the caller's problem.
+     *
+     * Arguments tell columns from values apart by type: a string names a
+     * column, an Expression is written as it stands, and anything else is
+     * bound. `$orders` takes a column name for each term, with a direction
+     * where a string key gives one — `['score' => 'DESC', 'id']` sorts by score
+     * descending and then by id ascending. An Expression stands as a term of
+     * its own and carries no direction, since its SQL already says how it
+     * sorts. A direction written anywhere but as the value under its own
+     * column is refused, since it would otherwise sort by a column of that
+     * name; a column whose name is written in digits therefore takes its
+     * direction as an Expression, PHP reading such a key as an integer.
+     *
+     * Unlike the other factories here this returns a WindowExpression, since
+     * what it describes is resolved when the statement is compiled rather than
+     * held as finished SQL. The name to read the result under is given where it
+     * is selected, as `[$window, $name]`.
+     *
+     * @param  string                   $function   Name of the window function, in any case
+     * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order
+     * @param  array<int|string, mixed> $partitions Columns to divide the rows by before the function runs
+     * @param  array<int|string, mixed> $orders     Sort terms within a partition, as column or column => direction
+     * @return WindowExpression         The call, with its columns left for a Grammar to quote
+     * @throws InvalidArgumentException When the function name is empty, an element cannot stand where it is, or a direction names none
+     */
+    public static function over(
+        string $function,
+        array $arguments = [],
+        array $partitions = [],
+        array $orders = [],
+    ): WindowExpression {
+        return new WindowExpression($function, $arguments, $partitions, self::toOrders($orders));
+    }
+
+    /**
      * Build `` `column` + n ``, so the column is read and written in one statement.
      *
      * Unlike a read-then-write in PHP, this cannot lose a concurrent update.
@@ -160,6 +203,71 @@ final readonly class Expression
     public function bindings(): array
     {
         return $this->bindings;
+    }
+
+    /**
+     * Read the sort terms of a window as the Order instances a Grammar reads.
+     *
+     * A string key names the column and the value gives its direction; an
+     * integer key means the value is the column and it sorts ascending, or an
+     * Expression whose SQL already carries one. That lets the common case stay
+     * a plain list of names while a term that needs DESC says so next to the
+     * column it applies to.
+     *
+     * @param  array<int|string, mixed> $orders Sort terms as the caller gave them
+     * @return list<Order>              Sort terms in written order
+     * @throws InvalidArgumentException When a column is not a name or an expression, or a direction names none
+     */
+    private static function toOrders(array $orders): array
+    {
+        $list = [];
+
+        foreach ($orders as $key => $value) {
+            if (\is_string($key)) {
+                if (!\is_string($value)) {
+                    throw new InvalidArgumentException(
+                        'A sort direction is written as a string, got ' . get_debug_type($value)
+                        . ' for ' . $key . '.',
+                    );
+                }
+
+                $list[] = new Order($key, Direction::fromKeyword($value));
+
+                continue;
+            }
+
+            if (!\is_string($value) && !$value instanceof self) {
+                // Counted from the start of the list rather than reported under
+                // the key it was given, because the keys here are what tells a
+                // column from a column-and-direction: an integer one carries no
+                // meaning of its own and would send the reader looking for a
+                // position that is not the one they wrote.
+                throw new InvalidArgumentException(
+                    'A sort term names a column or is an Expression, got '
+                    . get_debug_type($value) . ' at index ' . \count($list) . '.',
+                );
+            }
+
+            // Reaching here means a direction was written where the column
+            // goes, which happens three ways: as the value under a numeric
+            // string key, which PHP turns into an integer one; as the value
+            // after the column in a flat list; or on its own. None of them
+            // sorts the way it reads -- all three would sort by a column named
+            // ASC or DESC -- so the term says so instead.
+            if (\is_string($value) && Direction::tryFrom(strtoupper($value)) !== null) {
+                throw new InvalidArgumentException(
+                    'A sort direction stands where a column is named, got "' . $value
+                    . '". Write the direction as the value under the column it applies to,'
+                    . ' or the whole term as an Expression.',
+                );
+            }
+
+            // An Expression already says how it sorts, so no direction is
+            // appended to it -- the same rule orderByRaw() follows.
+            $list[] = $value instanceof self ? new Order($value, null) : new Order($value);
+        }
+
+        return $list;
     }
 
     /**

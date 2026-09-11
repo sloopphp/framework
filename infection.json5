@@ -55,7 +55,7 @@
             // same string. The cast states the intent that the branch and the
             // Expression branch both yield SQL text, so it stays in the source.
             "ignore": [
-                "Sloop\\Database\\Query\\Expression::elt::103"
+                "Sloop\\Database\\Query\\Expression::elt::106"
             ]
         },
         "IncrementInteger": {
@@ -82,14 +82,14 @@
                 // millisecond. Observing that requires timing the call. Pinned
                 // to the parameter's line because other integer literals in the
                 // same method are killable.
-                "Sloop\\Database\\Connection::transaction::963",
+                "Sloop\\Database\\Connection::transaction::964",
                 // Expression::placeholders builds the placeholder list with
                 // `array_fill(0, $count, '?')` and only ever implodes the
                 // result. The start index decides the array keys, which implode
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::202"
+                "Sloop\\Database\\Query\\Expression::placeholders::310"
             ]
         },
         "DecrementInteger": {
@@ -118,7 +118,7 @@
                 "Sloop\\Error\\SloopException::__construct::62",
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
-                "Sloop\\Database\\Query\\Expression::placeholders::202"
+                "Sloop\\Database\\Query\\Expression::placeholders::310"
             ]
         },
         "GreaterThan": {
@@ -233,14 +233,14 @@
                 // so only the work differs. Pinned to the line because the
                 // method's other return is killable. Same shape as the two
                 // Str cache hits above.
-                "Sloop\\Database\\ConnectionManager::resolvePool::644",
+                "Sloop\\Database\\ConnectionManager::resolvePool::645",
                 // Connection::castRow returns the row untouched when no column
                 // is converted. Falling through walks the same row and copies
                 // every value across unchanged, because the isset() on an empty
                 // cast map is false for every column, so the array that comes
                 // out is equal to the one that went in. Pinned to the line
                 // because the method's other return is killable.
-                "Sloop\\Database\\Connection::castRow::610",
+                "Sloop\\Database\\Connection::castRow::611",
                 // Connection::castForColumn returns early when the driver
                 // reports no native type for the column. Falling through
                 // compares that missing type against DATE, DATETIME,
@@ -250,7 +250,7 @@
                 // suite uses, across all three presets: 30 of 30 agree.
                 // Pinned to the line because the method's other return is
                 // killable.
-                "Sloop\\Database\\Connection::castForColumn::584",
+                "Sloop\\Database\\Connection::castForColumn::585",
                 // Route::compilePattern returns early for patterns without a
                 // placeholder. Falling through compiles a regex that match()
                 // never consults, because it short-circuits on an empty

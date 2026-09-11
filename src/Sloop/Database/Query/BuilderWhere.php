@@ -486,14 +486,40 @@ abstract class BuilderWhere extends Builder
      * enum: the enum names the values a Grammar writes and is internal to that
      * seam, so it is not part of what a caller has to reach for.
      *
+     * An Expression is sorted by as it stands and takes no direction, which is
+     * the rule Order states and orderByRaw() follows: text that already says
+     * how it sorts would otherwise be written `... DESC ASC`, which neither
+     * server accepts. Naming one alongside an Expression is therefore refused
+     * rather than dropped — on an UPDATE or DELETE the sort decides which rows
+     * a row limit reaches, so a direction that goes unwritten addresses a
+     * different set than the caller asked for. Omitting it is what leaves the
+     * Expression to say how it sorts.
+     *
      * @param  string|Expression        $column    Column to sort by, or an expression producing the sort key
-     * @param  string                   $direction Sort direction as the SQL keyword, in any case
+     * @param  string                   $direction Sort direction as the SQL keyword, in any case; not to be given with an Expression
      * @return static                   This builder
-     * @throws InvalidArgumentException When the direction is neither ASC nor DESC
+     * @throws InvalidArgumentException When the direction is neither ASC nor DESC, or when one is given for an Expression
      */
     public function orderBy(string|Expression $column, string $direction = 'ASC'): static
     {
-        $this->orders[] = new Order($column, self::toDirection($direction));
+        // Read even where it is not written, so that a direction naming neither
+        // ASC nor DESC is refused the same way whatever the column is.
+        $read = Direction::fromKeyword($direction);
+
+        if ($column instanceof Expression) {
+            if (\func_num_args() > 1) {
+                throw new InvalidArgumentException(
+                    'A sort term written as SQL says how it sorts, so it takes no direction, got "'
+                    . $direction . '". Write the direction into the Expression instead.',
+                );
+            }
+
+            $this->orders[] = new Order($column, null);
+
+            return $this;
+        }
+
+        $this->orders[] = new Order($column, $read);
 
         return $this;
     }
@@ -947,20 +973,5 @@ abstract class BuilderWhere extends Builder
         }
 
         return $this->grammar->comparison($column, $operator, $value, $conjunction);
-    }
-
-    /**
-     * Read a sort direction from the SQL keyword.
-     *
-     * @param  string                   $direction Direction as ASC / DESC in any case
-     * @return Direction                The direction as the enum a Grammar reads
-     * @throws InvalidArgumentException When the keyword names no direction
-     */
-    private static function toDirection(string $direction): Direction
-    {
-        return Direction::tryFrom(strtoupper($direction))
-            ?? throw new InvalidArgumentException(
-                'A sort direction is ASC or DESC, got "' . $direction . '".',
-            );
     }
 }

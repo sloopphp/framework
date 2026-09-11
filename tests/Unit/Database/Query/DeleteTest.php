@@ -90,7 +90,7 @@ final class DeleteTest extends TestCase
             ->where('status', 'blocked')
             ->orderBy(Expression::of('ABS(id - ?)', [5]));
 
-        $this->assertSame('DELETE FROM `users` WHERE `status` = ? ORDER BY ABS(id - ?) ASC', $delete->toSql());
+        $this->assertSame('DELETE FROM `users` WHERE `status` = ? ORDER BY ABS(id - ?)', $delete->toSql());
         $this->assertSame(['blocked', 5], $delete->toBindings());
     }
 

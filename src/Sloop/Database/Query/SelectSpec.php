@@ -24,7 +24,7 @@ final readonly class SelectSpec
     /**
      * Columns to select; an empty list selects everything.
      *
-     * @var list<string|Expression|SelectedColumn>
+     * @var list<string|Expression|SelectedColumn|WindowExpression>
      */
     public array $columns;
 
@@ -67,7 +67,7 @@ final readonly class SelectSpec
      * Describe one SELECT statement.
      *
      * @param  string|TableSource       $from       Table to select from, optionally schema qualified, or what to read from with its alias, which may be a statement
-     * @param  array<int|string, mixed> $columns    Column names, Expressions, or SelectedColumn instances; empty selects everything
+     * @param  array<int|string, mixed> $columns    Column names, Expressions, window calls, or SelectedColumn instances; empty selects everything
      * @param  array<int|string, mixed> $joins      Join instances, in the order they are written
      * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
      * @param  array<int|string, mixed> $groupings  Column names or Expressions for the GROUP BY clause
@@ -115,18 +115,27 @@ final readonly class SelectSpec
      * under arrives with that name already checked, since SelectedColumn takes
      * it apart where it was given.
      *
-     * @param  array<int|string, mixed>               $columns Column names, Expressions, or SelectedColumn instances
-     * @return list<string|Expression|SelectedColumn> Columns as a list
-     * @throws InvalidArgumentException               When an element is none of those
+     * A window function stands here and nowhere else a column reference is
+     * read: the servers compute one after the rows are grouped and filtered, so
+     * it has no meaning in GROUP BY or WHERE and is kept out of them by type.
+     *
+     * @param  array<int|string, mixed>                                $columns Column names, Expressions, window calls, or SelectedColumn instances
+     * @return list<string|Expression|SelectedColumn|WindowExpression> Columns as a list
+     * @throws InvalidArgumentException                                When an element is none of those
      */
     private static function toColumns(array $columns): array
     {
         $selected = [];
 
         foreach (array_values($columns) as $index => $column) {
-            if (!\is_string($column) && !$column instanceof Expression && !$column instanceof SelectedColumn) {
+            if (
+                !\is_string($column)
+                && !$column instanceof Expression
+                && !$column instanceof WindowExpression
+                && !$column instanceof SelectedColumn
+            ) {
                 throw new InvalidArgumentException(
-                    'Columns must be a string, an Expression, or a SelectedColumn, got '
+                    'Columns must be a string, an Expression, a window call, or a SelectedColumn, got '
                     . get_debug_type($column) . ' at index ' . $index . '.',
                 );
             }

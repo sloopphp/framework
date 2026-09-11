@@ -255,7 +255,7 @@ final class SelectColumnAliasTest extends TestCase
         );
 
         $this->assertSame(
-            'A named column selects a column name, an Expression, or a statement, got int.',
+            'A named column selects a column name, an Expression, a window call, or a statement, got int.',
             $thrown->getMessage(),
         );
     }

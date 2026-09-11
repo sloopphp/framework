@@ -133,7 +133,7 @@ final class SelectSpecTest extends TestCase
     public function testRejectsAColumnThatIsNotSelectable(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Columns must be a string, an Expression, or a SelectedColumn, got int at index 1.');
+        $this->expectExceptionMessageIsOrContains('Columns must be a string, an Expression, a window call, or a SelectedColumn, got int at index 1.');
 
         new SelectSpec(from: 'users', columns: ['id', 42]);
     }
@@ -183,7 +183,7 @@ final class SelectSpecTest extends TestCase
     public function testReportsTheColumnPositionNotTheOriginalKey(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Columns must be a string, an Expression, or a SelectedColumn, got int at index 1.');
+        $this->expectExceptionMessageIsOrContains('Columns must be a string, an Expression, a window call, or a SelectedColumn, got int at index 1.');
 
         new SelectSpec(from: 'users', columns: [5 => 'id', 9 => 42]);
     }
