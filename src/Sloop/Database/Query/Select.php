@@ -1112,7 +1112,7 @@ class Select extends BuilderWhere
      * @param  WherePart|null                                                           $alsoWhere Condition on the combined rows, or null for none
      * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                           When the statement holds a lock, a statement sorts inside its parentheses without a limit, the combined rows are sorted by a column with its table in front, or one added names no table or left a group of conditions open
+     * @throws LogicException                                                           When the statement holds a lock, a statement sorts inside its parentheses without a limit, or one added names no table or left a group of conditions open
      * @throws InvalidArgumentException                                                 When an identifier is malformed or a row window is inconsistent
      */
     private function compileOverUnion(
