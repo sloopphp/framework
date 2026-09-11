@@ -9,6 +9,7 @@ use PDO;
 use PDOStatement;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
+use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Select;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -198,6 +199,76 @@ final class SelectUnionTest extends TestCase
                 . ' written after the last parenthesis, MariaDB refuses it and MySQL takes it.'
                 . ' Drop the forUpdate()/sharedLock() call.',
             $e->getMessage(),
+        );
+    }
+
+    public function testSortingTheCombinedRowsByAQualifiedColumnIsRefused(): void
+    {
+        $select = $this->users()->union($this->admins())->orderBy('users.id');
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $select->toSql());
+
+        $this->assertSame(
+            'The combined rows belong to no table, so they are sorted by the name a column comes back'
+                . ' under; both servers refuse "users.id" there. Sort by the column name'
+                . ' alone, or by the name given with [$column, $name].',
+            $e->getMessage(),
+        );
+    }
+
+    public function testAShortcutSortingTheCombinedRowsByAQualifiedColumnIsRefused(): void
+    {
+        $select = $this->users()->union($this->admins())->orderBy('users.id');
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $select->value('id'));
+
+        $this->assertStringContainsString('both servers refuse "users.id" there', $e->getMessage());
+        $this->assertSame([], $this->prepared);
+    }
+
+    public function testAQualifiedSortInsideTheFirstStatementIsLeftAlone(): void
+    {
+        $select = $this->users()->orderBy('users.id')->limit(1)->union($this->admins());
+
+        $this->assertSame(
+            '(SELECT `id` FROM `users` ORDER BY `users`.`id` ASC LIMIT 1) UNION (SELECT `id` FROM `admins`)',
+            $select->toSql(),
+        );
+    }
+
+    public function testAWindowCallCannotSortTheCombinedRows(): void
+    {
+        $select = $this->users()
+            ->union($this->admins())
+            ->orderBy(Expression::over('ROW_NUMBER', orders: ['id' => 'DESC']));
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $select->toSql());
+
+        $this->assertSame(
+            'A window call cannot sort the combined rows: both servers refuse one after the last'
+                . ' parenthesis. Select it in each statement under a name with [$call, $name], and sort'
+                . ' by that name after union().',
+            $e->getMessage(),
+        );
+    }
+
+    public function testAShortcutMaySortTheCombinedRowsByAWindowCall(): void
+    {
+        // Written on the statement reading the combined rows, where both
+        // servers take it.
+        $this->results = [[['id' => 5]]];
+
+        $this->users()
+            ->union($this->admins())
+            ->orderBy(Expression::over('ROW_NUMBER', orders: ['id' => 'DESC']))
+            ->value('id');
+
+        $this->assertSame(
+            [
+                'SELECT `id` FROM (' . $this->combined() . ') AS `sloop_union`'
+                    . ' ORDER BY ROW_NUMBER() OVER (ORDER BY `id` DESC) ASC LIMIT 1',
+            ],
+            $this->prepared,
         );
     }
 

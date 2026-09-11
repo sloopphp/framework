@@ -6,6 +6,7 @@ namespace Sloop\Tests\Integration\Database;
 
 use ArrayObject;
 use Sloop\Database\Exception\QueryException;
+use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Result;
 use Sloop\Tests\Support\ThrowsAssertions;
@@ -250,18 +251,24 @@ final class SelectUnionTest extends TransactionalIntegrationTestCase
         $this->assertSame(1060, $thrown->driverCode);
     }
 
-    public function testSortingTheCombinedRowsByAQualifiedColumnIsRefusedByTheServer(): void
+    public function testAWindowCallNamedInEachStatementSortsTheCombinedRows(): void
     {
-        // The combined rows belong to no table, so both servers refuse the
-        // table in front of the column, with the same code.
-        $select = $this->connection->select('users.id')
+        // The way round the window call the combined sort refuses: each
+        // statement selects it under the same name, and the sort reads the name.
+        $numbered = [Expression::over('ROW_NUMBER', orders: ['id' => 'DESC']), 'rn'];
+
+        $rows = $this->connection->select('id', $numbered)
             ->from('users')
-            ->union($this->usersWithAPost())
-            ->orderBy('users.id');
+            ->where('status', 'active')
+            ->unionAll($this->connection->select('id', $numbered)->from('users')->where('status', 'blocked'))
+            ->orderBy('rn')
+            ->orderBy('id')
+            ->get();
 
-        $thrown = $this->assertThrows(QueryException::class, static fn () => $select->get());
-
-        $this->assertSame(1250, $thrown->driverCode);
+        $this->assertSame(
+            [['id' => 2, 'rn' => 1], ['id' => 3, 'rn' => 1], ['id' => 1, 'rn' => 2]],
+            $rows,
+        );
     }
 
     public function testStatementsReadingDifferentNumbersOfColumnsAreRefusedByTheServer(): void
