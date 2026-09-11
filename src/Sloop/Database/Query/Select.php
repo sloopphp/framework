@@ -468,6 +468,36 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Sort by a column, by an expression producing the sort key, or by a window call.
+     *
+     * A window call is taken here and not by UPDATE or DELETE, which keep the
+     * narrower type they inherit: both servers refuse one in the ORDER BY of
+     * either statement (MySQL 3593, MariaDB 4015).
+     *
+     * A window call is checked against the grammar here rather than once the
+     * statement is compiled, so a function this grammar does not write says so
+     * at the line that named it.
+     *
+     * @param  string|Expression|WindowExpression $column    Column to sort by, an expression producing the sort key, or a window call
+     * @param  string                             $direction Sort direction as the SQL keyword, in any case; not to be given with an Expression
+     * @return static                             This builder
+     * @throws InvalidArgumentException           When the direction is neither ASC nor DESC, when one is given for an Expression, or when the grammar writes no such window function
+     */
+    public function orderBy(string|Expression|WindowExpression $column, string $direction = 'ASC'): static
+    {
+        if (!$column instanceof WindowExpression) {
+            // Forwarded with the same number of arguments, since the parent
+            // refuses a direction given alongside an Expression by counting them.
+            return \func_num_args() > 1 ? parent::orderBy($column, $direction) : parent::orderBy($column);
+        }
+
+        $this->grammar->windowFunction($column->function);
+        $this->orders[] = new Order($column, Direction::fromKeyword($direction));
+
+        return $this;
+    }
+
+    /**
      * Fold the matching rows into one row per distinct set of these terms.
      *
      * The terms are added to whatever earlier calls collected, so grouping by

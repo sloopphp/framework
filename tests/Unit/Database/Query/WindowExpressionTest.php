@@ -490,6 +490,24 @@ final class WindowExpressionTest extends TestCase
         $this->connection->select('id')->from('orders')->where(Expression::over('ROW_NUMBER'), '=', 1);
     }
 
+    public function testAWindowCallIsRefusedInTheOrderByOfAnUpdate(): void
+    {
+        // MySQL 8.0 answers 3593 and MariaDB 10.11 answers 4015 for a window
+        // call in the ORDER BY of an UPDATE or a DELETE, so only a SELECT takes one.
+        $this->expectException(TypeError::class);
+
+        // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+        $this->connection->update('orders')->orderBy(Expression::over('ROW_NUMBER'));
+    }
+
+    public function testAWindowCallIsRefusedInTheOrderByOfADelete(): void
+    {
+        $this->expectException(TypeError::class);
+
+        // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+        $this->connection->delete('orders')->orderBy(Expression::over('ROW_NUMBER'));
+    }
+
     public function testANamedWindowCallIsRefusedInOrderBy(): void
     {
         // A name belongs to the select list. Written into an ORDER BY term it

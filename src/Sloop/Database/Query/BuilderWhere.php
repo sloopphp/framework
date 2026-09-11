@@ -480,7 +480,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Sort by a column, by an expression producing the sort key, or by a window call.
+     * Sort by a column, or by an expression producing the sort key.
      *
      * The direction is taken as the SQL keyword rather than as the Direction
      * enum: the enum names the values a Grammar writes and is internal to that
@@ -495,21 +495,13 @@ abstract class BuilderWhere extends Builder
      * different set than the caller asked for. Omitting it is what leaves the
      * Expression to say how it sorts.
      *
-     * A window call is checked against the grammar here rather than once the
-     * statement is compiled, so a function this grammar does not write says so
-     * at the line that named it.
-     *
-     * @param  string|Expression|WindowExpression $column    Column to sort by, an expression producing the sort key, or a window call
-     * @param  string                             $direction Sort direction as the SQL keyword, in any case; not to be given with an Expression
-     * @return static                             This builder
-     * @throws InvalidArgumentException           When the direction is neither ASC nor DESC, when one is given for an Expression, or when the grammar writes no such window function
+     * @param  string|Expression        $column    Column to sort by, or an expression producing the sort key
+     * @param  string                   $direction Sort direction as the SQL keyword, in any case; not to be given with an Expression
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the direction is neither ASC nor DESC, or when one is given for an Expression
      */
-    public function orderBy(string|Expression|WindowExpression $column, string $direction = 'ASC'): static
+    public function orderBy(string|Expression $column, string $direction = 'ASC'): static
     {
-        if ($column instanceof WindowExpression) {
-            $this->grammar->windowFunction($column->function);
-        }
-
         // Read even where it is not written, so that a direction naming neither
         // ASC nor DESC is refused the same way whatever the column is.
         $read = Direction::fromKeyword($direction);
