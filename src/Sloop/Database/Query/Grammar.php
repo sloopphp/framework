@@ -661,8 +661,9 @@ class Grammar
      * Compile the SET clause.
      *
      * A value is bound wherever it can be, so what a column is set to is read
-     * as a value and never as SQL. An Expression is written out instead, which
-     * is what lets a column be set from what it already holds.
+     * as a value and never as SQL. An Expression is written out as the caller
+     * spelled it, and a ColumnName is quoted as the column it names, which is
+     * how a column is set from what another one holds.
      *
      * Null is written as a bound value rather than refused: setting a column to
      * NULL is what the statement is for, unlike a comparison against one, where
