@@ -220,6 +220,28 @@ final class SelectCommonTableTest extends TestCase
         );
     }
 
+    public function testAClauseGivenToANamedStatementAfterwardsIsRefusedWhenTheClauseIsWritten(): void
+    {
+        // The same asymmetry the union path had: the statement is held rather
+        // than copied, so what it carries is read where the SQL is written.
+        $body   = $this->connection->select('id')->from('posts');
+        $select = $this->connection->select('id')->from('recent')->with('recent', $body);
+
+        $body->with('nested', $this->connection->select('id')->from('users'));
+
+        $error = $this->assertThrows(
+            LogicException::class,
+            static fn (): string => $select->toSql(),
+        );
+
+        $this->assertSame(
+            'A statement named in a WITH clause carries no WITH clause of its own, and one was given to'
+            . ' recent after it was named. Name what it declares in this clause instead, where the'
+            . ' rest of the statement can read it too.',
+            $error->getMessage(),
+        );
+    }
+
     public function testTheSameNameIsNotGivenTwice(): void
     {
         $select = $this->named();

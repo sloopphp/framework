@@ -138,7 +138,12 @@ class Select extends BuilderWhere
     /**
      * Statements named by the WITH clause, in the order they were given.
      *
-     * @var list<CommonTableExpression>
+     * The builder each one names is kept beside the value object, the way the
+     * combined statements are kept: a SubQuery holds it out of reach, and it
+     * has to be read again where the SQL is written, because a clause given to
+     * it after it was named would otherwise be written inside this one.
+     *
+     * @var list<array{table: CommonTableExpression, query: Select}>
      */
     private array $commonTables = [];
 
@@ -1004,12 +1009,34 @@ class Select extends BuilderWhere
             );
         }
 
-        $this->commonTables = ClauseParts::toCommonTables([
-            ...$this->commonTables,
+        $named = [
+            ...array_column($this->commonTables, 'table'),
             new CommonTableExpression($name, new SubQuery($query), $columns, $recursive),
-        ]);
+        ];
+
+        // Checked here as well as where the clause is written, so that a name
+        // already taken says so at the call that gave it rather than when the
+        // statement is run.
+        ClauseParts::toCommonTables($named);
+
+        $this->commonTables[] = ['table' => end($named), 'query' => $query];
 
         return $this;
+    }
+
+    /**
+     * Read the WITH clause as the value objects a Grammar reads.
+     *
+     * @return list<CommonTableExpression> Statements the clause names, in the order they were given
+     * @throws LogicException              When a statement named here carries a WITH clause of its own
+     */
+    private function toCommonTables(): array
+    {
+        foreach ($this->commonTables as ['table' => $table, 'query' => $query]) {
+            self::requireNamedStatementHasNoClause($table->name, $query);
+        }
+
+        return array_column($this->commonTables, 'table');
     }
 
     /**
@@ -1127,7 +1154,7 @@ class Select extends BuilderWhere
             limit:        $limit,
             offset:       $offset,
             lock:         $this->lock,
-            commonTables: $this->commonTables,
+            commonTables: $this->toCommonTables(),
         ));
     }
 
@@ -1188,7 +1215,7 @@ class Select extends BuilderWhere
             orders:       $this->orders,
             limit:        $limit,
             offset:       $offset,
-            commonTables: $this->commonTables,
+            commonTables: $this->toCommonTables(),
         ));
     }
 
@@ -1241,7 +1268,7 @@ class Select extends BuilderWhere
             orders:       $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
             limit:        $limit,
             offset:       $offset,
-            commonTables: $this->commonTables,
+            commonTables: $this->toCommonTables(),
         ));
     }
 
@@ -1315,6 +1342,33 @@ class Select extends BuilderWhere
         throw new LogicException(
             'A statement added to a union carries no WITH clause of its own, and one was given to it'
                 . ' after it was added. Name what it declares on the statement the union is added to.',
+        );
+    }
+
+    /**
+     * Refuse a statement named by this clause that carries a clause of its own.
+     *
+     * Checked again where the clause is written, for the same reason the union
+     * path is: the statement is held rather than copied, so a clause given to
+     * it after it was named would otherwise reach the SQL. Both servers read a
+     * nested clause, so what this keeps is the one way of saying it that the
+     * builder offers, rather than a difference between the servers.
+     *
+     * @param  string         $name  Name the statement was given, to say which one it is
+     * @param  self           $query Statement the clause names
+     * @return void
+     * @throws LogicException When the statement carries a WITH clause
+     */
+    private static function requireNamedStatementHasNoClause(string $name, self $query): void
+    {
+        if ($query->commonTables === []) {
+            return;
+        }
+
+        throw new LogicException(
+            'A statement named in a WITH clause carries no WITH clause of its own, and one was given to '
+                . $name . ' after it was named. Name what it declares in this clause instead, where the'
+                . ' rest of the statement can read it too.',
         );
     }
 
