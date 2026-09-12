@@ -224,10 +224,15 @@ final class SelectCommonTableTest extends TestCase
     {
         // The same asymmetry the union path had: the statement is held rather
         // than copied, so what it carries is read where the SQL is written.
-        $body   = $this->connection->select('id')->from('posts');
-        $select = $this->connection->select('id')->from('recent')->with('recent', $body);
+        // Two are named so that the message has to pick the right one of them.
+        $first  = $this->connection->select('id')->from('users');
+        $second = $this->connection->select('id')->from('posts');
+        $select = $this->connection->select('id')
+            ->from('first')
+            ->with('first', $first)
+            ->with('second', $second);
 
-        $body->with('nested', $this->connection->select('id')->from('users'));
+        $second->with('nested', $this->connection->select('id')->from('users'));
 
         $error = $this->assertThrows(
             LogicException::class,
@@ -236,7 +241,7 @@ final class SelectCommonTableTest extends TestCase
 
         $this->assertSame(
             'A statement named in a WITH clause carries no WITH clause of its own, and one was given to'
-            . ' recent after it was named. Name what it declares in this clause instead, where the'
+            . ' second after it was named. Name what it declares in this clause instead, where the'
             . ' rest of the statement can read it too.',
             $error->getMessage(),
         );
