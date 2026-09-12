@@ -185,7 +185,7 @@ final class FunctionCallTest extends TestCase
         $this->assertSame([1, 0], $compiled->bindings);
     }
 
-    public function testNamingADefaultWritesTheOffsetLeadSkipped(): void
+    public function testLeadWritesTheOffsetWhenOnlyADefaultIsNamed(): void
     {
         $compiled = $this->connection->select([Expression::lead('amount', default: 0)->over(), 'v'])
             ->from('orders')

@@ -217,10 +217,11 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
 
         // Summing an integer column over a partition answers DECIMAL on both
         // servers, which PDO reads as a string; the COUNT in
-        // testBothServersReadAnEmptyWindowAsEveryRow comes back as an integer. Pinned as returned rather than cast, so a change in
-        // either direction shows up here. A window carrying bindings splits the
-        // two servers instead -- see testMariadbRoundsTheSpreadItComputesOverAWindow
-        // for the other asymmetry this family has.
+        // testBothServersReadAnEmptyWindowAsEveryRow comes back as an integer.
+        // Pinned as returned rather than cast, so a change in either direction
+        // shows up here. A window carrying bindings splits the two servers
+        // instead -- see testMariadbRoundsTheSpreadItComputesOverAWindow for
+        // the other asymmetry this family has.
         $this->assertSame(['35', '35', '40'], array_column($rows, 'total'));
     }
 
