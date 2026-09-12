@@ -775,6 +775,20 @@ final class WindowExpressionTest extends TestCase
         );
     }
 
+    public function testOrderByRefusesABadDirectionEvenAlongsideAnExpression(): void
+    {
+        // The direction is read before the column is looked at, so a spelling
+        // that names neither is refused whichever kind of term it sits next to.
+        $window = Expression::rowNumber()->over();
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): WindowExpression => $window->orderBy(Expression::of('`amount`'), 'SIDEWAYS'),
+        );
+
+        $this->assertStringContainsString('ASC or DESC', $thrown->getMessage());
+    }
+
     public function testOrderByRefusesAWindowCallAsASortTerm(): void
     {
         // A window inside a window is refused by the signature rather than a

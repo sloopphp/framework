@@ -25,7 +25,8 @@ use InvalidArgumentException;
  * other column's is, as `[$window, $name]` in the select list, which keeps the
  * name out of an ORDER BY term where neither server accepts one.
  *
- * @see Expression::over() for the factory that builds one of these
+ * @see Expression::over() for building one of these and its window at once
+ * @see FunctionCall::over() for reaching one from a call named after its function
  */
 final readonly class WindowExpression
 {
@@ -66,12 +67,12 @@ final readonly class WindowExpression
      * literal, say — goes in as an Expression.
      *
      * The sort terms are Order instances, the same shape a Grammar reads an
-     * ORDER BY clause from. Expression::over() is what turns the column and
-     * direction a caller writes into them, and it is the way to build one of
-     * these that checks what the terms hold. Handed an Order directly, this
-     * takes it as given: a term carrying a window call of its own, or an
-     * Expression carrying a direction, compiles to SQL that both servers
-     * refuse. Neither is reachable through the factory.
+     * ORDER BY clause from. Expression::over() and orderBy() are what turn the
+     * column and direction a caller writes into them, and both check what the
+     * terms hold. Handed an Order directly, this takes it as given: a term
+     * carrying a window call of its own, or an Expression carrying a
+     * direction, compiles to SQL that both servers refuse. Neither is
+     * reachable through either of those.
      *
      * @param  string                   $function   Name of the window function, in any case
      * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order

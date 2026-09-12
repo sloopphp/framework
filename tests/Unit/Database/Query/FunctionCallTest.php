@@ -171,6 +171,54 @@ final class FunctionCallTest extends TestCase
         $this->assertSame([1, null], $compiled->bindings);
     }
 
+    public function testNamingADefaultWritesTheOffsetItSkipped(): void
+    {
+        // SQL takes its arguments by position, so a default cannot be written
+        // without an offset before it. PHP fills the skipped slot with the
+        // default and counts it in func_num_args(), which is what puts the 1
+        // in the statement -- the same offset the server would have used.
+        $compiled = $this->connection->select([Expression::lag('amount', default: 0)->over(), 'v'])
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame('SELECT LAG(`amount`, ?, ?) OVER () AS `v` FROM `orders`', $compiled->sql);
+        $this->assertSame([1, 0], $compiled->bindings);
+    }
+
+    public function testNamingADefaultWritesTheOffsetLeadSkipped(): void
+    {
+        $compiled = $this->connection->select([Expression::lead('amount', default: 0)->over(), 'v'])
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame('SELECT LEAD(`amount`, ?, ?) OVER () AS `v` FROM `orders`', $compiled->sql);
+        $this->assertSame([1, 0], $compiled->bindings);
+    }
+
+    public function testAStringDefaultNamesAColumn(): void
+    {
+        // The arguments are read by type wherever they sit, so a string given
+        // as the default is quoted as a column rather than bound. A literal
+        // string goes in as an Expression.
+        $compiled = $this->connection->select([Expression::lag('amount', 1, 'fallback')->over(), 'v'])
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame('SELECT LAG(`amount`, ?, `fallback`) OVER () AS `v` FROM `orders`', $compiled->sql);
+        $this->assertSame([1], $compiled->bindings);
+    }
+
+    public function testALiteralStringDefaultGoesInAsAnExpression(): void
+    {
+        $compiled = $this->connection
+            ->select([Expression::lag('amount', 1, Expression::of('?', ['n/a']))->over(), 'v'])
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame('SELECT LAG(`amount`, ?, ?) OVER () AS `v` FROM `orders`', $compiled->sql);
+        $this->assertSame([1, 'n/a'], $compiled->bindings);
+    }
+
     public function testLeadWritesTheSameArgumentsAsLag(): void
     {
         $compiled = $this->connection->select([Expression::lead('amount', 3, 0)->over(), 'v'])

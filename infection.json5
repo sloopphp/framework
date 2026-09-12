@@ -55,7 +55,7 @@
             // same string. The cast states the intent that the branch and the
             // Expression branch both yield SQL text, so it stays in the source.
             "ignore": [
-                "Sloop\\Database\\Query\\Expression::elt::107"
+                "Sloop\\Database\\Query\\Expression::elt::108"
             ]
         },
         "IncrementInteger": {
@@ -89,18 +89,7 @@
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::704",
-                // Expression::lag / Expression::lead write $offset only when
-                // the caller passed one, decided by func_num_args(). The
-                // default therefore never reaches $arguments: when the branch
-                // is taken the caller's value is there instead, and when it is
-                // not the offset is absent from the SQL altogether. Verified by
-                // hand -- setting both defaults to 2 leaves all five shapes
-                // (one, two and three arguments) writing the same SQL and the
-                // same bindings. Pinned to the parameter's line because the
-                // func_num_args() comparisons in the same methods are killable.
-                "Sloop\\Database\\Query\\Expression::lag::311",
-                "Sloop\\Database\\Query\\Expression::lead::340"
+                "Sloop\\Database\\Query\\Expression::placeholders::713"
             ]
         },
         "DecrementInteger": {
@@ -129,11 +118,7 @@
                 "Sloop\\Error\\SloopException::__construct::62",
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
-                "Sloop\\Database\\Query\\Expression::placeholders::704",
-                // Same defaults as IncrementInteger above, in the opposite
-                // direction (1 -> 0).
-                "Sloop\\Database\\Query\\Expression::lag::311",
-                "Sloop\\Database\\Query\\Expression::lead::340"
+                "Sloop\\Database\\Query\\Expression::placeholders::713"
             ]
         },
         "GreaterThan": {

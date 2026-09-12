@@ -20,7 +20,8 @@ use InvalidArgumentException;
  *
  * Columns are quoted by IdentifierQuoter, the same way a query builder quotes
  * the ones it is given. That quoting does not carry the table prefix, which is
- * why `over()` and `column()` are the exceptions here: they return a type that
+ * why `column()` and the window factories — `over()`, `fn()` and the ones
+ * named after a function — are the exceptions here: they return a type that
  * holds its columns unresolved, and a Grammar resolves them when the statement
  * is compiled, so they reach the prefix the way any other column reference
  * does.
@@ -297,15 +298,19 @@ final readonly class Expression
     /**
      * Value of the column in the row $offset rows before the current one.
      *
-     * The offset and the default are written only when they are given, since
+     * The call is written as far as it reaches: the column alone, then the
+     * offset, then the default. SQL takes its arguments by position, so naming
+     * a default without an offset writes the offset as well — the default 1 is
+     * the one the server would have used anyway. Passing null explicitly
+     * writes it too, rather than silently dropping what the caller wrote.
+     *
      * MariaDB has no third parameter here and refuses the call with 1064 when
-     * one is written. Passing null explicitly still writes it, so a statement
-     * that needs a default says so and fails on the server that cannot take it,
-     * rather than silently dropping what the caller wrote.
+     * one is written, so a statement that needs a default fails there instead
+     * of running with the default left off.
      *
      * @param  string|self                     $column  Column to read, or an expression producing the value
-     * @param  int                             $offset  How many rows away to read, written only when given
-     * @param  string|self|int|float|bool|null $default Value to read where there is no such row, written only when given
+     * @param  int                             $offset  How many rows away to read, written when an offset or a default is given
+     * @param  string|self|int|float|bool|null $default Value to read where there is no such row; a string names a column, so a literal goes in as an Expression
      * @return FunctionCall                    The call, awaiting the window it runs over
      */
     public static function lag(string|self $column, int $offset = 1, string|self|int|float|bool|null $default = null): FunctionCall
@@ -326,15 +331,19 @@ final readonly class Expression
     /**
      * Value of the column in the row $offset rows after the current one.
      *
-     * The offset and the default are written only when they are given, since
+     * The call is written as far as it reaches: the column alone, then the
+     * offset, then the default. SQL takes its arguments by position, so naming
+     * a default without an offset writes the offset as well — the default 1 is
+     * the one the server would have used anyway. Passing null explicitly
+     * writes it too, rather than silently dropping what the caller wrote.
+     *
      * MariaDB has no third parameter here and refuses the call with 1064 when
-     * one is written. Passing null explicitly still writes it, so a statement
-     * that needs a default says so and fails on the server that cannot take it,
-     * rather than silently dropping what the caller wrote.
+     * one is written, so a statement that needs a default fails there instead
+     * of running with the default left off.
      *
      * @param  string|self                     $column  Column to read, or an expression producing the value
-     * @param  int                             $offset  How many rows away to read, written only when given
-     * @param  string|self|int|float|bool|null $default Value to read where there is no such row, written only when given
+     * @param  int                             $offset  How many rows away to read, written when an offset or a default is given
+     * @param  string|self|int|float|bool|null $default Value to read where there is no such row; a string names a column, so a literal goes in as an Expression
      * @return FunctionCall                    The call, awaiting the window it runs over
      */
     public static function lead(string|self $column, int $offset = 1, string|self|int|float|bool|null $default = null): FunctionCall
