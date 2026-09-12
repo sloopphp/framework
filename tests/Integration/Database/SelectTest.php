@@ -363,6 +363,47 @@ final class SelectTest extends TransactionalIntegrationTestCase
         $this->assertSame([['name' => 'alice'], ['name' => 'bob']], $rows->asArray());
     }
 
+    public function testAnOrMembershipTestWidensWhatTheStatementReads(): void
+    {
+        // The AND spelling would read nothing: no row is named alice and
+        // named carol at once. The rows coming back are what says the server
+        // read the two tests as alternatives.
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereIn('name', ['carol'])
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testAnOrRangeTestWidensWhatTheStatementReads(): void
+    {
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('name', 'carol')
+            ->orWhereBetween('score', 10, 15)
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'carol']], $rows->asArray());
+    }
+
+    public function testAnOrPresenceTestWidensWhatTheStatementReads(): void
+    {
+        $this->markBobDeleted();
+
+        $rows = $this->connection->select('name')
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereNotNull('deleted_at')
+            ->orderBy('name')
+            ->execute();
+
+        $this->assertSame([['name' => 'alice'], ['name' => 'bob']], $rows->asArray());
+    }
+
     public function testAGroupChangesWhichRowsAreRead(): void
     {
         // Without the parentheses MySQL binds AND tighter than OR, and the

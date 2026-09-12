@@ -67,6 +67,21 @@ final class SelectWhereExistsTest extends TransactionalIntegrationTestCase
         $this->assertSame([3], $ids);
     }
 
+    public function testAnOrPresenceTestWidensWhatTheStatementReads(): void
+    {
+        // Row 3 is the one with no posts, so the AND spelling would read
+        // nothing. Every row coming back is what says the server read the two
+        // tests as alternatives.
+        $ids = $this->connection->select('id')
+            ->from('users')
+            ->where('id', 3)
+            ->orWhereExists($this->postsOfTheRowBeingRead())
+            ->orderBy('id')
+            ->pluck('id');
+
+        $this->assertSame([1, 2, 3], $ids);
+    }
+
     public function testTheServerTakesAStatementReturningMoreThanOneColumn(): void
     {
         // A membership test is refused here with 1241, because it compares

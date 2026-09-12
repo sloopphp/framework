@@ -71,6 +71,56 @@ final class SelectWhereExistsTest extends TestCase
         );
     }
 
+    public function testOrWhereExistsJoinsTheTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select('id')
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhereExists($this->paidOrders());
+
+        $this->assertSame(
+            'SELECT `id` FROM `users` WHERE `status` = ? OR EXISTS (SELECT `id` FROM `orders` WHERE `paid` = ?)',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 1], $select->toBindings());
+    }
+
+    public function testAndWhereExistsIsTheSameStatementAsWhereExists(): void
+    {
+        $named    = $this->connection->select('id')->from('users')->where('status', 'active')
+            ->whereExists($this->paidOrders());
+        $spelling = $this->connection->select('id')->from('users')->where('status', 'active')
+            ->andWhereExists($this->paidOrders());
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testOrWhereNotExistsJoinsTheTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select('id')
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhereNotExists($this->paidOrders());
+
+        $this->assertSame(
+            'SELECT `id` FROM `users` WHERE `status` = ? OR NOT EXISTS (SELECT `id` FROM `orders` WHERE `paid` = ?)',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 1], $select->toBindings());
+    }
+
+    public function testAndWhereNotExistsIsTheSameStatementAsWhereNotExists(): void
+    {
+        $named    = $this->connection->select('id')->from('users')->where('status', 'active')
+            ->whereNotExists($this->paidOrders());
+        $spelling = $this->connection->select('id')->from('users')->where('status', 'active')
+            ->andWhereNotExists($this->paidOrders());
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
     public function testTheStatementCarriesItsOwnBindings(): void
     {
         $select = $this->connection->select('id')->from('users')->whereExists($this->paidOrders());
@@ -264,5 +314,30 @@ final class SelectWhereExistsTest extends TestCase
             $delete->toSql(),
         );
         $this->assertSame([1], $delete->toBindings());
+    }
+
+    public function testUpdateTakesTheOrSpellingsTheSharedBaseCarries(): void
+    {
+        $update = $this->connection->update('users')
+            ->set(['status' => 'blocked'])
+            ->where('name', 'alice')
+            ->orWhereExists($this->paidOrders());
+
+        $this->assertSame(
+            'UPDATE `users` SET `status` = ? WHERE `name` = ?'
+            . ' OR EXISTS (SELECT `id` FROM `orders` WHERE `paid` = ?)',
+            $update->toSql(),
+        );
+        $this->assertSame(['blocked', 'alice', 1], $update->toBindings());
+    }
+
+    public function testDeleteTakesTheOrSpellingsTheSharedBaseCarries(): void
+    {
+        $delete = $this->connection->delete('users')
+            ->where('name', 'alice')
+            ->orWhereIn('id', [1, 2]);
+
+        $this->assertSame('DELETE FROM `users` WHERE `name` = ? OR `id` IN (?, ?)', $delete->toSql());
+        $this->assertSame(['alice', 1, 2], $delete->toBindings());
     }
 }

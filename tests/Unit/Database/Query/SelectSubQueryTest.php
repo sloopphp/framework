@@ -52,6 +52,21 @@ final class SelectSubQueryTest extends TestCase
         );
     }
 
+    public function testOrWhereInTakesAStatementWhereASetStands(): void
+    {
+        $select = $this->connection->select('id')
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereIn('id', $this->paidUserIds());
+
+        $this->assertSame(
+            'SELECT `id` FROM `users` WHERE `name` = ?'
+            . ' OR `id` IN (SELECT `user_id` FROM `orders` WHERE `paid` = ?)',
+            $select->toSql(),
+        );
+        $this->assertSame(['alice', 1], $select->toBindings());
+    }
+
     public function testWhereNotInNegatesTheSubqueryTest(): void
     {
         $select = $this->connection->select('id')->from('users')->whereNotIn('id', $this->paidUserIds());

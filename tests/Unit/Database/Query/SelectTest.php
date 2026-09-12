@@ -1164,6 +1164,128 @@ final class SelectTest extends TestCase
         $this->assertSame([10, 20], $select->toBindings());
     }
 
+    public function testOrWhereNullJoinsTheTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhereNull('deleted_at');
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ? OR `deleted_at` IS NULL', $select->toSql());
+        $this->assertSame(['active'], $select->toBindings());
+    }
+
+    public function testAndWhereNullIsTheSameStatementAsWhereNull(): void
+    {
+        $named    = $this->connection->select()->from('users')->where('status', 'active')->whereNull('deleted_at');
+        $spelling = $this->connection->select()->from('users')->where('status', 'active')->andWhereNull('deleted_at');
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testOrWhereNotNullJoinsTheTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orWhereNotNull('deleted_at');
+
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ? OR `deleted_at` IS NOT NULL', $select->toSql());
+        $this->assertSame(['active'], $select->toBindings());
+    }
+
+    public function testAndWhereNotNullIsTheSameStatementAsWhereNotNull(): void
+    {
+        $named    = $this->connection->select()->from('users')->where('status', 'active')->whereNotNull('deleted_at');
+        $spelling = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->andWhereNotNull('deleted_at');
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testOrWhereInJoinsTheMembershipTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereIn('status', ['active', 'pending']);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `name` = ? OR `status` IN (?, ?)', $select->toSql());
+        $this->assertSame(['alice', 'active', 'pending'], $select->toBindings());
+    }
+
+    public function testAndWhereInIsTheSameStatementAsWhereIn(): void
+    {
+        $named    = $this->connection->select()->from('users')->where('name', 'alice')->whereIn('status', ['active']);
+        $spelling = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->andWhereIn('status', ['active']);
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testOrWhereNotInJoinsTheMembershipTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereNotIn('status', ['blocked']);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `name` = ? OR `status` NOT IN (?)', $select->toSql());
+        $this->assertSame(['alice', 'blocked'], $select->toBindings());
+    }
+
+    public function testAndWhereNotInIsTheSameStatementAsWhereNotIn(): void
+    {
+        $named    = $this->connection->select()->from('users')->where('name', 'alice')->whereNotIn('status', ['blocked']);
+        $spelling = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->andWhereNotIn('status', ['blocked']);
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testOrWhereBetweenJoinsTheRangeTestToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereBetween('id', 10, 20);
+
+        $this->assertSame('SELECT * FROM `users` WHERE `name` = ? OR `id` BETWEEN ? AND ?', $select->toSql());
+        $this->assertSame(['alice', 10, 20], $select->toBindings());
+    }
+
+    public function testAndWhereBetweenIsTheSameStatementAsWhereBetween(): void
+    {
+        $named    = $this->connection->select()->from('users')->where('name', 'alice')->whereBetween('id', 10, 20);
+        $spelling = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->andWhereBetween('id', 10, 20);
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testTheFirstConditionCarriesNoConjunctionWhateverTheSpellingSays(): void
+    {
+        // The conjunction of the first condition is dropped when the clause is
+        // written, so an or spelling at the head of a chain is not a way to
+        // start a statement with OR.
+        $select = $this->connection->select()->from('users')->orWhereNull('deleted_at');
+
+        $this->assertSame('SELECT * FROM `users` WHERE `deleted_at` IS NULL', $select->toSql());
+    }
+
     public function testAGroupOfConditionsIsParenthesised(): void
     {
         $select = $this->connection->select()
