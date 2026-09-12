@@ -52,6 +52,21 @@ final class UpdateJoinTest extends TestCase
         );
     }
 
+    public function testAnAssignmentTakesTheValueFromAColumnOfTheJoinedTable(): void
+    {
+        $update = $this->update()
+            ->join('posts')
+            ->on('posts.user_id', '=', 'users.id')
+            ->set(['users.status' => Expression::column('posts.title')]);
+
+        $this->assertSame(
+            'UPDATE `users` JOIN `posts` ON `posts`.`user_id` = `users`.`id`'
+                . ' SET `users`.`status` = `posts`.`title`',
+            $update->toSql(),
+        );
+        $this->assertSame([], $update->toBindings());
+    }
+
     public function testLeftJoinAndRightJoinWriteTheirOwnKeyword(): void
     {
         $left  = $this->update()->leftJoin('posts')->on('posts.user_id', '=', 'users.id')

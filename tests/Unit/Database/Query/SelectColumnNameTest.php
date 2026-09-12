@@ -57,6 +57,22 @@ final class SelectColumnNameTest extends TestCase
         $this->assertSame('SELECT `id` FROM `orders` WHERE `total` = `id`', $select->toSql());
     }
 
+    public function testTheArrayFormOfAConditionTakesAColumnNameToo(): void
+    {
+        // A condition written in a list is read by a check of its own rather
+        // than by the signature, so what may stand on the right is settled
+        // there and needs saying here.
+        $select = $this->connection->select('id')
+            ->from('orders')
+            ->where([['total', '>', Expression::column('id')], ['user_id', Expression::column('id')]]);
+
+        $this->assertSame(
+            'SELECT `id` FROM `orders` WHERE `total` > `id` AND `user_id` = `id`',
+            $select->toSql(),
+        );
+        $this->assertSame([], $select->toBindings());
+    }
+
     public function testAColumnNameNamesTheOuterRowOfACorrelatedSubquery(): void
     {
         $select = $this->connection->select('name')

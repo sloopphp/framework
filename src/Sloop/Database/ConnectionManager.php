@@ -253,7 +253,7 @@ final class ConnectionManager
      * @param  string|null              $name       Pool whose prefix applies; the default pool when omitted
      * @return string                   Backtick-quoted name, with the table prefix applied
      * @throws InvalidConfigException   When the pool name is not defined or its config is malformed
-     * @throws InvalidArgumentException When a segment is empty or the name has more than three segments
+     * @throws InvalidArgumentException When a segment is empty, the name has more than three segments, or `*` stands where it has no meaning
      */
     public function quoteIdentifier(string $identifier, ?string $name = null): string
     {

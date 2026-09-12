@@ -1575,6 +1575,23 @@ final class GrammarTest extends TestCase
         ];
     }
 
+    public function testAKeywordOperatorRefusesANamedColumnWhereTheKeywordGoes(): void
+    {
+        // comparison() refuses this where the condition is built, but a spec
+        // can reach a grammar without passing through it, and what follows IS
+        // is read as a keyword rather than as something to compare against.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'An operator testing against a keyword reads null, true or false on the right,'
+            . ' got Sloop\Database\Query\ColumnName.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('active', 'IS', new ColumnName('name'))],
+        ));
+    }
+
     public function testARegularExpressionMatchBindsItsPatternLikeAnyOtherValue(): void
     {
         $compiled = new Grammar()->compileSelect(new SelectSpec(

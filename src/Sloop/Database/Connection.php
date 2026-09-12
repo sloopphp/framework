@@ -323,7 +323,7 @@ final class Connection
      *
      * @param  string                   $identifier Column name, optionally qualified ('users.id')
      * @return string                   Backtick-quoted name, with the table prefix applied
-     * @throws InvalidArgumentException When a segment is empty or the name has more than three segments
+     * @throws InvalidArgumentException When a segment is empty, the name has more than three segments, or `*` stands where it has no meaning
      */
     public function quoteIdentifier(string $identifier): string
     {

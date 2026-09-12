@@ -67,10 +67,10 @@ class Update extends BuilderWhere
      * know which names stand for the same column.
      *
      * A value is bound rather than written into the SQL, which is why one that
-     * has to be read as SQL says so: a column of the row being written is
-     * named with Expression::column(), and anything else that has to be read
-     * as SQL — a function call over the column, say — is passed as an
-     * Expression.
+     * has to be read as SQL says so: a column of the row being written, or of
+     * a table joined to it, is named with Expression::column(), and anything
+     * else that has to be read as SQL — a function call over the column, say —
+     * is passed as an Expression.
      *
      * @param  array<int|string, mixed> $values Column name to the value to write
      * @return static                   This builder
