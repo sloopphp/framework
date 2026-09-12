@@ -681,4 +681,167 @@ final class WindowExpressionTest extends TestCase
 
         $this->assertSame('SELECT /* ROW_NUMBER */ FROM `orders`', $compiled->sql);
     }
+
+    public function testPartitionByAddsToTheColumnsAlreadyThere(): void
+    {
+        $window = Expression::sum('amount')->over()
+            ->partitionBy('user_id')
+            ->partitionBy('status');
+
+        $compiled = $this->connection->select([$window, 'v'])->from('orders')->compile();
+
+        $this->assertSame(
+            'SELECT SUM(`amount`) OVER (PARTITION BY `user_id`, `status`) AS `v` FROM `orders`',
+            $compiled->sql,
+        );
+    }
+
+    public function testPartitionByTakesSeveralColumnsAtOnce(): void
+    {
+        $window = Expression::sum('amount')->over()->partitionBy('user_id', 'status');
+
+        $compiled = $this->connection->select([$window, 'v'])->from('orders')->compile();
+
+        $this->assertSame(
+            'SELECT SUM(`amount`) OVER (PARTITION BY `user_id`, `status`) AS `v` FROM `orders`',
+            $compiled->sql,
+        );
+    }
+
+    public function testPartitionByTakesAnExpressionAndItsBindings(): void
+    {
+        $window = Expression::sum('amount')->over()
+            ->partitionBy(Expression::of('`amount` > ?', [100]));
+
+        $compiled = $this->connection->select([$window, 'v'])->from('orders')->compile();
+
+        $this->assertSame(
+            'SELECT SUM(`amount`) OVER (PARTITION BY `amount` > ?) AS `v` FROM `orders`',
+            $compiled->sql,
+        );
+        $this->assertSame([100], $compiled->bindings);
+    }
+
+    public function testOrderByAddsToTheTermsAlreadyThere(): void
+    {
+        $window = Expression::rowNumber()->over()
+            ->orderBy('amount', 'DESC')
+            ->orderBy('id');
+
+        $compiled = $this->connection->select([$window, 'rn'])->from('orders')->compile();
+
+        $this->assertSame(
+            'SELECT ROW_NUMBER() OVER (ORDER BY `amount` DESC, `id` ASC) AS `rn` FROM `orders`',
+            $compiled->sql,
+        );
+    }
+
+    public function testOrderByWritesNoDirectionForAnExpression(): void
+    {
+        $window = Expression::rowNumber()->over()->orderBy(Expression::of('`amount` * ?', [2]));
+
+        $compiled = $this->connection->select([$window, 'rn'])->from('orders')->compile();
+
+        $this->assertSame(
+            'SELECT ROW_NUMBER() OVER (ORDER BY `amount` * ?) AS `rn` FROM `orders`',
+            $compiled->sql,
+        );
+        $this->assertSame([2], $compiled->bindings);
+    }
+
+    public function testOrderByRefusesADirectionGivenAlongsideAnExpression(): void
+    {
+        $window = Expression::rowNumber()->over();
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): WindowExpression => $window->orderBy(Expression::of('`amount`'), 'DESC'),
+        );
+
+        $this->assertSame(
+            'A sort term written as SQL says how it sorts, so it takes no direction, got "DESC".'
+                . ' Write the direction into the Expression instead.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testOrderByRefusesADirectionNamingNeitherAscendingNorDescending(): void
+    {
+        $window = Expression::rowNumber()->over();
+
+        $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): WindowExpression => $window->orderBy('amount', 'SIDEWAYS'),
+        );
+    }
+
+    public function testOrderByRefusesABadDirectionEvenAlongsideAnExpression(): void
+    {
+        // The direction is read before the column is looked at, so a spelling
+        // that names neither is refused whichever kind of term it sits next to.
+        $window = Expression::rowNumber()->over();
+
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): WindowExpression => $window->orderBy(Expression::of('`amount`'), 'SIDEWAYS'),
+        );
+
+        $this->assertStringContainsString('ASC or DESC', $thrown->getMessage());
+    }
+
+    public function testOrderByRefusesAWindowCallAsASortTerm(): void
+    {
+        // A window inside a window is refused by the signature rather than a
+        // check: both servers reject the SQL it would compile to (MySQL 3595,
+        // MariaDB 4015), and the type says so at the line that wrote it.
+        $this->expectException(TypeError::class);
+
+        // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+        Expression::rowNumber()->over()->orderBy(Expression::sum('amount')->over());
+    }
+
+    public function testPartitionByRefusesAWindowCallAsAColumn(): void
+    {
+        $this->expectException(TypeError::class);
+
+        // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+        Expression::rowNumber()->over()->partitionBy(Expression::sum('amount')->over());
+    }
+
+    public function testAddingToAWindowLeavesTheOneItWasBuiltFromAlone(): void
+    {
+        $plain = Expression::sum('amount')->over();
+
+        $plain->partitionBy('user_id')->orderBy('id');
+
+        $this->assertSame([], $plain->partitions);
+        $this->assertSame([], $plain->orders);
+    }
+
+    public function testTheFluentFormWritesWhatTheFactoryFormDoes(): void
+    {
+        $fluent  = Expression::sum('amount')->over()->partitionBy('user_id')->orderBy('id', 'DESC');
+        $factory = Expression::over('SUM', ['amount'], ['user_id'], ['id' => 'DESC']);
+
+        $viaFluent  = $this->connection->select([$fluent, 'v'])->from('orders')->compile();
+        $viaFactory = $this->connection->select([$factory, 'v'])->from('orders')->compile();
+
+        $this->assertSame($viaFactory->sql, $viaFluent->sql);
+        $this->assertSame($viaFactory->bindings, $viaFluent->bindings);
+    }
+
+    public function testAWindowBuiltFluentlyReachesTheTablePrefix(): void
+    {
+        $compiled = new Grammar('p_')->compileSelect(new SelectSpec('orders', [
+            new SelectedColumn(
+                Expression::sum('orders.amount')->over()->partitionBy('orders.user_id'),
+                'v',
+            ),
+        ]));
+
+        $this->assertSame(
+            'SELECT SUM(`p_orders`.`amount`) OVER (PARTITION BY `p_orders`.`user_id`) AS `v` FROM `p_orders`',
+            $compiled->sql,
+        );
+    }
 }
