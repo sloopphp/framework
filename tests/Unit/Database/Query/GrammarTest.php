@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Query;
 
 use InvalidArgumentException;
+use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Database\Connection;
 use Sloop\Database\Dialect;
 use Sloop\Database\Query\Assignment;
 use Sloop\Database\Query\BetweenCondition;
 use Sloop\Database\Query\ColumnName;
+use Sloop\Database\Query\CommonTableExpression;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Condition;
 use Sloop\Database\Query\Conjunction;
@@ -30,6 +33,7 @@ use Sloop\Database\Query\Order;
 use Sloop\Database\Query\RowLock;
 use Sloop\Database\Query\SelectedColumn;
 use Sloop\Database\Query\SelectSpec;
+use Sloop\Database\Query\SubQuery;
 use Sloop\Database\Query\TableSource;
 use Sloop\Database\Query\UpdateSpec;
 use Sloop\Database\Query\WherePart;
@@ -1263,18 +1267,30 @@ final class GrammarTest extends TestCase
 
                 return new CompiledSql('/*value*/' . $compiled->sql, $compiled->bindings);
             }
+
+            protected function compileWith(array $commonTables): CompiledSql
+            {
+                $compiled = parent::compileWith($commonTables);
+
+                return new CompiledSql('/*with*/' . $compiled->sql, $compiled->bindings);
+            }
         };
 
         $compiled = $grammar->compileSelect(new SelectSpec(
-            from:       'users',
-            columns:    ['id', new SelectedColumn('name', 'label')],
-            conditions: [new Condition('status', '=', 'active')],
-            orders:     [new Order('name')],
-            limit:      5,
+            from:         'users',
+            columns:      ['id', new SelectedColumn('name', 'label')],
+            conditions:   [new Condition('status', '=', 'active')],
+            orders:       [new Order('name')],
+            limit:        5,
+            commonTables: [new CommonTableExpression(
+                'recent',
+                new SubQuery(new Connection(new Sqlite('sqlite::memory:'))->select('id')->from('posts')),
+            )],
         ));
 
         $this->assertSame(
-            'SELECT /*columns*//*reference*/`id`, /*named*//*reference*/`name` AS `label` FROM `app_users`/*from*/'
+            '/*with*/WITH `app_recent` AS (SELECT `id` FROM `posts`) '
+            . 'SELECT /*columns*//*reference*/`id`, /*named*//*reference*/`name` AS `label` FROM `app_users`/*from*/'
             . ' WHERE /*reference*/`status` = /*value*/?/*where*/'
             . ' ORDER BY /*reference*/`name` ASC/*order*/'
             . ' LIMIT 5/*limit*/',

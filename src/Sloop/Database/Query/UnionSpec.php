@@ -18,6 +18,18 @@ use InvalidArgumentException;
 final readonly class UnionSpec
 {
     /**
+     * Statements the WITH clause names, in the order they are written.
+     *
+     * Held here rather than on the first statement because the clause leads the
+     * whole combination: MariaDB refuses a WITH inside the parentheses of a
+     * combined statement, and a name introduced there would in any case be out
+     * of reach of the statements that follow.
+     *
+     * @var list<CommonTableExpression>
+     */
+    public array $commonTables;
+
+    /**
      * Statements whose rows are added to those of the first, in order.
      *
      * @var non-empty-list<Union>
@@ -34,11 +46,12 @@ final readonly class UnionSpec
     /**
      * Describe one combined statement.
      *
-     * @param  SelectSpec               $first  Statement whose rows come first
-     * @param  array<int|string, mixed> $unions Union instances, in the order they are written
-     * @param  array<int|string, mixed> $orders Order instances sorting the combined rows
-     * @param  int|null                 $limit  Maximum number of combined rows, or null for no limit
-     * @param  int|null                 $offset Combined rows to skip; needs a limit
+     * @param  SelectSpec               $first        Statement whose rows come first
+     * @param  array<int|string, mixed> $unions       Union instances, in the order they are written
+     * @param  array<int|string, mixed> $orders       Order instances sorting the combined rows
+     * @param  int|null                 $limit        Maximum number of combined rows, or null for no limit
+     * @param  int|null                 $offset       Combined rows to skip; needs a limit
+     * @param  array<int|string, mixed> $commonTables CommonTableExpression instances the WITH clause names, in the order they are written
      * @throws InvalidArgumentException When no statement is combined, a clause holds the wrong type, a bound is negative, or an offset has no limit
      */
     public function __construct(
@@ -47,9 +60,11 @@ final readonly class UnionSpec
         array $orders = [],
         public ?int $limit = null,
         public ?int $offset = null,
+        array $commonTables = [],
     ) {
-        $this->unions = self::toUnions($unions);
-        $this->orders = ClauseParts::toOrders($orders);
+        $this->commonTables = ClauseParts::toCommonTables($commonTables);
+        $this->unions       = self::toUnions($unions);
+        $this->orders       = ClauseParts::toOrders($orders);
 
         ClauseParts::requireLimitNotNegative($limit);
 

@@ -136,6 +136,13 @@ class Select extends BuilderWhere
     private ?CastMode $castMode = null;
 
     /**
+     * Statements named by the WITH clause, in the order they were given.
+     *
+     * @var list<CommonTableExpression>
+     */
+    private array $commonTables = [];
+
+    /**
      * Statements whose rows are added to this one's, in the order they were given.
      *
      * @var list<array{query: Select, all: bool}>
@@ -926,14 +933,100 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Name a statement for this one to read from, as a table would be read.
+     *
+     * The name stands where a table name does, so from() and join() reach the
+     * rows through it. Naming a statement once and reading it in several places
+     * is what separates this from a subquery written at each of them.
+     *
+     * The columns may be named here rather than left to the body. Doing so
+     * gives the rows names the body does not have to repeat, which is what a
+     * recursive statement needs: a term referring to the name being defined is
+     * read before the body names anything itself.
+     *
+     * @param  string                   $name    Name to read the rows under; a single name, not qualified
+     * @param  self                     $query   Statement whose rows the name stands for
+     * @param  array<int|string, mixed> $columns Columns to read the rows under, in order; empty leaves the naming to the body
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the name or a column is qualified or empty, the name is already taken, or the statement carries a WITH clause of its own
+     */
+    public function with(string $name, self $query, array $columns = []): static
+    {
+        return $this->addCommonTable($name, $query, $columns, recursive: false);
+    }
+
+    /**
+     * Name a statement whose body reads the name being defined.
+     *
+     * The body is written as its first rows and a statement adding more from
+     * what the name already holds, which is how a chain of rows is walked:
+     * `$seed->unionAll($step)`, where the step reads the name.
+     *
+     * SQL writes RECURSIVE once for the whole clause, so naming one statement
+     * this way says it of every name the clause introduces. Both servers accept
+     * the keyword over a body that never refers to itself, which is why nothing
+     * else has to be said about the others.
+     *
+     * @param  string                   $name    Name to read the rows under; a single name, not qualified
+     * @param  self                     $query   Statement whose rows the name stands for, referring to the name in one of its terms
+     * @param  array<int|string, mixed> $columns Columns to read the rows under, in order; empty leaves the naming to the body
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the name or a column is qualified or empty, the name is already taken, or the statement carries a WITH clause of its own
+     */
+    public function withRecursive(string $name, self $query, array $columns = []): static
+    {
+        return $this->addCommonTable($name, $query, $columns, recursive: true);
+    }
+
+    /**
+     * Record a statement the WITH clause names.
+     *
+     * @param  string                   $name      Name to read the rows under
+     * @param  self                     $query     Statement whose rows the name stands for
+     * @param  array<int|string, mixed> $columns   Columns to read the rows under
+     * @param  bool                     $recursive Whether the body refers to the name being defined
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the name or a column is malformed, the name is already taken, or the statement carries a WITH clause of its own
+     */
+    private function addCommonTable(string $name, self $query, array $columns, bool $recursive): static
+    {
+        if ($query->commonTables !== []) {
+            throw new InvalidArgumentException(
+                'A statement named in a WITH clause carries no WITH clause of its own, and the one named '
+                . $name . ' does. Name what it declares in this clause instead, where the rest of the'
+                . ' statement can read it too.',
+            );
+        }
+
+        $this->commonTables = ClauseParts::toCommonTables([
+            ...$this->commonTables,
+            new CommonTableExpression($name, new SubQuery($query), $columns, $recursive),
+        ]);
+
+        return $this;
+    }
+
+    /**
      * Record a statement to add, moving the sort and row window aside on the first one.
      *
-     * @param  Select $query Statement whose rows are added
-     * @param  bool   $all   Whether rows read twice are kept
-     * @return static This builder
+     * @param  Select                   $query Statement whose rows are added
+     * @param  bool                     $all   Whether rows read twice are kept
+     * @return static                   This builder
+     * @throws InvalidArgumentException When the statement being added carries a WITH clause of its own
      */
     private function addUnion(Select $query, bool $all): static
     {
+        if ($query->commonTables !== []) {
+            // Each added statement is written inside parentheses, and MariaDB
+            // refuses a WITH clause there. The clause of the statement being
+            // added to leads the whole combination, so a name declared there is
+            // in reach of every statement in it.
+            throw new InvalidArgumentException(
+                'A statement added to a union carries no WITH clause of its own.'
+                . ' Name what it declares on the statement the union is added to.',
+            );
+        }
+
         if ($this->unions === []) {
             $this->ownOrders = $this->orders;
             $this->ownLimit  = $this->limit;
@@ -1024,10 +1117,11 @@ class Select extends BuilderWhere
             conditions: $conditions,
             groupings:  $this->groupings,
             having:     $this->having,
-            orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
-            limit:      $limit,
-            offset:     $offset,
-            lock:       $this->lock,
+            orders:       $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
+            limit:        $limit,
+            offset:       $offset,
+            lock:         $this->lock,
+            commonTables: $this->commonTables,
         ));
     }
 
@@ -1083,10 +1177,11 @@ class Select extends BuilderWhere
                 limit:      $this->ownLimit,
                 offset:     $this->ownOffset,
             ),
-            unions: $unions,
-            orders: $this->orders,
-            limit:  $limit,
-            offset: $offset,
+            unions:       $unions,
+            orders:       $this->orders,
+            limit:        $limit,
+            offset:       $offset,
+            commonTables: $this->commonTables,
         ));
     }
 
@@ -1122,18 +1217,24 @@ class Select extends BuilderWhere
         ?WherePart $alsoWhere,
         ?Order $thenBy,
     ): CompiledSql {
-        $combined         = clone $this;
-        $combined->orders = [];
-        $combined->limit  = null;
-        $combined->offset = null;
+        // The WITH clause stays on the outer statement rather than going inside
+        // the parentheses with the rest: a name it introduces is in reach of
+        // the statements being combined either way, and MariaDB refuses the
+        // clause written inside them.
+        $combined               = clone $this;
+        $combined->orders       = [];
+        $combined->limit        = null;
+        $combined->offset       = null;
+        $combined->commonTables = [];
 
         return $this->grammar->compileSelect(new SelectSpec(
-            from:       new TableSource(new SubQuery($combined), self::UNION_ALIAS),
-            columns:    $columns ?? [],
-            conditions: $alsoWhere === null ? [] : [$alsoWhere],
-            orders:     $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
-            limit:      $limit,
-            offset:     $offset,
+            from:         new TableSource(new SubQuery($combined), self::UNION_ALIAS),
+            columns:      $columns ?? [],
+            conditions:   $alsoWhere === null ? [] : [$alsoWhere],
+            orders:       $thenBy === null ? $this->orders : [...$this->orders, $thenBy],
+            limit:        $limit,
+            offset:       $offset,
+            commonTables: $this->commonTables,
         ));
     }
 

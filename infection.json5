@@ -324,7 +324,7 @@
                 // sort before it gets here, so the list is empty there too.
                 // Pinned to the line: the condition list beside it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileOverUnion::1134"
+                "Sloop\\Database\\Query\\Select::compileOverUnion::1234"
             ]
         }
     },

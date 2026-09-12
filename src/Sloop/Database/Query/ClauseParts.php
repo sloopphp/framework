@@ -119,6 +119,43 @@ final class ClauseParts
     }
 
     /**
+     * Reindex the statements of a WITH clause as a list and reject anything else.
+     *
+     * Two statements of one clause may not share a name: the reference would
+     * have no answer, and both servers refuse it rather than picking one. It is
+     * checked here because a name is only ever a duplicate of another in the
+     * same clause.
+     *
+     * @param  array<int|string, mixed>    $commonTables CommonTableExpression instances, in the order they are written
+     * @return list<CommonTableExpression> Statements as a list
+     * @throws InvalidArgumentException    When an element is not one, or two of them share a name
+     */
+    public static function toCommonTables(array $commonTables): array
+    {
+        $named = [];
+
+        foreach (array_values($commonTables) as $index => $commonTable) {
+            if (!$commonTable instanceof CommonTableExpression) {
+                throw new InvalidArgumentException(
+                    'A WITH clause holds CommonTableExpression instances, got '
+                    . get_debug_type($commonTable) . ' at index ' . $index . '.',
+                );
+            }
+
+            if (isset($named[$commonTable->name])) {
+                throw new InvalidArgumentException(
+                    'A WITH clause names each statement once, and ' . $commonTable->name
+                    . ' is named twice.',
+                );
+            }
+
+            $named[$commonTable->name] = $commonTable;
+        }
+
+        return array_values($named);
+    }
+
+    /**
      * Reindex references to columns as a list and reject anything that is not one.
      *
      * A clause naming columns takes either the name or an Expression standing
