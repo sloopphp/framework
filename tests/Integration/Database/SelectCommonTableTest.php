@@ -90,6 +90,21 @@ final class SelectCommonTableTest extends TransactionalIntegrationTestCase
         $this->assertSame([1, 3], $ids);
     }
 
+    public function testTheNameIsInReachOfEveryStatementOfACombination(): void
+    {
+        // The clause leads the whole combination rather than the statement it
+        // was declared on, so a statement added to it reads the name too.
+        $ids = $this->connection->select('id')
+            ->from('users')
+            ->where('status', 'blocked')
+            ->with('posted', $this->connection->select('user_id')->from('posts')->where('published', 1))
+            ->union($this->connection->select('user_id')->from('posted'))
+            ->orderBy('id')
+            ->pluck('id');
+
+        $this->assertSame([1, 3], $ids);
+    }
+
     public function testTheClauseIsStillReadWhenTheCombinedRowsAreCounted(): void
     {
         $count = $this->connection->select('user_id')
