@@ -178,6 +178,7 @@ class Grammar
      */
     public function compileSelect(SelectSpec $spec): CompiledSql
     {
+        $with    = $this->compileWith($spec->commonTables);
         $columns = $this->compileColumns($spec->columns);
         $from    = $this->compileFrom($spec->from);
         $joins   = $this->compileJoin($spec->joins);
@@ -189,9 +190,10 @@ class Grammar
         $lock    = $this->compileLock($spec->lock);
 
         return new CompiledSql(
-            'SELECT ' . $columns->sql . $from->sql . $joins->sql . $where->sql . $groupBy->sql
+            $with->sql . 'SELECT ' . $columns->sql . $from->sql . $joins->sql . $where->sql . $groupBy->sql
                 . $having->sql . $orderBy->sql . $limit->sql . $lock->sql,
             array_merge(
+                $with->bindings,
                 $columns->bindings,
                 $from->bindings,
                 $joins->bindings,
@@ -222,9 +224,10 @@ class Grammar
      */
     public function compileUnion(UnionSpec $spec): CompiledSql
     {
+        $with     = $this->compileWith($spec->commonTables);
         $first    = $this->compileSelect($spec->first);
-        $sql      = '(' . $first->sql . ')';
-        $bindings = $first->bindings;
+        $sql      = $with->sql . '(' . $first->sql . ')';
+        $bindings = array_merge($with->bindings, $first->bindings);
 
         foreach ($spec->unions as $union) {
             $added    = $union->query->compile();
@@ -388,6 +391,57 @@ class Grammar
         return new CompiledSql(
             'DELETE' . $from->sql . $where->sql . $orderBy->sql . $limit->sql,
             array_merge($from->bindings, $where->bindings, $orderBy->bindings, $limit->bindings),
+        );
+    }
+
+    /**
+     * Compile the WITH clause.
+     *
+     * The clause leads the statement, so what it writes ends with the space
+     * that separates it from the SELECT rather than beginning with one.
+     *
+     * RECURSIVE is written once for the whole clause, after WITH, because that
+     * is where SQL puts it: it says that a name may be read inside the body
+     * defining it, and covers every name the clause introduces. A clause
+     * therefore carries the keyword when any one of its statements asked for
+     * it. Saying it of a body that does not refer to itself is accepted by
+     * both servers, so nothing is refused for asking too widely.
+     *
+     * The name carries the table prefix. A statement reads it where a table
+     * name stands, so the reference is prefixed like any other table; writing
+     * the definition without the prefix would leave the two ends naming
+     * different things.
+     *
+     * @param  list<CommonTableExpression> $commonTables Statements the clause names, in the order they are written
+     * @return CompiledSql                 The clause ending in a space, with the bindings of the statements it names; empty when there are none
+     * @throws LogicException              When a statement named here names no table itself, or left a group of conditions open
+     * @throws InvalidArgumentException    When an identifier inside a statement named here is malformed
+     */
+    protected function compileWith(array $commonTables): CompiledSql
+    {
+        if ($commonTables === []) {
+            return new CompiledSql('');
+        }
+
+        $parts     = [];
+        $bindings  = [];
+        $recursive = false;
+
+        foreach ($commonTables as $commonTable) {
+            $inner     = $commonTable->query->compile();
+            $recursive = $recursive || $commonTable->recursive;
+            $columns   = $commonTable->columns === []
+                ? ''
+                : ' (' . implode(', ', array_map(IdentifierQuoter::quoteSegment(...), $commonTable->columns)) . ')';
+
+            $parts[]  = IdentifierQuoter::quoteSegment($this->prefix . $commonTable->name)
+                . $columns . ' AS (' . $inner->sql . ')';
+            $bindings = array_merge($bindings, $inner->bindings);
+        }
+
+        return new CompiledSql(
+            'WITH ' . ($recursive ? 'RECURSIVE ' : '') . implode(', ', $parts) . ' ',
+            $bindings,
         );
     }
 

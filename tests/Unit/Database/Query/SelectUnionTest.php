@@ -315,6 +315,27 @@ final class SelectUnionTest extends TestCase
         );
     }
 
+    public function testAWithClauseStaysOutsideTheTableTheCombinedRowsAreReadAs(): void
+    {
+        // The clause leads the whole statement wherever the combined rows are
+        // read from, so the names it introduces are in reach of the statements
+        // inside the parentheses as well as of the one reading them.
+        $this->results = [[['COUNT(*)' => 2]]];
+
+        $this->users()
+            ->with('recent', $this->connection->select('id')->from('posts')->where('id', '>', 1))
+            ->union($this->admins())
+            ->count();
+
+        $this->assertSame(
+            [
+                'WITH `recent` AS (SELECT `id` FROM `posts` WHERE `id` > ?)'
+                    . ' SELECT COUNT(*) FROM (' . $this->combined() . ') AS `sloop_union`',
+            ],
+            $this->prepared,
+        );
+    }
+
     public function testCountLeavesTheCombinedWindowOut(): void
     {
         $this->results = [[['COUNT(*)' => 5]]];

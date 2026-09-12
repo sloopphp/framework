@@ -22,6 +22,13 @@ use InvalidArgumentException;
 final readonly class SelectSpec
 {
     /**
+     * Statements the WITH clause names, in the order they are written.
+     *
+     * @var list<CommonTableExpression>
+     */
+    public array $commonTables;
+
+    /**
      * Columns to select; an empty list selects everything.
      *
      * @var list<string|Expression|SelectedColumn|WindowExpression>
@@ -66,17 +73,18 @@ final readonly class SelectSpec
     /**
      * Describe one SELECT statement.
      *
-     * @param  string|TableSource       $from       Table to select from, optionally schema qualified, or what to read from with its alias, which may be a statement
-     * @param  array<int|string, mixed> $columns    Column names, Expressions, window calls, or SelectedColumn instances; empty selects everything
-     * @param  array<int|string, mixed> $joins      Join instances, in the order they are written
-     * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause
-     * @param  array<int|string, mixed> $groupings  Column names or Expressions for the GROUP BY clause
-     * @param  array<int|string, mixed> $having     WherePart instances for the HAVING clause
-     * @param  array<int|string, mixed> $orders     Order instances for the ORDER BY clause
-     * @param  int|null                 $limit      Maximum number of rows, or null for no limit
-     * @param  int|null                 $offset     Rows to skip; needs a limit
-     * @param  RowLock|null             $lock       How to hold the rows read, or null to hold nothing
-     * @throws InvalidArgumentException When a clause holds the wrong type, a bound is negative, or an offset has no limit
+     * @param  string|TableSource       $from         Table to select from, optionally schema qualified, or what to read from with its alias, which may be a statement
+     * @param  array<int|string, mixed> $columns      Column names, Expressions, window calls, or SelectedColumn instances; empty selects everything
+     * @param  array<int|string, mixed> $joins        Join instances, in the order they are written
+     * @param  array<int|string, mixed> $conditions   WherePart instances for the WHERE clause
+     * @param  array<int|string, mixed> $groupings    Column names or Expressions for the GROUP BY clause
+     * @param  array<int|string, mixed> $having       WherePart instances for the HAVING clause
+     * @param  array<int|string, mixed> $orders       Order instances for the ORDER BY clause
+     * @param  int|null                 $limit        Maximum number of rows, or null for no limit
+     * @param  int|null                 $offset       Rows to skip; needs a limit
+     * @param  RowLock|null             $lock         How to hold the rows read, or null to hold nothing
+     * @param  array<int|string, mixed> $commonTables CommonTableExpression instances the WITH clause names, in the order they are written
+     * @throws InvalidArgumentException When a clause holds the wrong type, two statements of the WITH clause share a name, a bound is negative, or an offset has no limit
      */
     public function __construct(
         public string|TableSource $from,
@@ -89,13 +97,15 @@ final readonly class SelectSpec
         public ?int $limit = null,
         public ?int $offset = null,
         public ?RowLock $lock = null,
+        array $commonTables = [],
     ) {
-        $this->columns    = self::toColumns($columns);
-        $this->joins      = ClauseParts::toJoins($joins);
-        $this->conditions = ClauseParts::toConditions($conditions);
-        $this->groupings  = ClauseParts::toColumnReferences('GROUP BY terms', $groupings);
-        $this->having     = ClauseParts::toConditions($having);
-        $this->orders     = ClauseParts::toOrders($orders);
+        $this->commonTables = ClauseParts::toCommonTables($commonTables);
+        $this->columns      = self::toColumns($columns);
+        $this->joins        = ClauseParts::toJoins($joins);
+        $this->conditions   = ClauseParts::toConditions($conditions);
+        $this->groupings    = ClauseParts::toColumnReferences('GROUP BY terms', $groupings);
+        $this->having       = ClauseParts::toConditions($having);
+        $this->orders       = ClauseParts::toOrders($orders);
 
         ClauseParts::requireLimitNotNegative($limit);
 
