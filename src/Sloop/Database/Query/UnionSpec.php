@@ -52,7 +52,7 @@ final readonly class UnionSpec
      * @param  int|null                 $limit        Maximum number of combined rows, or null for no limit
      * @param  int|null                 $offset       Combined rows to skip; needs a limit
      * @param  array<int|string, mixed> $commonTables CommonTableExpression instances the WITH clause names, in the order they are written
-     * @throws InvalidArgumentException When no statement is combined, a clause holds the wrong type, a bound is negative, or an offset has no limit
+     * @throws InvalidArgumentException When no statement is combined, a clause holds the wrong type, two statements of the WITH clause share a name, a bound is negative, or an offset has no limit
      */
     public function __construct(
         public SelectSpec $first,

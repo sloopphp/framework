@@ -415,7 +415,7 @@ class Grammar
      * @param  list<CommonTableExpression> $commonTables Statements the clause names, in the order they are written
      * @return CompiledSql                 The clause ending in a space, with the bindings of the statements it names; empty when there are none
      * @throws LogicException              When a statement named here names no table itself, or left a group of conditions open
-     * @throws InvalidArgumentException    When a name or a column of one is malformed
+     * @throws InvalidArgumentException    When an identifier inside a statement named here is malformed
      */
     protected function compileWith(array $commonTables): CompiledSql
     {

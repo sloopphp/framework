@@ -84,7 +84,7 @@ final readonly class SelectSpec
      * @param  int|null                 $offset       Rows to skip; needs a limit
      * @param  RowLock|null             $lock         How to hold the rows read, or null to hold nothing
      * @param  array<int|string, mixed> $commonTables CommonTableExpression instances the WITH clause names, in the order they are written
-     * @throws InvalidArgumentException When a clause holds the wrong type, a bound is negative, or an offset has no limit
+     * @throws InvalidArgumentException When a clause holds the wrong type, two statements of the WITH clause share a name, a bound is negative, or an offset has no limit
      */
     public function __construct(
         public string|TableSource $from,

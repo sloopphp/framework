@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Query;
 
 use InvalidArgumentException;
+use LogicException;
 use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\TestCase;
@@ -141,15 +142,41 @@ final class SelectCommonTableTest extends TestCase
         // statements that follow it.
         $select = $this->connection->select('id')
             ->from('recent')
+            ->where('id', '<', 10)
             ->with('recent', $this->connection->select('user_id')->from('posts')->where('id', '>', 0))
             ->union($this->connection->select('id')->from('users')->where('id', '=', 2));
 
         $this->assertSame(
             'WITH `recent` AS (SELECT `user_id` FROM `posts` WHERE `id` > ?)'
-            . ' (SELECT `id` FROM `recent`) UNION (SELECT `id` FROM `users` WHERE `id` = ?)',
+            . ' (SELECT `id` FROM `recent` WHERE `id` < ?) UNION (SELECT `id` FROM `users` WHERE `id` = ?)',
             $select->toSql(),
         );
-        $this->assertSame([0, 2], $select->toBindings());
+        // The clause leads the statement, so its values are bound first. The
+        // first statement carries one of its own, which is what tells the two
+        // apart from each other.
+        $this->assertSame([0, 10, 2], $select->toBindings());
+    }
+
+    public function testAClauseGivenToAnAddedStatementAfterwardsIsRefusedWhenTheUnionIsWritten(): void
+    {
+        // The statement is held rather than copied, so a clause given to it
+        // after it was added would otherwise reach the SQL inside the
+        // parentheses, where MariaDB answers 1064.
+        $added  = $this->connection->select('id')->from('users');
+        $select = $this->connection->select('user_id')->from('posts')->union($added);
+
+        $added->with('own', $this->connection->select('id')->from('users'));
+
+        $error = $this->assertThrows(
+            LogicException::class,
+            static fn (): string => $select->toSql(),
+        );
+
+        $this->assertSame(
+            'A statement added to a union carries no WITH clause of its own, and one was given to it'
+            . ' after it was added. Name what it declares on the statement the union is added to.',
+            $error->getMessage(),
+        );
     }
 
     public function testAStatementAddedToAUnionCarriesNoClauseOfItsOwn(): void
