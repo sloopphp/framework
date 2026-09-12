@@ -271,7 +271,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column is one of the given values, joined to the condition before it with AND.
+     * Keep only rows whose column is one of the given values, joined to the one before it with AND.
      *
      * Same as whereIn(); spelled out for a chain that reads better with the
      * conjunction named.
@@ -287,7 +287,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column is one of the given values, joined to the condition before it with OR.
+     * Keep only rows whose column is one of the given values, joined to the one before it with OR.
      *
      * The set is what whereIn() describes.
      *
@@ -320,7 +320,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column is none of the given values, joined to the condition before it with AND.
+     * Keep only rows whose column is none of the given values, joined to the one before it with AND.
      *
      * Same as whereNotIn(); spelled out for a chain that reads better with the
      * conjunction named.
@@ -336,7 +336,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column is none of the given values, joined to the condition before it with OR.
+     * Keep only rows whose column is none of the given values, joined to the one before it with OR.
      *
      * The set is what whereNotIn() describes, including what a null among the
      * rows of a statement does to the test.
@@ -382,7 +382,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows for which the given statement returns at least one row, joined with AND.
+     * Keep only rows for which the given statement returns at least one row, joined to the one before it with AND.
      *
      * Same as whereExists(); spelled out for a chain that reads better with the
      * conjunction named.
@@ -396,7 +396,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows for which the given statement returns at least one row, joined with OR.
+     * Keep only rows for which the given statement returns at least one row, joined to the one before it with OR.
      *
      * The statement stands as whereExists() describes.
      *
@@ -424,7 +424,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows for which the given statement returns no row, joined with AND.
+     * Keep only rows for which the given statement returns no row, joined to the one before it with AND.
      *
      * Same as whereNotExists(); spelled out for a chain that reads better with
      * the conjunction named.
@@ -438,7 +438,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows for which the given statement returns no row, joined with OR.
+     * Keep only rows for which the given statement returns no row, joined to the one before it with OR.
      *
      * The statement stands as whereNotExists() describes.
      *
@@ -467,7 +467,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column falls between two bounds, joined to the condition before it with AND.
+     * Keep only rows whose column falls between two bounds, joined to the one before it with AND.
      *
      * Same as whereBetween(); spelled out for a chain that reads better with the
      * conjunction named.
@@ -486,7 +486,7 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
-     * Keep only rows whose column falls between two bounds, joined to the condition before it with OR.
+     * Keep only rows whose column falls between two bounds, joined to the one before it with OR.
      *
      * @param  string|Expression                           $column Column to test, or an expression standing in for one
      * @param  string|int|float|bool|Expression|ColumnName $min    Lower bound, included in the range

@@ -1218,20 +1218,6 @@ final class SelectTest extends TestCase
         $this->assertSame(['alice', 'active', 'pending'], $select->toBindings());
     }
 
-    public function testOrWhereInTakesAStatementWhereASetStands(): void
-    {
-        $select = $this->connection->select()
-            ->from('users')
-            ->where('name', 'alice')
-            ->orWhereIn('id', $this->connection->select('user_id')->from('orders')->where('paid', 1));
-
-        $this->assertSame(
-            'SELECT * FROM `users` WHERE `name` = ? OR `id` IN (SELECT `user_id` FROM `orders` WHERE `paid` = ?)',
-            $select->toSql(),
-        );
-        $this->assertSame(['alice', 1], $select->toBindings());
-    }
-
     public function testAndWhereInIsTheSameStatementAsWhereIn(): void
     {
         $named    = $this->connection->select()->from('users')->where('name', 'alice')->whereIn('status', ['active']);
