@@ -183,9 +183,32 @@ abstract class BuilderWhere extends Builder
      */
     public function whereNull(string|Expression $column): static
     {
-        $this->conditions[] = new Condition($column, 'IS', null, Conjunction::And);
+        return $this->addNullTest(Conjunction::And, $column, negated: false);
+    }
 
-        return $this;
+    /**
+     * Keep only rows where the column holds no value, joined to the one before it with AND.
+     *
+     * Same as whereNull(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  string|Expression $column Column to test, or an expression standing in for one
+     * @return static            This builder
+     */
+    public function andWhereNull(string|Expression $column): static
+    {
+        return $this->addNullTest(Conjunction::And, $column, negated: false);
+    }
+
+    /**
+     * Keep only rows where the column holds no value, joined to the one before it with OR.
+     *
+     * @param  string|Expression $column Column to test, or an expression standing in for one
+     * @return static            This builder
+     */
+    public function orWhereNull(string|Expression $column): static
+    {
+        return $this->addNullTest(Conjunction::Or, $column, negated: false);
     }
 
     /**
@@ -196,9 +219,32 @@ abstract class BuilderWhere extends Builder
      */
     public function whereNotNull(string|Expression $column): static
     {
-        $this->conditions[] = new Condition($column, 'IS NOT', null, Conjunction::And);
+        return $this->addNullTest(Conjunction::And, $column, negated: true);
+    }
 
-        return $this;
+    /**
+     * Keep only rows where the column holds a value, joined to the one before it with AND.
+     *
+     * Same as whereNotNull(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  string|Expression $column Column to test, or an expression standing in for one
+     * @return static            This builder
+     */
+    public function andWhereNotNull(string|Expression $column): static
+    {
+        return $this->addNullTest(Conjunction::And, $column, negated: true);
+    }
+
+    /**
+     * Keep only rows where the column holds a value, joined to the one before it with OR.
+     *
+     * @param  string|Expression $column Column to test, or an expression standing in for one
+     * @return static            This builder
+     */
+    public function orWhereNotNull(string|Expression $column): static
+    {
+        return $this->addNullTest(Conjunction::Or, $column, negated: true);
     }
 
     /**
@@ -221,14 +267,38 @@ abstract class BuilderWhere extends Builder
      */
     public function whereIn(string|Expression $column, array|Select $values): static
     {
-        $this->conditions[] = new InCondition(
-            $column,
-            $values instanceof Select ? new SubQuery($values) : $values,
-            negated: false,
-            conjunction: Conjunction::And,
-        );
+        return $this->addMembershipTest(Conjunction::And, $column, $values, negated: false);
+    }
 
-        return $this;
+    /**
+     * Keep only rows whose column is one of the given values, joined to the condition before it with AND.
+     *
+     * Same as whereIn(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function andWhereIn(string|Expression $column, array|Select $values): static
+    {
+        return $this->addMembershipTest(Conjunction::And, $column, $values, negated: false);
+    }
+
+    /**
+     * Keep only rows whose column is one of the given values, joined to the condition before it with OR.
+     *
+     * The set is what whereIn() describes.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function orWhereIn(string|Expression $column, array|Select $values): static
+    {
+        return $this->addMembershipTest(Conjunction::Or, $column, $values, negated: false);
     }
 
     /**
@@ -246,14 +316,39 @@ abstract class BuilderWhere extends Builder
      */
     public function whereNotIn(string|Expression $column, array|Select $values): static
     {
-        $this->conditions[] = new InCondition(
-            $column,
-            $values instanceof Select ? new SubQuery($values) : $values,
-            negated: true,
-            conjunction: Conjunction::And,
-        );
+        return $this->addMembershipTest(Conjunction::And, $column, $values, negated: true);
+    }
 
-        return $this;
+    /**
+     * Keep only rows whose column is none of the given values, joined to the condition before it with AND.
+     *
+     * Same as whereNotIn(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function andWhereNotIn(string|Expression $column, array|Select $values): static
+    {
+        return $this->addMembershipTest(Conjunction::And, $column, $values, negated: true);
+    }
+
+    /**
+     * Keep only rows whose column is none of the given values, joined to the condition before it with OR.
+     *
+     * The set is what whereNotIn() describes, including what a null among the
+     * rows of a statement does to the test.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function orWhereNotIn(string|Expression $column, array|Select $values): static
+    {
+        return $this->addMembershipTest(Conjunction::Or, $column, $values, negated: true);
     }
 
     /**
@@ -283,13 +378,34 @@ abstract class BuilderWhere extends Builder
      */
     public function whereExists(Select $query): static
     {
-        $this->conditions[] = new ExistsCondition(
-            new SubQuery($query),
-            negated: false,
-            conjunction: Conjunction::And,
-        );
+        return $this->addExistenceTest(Conjunction::And, $query, negated: false);
+    }
 
-        return $this;
+    /**
+     * Keep only rows for which the given statement returns at least one row, joined with AND.
+     *
+     * Same as whereExists(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  Select $query Statement asked whether it returns a row
+     * @return static This builder
+     */
+    public function andWhereExists(Select $query): static
+    {
+        return $this->addExistenceTest(Conjunction::And, $query, negated: false);
+    }
+
+    /**
+     * Keep only rows for which the given statement returns at least one row, joined with OR.
+     *
+     * The statement stands as whereExists() describes.
+     *
+     * @param  Select $query Statement asked whether it returns a row
+     * @return static This builder
+     */
+    public function orWhereExists(Select $query): static
+    {
+        return $this->addExistenceTest(Conjunction::Or, $query, negated: false);
     }
 
     /**
@@ -304,13 +420,34 @@ abstract class BuilderWhere extends Builder
      */
     public function whereNotExists(Select $query): static
     {
-        $this->conditions[] = new ExistsCondition(
-            new SubQuery($query),
-            negated: true,
-            conjunction: Conjunction::And,
-        );
+        return $this->addExistenceTest(Conjunction::And, $query, negated: true);
+    }
 
-        return $this;
+    /**
+     * Keep only rows for which the given statement returns no row, joined with AND.
+     *
+     * Same as whereNotExists(); spelled out for a chain that reads better with
+     * the conjunction named.
+     *
+     * @param  Select $query Statement asked whether it returns a row
+     * @return static This builder
+     */
+    public function andWhereNotExists(Select $query): static
+    {
+        return $this->addExistenceTest(Conjunction::And, $query, negated: true);
+    }
+
+    /**
+     * Keep only rows for which the given statement returns no row, joined with OR.
+     *
+     * The statement stands as whereNotExists() describes.
+     *
+     * @param  Select $query Statement asked whether it returns a row
+     * @return static This builder
+     */
+    public function orWhereNotExists(Select $query): static
+    {
+        return $this->addExistenceTest(Conjunction::Or, $query, negated: true);
     }
 
     /**
@@ -326,9 +463,42 @@ abstract class BuilderWhere extends Builder
         string|int|float|bool|Expression|ColumnName $min,
         string|int|float|bool|Expression|ColumnName $max,
     ): static {
-        $this->conditions[] = new BetweenCondition($column, $min, $max, Conjunction::And);
+        return $this->addRangeTest(Conjunction::And, $column, $min, $max);
+    }
 
-        return $this;
+    /**
+     * Keep only rows whose column falls between two bounds, joined to the condition before it with AND.
+     *
+     * Same as whereBetween(); spelled out for a chain that reads better with the
+     * conjunction named.
+     *
+     * @param  string|Expression                           $column Column to test, or an expression standing in for one
+     * @param  string|int|float|bool|Expression|ColumnName $min    Lower bound, included in the range
+     * @param  string|int|float|bool|Expression|ColumnName $max    Upper bound, included in the range
+     * @return static                                      This builder
+     */
+    public function andWhereBetween(
+        string|Expression $column,
+        string|int|float|bool|Expression|ColumnName $min,
+        string|int|float|bool|Expression|ColumnName $max,
+    ): static {
+        return $this->addRangeTest(Conjunction::And, $column, $min, $max);
+    }
+
+    /**
+     * Keep only rows whose column falls between two bounds, joined to the condition before it with OR.
+     *
+     * @param  string|Expression                           $column Column to test, or an expression standing in for one
+     * @param  string|int|float|bool|Expression|ColumnName $min    Lower bound, included in the range
+     * @param  string|int|float|bool|Expression|ColumnName $max    Upper bound, included in the range
+     * @return static                                      This builder
+     */
+    public function orWhereBetween(
+        string|Expression $column,
+        string|int|float|bool|Expression|ColumnName $min,
+        string|int|float|bool|Expression|ColumnName $max,
+    ): static {
+        return $this->addRangeTest(Conjunction::Or, $column, $min, $max);
     }
 
     /**
@@ -800,6 +970,86 @@ abstract class BuilderWhere extends Builder
 
             $joinsToPrevious = Conjunction::And;
         }
+
+        return $this;
+    }
+
+    /**
+     * Add a test for the presence or absence of a value.
+     *
+     * @param  Conjunction       $conjunction How the test joins to what precedes it
+     * @param  string|Expression $column      Column to test, or an expression standing in for one
+     * @param  bool              $negated     Whether the test passes for a column that holds a value
+     * @return static            This builder
+     */
+    private function addNullTest(Conjunction $conjunction, string|Expression $column, bool $negated): static
+    {
+        $this->conditions[] = new Condition($column, $negated ? 'IS NOT' : 'IS', null, $conjunction);
+
+        return $this;
+    }
+
+    /**
+     * Add a test of a column against a set of values.
+     *
+     * @param  Conjunction                     $conjunction How the test joins to what precedes it
+     * @param  string|Expression               $column      Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values      Values making up the set, or a statement whose rows make it up
+     * @param  bool                            $negated     Whether the test passes for a column outside the set
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    private function addMembershipTest(
+        Conjunction $conjunction,
+        string|Expression $column,
+        array|Select $values,
+        bool $negated,
+    ): static {
+        $this->conditions[] = new InCondition(
+            $column,
+            $values instanceof Select ? new SubQuery($values) : $values,
+            negated: $negated,
+            conjunction: $conjunction,
+        );
+
+        return $this;
+    }
+
+    /**
+     * Add a test of whether a statement returns a row.
+     *
+     * @param  Conjunction $conjunction How the test joins to what precedes it
+     * @param  Select      $query       Statement asked whether it returns a row
+     * @param  bool        $negated     Whether the test passes for a statement that returns nothing
+     * @return static      This builder
+     */
+    private function addExistenceTest(Conjunction $conjunction, Select $query, bool $negated): static
+    {
+        $this->conditions[] = new ExistsCondition(
+            new SubQuery($query),
+            negated: $negated,
+            conjunction: $conjunction,
+        );
+
+        return $this;
+    }
+
+    /**
+     * Add a test of a column against a range, both bounds included.
+     *
+     * @param  Conjunction                                 $conjunction How the test joins to what precedes it
+     * @param  string|Expression                           $column      Column to test, or an expression standing in for one
+     * @param  string|int|float|bool|Expression|ColumnName $min         Lower bound, included in the range
+     * @param  string|int|float|bool|Expression|ColumnName $max         Upper bound, included in the range
+     * @return static                                      This builder
+     */
+    private function addRangeTest(
+        Conjunction $conjunction,
+        string|Expression $column,
+        string|int|float|bool|Expression|ColumnName $min,
+        string|int|float|bool|Expression|ColumnName $max,
+    ): static {
+        $this->conditions[] = new BetweenCondition($column, $min, $max, $conjunction);
 
         return $this;
     }
