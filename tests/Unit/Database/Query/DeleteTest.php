@@ -74,6 +74,17 @@ final class DeleteTest extends TestCase
         $this->assertSame(['blocked', 1], $delete->toBindings());
     }
 
+    public function testAConditionComparesAgainstAColumnNameHereToo(): void
+    {
+        // whereIn() and the rest of the WHERE clause live in BuilderWhere, so
+        // what a comparison takes on its right-hand side is the same for every
+        // statement that has one.
+        $delete = $this->delete()->where('name', '=', Expression::column('status'));
+
+        $this->assertSame('DELETE FROM `users` WHERE `name` = `status`', $delete->toSql());
+        $this->assertSame([], $delete->toBindings());
+    }
+
     public function testOrderAndLimitPickWhichRowsGo(): void
     {
         $delete = $this->delete()->where('status', 'blocked')->orderBy('id', 'DESC')->limit(1);

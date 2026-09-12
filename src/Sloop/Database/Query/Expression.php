@@ -20,9 +20,10 @@ use InvalidArgumentException;
  *
  * Columns are quoted by IdentifierQuoter, the same way a query builder quotes
  * the ones it is given. That quoting does not carry the table prefix, which is
- * why `over()` is the exception here: it returns a WindowExpression, whose
- * columns a Grammar resolves when the statement is compiled and so reach the
- * prefix the way any other column reference does.
+ * why `over()` and `column()` are the exceptions here: they return a type that
+ * holds its columns unresolved, and a Grammar resolves them when the statement
+ * is compiled, so they reach the prefix the way any other column reference
+ * does.
  */
 final readonly class Expression
 {
@@ -110,6 +111,28 @@ final readonly class Expression
             'ELT(' . $positionSql . ', ' . self::placeholders(\count($bindings)) . ')',
             array_merge($positionBindings, $bindings),
         );
+    }
+
+    /**
+     * Name a column where a value would otherwise stand.
+     *
+     * A comparison binds its right-hand side, and an assignment binds what it
+     * writes, so a column standing there has to say that it is one. What comes
+     * back is quoted when the statement is compiled and carries the table
+     * prefix, which is what separates it from naming the same column through
+     * `of()`: there the text stands as written and neither applies.
+     *
+     * The other side of a comparison, and the column an assignment writes, are
+     * named as plain strings the way they always are. This is only for the
+     * side that would otherwise hold a value.
+     *
+     * @param  string                   $name Column name, optionally qualified ('users.id')
+     * @return ColumnName               The name, left for a Grammar to quote
+     * @throws InvalidArgumentException When a segment of the name is empty
+     */
+    public static function column(string $name): ColumnName
+    {
+        return new ColumnName($name);
     }
 
     /**

@@ -25,6 +25,7 @@ use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\IsolationLevel;
 use Sloop\Database\LoggingOptions;
+use Sloop\Database\Query\Grammar;
 use Sloop\Tests\Support\ThrowsAssertions;
 use UnexpectedValueException;
 
@@ -1624,5 +1625,29 @@ final class ConnectionTest extends TestCase
         $connection = new Connection($pdo, 'test');
 
         $this->assertSame(0, $connection->lastInsertId());
+    }
+
+    public function testQuoteIdentifierWritesTheNameTheWayAStatementOfThisConnectionWould(): void
+    {
+        $this->assertSame('`users`.`id`', $this->connection->quoteIdentifier('users.id'));
+    }
+
+    public function testQuoteIdentifierCarriesTheTablePrefixOfTheGrammar(): void
+    {
+        // The prefix is what makes this worth asking a connection for: the
+        // same name quoted without one names a table the builders never read.
+        $this->connection->setGrammar(new Grammar('app_'));
+
+        $this->assertSame('`app_users`.`id`', $this->connection->quoteIdentifier('users.id'));
+    }
+
+    public function testQuoteIdentifierRefusesANameWithAnEmptySegment(): void
+    {
+        $error = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): string => $this->connection->quoteIdentifier('users.'),
+        );
+
+        $this->assertSame('Identifier must not contain an empty segment, got users..', $error->getMessage());
     }
 }

@@ -578,16 +578,16 @@ class Select extends BuilderWhere
      * Without a GROUP BY the rows form a single group, which both servers
      * accept, so this can narrow an aggregate taken over the whole table.
      *
-     * @param  string|Expression                     $column   Column or aggregate to compare
-     * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
-     * @return static                                This builder
-     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     * @param  string|Expression                                $column   Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|ColumnName|null $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null $value    Value to compare against, when an operator was given
+     * @return static                                           This builder
+     * @throws InvalidArgumentException                         When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     public function having(
         string|Expression $column,
-        string|int|float|bool|Expression|null $operator = null,
-        string|int|float|bool|Expression|null $value = null,
+        string|int|float|bool|Expression|ColumnName|null $operator = null,
+        string|int|float|bool|Expression|ColumnName|null $value = null,
     ): static {
         return $this->addHaving(Conjunction::And, $column, $operator, $value, \func_num_args());
     }
@@ -598,16 +598,16 @@ class Select extends BuilderWhere
      * Same as having(); spelled out for a chain that reads better with the
      * conjunction named.
      *
-     * @param  string|Expression                     $column   Column or aggregate to compare
-     * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
-     * @return static                                This builder
-     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     * @param  string|Expression                                $column   Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|ColumnName|null $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null $value    Value to compare against, when an operator was given
+     * @return static                                           This builder
+     * @throws InvalidArgumentException                         When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     public function andHaving(
         string|Expression $column,
-        string|int|float|bool|Expression|null $operator = null,
-        string|int|float|bool|Expression|null $value = null,
+        string|int|float|bool|Expression|ColumnName|null $operator = null,
+        string|int|float|bool|Expression|ColumnName|null $value = null,
     ): static {
         return $this->addHaving(Conjunction::And, $column, $operator, $value, \func_num_args());
     }
@@ -615,16 +615,16 @@ class Select extends BuilderWhere
     /**
      * Narrow the groups on a comparison, joined to the one before it with OR.
      *
-     * @param  string|Expression                     $column   Column or aggregate to compare
-     * @param  string|int|float|bool|Expression|null $operator Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null $value    Value to compare against, when an operator was given
-     * @return static                                This builder
-     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     * @param  string|Expression                                $column   Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|ColumnName|null $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null $value    Value to compare against, when an operator was given
+     * @return static                                           This builder
+     * @throws InvalidArgumentException                         When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     public function orHaving(
         string|Expression $column,
-        string|int|float|bool|Expression|null $operator = null,
-        string|int|float|bool|Expression|null $value = null,
+        string|int|float|bool|Expression|ColumnName|null $operator = null,
+        string|int|float|bool|Expression|ColumnName|null $value = null,
     ): static {
         return $this->addHaving(Conjunction::Or, $column, $operator, $value, \func_num_args());
     }
@@ -1929,19 +1929,19 @@ class Select extends BuilderWhere
      * comparing against a value that happens to spell an operator means that
      * value.
      *
-     * @param  Conjunction                           $conjunction   How what is added joins to what precedes it
-     * @param  string|Expression                     $column        Column or aggregate to compare
-     * @param  string|int|float|bool|Expression|null $operator      Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null $value         Value to compare against, when an operator was given
-     * @param  int                                   $argumentCount Number of arguments the caller passed
-     * @return static                                This builder
-     * @throws InvalidArgumentException              When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
+     * @param  Conjunction                                      $conjunction   How what is added joins to what precedes it
+     * @param  string|Expression                                $column        Column or aggregate to compare
+     * @param  string|int|float|bool|Expression|ColumnName|null $operator      Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null $value         Value to compare against, when an operator was given
+     * @param  int                                              $argumentCount Number of arguments the caller passed
+     * @return static                                           This builder
+     * @throws InvalidArgumentException                         When a column stands alone, the operator is not a string or a supported comparison, or null stands where the operator cannot read it
      */
     private function addHaving(
         Conjunction $conjunction,
         string|Expression $column,
-        string|int|float|bool|Expression|null $operator,
-        string|int|float|bool|Expression|null $value,
+        string|int|float|bool|Expression|ColumnName|null $operator,
+        string|int|float|bool|Expression|ColumnName|null $value,
         int $argumentCount,
     ): static {
         if ($argumentCount < 2) {

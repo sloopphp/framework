@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Sloop\Database\Dialect;
 use Sloop\Database\Query\Assignment;
 use Sloop\Database\Query\BetweenCondition;
+use Sloop\Database\Query\ColumnName;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Condition;
 use Sloop\Database\Query\Conjunction;
@@ -1256,7 +1257,7 @@ final class GrammarTest extends TestCase
                 return new CompiledSql('/*reference*/' . $compiled->sql, $compiled->bindings);
             }
 
-            protected function compileValue(string|int|float|bool|Expression|null $value): CompiledSql
+            protected function compileValue(string|int|float|bool|Expression|ColumnName|null $value): CompiledSql
             {
                 $compiled = parent::compileValue($value);
 
