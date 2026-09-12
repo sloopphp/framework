@@ -23,9 +23,10 @@ script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 # definitions.
 eval "$(sed -n '/^gate_count() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^integration_db_name() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^prunable_databases() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^run_actionlint() {/,/^}/p' "$script_dir/quality-gate.sh")"
 
-for fn in gate_count integration_db_name run_actionlint; do
+for fn in gate_count integration_db_name prunable_databases run_actionlint; do
     if ! declare -f "$fn" > /dev/null; then
         echo "$fn could not be loaded from quality-gate.sh" >&2
         exit 1
@@ -347,6 +348,80 @@ check_actionlint 'actionlint: the shellcheck rule ran' 0 \
     'verbose: Collected 1 YAML files
 verbose: Rule "pyflakes" was disabled: exec: "pyflakes": executable file not found in $PATH
 verbose: Found total 0 errors in 0 ms for .github/workflows/ci.yml'
+
+# Assert which databases are prunable.
+#
+# $1 case name, $2 all databases (newline-separated), $3 the ones in use,
+# $4 expected result (newline-separated, '' for none)
+check_prunable() {
+    local case_name="$1" want="$4" got
+
+    got=$(prunable_databases "$2" "$3")
+
+    if [ "$got" = "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+# What a server holds in practice: its own databases, the one compose creates,
+# the tree the gate is running in, and the leftovers of trees that are gone.
+all_databases='information_schema
+mysql
+performance_schema
+sys
+sloop_test
+sloop_test_framework
+sloop_test_cte
+sloop_test_union'
+
+check_prunable 'prune: leftovers of removed worktrees' \
+    "$all_databases" 'sloop_test_framework' \
+    'sloop_test_cte
+sloop_test_union'
+
+# The reason this exists: a parallel session is running the gate in its own
+# tree, and its database has to survive even though this process is not using it.
+check_prunable 'prune: a parallel session keeps its database' \
+    "$all_databases" 'sloop_test_framework
+sloop_test_cte' \
+    'sloop_test_union'
+
+# `sloop_test` comes from compose, not from a worktree, so nothing derived from
+# `git worktree list` would ever name it. Dropping it would take the server's
+# default database with it.
+check_prunable 'prune: the database compose creates is left alone' \
+    'sloop_test
+sloop_test_gone' 'sloop_test_framework' 'sloop_test_gone'
+
+check_prunable 'prune: databases outside the prefix are left alone' \
+    'mysql
+sys
+sloopy_test_x
+sloop_testing' 'sloop_test_framework' ''
+
+check_prunable 'prune: nothing to drop' \
+    'sloop_test
+sloop_test_framework' 'sloop_test_framework' ''
+
+# An empty protected list is how an upstream failure shows up here -- the main
+# worktree is always listed, so the only way to get one is a command that did
+# not run. Returning every test database would then delete all of them.
+if prunable_databases "$all_databases" '' > /dev/null 2>&1; then
+    printf '  FAIL %s\n' 'prune: an empty protected list is refused'
+    failed=$((failed + 1))
+else
+    printf '  ok   %s\n' 'prune: an empty protected list is refused'
+    passed=$((passed + 1))
+fi
+
+# A name that is exactly the prefix has nothing after it to identify a worktree,
+# so it is not something this gate created.
+check_prunable 'prune: the bare prefix is not a worktree database' \
+    'sloop_test_' 'sloop_test_framework' ''
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

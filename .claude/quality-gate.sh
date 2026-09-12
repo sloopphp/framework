@@ -83,6 +83,60 @@ integration_db_name() {
     printf 'sloop_test_%s' "$slug"
 }
 
+# Databases the worktrees that exist right now are using.
+#
+# Reads `git worktree list`, so a tree someone else is running the gate in is
+# named here whether or not its database exists yet. That is what keeps this
+# from deleting a database out from under a parallel session.
+#
+# Writes nothing and returns 1 when the worktrees cannot be listed, so the
+# caller can tell "no trees" (which cannot happen -- the main one is always
+# listed) from "the command failed".
+integration_dbs_in_use() {
+    local listing
+    listing=$(git worktree list --porcelain 2> /dev/null) || return 1
+
+    local paths
+    paths=$(printf '%s\n' "$listing" | sed -n 's/^worktree //p')
+    [ -n "$paths" ] || return 1
+
+    local path
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        integration_db_name "$(basename "$path")"
+    done <<< "$paths"
+}
+
+# The databases in $1 that no worktree in $2 is using.
+#
+# Both arguments are newline-separated lists: $1 as the server reports them, $2
+# as integration_dbs_in_use writes them. Only names carrying the prefix and
+# something after it are considered, which leaves the server's own databases and
+# the `sloop_test` that compose creates alone -- the latter is not derived from a
+# worktree, so nothing would ever protect it.
+#
+# $2 must not be empty. An empty protected list would mean every test database
+# is prunable, and the only way to get one is a failure upstream.
+prunable_databases() {
+    local all="$1" protected="$2"
+
+    [ -n "$protected" ] || return 1
+
+    local name
+    while IFS= read -r name; do
+        case "$name" in
+            sloop_test_?*) ;;
+            *) continue ;;
+        esac
+
+        if printf '%s\n' "$protected" | grep -qxF -- "$name"; then
+            continue
+        fi
+
+        printf '%s\n' "$name"
+    done <<< "$all"
+}
+
 # Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
 if [ -t 1 ]; then
     bold=$'\033[1m'; green=$'\033[32m'; red=$'\033[31m'; reset=$'\033[0m'
@@ -326,6 +380,41 @@ if [ "$with_integration" -eq 1 ]; then
 
     if [ "$integration_ready" -eq 1 ]; then
         printf '\n  (integration database: %s)\n' "$db_name"
+
+        # Drop the databases of worktrees that are gone. Every step here can
+        # fail into "delete nothing": an unreadable worktree list or database
+        # list leaves the loop without a set to work from, and prunable_databases
+        # refuses an empty protected list rather than treating every test
+        # database as unused.
+        in_use=$(integration_dbs_in_use)
+        if [ -z "$in_use" ]; then
+            printf '  (could not list the worktrees; left the databases alone)\n'
+        else
+            for service in mysql mariadb; do
+                existing=$(docker compose exec -T "$service" mysql -uroot -proot \
+                    -N -e 'SHOW DATABASES' 2> /dev/null) || existing=''
+                [ -n "$existing" ] || continue
+
+                stale=$(prunable_databases "$existing" "$in_use") || continue
+                [ -n "$stale" ] || continue
+
+                drops=''
+                while IFS= read -r stale_db; do
+                    [ -n "$stale_db" ] || continue
+                    drops="${drops}DROP DATABASE IF EXISTS \`${stale_db}\`;"
+                done <<< "$stale"
+
+                if docker compose exec -T "$service" mysql -uroot -proot \
+                    -e "$drops" > /dev/null 2>&1; then
+                    printf '  (%s: dropped %s unused database(s): %s)\n' \
+                        "$service" "$(printf '%s\n' "$stale" | wc -l | tr -d ' ')" \
+                        "$(printf '%s' "$stale" | tr '\n' ' ')"
+                else
+                    printf '  (%s: could not drop the unused databases)\n' "$service"
+                fi
+            done
+        fi
+
         run_gate 'Integration (3306)' env DB_NAME="$db_name" \
             vendor/bin/phpunit --testsuite=Integration
         run_gate 'Integration (3307)' env DB_NAME="$db_name" DB_PORT=3307 \
