@@ -110,11 +110,9 @@ integration_dbs_in_use() {
     paths=$(printf '%s\n' "$listing" | sed -n 's/^worktree //p')
     [ -n "$paths" ] || return 1
 
-    # integration_db_name writes no trailing newline -- its docblock keeps that
-    # deliberately, since the caller reads it through a command substitution and
-    # anything on stdout lands inside the name. Ending each line here is what
-    # makes this a list rather than one concatenated string; the consumer
-    # matches whole lines, so a concatenated one would protect nothing.
+    # integration_db_name ends without a newline, so calling it bare here would
+    # run the names together. Ending each line is what makes this a list; the
+    # consumer matches whole lines, and a concatenated one would protect nothing.
     local path
     while IFS= read -r path; do
         [ -n "$path" ] || continue
