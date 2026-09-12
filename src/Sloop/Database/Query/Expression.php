@@ -209,6 +209,377 @@ final readonly class Expression
     }
 
     /**
+     * Name any window function this grammar writes, with the arguments it takes.
+     *
+     * The named factories below cover the calls MySQL and MariaDB document. This
+     * is the way to reach one a subclass added by overriding
+     * `Grammar::windowFunctions()`, and the way to write a call whose arguments
+     * this class gives no shape for.
+     *
+     * Arguments tell columns from values apart by type: a string names a column
+     * and is quoted, an Expression is written as it stands, and anything else is
+     * bound.
+     *
+     * @param  string                          $function     Name of the function, in any case
+     * @param  string|self|int|float|bool|null ...$arguments Arguments of the call, in written order
+     * @return FunctionCall                    The call, awaiting the window it runs over
+     * @throws InvalidArgumentException        When the function name is empty
+     */
+    public static function fn(string $function, string|self|int|float|bool|null ...$arguments): FunctionCall
+    {
+        return new FunctionCall($function, $arguments);
+    }
+
+    /**
+     * Position of the current row within its partition, counting from one.
+     *
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function rowNumber(): FunctionCall
+    {
+        return new FunctionCall('ROW_NUMBER');
+    }
+
+    /**
+     * Rank of the current row within its partition, leaving gaps after a tie.
+     *
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function rank(): FunctionCall
+    {
+        return new FunctionCall('RANK');
+    }
+
+    /**
+     * Rank of the current row within its partition, leaving no gaps after a tie.
+     *
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function denseRank(): FunctionCall
+    {
+        return new FunctionCall('DENSE_RANK');
+    }
+
+    /**
+     * Rank of the current row as a fraction between 0 and 1.
+     *
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function percentRank(): FunctionCall
+    {
+        return new FunctionCall('PERCENT_RANK');
+    }
+
+    /**
+     * Fraction of the rows of the partition at or before the current one.
+     *
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function cumeDist(): FunctionCall
+    {
+        return new FunctionCall('CUME_DIST');
+    }
+
+    /**
+     * Number of the bucket the current row falls in, dividing the partition into $buckets of them.
+     *
+     * The bucket count is bound rather than written into the SQL, so it may come
+     * from outside the application.
+     *
+     * @param  int          $buckets Number of buckets to divide each partition into
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function ntile(int $buckets): FunctionCall
+    {
+        return new FunctionCall('NTILE', [$buckets]);
+    }
+
+    /**
+     * Value of the column in the row $offset rows before the current one.
+     *
+     * The offset and the default are written only when they are given, since
+     * MariaDB has no third parameter here and refuses the call with 1064 when
+     * one is written. Passing null explicitly still writes it, so a statement
+     * that needs a default says so and fails on the server that cannot take it,
+     * rather than silently dropping what the caller wrote.
+     *
+     * @param  string|self                     $column  Column to read, or an expression producing the value
+     * @param  int                             $offset  How many rows away to read, written only when given
+     * @param  string|self|int|float|bool|null $default Value to read where there is no such row, written only when given
+     * @return FunctionCall                    The call, awaiting the window it runs over
+     */
+    public static function lag(string|self $column, int $offset = 1, string|self|int|float|bool|null $default = null): FunctionCall
+    {
+        $arguments = [$column];
+
+        if (\func_num_args() > 1) {
+            $arguments[] = $offset;
+        }
+
+        if (\func_num_args() > 2) {
+            $arguments[] = $default;
+        }
+
+        return new FunctionCall('LAG', $arguments);
+    }
+
+    /**
+     * Value of the column in the row $offset rows after the current one.
+     *
+     * The offset and the default are written only when they are given, since
+     * MariaDB has no third parameter here and refuses the call with 1064 when
+     * one is written. Passing null explicitly still writes it, so a statement
+     * that needs a default says so and fails on the server that cannot take it,
+     * rather than silently dropping what the caller wrote.
+     *
+     * @param  string|self                     $column  Column to read, or an expression producing the value
+     * @param  int                             $offset  How many rows away to read, written only when given
+     * @param  string|self|int|float|bool|null $default Value to read where there is no such row, written only when given
+     * @return FunctionCall                    The call, awaiting the window it runs over
+     */
+    public static function lead(string|self $column, int $offset = 1, string|self|int|float|bool|null $default = null): FunctionCall
+    {
+        $arguments = [$column];
+
+        if (\func_num_args() > 1) {
+            $arguments[] = $offset;
+        }
+
+        if (\func_num_args() > 2) {
+            $arguments[] = $default;
+        }
+
+        return new FunctionCall('LEAD', $arguments);
+    }
+
+    /**
+     * Value of the column in the first row of the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function firstValue(string|self $column): FunctionCall
+    {
+        return new FunctionCall('FIRST_VALUE', [$column]);
+    }
+
+    /**
+     * Value of the column in the last row of the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function lastValue(string|self $column): FunctionCall
+    {
+        return new FunctionCall('LAST_VALUE', [$column]);
+    }
+
+    /**
+     * Value of the column in the $position-th row of the window, counting from one.
+     *
+     * The position is bound rather than written into the SQL.
+     *
+     * @param  string|self  $column   Column to read, or an expression producing the value
+     * @param  int          $position Which row of the window to read, counting from one
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function nthValue(string|self $column, int $position): FunctionCall
+    {
+        return new FunctionCall('NTH_VALUE', [$column, $position]);
+    }
+
+    /**
+     * Number of rows in the window, or of those where the column is not null.
+     *
+     * Counting rows is the default, written as `COUNT(*)`; naming a column counts
+     * the rows where it holds a value.
+     *
+     * @param  string|self  $column Column to count the values of, or '*' to count rows
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function count(string|self $column = '*'): FunctionCall
+    {
+        return new FunctionCall('COUNT', [$column]);
+    }
+
+    /**
+     * Sum of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function sum(string|self $column): FunctionCall
+    {
+        return new FunctionCall('SUM', [$column]);
+    }
+
+    /**
+     * Average of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function avg(string|self $column): FunctionCall
+    {
+        return new FunctionCall('AVG', [$column]);
+    }
+
+    /**
+     * Largest value of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function max(string|self $column): FunctionCall
+    {
+        return new FunctionCall('MAX', [$column]);
+    }
+
+    /**
+     * Smallest value of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function min(string|self $column): FunctionCall
+    {
+        return new FunctionCall('MIN', [$column]);
+    }
+
+    /**
+     * Population standard deviation of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function std(string|self $column): FunctionCall
+    {
+        return new FunctionCall('STD', [$column]);
+    }
+
+    /**
+     * Population standard deviation of the column over the window; a synonym of STD.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function stddev(string|self $column): FunctionCall
+    {
+        return new FunctionCall('STDDEV', [$column]);
+    }
+
+    /**
+     * Population standard deviation of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function stddevPop(string|self $column): FunctionCall
+    {
+        return new FunctionCall('STDDEV_POP', [$column]);
+    }
+
+    /**
+     * Sample standard deviation of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function stddevSamp(string|self $column): FunctionCall
+    {
+        return new FunctionCall('STDDEV_SAMP', [$column]);
+    }
+
+    /**
+     * Population variance of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function varPop(string|self $column): FunctionCall
+    {
+        return new FunctionCall('VAR_POP', [$column]);
+    }
+
+    /**
+     * Sample variance of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function varSamp(string|self $column): FunctionCall
+    {
+        return new FunctionCall('VAR_SAMP', [$column]);
+    }
+
+    /**
+     * Population variance of the column over the window; a synonym of VAR_POP.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function variance(string|self $column): FunctionCall
+    {
+        return new FunctionCall('VARIANCE', [$column]);
+    }
+
+    /**
+     * Bitwise AND of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function bitAnd(string|self $column): FunctionCall
+    {
+        return new FunctionCall('BIT_AND', [$column]);
+    }
+
+    /**
+     * Bitwise OR of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function bitOr(string|self $column): FunctionCall
+    {
+        return new FunctionCall('BIT_OR', [$column]);
+    }
+
+    /**
+     * Bitwise XOR of the column over the window.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function bitXor(string|self $column): FunctionCall
+    {
+        return new FunctionCall('BIT_XOR', [$column]);
+    }
+
+    /**
+     * Values of the column over the window, as a JSON array.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function jsonArrayAgg(string|self $column): FunctionCall
+    {
+        return new FunctionCall('JSON_ARRAYAGG', [$column]);
+    }
+
+    /**
+     * Keys and values of the two columns over the window, as a JSON object.
+     *
+     * @param  string|self  $key   Column holding the keys of the object
+     * @param  string|self  $value Column holding the values of the object
+     * @return FunctionCall The call, awaiting the window it runs over
+     */
+    public static function jsonObjectAgg(string|self $key, string|self $value): FunctionCall
+    {
+        return new FunctionCall('JSON_OBJECTAGG', [$key, $value]);
+    }
+
+    /**
      * The raw SQL fragment.
      *
      * @return string SQL to embed verbatim

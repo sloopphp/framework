@@ -97,6 +97,74 @@ final readonly class WindowExpression
     }
 
     /**
+     * Divide the rows by these columns as well, before the function runs over each group.
+     *
+     * Adds to the columns already there rather than replacing them, so a window
+     * may be narrowed a column at a time. The window itself is never changed: a
+     * new one is returned, and the one this was called on keeps what it had.
+     *
+     * A window call cannot stand here. Nesting one inside another compiles to
+     * SQL both servers refuse (MySQL 3595, MariaDB 4015), so the signature says
+     * so at the line that wrote it.
+     *
+     * @param  string|Expression ...$columns Columns to divide the rows by, or expressions producing them
+     * @return self              A window dividing the rows by the columns it had and these
+     */
+    public function partitionBy(string|Expression ...$columns): self
+    {
+        return new self(
+            $this->function,
+            $this->arguments,
+            [...$this->partitions, ...$columns],
+            $this->orders,
+        );
+    }
+
+    /**
+     * Sort the rows of each partition by this column as well.
+     *
+     * Adds to the sort terms already there rather than replacing them, so a
+     * window may be ordered by one column and then another. As with
+     * partitionBy(), a new window is returned and this one is left alone.
+     *
+     * The rules are the ones a statement's ORDER BY follows, so the same call
+     * reads the same way inside a window as outside it: an Expression stands as
+     * a term of its own and takes no direction, since its SQL already says how
+     * it sorts, and a window call cannot stand here at all.
+     *
+     * @param  string|Expression        $column    Column to sort by, or an expression producing the sort key
+     * @param  string                   $direction Sort direction, 'ASC' or 'DESC'
+     * @return self                     A window sorting by the terms it had and this one
+     * @throws InvalidArgumentException When the direction names neither ASC nor DESC, or is given alongside an Expression
+     *
+     * @see    BuilderWhere::orderBy() for the same rules applied to a statement
+     */
+    public function orderBy(string|Expression $column, string $direction = 'ASC'): self
+    {
+        // Read even where it is not written, so that a direction naming neither
+        // ASC nor DESC is refused the same way whatever the column is.
+        $read = Direction::fromKeyword($direction);
+
+        if ($column instanceof Expression) {
+            if (\func_num_args() > 1) {
+                throw new InvalidArgumentException(
+                    'A sort term written as SQL says how it sorts, so it takes no direction, got "'
+                    . $direction . '". Write the direction into the Expression instead.',
+                );
+            }
+
+            $read = null;
+        }
+
+        return new self(
+            $this->function,
+            $this->arguments,
+            $this->partitions,
+            [...$this->orders, new Order($column, $read)],
+        );
+    }
+
+    /**
      * Reindex the arguments as a list and reject what cannot be written as one.
      *
      * @param  array<int|string, mixed>                    $arguments Arguments as the caller gave them

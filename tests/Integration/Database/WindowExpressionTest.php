@@ -188,4 +188,94 @@ final class WindowExpressionTest extends TransactionalIntegrationTestCase
 
         $this->assertSame(1235, $this->assertThrows(QueryException::class, $call)->driverCode);
     }
+
+    public function testTheFluentFormAnswersWhatTheFactoryFormDoes(): void
+    {
+        $viaFluent = $this->connection
+            ->select('id', [Expression::rowNumber()->over()->partitionBy('status')->orderBy('score', 'DESC'), 'rn'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        $viaFactory = $this->connection
+            ->select('id', [Expression::over('ROW_NUMBER', partitions: ['status'], orders: ['score' => 'DESC']), 'rn'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame($viaFactory, $viaFluent);
+        $this->assertSame([['id' => 1, 'rn' => 2], ['id' => 2, 'rn' => 1], ['id' => 3, 'rn' => 1]], $viaFluent);
+    }
+
+    public function testAFluentCallCarriesItsArgumentsToTheServer(): void
+    {
+        $rows = $this->connection
+            ->select('id', [Expression::sum('score')->over()->partitionBy('status'), 'total'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        // Summing an integer column over a partition answers DECIMAL on both
+        // servers, which PDO reads as a string; the COUNT above comes back as
+        // an integer. Pinned as returned rather than cast, so a change in
+        // either direction shows up here. A window carrying bindings splits the
+        // two servers instead -- see testMariadbRoundsTheSpreadItComputesOverAWindow
+        // for the other asymmetry this family has.
+        $this->assertSame(['35', '35', '40'], array_column($rows, 'total'));
+    }
+
+    public function testOnlyMysqlTakesADefaultWrittenThroughTheFluentForm(): void
+    {
+        // The fluent form writes the third argument only when it is given, so
+        // this is the same split the factory form has -- reached the other way.
+        $withDefault = fn (): array => $this->connection
+            ->select([Expression::lag('score', 1, 0)->over()->orderBy('id'), 'previous'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        if ($this->connection->dialect() === Dialect::MySQL) {
+            $this->assertSame([0, 10, 25], array_column($withDefault(), 'previous'));
+
+            return;
+        }
+
+        $this->assertSame(1064, $this->assertThrows(QueryException::class, $withDefault)->driverCode);
+    }
+
+    public function testBothServersTakeAFluentCallLeftWithoutAnOffset(): void
+    {
+        $rows = $this->connection
+            ->select([Expression::lag('score')->over()->orderBy('id'), 'previous'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([null, 10, 25], array_column($rows, 'previous'));
+    }
+
+    public function testBothServersReadAnEmptyWindowAsEveryRow(): void
+    {
+        // over() with nothing after it writes OVER (), which the unit tests
+        // pin as a spelling. What this holds is that both servers read it as
+        // the whole result rather than refusing it.
+        $rows = $this->connection
+            ->select('id', [Expression::count()->over(), 'rows_total'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([3, 3, 3], array_column($rows, 'rows_total'));
+    }
+
+    public function testBothServersSortAWindowBySeveralTermsInTheOrderTheyWereAdded(): void
+    {
+        $rows = $this->connection
+            ->select('id', [Expression::rowNumber()->over()->orderBy('status')->orderBy('score', 'DESC'), 'rn'])
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([['id' => 1, 'rn' => 2], ['id' => 2, 'rn' => 1], ['id' => 3, 'rn' => 3]], $rows);
+    }
 }
