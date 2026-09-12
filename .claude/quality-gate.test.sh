@@ -504,8 +504,7 @@ branch refs/heads/main
 
 ' 'sloop_test_framework'
 
-# git writes the path of a prunable worktree with no trailing name, and the
-# porcelain format separates records with blank lines.
+# The porcelain format separates records with blank lines.
 check_in_use 'in use: blank lines are skipped' 'worktree /home/x/framework
 
 worktree /home/x/framework/.claude/worktrees/cte

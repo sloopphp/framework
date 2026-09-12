@@ -36,8 +36,7 @@
 # gates in the same tree fight over the same caches and the same database.
 #
 # --with-integration also drops the sloop_test_* databases that no worktree in
-# `git worktree list` is named after, so a tree that has been removed does not
-# leave its database behind.
+# `git worktree list` is named after.
 #
 # Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
