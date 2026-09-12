@@ -35,6 +35,10 @@
 # The run is also serialised per worktree where flock is installed, since two
 # gates in the same tree fight over the same caches and the same database.
 #
+# --with-integration also drops the sloop_test_* databases that no worktree in
+# `git worktree list` is named after, so a tree that has been removed does not
+# leave its database behind.
+#
 # Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
 set -uo pipefail
@@ -89,9 +93,16 @@ integration_db_name() {
 # named here whether or not its database exists yet. That is what keeps this
 # from deleting a database out from under a parallel session.
 #
-# Writes nothing and returns 1 when the worktrees cannot be listed, so the
-# caller can tell "no trees" (which cannot happen -- the main one is always
-# listed) from "the command failed".
+# Writes nothing and returns 1 when the worktrees cannot be listed. The caller
+# reads this through a command substitution and branches on the output being
+# empty, so both halves have to hold: an empty result is what stops the deletion,
+# and the return code is the contract this function is tested against.
+#
+# A tree removed with `rm -rf` rather than `git worktree remove` stays in the
+# listing with a `prunable` line until `git worktree prune` runs, so its database
+# keeps being protected. That is the safe direction, and filtering on `prunable`
+# would not be: the reason can be a mount that is briefly away, and dropping
+# those would take a running session's database with it.
 integration_dbs_in_use() {
     local listing
     listing=$(git worktree list --porcelain 2> /dev/null) || return 1

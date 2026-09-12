@@ -469,9 +469,24 @@ check_in_use() {
     fi
 }
 
+# Taken from a real `git worktree list --porcelain`: each record carries HEAD and
+# branch lines and is followed by a blank one, including the last. Written out
+# rather than reduced to the worktree lines so that a reader sees what else the
+# format holds -- `prunable`, for one, which appears in a record whose directory
+# was deleted without `git worktree remove` and which this deliberately does not
+# filter on.
 three_trees='worktree /home/x/framework
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/main
+
 worktree /home/x/framework/.claude/worktrees/cte
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/feature/cte
+
 worktree /home/x/framework/.claude/worktrees/union
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/feature/union
+
 '
 
 # The first version of this wrote every name on one line, because
@@ -484,6 +499,9 @@ sloop_test_cte
 sloop_test_union'
 
 check_in_use 'in use: the repository on its own' 'worktree /home/x/framework
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/main
+
 ' 'sloop_test_framework'
 
 # git writes the path of a prunable worktree with no trailing name, and the
@@ -496,10 +514,9 @@ sloop_test_cte'
 
 # Assert that a listing yields no databases and says so in its exit code.
 #
-# Both halves are checked: an empty result already stops the deletion, but the
-# non-zero return is what tells the caller "could not read" apart from "nothing
-# to protect", and only the exit code distinguishes them. Checking the output
-# alone leaves the guard free to disappear.
+# Both halves are checked. The empty result is what stops the deletion at the
+# call site; the non-zero return is the function's own contract, and pinning it
+# here is what keeps the guard that produces it from being dropped as redundant.
 #
 # $1 case name, $2 stub output, $3 stub exit code
 check_in_use_refused() {
@@ -516,6 +533,22 @@ check_in_use_refused() {
         failed=$((failed + 1))
     fi
 }
+
+# A directory removed with `rm -rf` keeps its record, with a `prunable` line
+# saying why, until `git worktree prune` runs. Its database stays protected for
+# that long. Filtering those out would be the unsafe direction -- the reason can
+# be a mount that is briefly away, and the tree may still be in use.
+check_in_use 'in use: a tree awaiting prune is still protected' 'worktree /home/x/framework
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/main
+
+worktree /home/x/framework/.claude/worktrees/cte
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/feature/cte
+prunable gitdir file points to non-existent location
+
+' 'sloop_test_framework
+sloop_test_cte'
 
 # A listing that cannot be read has to leave the caller with nothing, since an
 # empty protected list is what stops the deletion.
