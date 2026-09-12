@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Sloop\Database\Dialect;
 use Sloop\Database\Query\Assignment;
 use Sloop\Database\Query\BetweenCondition;
+use Sloop\Database\Query\ColumnName;
 use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Condition;
 use Sloop\Database\Query\Conjunction;
@@ -1256,7 +1257,7 @@ final class GrammarTest extends TestCase
                 return new CompiledSql('/*reference*/' . $compiled->sql, $compiled->bindings);
             }
 
-            protected function compileValue(string|int|float|bool|Expression|null $value): CompiledSql
+            protected function compileValue(string|int|float|bool|Expression|ColumnName|null $value): CompiledSql
             {
                 $compiled = parent::compileValue($value);
 
@@ -1572,6 +1573,23 @@ final class GrammarTest extends TestCase
             'is not true'  => ['IS NOT', true, 'IS NOT TRUE'],
             'is not false' => ['IS NOT', false, 'IS NOT FALSE'],
         ];
+    }
+
+    public function testAKeywordOperatorRefusesANamedColumnWhereTheKeywordGoes(): void
+    {
+        // comparison() refuses this where the condition is built, but a spec
+        // can reach a grammar without passing through it, and what follows IS
+        // is read as a keyword rather than as something to compare against.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'An operator testing against a keyword reads null, true or false on the right,'
+            . ' got Sloop\Database\Query\ColumnName.',
+        );
+
+        new Grammar()->compileSelect(new SelectSpec(
+            from:       'users',
+            conditions: [new Condition('active', 'IS', new ColumnName('name'))],
+        ));
     }
 
     public function testARegularExpressionMatchBindsItsPatternLikeAnyOtherValue(): void

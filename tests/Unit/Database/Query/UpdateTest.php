@@ -122,6 +122,24 @@ final class UpdateTest extends TestCase
         $this->assertSame([5, 'blocked'], $update->toBindings());
     }
 
+    public function testAnAssignmentWritesAColumnNameAsAQuotedReference(): void
+    {
+        $update = $this->update()->set(['status' => Expression::column('name')])->where('id', 1);
+
+        $this->assertSame('UPDATE `users` SET `status` = `name` WHERE `id` = ?', $update->toSql());
+        $this->assertSame([1], $update->toBindings());
+    }
+
+    public function testAColumnNameOnTheValueSideOfAnAssignmentCarriesTheTablePrefix(): void
+    {
+        $this->connection->setGrammar(new Grammar('wp_'));
+
+        $this->assertSame(
+            'UPDATE `wp_users` SET `status` = `wp_users`.`name`',
+            $this->connection->update('users')->set(['status' => Expression::column('users.name')])->toSql(),
+        );
+    }
+
     public function testAQualifiedColumnIsQuotedSegmentBySegment(): void
     {
         $update = $this->update()->set(['users.status' => 'vip']);
@@ -235,7 +253,7 @@ final class UpdateTest extends TestCase
         );
 
         $this->assertSame(
-            'The value of an assignment must be a scalar, null or an Expression, got array for column "status".',
+            'The value of an assignment must be a scalar, null, an Expression or a column name, got array for column "status".',
             $thrown->getMessage(),
         );
     }

@@ -985,11 +985,11 @@ final class SelectTest extends TestCase
             ],
             'value cannot be compared' => [
                 [['status', ['nested']]],
-                'compares against a scalar, null or an Expression, got array at index 0.',
+                'compares against a scalar, null, an Expression or a column name, got array at index 0.',
             ],
             'value of a condition of three cannot be compared' => [
                 [['status', '=', ['nested']]],
-                'compares against a scalar, null or an Expression, got array at index 0.',
+                'compares against a scalar, null, an Expression or a column name, got array at index 0.',
             ],
             'operator is not a string' => [
                 [['status', 10, 'active']],

@@ -67,8 +67,10 @@ class Update extends BuilderWhere
      * know which names stand for the same column.
      *
      * A value is bound rather than written into the SQL, which is why one that
-     * has to be read as SQL — a column standing for what it already holds, or
-     * a function call over it — is passed as an Expression instead.
+     * has to be read as SQL says so: a column of the row being written, or of
+     * a table joined to it, is named with Expression::column(), and anything
+     * else that has to be read as SQL — a function call over the column, say —
+     * is passed as an Expression.
      *
      * @param  array<int|string, mixed> $values Column name to the value to write
      * @return static                   This builder
@@ -380,16 +382,21 @@ class Update extends BuilderWhere
     /**
      * Narrow a value to the ones an assignment can carry.
      *
-     * @param  mixed                                 $value  Value handed to set()
-     * @param  string                                $column Column it was given for, to name in the message
-     * @return string|int|float|bool|Expression|null The same value, once it is one that can be written
-     * @throws InvalidArgumentException              When the value is of another type
+     * @param  mixed                                            $value  Value handed to set()
+     * @param  string                                           $column Column it was given for, to name in the message
+     * @return string|int|float|bool|Expression|ColumnName|null The same value, once it is one that can be written
+     * @throws InvalidArgumentException                         When the value is of another type
      */
-    private static function toWritable(mixed $value, string $column): string|int|float|bool|Expression|null
+    private static function toWritable(mixed $value, string $column): string|int|float|bool|Expression|ColumnName|null
     {
-        if ($value !== null && !\is_scalar($value) && !$value instanceof Expression) {
+        if (
+            $value !== null
+            && !\is_scalar($value)
+            && !$value instanceof Expression
+            && !$value instanceof ColumnName
+        ) {
             throw new InvalidArgumentException(
-                'The value of an assignment must be a scalar, null or an Expression, got '
+                'The value of an assignment must be a scalar, null, an Expression or a column name, got '
                 . get_debug_type($value) . ' for column "' . $column . '".',
             );
         }

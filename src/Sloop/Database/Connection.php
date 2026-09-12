@@ -309,6 +309,28 @@ final class Connection
     }
 
     /**
+     * Quote a column name the way the builders of this connection do.
+     *
+     * For the statement a builder cannot express, where the SQL has to be
+     * written out and a name in it comes from somewhere else. What comes back
+     * carries the table prefix of this connection, so the name means the same
+     * table the builders would reach, and goes into an Expression rather than
+     * being compared against one: Expression::column() is what names a column
+     * where a value would stand.
+     *
+     * Only the name is quoted. Everything else in the SQL an Expression
+     * carries is still the caller's to get right.
+     *
+     * @param  string                   $identifier Column name, optionally qualified ('users.id')
+     * @return string                   Backtick-quoted name, with the table prefix applied
+     * @throws InvalidArgumentException When a segment is empty, the name has more than three segments, or `*` stands where it has no meaning
+     */
+    public function quoteIdentifier(string $identifier): string
+    {
+        return $this->grammar->quoteIdentifier($identifier);
+    }
+
+    /**
      * Inject a PSR-3 logger and the per-connection logging options.
      *
      * Failure logging is unconditional once a logger is present. The options

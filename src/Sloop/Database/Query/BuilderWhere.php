@@ -108,16 +108,16 @@ abstract class BuilderWhere extends Builder
      * group().
      *
      * @param  string|Expression|array<int|string, mixed>|Closure $column   Column to compare, an expression standing in for one, a list of conditions, or a closure receiving this builder
-     * @param  string|int|float|bool|Expression|null              $operator Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
+     * @param  string|int|float|bool|Expression|ColumnName|null   $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null   $value    Value to compare against, when an operator was given
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, the operator is not a supported comparison, or null stands where the operator cannot read it
      * @throws LogicException                                     When a closure closes the group it was handed, or closes one it never opened
      */
     public function where(
         string|Expression|array|Closure $column,
-        string|int|float|bool|Expression|null $operator = null,
-        string|int|float|bool|Expression|null $value = null,
+        string|int|float|bool|Expression|ColumnName|null $operator = null,
+        string|int|float|bool|Expression|ColumnName|null $value = null,
     ): static {
         return $this->addWhere(Conjunction::And, $column, $operator, $value, \func_num_args());
     }
@@ -129,16 +129,16 @@ abstract class BuilderWhere extends Builder
      * conjunction named at every step.
      *
      * @param  string|Expression|array<int|string, mixed>|Closure $column   Column to compare, an expression standing in for one, a list of conditions, or a closure receiving this builder
-     * @param  string|int|float|bool|Expression|null              $operator Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
+     * @param  string|int|float|bool|Expression|ColumnName|null   $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null   $value    Value to compare against, when an operator was given
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, the operator is not a supported comparison, or null stands where the operator cannot read it
      * @throws LogicException                                     When a closure closes the group it was handed, or closes one it never opened
      */
     public function andWhere(
         string|Expression|array|Closure $column,
-        string|int|float|bool|Expression|null $operator = null,
-        string|int|float|bool|Expression|null $value = null,
+        string|int|float|bool|Expression|ColumnName|null $operator = null,
+        string|int|float|bool|Expression|ColumnName|null $value = null,
     ): static {
         return $this->addWhere(Conjunction::And, $column, $operator, $value, \func_num_args());
     }
@@ -158,16 +158,16 @@ abstract class BuilderWhere extends Builder
      * own parentheses.
      *
      * @param  string|Expression|array<int|string, mixed>|Closure $column   Column to compare, an expression standing in for one, a list of conditions, or a closure receiving this builder
-     * @param  string|int|float|bool|Expression|null              $operator Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null              $value    Value to compare against, when an operator was given
+     * @param  string|int|float|bool|Expression|ColumnName|null   $operator Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null   $value    Value to compare against, when an operator was given
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, the operator is not a supported comparison, or null stands where the operator cannot read it
      * @throws LogicException                                     When a closure closes the group it was handed, or closes one it never opened
      */
     public function orWhere(
         string|Expression|array|Closure $column,
-        string|int|float|bool|Expression|null $operator = null,
-        string|int|float|bool|Expression|null $value = null,
+        string|int|float|bool|Expression|ColumnName|null $operator = null,
+        string|int|float|bool|Expression|ColumnName|null $value = null,
     ): static {
         return $this->addWhere(Conjunction::Or, $column, $operator, $value, \func_num_args());
     }
@@ -316,15 +316,15 @@ abstract class BuilderWhere extends Builder
     /**
      * Keep only rows whose column falls between two bounds, both included.
      *
-     * @param  string|Expression                $column Column to test, or an expression standing in for one
-     * @param  string|int|float|bool|Expression $min    Lower bound, included in the range
-     * @param  string|int|float|bool|Expression $max    Upper bound, included in the range
-     * @return static                           This builder
+     * @param  string|Expression                           $column Column to test, or an expression standing in for one
+     * @param  string|int|float|bool|Expression|ColumnName $min    Lower bound, included in the range
+     * @param  string|int|float|bool|Expression|ColumnName $max    Upper bound, included in the range
+     * @return static                                      This builder
      */
     public function whereBetween(
         string|Expression $column,
-        string|int|float|bool|Expression $min,
-        string|int|float|bool|Expression $max,
+        string|int|float|bool|Expression|ColumnName $min,
+        string|int|float|bool|Expression|ColumnName $max,
     ): static {
         $this->conditions[] = new BetweenCondition($column, $min, $max, Conjunction::And);
 
@@ -696,8 +696,8 @@ abstract class BuilderWhere extends Builder
      *
      * @param  Conjunction                                        $conjunction   How what is added joins to what precedes it
      * @param  string|Expression|array<int|string, mixed>|Closure $column        Column, expression, list of conditions, or closure
-     * @param  string|int|float|bool|Expression|null              $operator      Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null              $value         Value to compare against, when an operator was given
+     * @param  string|int|float|bool|Expression|ColumnName|null   $operator      Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null   $value         Value to compare against, when an operator was given
      * @param  int                                                $argumentCount Number of arguments the caller passed
      * @return static                                             This builder
      * @throws InvalidArgumentException                           When a condition is malformed, or a column stands alone
@@ -706,8 +706,8 @@ abstract class BuilderWhere extends Builder
     private function addWhere(
         Conjunction $conjunction,
         string|Expression|array|Closure $column,
-        string|int|float|bool|Expression|null $operator,
-        string|int|float|bool|Expression|null $value,
+        string|int|float|bool|Expression|ColumnName|null $operator,
+        string|int|float|bool|Expression|ColumnName|null $value,
         int $argumentCount,
     ): static {
         if ($column instanceof Closure || \is_array($column)) {
@@ -922,16 +922,21 @@ abstract class BuilderWhere extends Builder
      * The list comes from an array rather than from the signature, so the types
      * the where methods are held to have to be checked here instead.
      *
-     * @param  mixed                                 $part  Part of a condition, as it was written in the list
-     * @param  int                                   $index Position of the condition, for the message
-     * @return string|int|float|bool|Expression|null The same part, known to be comparable
-     * @throws InvalidArgumentException              When the part is neither scalar, null, nor an Expression
+     * @param  mixed                                            $part  Part of a condition, as it was written in the list
+     * @param  int                                              $index Position of the condition, for the message
+     * @return string|int|float|bool|Expression|ColumnName|null The same part, known to be comparable
+     * @throws InvalidArgumentException                         When the part is neither scalar, null, an Expression, nor a column name
      */
-    private static function toComparable(mixed $part, int $index): string|int|float|bool|Expression|null
+    private static function toComparable(mixed $part, int $index): string|int|float|bool|Expression|ColumnName|null
     {
-        if ($part !== null && !\is_scalar($part) && !$part instanceof Expression) {
+        if (
+            $part !== null
+            && !\is_scalar($part)
+            && !$part instanceof Expression
+            && !$part instanceof ColumnName
+        ) {
             throw new InvalidArgumentException(
-                'A condition compares against a scalar, null or an Expression, got '
+                'A condition compares against a scalar, null, an Expression or a column name, got '
                 . get_debug_type($part) . ' at index ' . $index . '.',
             );
         }
@@ -947,19 +952,19 @@ abstract class BuilderWhere extends Builder
      * '=' means that string as a value, and guessing from the type would turn
      * it into an operator.
      *
-     * @param  Conjunction                           $conjunction   How the condition joins to the preceding one
-     * @param  string|Expression                     $column        Column to compare, or an expression standing in for one
-     * @param  string|int|float|bool|Expression|null $operator      Operator when a value follows, otherwise the value itself
-     * @param  string|int|float|bool|Expression|null $value         Value to compare against, when an operator was given
-     * @param  int                                   $argumentCount Number of arguments the caller passed
-     * @return Condition                             The condition to add
-     * @throws InvalidArgumentException              When the operator is not a string or not a supported comparison, or null stands where the operator cannot read it
+     * @param  Conjunction                                      $conjunction   How the condition joins to the preceding one
+     * @param  string|Expression                                $column        Column to compare, or an expression standing in for one
+     * @param  string|int|float|bool|Expression|ColumnName|null $operator      Operator when a value follows, otherwise the value itself
+     * @param  string|int|float|bool|Expression|ColumnName|null $value         Value to compare against, when an operator was given
+     * @param  int                                              $argumentCount Number of arguments the caller passed
+     * @return Condition                                        The condition to add
+     * @throws InvalidArgumentException                         When the operator is not a string or not a supported comparison, or null stands where the operator cannot read it
      */
     private function toCondition(
         Conjunction $conjunction,
         string|Expression $column,
-        string|int|float|bool|Expression|null $operator,
-        string|int|float|bool|Expression|null $value,
+        string|int|float|bool|Expression|ColumnName|null $operator,
+        string|int|float|bool|Expression|ColumnName|null $value,
         int $argumentCount,
     ): Condition {
         if ($argumentCount < 3) {

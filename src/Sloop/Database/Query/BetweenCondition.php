@@ -19,15 +19,15 @@ final readonly class BetweenCondition extends WherePart
     /**
      * Describe one range test.
      *
-     * @param string|Expression                $column      Column to test, or an expression standing in for one
-     * @param string|int|float|bool|Expression $min         Lower bound, included in the range
-     * @param string|int|float|bool|Expression $max         Upper bound, included in the range
-     * @param Conjunction                      $conjunction How this joins to the preceding part
+     * @param string|Expression                           $column      Column to test, or an expression standing in for one
+     * @param string|int|float|bool|Expression|ColumnName $min         Lower bound, included in the range
+     * @param string|int|float|bool|Expression|ColumnName $max         Upper bound, included in the range
+     * @param Conjunction                                 $conjunction How this joins to the preceding part
      */
     public function __construct(
         public string|Expression $column,
-        public string|int|float|bool|Expression $min,
-        public string|int|float|bool|Expression $max,
+        public string|int|float|bool|Expression|ColumnName $min,
+        public string|int|float|bool|Expression|ColumnName $max,
         Conjunction $conjunction = Conjunction::And,
     ) {
         parent::__construct($conjunction);

@@ -243,6 +243,24 @@ final class ConnectionManager
     }
 
     /**
+     * Quote a column name the way the builders of a pool do.
+     *
+     * The pool decides the answer, since the table prefix is what it adds. See
+     * Connection::quoteIdentifier() for when a name has to be quoted by hand
+     * rather than named to a builder. No connection is opened.
+     *
+     * @param  string                   $identifier Column name, optionally qualified ('users.id')
+     * @param  string|null              $name       Pool whose prefix applies; the default pool when omitted
+     * @return string                   Backtick-quoted name, with the table prefix applied
+     * @throws InvalidConfigException   When the pool name is not defined or its config is malformed
+     * @throws InvalidArgumentException When a segment is empty, the name has more than three segments, or `*` stands where it has no meaning
+     */
+    public function quoteIdentifier(string $identifier, ?string $name = null): string
+    {
+        return $this->grammarFor($this->resolvePool($name ?? $this->defaultName))->quoteIdentifier($identifier);
+    }
+
+    /**
      * Write many rows to the default pool's primary in chunks.
      *
      * Unlike insert(), which hands back a builder that resolves a connection

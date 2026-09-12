@@ -20,15 +20,15 @@ final readonly class Condition extends WherePart
     /**
      * Describe one comparison.
      *
-     * @param string|Expression                     $column      Column to compare, or an expression standing in for one
-     * @param string                                $operator    Comparison operator, in the spelling used to build SQL
-     * @param string|int|float|bool|Expression|null $value       Value to compare against; bound unless the operator reads it as a keyword
-     * @param Conjunction                           $conjunction How this joins to the preceding condition
+     * @param string|Expression                                $column      Column to compare, or an expression standing in for one
+     * @param string                                           $operator    Comparison operator, in the spelling used to build SQL
+     * @param string|int|float|bool|Expression|ColumnName|null $value       Value to compare against; bound unless the operator reads it as a keyword, or a column is named where it stands
+     * @param Conjunction                                      $conjunction How this joins to the preceding condition
      */
     public function __construct(
         public string|Expression $column,
         public string $operator,
-        public string|int|float|bool|Expression|null $value,
+        public string|int|float|bool|Expression|ColumnName|null $value,
         Conjunction $conjunction = Conjunction::And,
     ) {
         parent::__construct($conjunction);

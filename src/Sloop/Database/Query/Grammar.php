@@ -661,8 +661,9 @@ class Grammar
      * Compile the SET clause.
      *
      * A value is bound wherever it can be, so what a column is set to is read
-     * as a value and never as SQL. An Expression is written out instead, which
-     * is what lets a column be set from what it already holds.
+     * as a value and never as SQL. An Expression is written out as the caller
+     * spelled it, and a ColumnName is quoted as the column it names, which is
+     * how a column is set from what another one holds.
      *
      * Null is written as a bound value rather than refused: setting a column to
      * NULL is what the statement is for, unlike a comparison against one, where
@@ -914,17 +915,17 @@ class Grammar
      * listed by comparisonOperators(), so the SQL reads the same however the
      * caller spelled it.
      *
-     * @param  string|Expression                     $column      Column to compare, or an expression standing in for one
-     * @param  string                                $operator    Comparison operator; matched case-insensitively
-     * @param  string|int|float|bool|Expression|null $value       Value to compare against; bound unless the operator reads it as a keyword
-     * @param  Conjunction                           $conjunction How this joins to the preceding condition
-     * @return Condition                             The comparison, ready for a builder to collect
-     * @throws InvalidArgumentException              When the operator is not one this grammar writes, or the operator and the value do not go together
+     * @param  string|Expression                                $column      Column to compare, or an expression standing in for one
+     * @param  string                                           $operator    Comparison operator; matched case-insensitively
+     * @param  string|int|float|bool|Expression|ColumnName|null $value       Value to compare against; bound unless the operator reads it as a keyword
+     * @param  Conjunction                                      $conjunction How this joins to the preceding condition
+     * @return Condition                                        The comparison, ready for a builder to collect
+     * @throws InvalidArgumentException                         When the operator is not one this grammar writes, or the operator and the value do not go together
      */
     public function comparison(
         string|Expression $column,
         string $operator,
-        string|int|float|bool|Expression|null $value,
+        string|int|float|bool|Expression|ColumnName|null $value,
         Conjunction $conjunction = Conjunction::And,
     ): Condition {
         $canonical = strtoupper($operator);
@@ -1083,14 +1084,14 @@ class Grammar
      * the ones that refuse it, so that an operand added later refuses null
      * until it says otherwise.
      *
-     * @param  Operand                               $operand What the operator reads on its right
-     * @param  string|int|float|bool|Expression|null $value   Right-hand side of the comparison
+     * @param  Operand                                          $operand What the operator reads on its right
+     * @param  string|int|float|bool|Expression|ColumnName|null $value   Right-hand side of the comparison
      * @return void
-     * @throws InvalidArgumentException              When null stands where the operator cannot read it
+     * @throws InvalidArgumentException                         When null stands where the operator cannot read it
      */
     private static function refuseNullValue(
         Operand $operand,
-        string|int|float|bool|Expression|null $value,
+        string|int|float|bool|Expression|ColumnName|null $value,
     ): void {
         if ($value === null && $operand !== Operand::ValueOrNull) {
             throw new InvalidArgumentException(
@@ -1103,11 +1104,11 @@ class Grammar
     /**
      * Write the keyword an operator reads on its right-hand side.
      *
-     * @param  string|int|float|bool|Expression|null $value Right-hand side of the comparison
-     * @return string                                NULL, TRUE or FALSE
-     * @throws InvalidArgumentException              When the value is not one the keyword operators read
+     * @param  string|int|float|bool|Expression|ColumnName|null $value Right-hand side of the comparison
+     * @return string                                           NULL, TRUE or FALSE
+     * @throws InvalidArgumentException                         When the value is not one the keyword operators read
      */
-    private static function keyword(string|int|float|bool|Expression|null $value): string
+    private static function keyword(string|int|float|bool|Expression|ColumnName|null $value): string
     {
         return match ($value) {
             null    => 'NULL',
@@ -1403,16 +1404,23 @@ class Grammar
     }
 
     /**
-     * Compile the right-hand side of a comparison.
+     * Compile the right-hand side of a comparison, or the value of an assignment.
      *
-     * @param  string|int|float|bool|Expression|null $value Value to compare against
-     * @return CompiledSql                           A placeholder with the value bound, or the SQL of the Expression
+     * A ColumnName is written rather than bound, and is quoted here so that the
+     * prefix reaches it the way it reaches a column the statement names on the
+     * other side of the comparison.
+     *
+     * @param  string|int|float|bool|Expression|ColumnName|null $value Value to compare against, or the column standing for one
+     * @return CompiledSql                                      A placeholder with the value bound, the SQL of the Expression, or the quoted column
+     * @throws InvalidArgumentException                         When a named column is malformed
      */
-    protected function compileValue(string|int|float|bool|Expression|null $value): CompiledSql
+    protected function compileValue(string|int|float|bool|Expression|ColumnName|null $value): CompiledSql
     {
-        return $value instanceof Expression
-            ? new CompiledSql($value->sql(), $value->bindings())
-            : new CompiledSql('?', [$value]);
+        return match (true) {
+            $value instanceof Expression => new CompiledSql($value->sql(), $value->bindings()),
+            $value instanceof ColumnName => new CompiledSql($this->quoteIdentifier($value->name)),
+            default                      => new CompiledSql('?', [$value]),
+        };
     }
 
     /**
