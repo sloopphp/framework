@@ -100,10 +100,15 @@ integration_dbs_in_use() {
     paths=$(printf '%s\n' "$listing" | sed -n 's/^worktree //p')
     [ -n "$paths" ] || return 1
 
+    # integration_db_name writes no trailing newline -- its docblock keeps that
+    # deliberately, since the caller reads it through a command substitution and
+    # anything on stdout lands inside the name. Ending each line here is what
+    # makes this a list rather than one concatenated string; the consumer
+    # matches whole lines, so a concatenated one would protect nothing.
     local path
     while IFS= read -r path; do
         [ -n "$path" ] || continue
-        integration_db_name "$(basename "$path")"
+        printf '%s\n' "$(integration_db_name "$(basename "$path")")"
     done <<< "$paths"
 }
 
@@ -124,10 +129,13 @@ prunable_databases() {
 
     local name
     while IFS= read -r name; do
-        case "$name" in
-            sloop_test_?*) ;;
-            *) continue ;;
-        esac
+        # Matched against what integration_db_name can produce, which is the
+        # prefix followed by [a-z0-9_] and nothing else. A looser test would put
+        # names this gate never created on the drop list, and a backtick in one
+        # of them would break the statement that drops it.
+        if [[ ! $name =~ ^sloop_test_[a-z0-9_]+$ ]]; then
+            continue
+        fi
 
         if printf '%s\n' "$protected" | grep -qxF -- "$name"; then
             continue
@@ -389,11 +397,21 @@ if [ "$with_integration" -eq 1 ]; then
         in_use=$(integration_dbs_in_use)
         if [ -z "$in_use" ]; then
             printf '  (could not list the worktrees; left the databases alone)\n'
+        elif ! printf '%s\n' "$in_use" | grep -qxF -- "$db_name"; then
+            # The protected list and $db_name are built from two separate git
+            # calls, so this is where a disagreement between them surfaces. It
+            # is also the shape the first version of this failed in: the list
+            # came out concatenated and protected nothing, which this catches
+            # before anything is dropped.
+            printf '  (this tree is missing from the protected list; left the databases alone)\n'
         else
             for service in mysql mariadb; do
                 existing=$(docker compose exec -T "$service" mysql -uroot -proot \
                     -N -e 'SHOW DATABASES' 2> /dev/null) || existing=''
-                [ -n "$existing" ] || continue
+                if [ -z "$existing" ]; then
+                    printf '  (%s: could not list the databases; left them alone)\n' "$service"
+                    continue
+                fi
 
                 stale=$(prunable_databases "$existing" "$in_use") || continue
                 [ -n "$stale" ] || continue
