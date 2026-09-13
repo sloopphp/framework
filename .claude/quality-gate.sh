@@ -145,7 +145,10 @@ prunable_databases() {
             continue
         fi
 
-        if printf '%s\n' "$protected" | grep -qxF -- "$name"; then
+        # A here-string rather than a pipe: under `set -o pipefail` grep -q exits
+        # at its first match, and a writer still holding data takes SIGPIPE, so
+        # the pipeline reports 141 and a protected name reads as unprotected.
+        if grep -qxF -- "$name" <<< "$protected"; then
             continue
         fi
 
@@ -405,7 +408,7 @@ if [ "$with_integration" -eq 1 ]; then
         in_use=$(integration_dbs_in_use)
         if [ -z "$in_use" ]; then
             printf '  (could not list the worktrees; left the databases alone)\n'
-        elif ! printf '%s\n' "$in_use" | grep -qxF -- "$db_name"; then
+        elif ! grep -qxF -- "$db_name" <<< "$in_use"; then
             # The protected list and $db_name are built from two separate git
             # calls, so this is where a disagreement between them surfaces. It
             # is also the shape the first version of this failed in: the list

@@ -587,6 +587,18 @@ else
     failed=$((failed + 1))
 fi
 
+# A protected list larger than a pipe buffer. Reading it through a pipe made
+# grep -q exit at its first match while the writer still had data, and under
+# `set -o pipefail` the resulting SIGPIPE read as "not protected" -- every name
+# past the buffer would have been dropped. 3000 entries is far past any real
+# checkout; the point is that the size of the list cannot decide the answer.
+many_protected=$(for i in $(seq 1 3000); do printf 'sloop_test_padding_%060d\n' "$i"; done)
+first_protected="sloop_test_padding_$(printf '%060d' 1)"
+
+check_prunable 'prune: a protected list past the pipe buffer still protects' \
+    "$first_protected
+sloop_test_gone" "$many_protected" 'sloop_test_gone'
+
 # Names outside what integration_db_name can produce are not this gate's to drop.
 # A backtick in one would break the statement that drops it.
 check_prunable 'prune: names the gate cannot produce are left alone' \
