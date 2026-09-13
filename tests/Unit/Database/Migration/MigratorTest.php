@@ -312,6 +312,34 @@ final class MigratorTest extends TestCase
         $this->assertSame([['name' => '20260501000000_migrator_add_notes', 'batch' => 1]], $this->history());
     }
 
+    public function testRunRollsBackATransactionAFailingMigrationLeftOpenSoTheNextRunCanStart(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_add_drafts.php',
+            'MigratorAddDrafts',
+            '$db->statement(\'CREATE TABLE drafts (body TEXT)\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_throw_while_open.php',
+            'MigratorThrowWhileOpen',
+            '$db->begin(); $db->statement(\'INSERT INTO drafts (body) VALUES (\\\'draft\\\')\'); '
+            . 'if (!$db->query(\'SELECT name FROM sqlite_master WHERE name = \\\'ready\\\'\')->asArray()) { '
+            . 'throw new \\DomainException(\'Not ready.\'); } $db->commit();',
+        );
+        $migrator = $this->migrator();
+
+        $thrown = $this->assertThrows(DomainException::class, fn () => $migrator->run());
+
+        $this->assertSame('Not ready.', $thrown->getMessage());
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame([], $this->connection->query('SELECT body FROM drafts')->asArray());
+
+        $this->connection->statement('CREATE TABLE ready (id INTEGER)');
+
+        $this->assertSame(1, $migrator->run());
+        $this->assertSame([['body' => 'draft']], $this->connection->query('SELECT body FROM drafts')->asArray());
+    }
+
     public function testRunReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
     {
         $this->writeMigration(

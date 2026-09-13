@@ -9,6 +9,8 @@ use LogicException;
 use ReflectionClass;
 use RuntimeException;
 use Sloop\Database\Connection;
+use Sloop\Database\Exception\DatabaseException;
+use Throwable;
 use UnexpectedValueException;
 
 /**
@@ -57,9 +59,9 @@ final readonly class Migrator
      * Apply every migration that has not run yet.
      *
      * The migrations applied by one call share a batch number, one higher than
-     * the last. When a migration throws, the exception is passed on untouched:
-     * the ones before it stay applied and recorded, and it and the ones after it
-     * run on the next call.
+     * the last. When a migration throws, any transaction it left open is rolled
+     * back and the exception is passed on untouched: the ones before it stay
+     * applied and recorded, and it and the ones after it run on the next call.
      *
      * @return int                      Number of migrations applied
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
@@ -90,7 +92,15 @@ final readonly class Migrator
         $batch = $this->history->lastBatch() + 1;
 
         foreach ($pending as $file) {
-            $this->load($file)->up($this->connection);
+            $migration = $this->load($file);
+
+            try {
+                $migration->up($this->connection);
+            } catch (Throwable $e) {
+                $this->rollBackLeftOpen();
+
+                throw $e;
+            }
 
             // The history row would join a transaction the migration left
             // open, and vanish with it if that transaction never commits.
@@ -107,6 +117,27 @@ final readonly class Migrator
         }
 
         return \count($pending);
+    }
+
+    /**
+     * Roll back a transaction a failing migration left open.
+     *
+     * Runs while the migration's exception is on its way out, so a failed
+     * rollback is dropped rather than thrown in its place: the caller needs
+     * the exception that stopped the migration.
+     *
+     * @return void
+     */
+    private function rollBackLeftOpen(): void
+    {
+        if (!$this->connection->inTransaction()) {
+            return;
+        }
+
+        try {
+            $this->connection->rollback();
+        } catch (DatabaseException) {
+        }
     }
 
     /**
