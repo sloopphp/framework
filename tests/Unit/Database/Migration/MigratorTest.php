@@ -281,6 +281,37 @@ final class MigratorTest extends TestCase
         $this->assertSame([], $this->tables());
     }
 
+    public function testRunRollsBackAndRefusesATransactionAMigrationLeftOpen(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_add_notes.php',
+            'MigratorAddNotes',
+            '$db->statement(\'CREATE TABLE notes (body TEXT)\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_leave_open.php',
+            'MigratorLeaveOpen',
+            '$db->begin(); $db->statement(\'INSERT INTO notes (body) VALUES (\\\'draft\\\')\');',
+        );
+        $this->writeMigration(
+            '20260503000000_migrator_after_open.php',
+            'MigratorAfterOpen',
+            '$db->statement(\'CREATE TABLE after_open (id INTEGER)\');',
+        );
+
+        $thrown = $this->assertThrows(LogicException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame(
+            'Migration 20260502000000_migrator_leave_open left a transaction open: it was rolled back and the '
+            . 'migration was not recorded. Commit or roll back inside up().',
+            $thrown->getMessage(),
+        );
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame([], $this->connection->query('SELECT body FROM notes')->asArray());
+        $this->assertSame(['migrations', 'notes'], $this->tables());
+        $this->assertSame([['name' => '20260501000000_migrator_add_notes', 'batch' => 1]], $this->history());
+    }
+
     public function testRunReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
     {
         $this->writeMigration(

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Integration\Database\Migration;
 
+use LogicException;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Migration\Migrator;
 use Sloop\Tests\Support\MigrationIntegrationTestCase;
@@ -145,6 +146,23 @@ final class MigratorTest extends MigrationIntegrationTestCase
         $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->run());
 
         $this->assertSame([self::HISTORY_TABLE, 'test_migration_partial'], $this->migrationTableNames());
+        $this->assertSame([], $this->history());
+    }
+
+    public function testAMigrationThatLeavesATransactionOpenIsRolledBackAndNotRecorded(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_leave_open.php',
+            'ItLeaveOpen',
+            '$db->statement(\'CREATE TABLE test_migration_left_open (id INT UNSIGNED NOT NULL PRIMARY KEY)\'); '
+            . '$db->begin(); '
+            . '$db->statement(\'INSERT INTO test_migration_left_open (id) VALUES (1)\');',
+        );
+
+        $this->assertThrows(LogicException::class, fn () => $this->migrator()->run());
+
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame([], $this->connection->select()->from('test_migration_left_open')->get());
         $this->assertSame([], $this->history());
     }
 

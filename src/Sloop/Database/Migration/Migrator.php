@@ -62,7 +62,7 @@ final readonly class Migrator
      * run on the next call.
      *
      * @return int                      Number of migrations applied
-     * @throws LogicException           If the connection is inside a transaction
+     * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
      * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file does not declare a usable migration class
      */
@@ -91,6 +91,18 @@ final readonly class Migrator
 
         foreach ($pending as $file) {
             $this->load($file)->up($this->connection);
+
+            // The history row would join a transaction the migration left
+            // open, and vanish with it if that transaction never commits.
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollback();
+
+                throw new LogicException(
+                    'Migration ' . $file->name . ' left a transaction open: it was rolled back and the migration '
+                    . 'was not recorded. Commit or roll back inside up().',
+                );
+            }
+
             $this->history->record($file->name, $batch);
         }
 
