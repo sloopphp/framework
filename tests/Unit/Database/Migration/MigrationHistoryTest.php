@@ -81,7 +81,7 @@ final class MigrationHistoryTest extends TestCase
         $this->assertSame([], new MigrationHistory($this->connection)->appliedNames());
     }
 
-    public function testAppliedNamesOrdersByBatchThenName(): void
+    public function testAppliedNamesOrdersByBatchThenByTheOrderRecorded(): void
     {
         $this->createSqliteTable('migrations');
         $history = new MigrationHistory($this->connection);
@@ -93,10 +93,10 @@ final class MigrationHistoryTest extends TestCase
 
         $this->assertSame(
             [
-                '20260401000000_create_roles_table',
                 '20260501000000_create_users_table',
-                '20260502000000_add_email_to_users',
+                '20260401000000_create_roles_table',
                 '20260601000000_create_posts_table',
+                '20260502000000_add_email_to_users',
             ],
             $history->appliedNames(),
         );

@@ -53,8 +53,10 @@ final readonly class MigrationHistory
     /**
      * List the names of the migrations that have run, in the order they ran.
      *
-     * Ordered by batch, then by name, which is the order the migrator applies
-     * files within a batch.
+     * Ordered by batch, then by the order the rows were recorded. Not by name:
+     * the server sorts names by collation, and under MySQL 8.0's default one
+     * `_` comes before a digit, while the migrator applies files in byte order,
+     * where the digit comes first.
      *
      * @return list<string>
      * @throws UnexpectedValueException If a name comes back as anything but a string
@@ -64,7 +66,7 @@ final readonly class MigrationHistory
         $values = $this->connection->select()
             ->from($this->connection->migrationsTable())
             ->orderBy('batch')
-            ->orderBy('name')
+            ->orderBy('id')
             ->pluck('name');
 
         $names = [];

@@ -91,7 +91,7 @@ final class MigrationHistoryTest extends MigrationIntegrationTestCase
         $this->assertSame(['20260501000000_create_users_table'], $this->history->appliedNames());
     }
 
-    public function testRecordedMigrationsReadBackInBatchThenNameOrder(): void
+    public function testRecordedMigrationsReadBackInBatchThenRecordedOrder(): void
     {
         $this->history->createIfMissing();
 
@@ -102,12 +102,25 @@ final class MigrationHistoryTest extends MigrationIntegrationTestCase
         $this->assertSame(
             [
                 '20260501000000_create_users_table',
-                '20260502000000_add_email_to_users',
                 '20260601000000_create_posts_table',
+                '20260502000000_add_email_to_users',
             ],
             $this->history->appliedNames(),
         );
         $this->assertSame(2, $this->history->lastBatch());
+    }
+
+    public function testAppliedNamesDoesNotReorderByTheServerCollation(): void
+    {
+        // The migrator applies files in byte order, where a digit sorts before
+        // an underscore. MySQL 8.0's default collation puts the underscore
+        // first, so reading back by name would reverse these two there.
+        $this->history->createIfMissing();
+
+        $this->history->record('20260501000000_add1x', 1);
+        $this->history->record('20260501000000_add_x', 1);
+
+        $this->assertSame(['20260501000000_add1x', '20260501000000_add_x'], $this->history->appliedNames());
     }
 
     public function testLastBatchIsZeroOnAnEmptyTable(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Integration\Support;
 
+use Sloop\Database\Query\Grammar;
 use Sloop\Tests\Support\MigrationIntegrationTestCase;
 
 final class MigrationIntegrationTestCaseTest extends MigrationIntegrationTestCase
@@ -24,6 +25,18 @@ final class MigrationIntegrationTestCaseTest extends MigrationIntegrationTestCas
         $this->connection->statement('CREATE TABLE test_migration_leftover (id INT)');
 
         $this->setUp();
+
+        $this->assertSame([], $this->migrationTableNames());
+    }
+
+    public function testTearDownDropsATableCreatedThroughATablePrefix(): void
+    {
+        // The names come back from the server with the prefix already on them,
+        // so quoting them through a prefixed grammar would name another table.
+        $this->connection->setGrammar(new Grammar(self::TABLE_PREFIX));
+        $this->connection->statement('CREATE TABLE ' . $this->connection->quoteTable('prefixed') . ' (id INT)');
+
+        $this->tearDown();
 
         $this->assertSame([], $this->migrationTableNames());
     }

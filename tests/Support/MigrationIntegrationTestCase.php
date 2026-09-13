@@ -93,12 +93,18 @@ abstract class MigrationIntegrationTestCase extends IntegrationTestCase
     /**
      * Drop every table migrationTableNames() lists.
      *
+     * The names come back from the server with any table prefix already on
+     * them, so they are dropped over a fresh connection: the test's own may
+     * carry a prefixed grammar, which would prefix them a second time.
+     *
      * @return void
      */
     private function dropMigrationTables(): void
     {
+        $connection = static::openConnection();
+
         foreach ($this->migrationTableNames() as $name) {
-            $this->connection->statement('DROP TABLE IF EXISTS ' . $this->connection->quoteTable($name));
+            $connection->statement('DROP TABLE IF EXISTS ' . $connection->quoteTable($name));
         }
     }
 }
