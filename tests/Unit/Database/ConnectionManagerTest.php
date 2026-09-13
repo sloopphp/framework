@@ -472,6 +472,40 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame('`rep_users`.`id`', $manager->quoteIdentifier('users.id', 'reporting'));
     }
 
+    public function testQuoteTableAppliesThePoolsPrefixWithoutOpeningAConnection(): void
+    {
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'prefix'   => 'app_',
+            ],
+        ], new ScriptedConnectionFactory());
+
+        $this->assertSame('`app_users`', $manager->quoteTable('users'));
+    }
+
+    public function testQuoteTableAnswersForTheNamedPool(): void
+    {
+        $manager = $this->manager('master', [
+            'master'    => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'prefix'   => 'app_',
+            ],
+            'reporting' => [
+                'driver'   => 'mysql',
+                'host'     => 'reporting.internal',
+                'database' => 'reports',
+                'prefix'   => 'rep_',
+            ],
+        ], new ScriptedConnectionFactory());
+
+        $this->assertSame('`rep_users`', $manager->quoteTable('users', 'reporting'));
+    }
+
     public function testReplicaWritesTableNamesWithTheSamePrefixAsThePrimary(): void
     {
         // The prefix belongs to the pool, so a statement has to read the same
@@ -3077,5 +3111,41 @@ final class ConnectionManagerTest extends TestCase
         ], $factory);
 
         $this->assertTrue($manager->connection(writable: false)->isStrictMode());
+    }
+
+    public function testThePoolsMigrationsTableReachesTheConnection(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'migrations_table' => 'schema_history',
+            ],
+        ], $factory);
+
+        $this->assertSame('schema_history', $manager->connection()->migrationsTable());
+    }
+
+    public function testAReplicaCarriesTheSameMigrationsTableAsThePrimary(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'migrations_table' => 'schema_history',
+                'health_check'     => false,
+                'read'             => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame('schema_history', $manager->connection(writable: false)->migrationsTable());
     }
 }

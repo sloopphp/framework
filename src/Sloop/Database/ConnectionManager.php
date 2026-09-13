@@ -261,6 +261,24 @@ final class ConnectionManager
     }
 
     /**
+     * Quote a table name the way the builders of a pool do.
+     *
+     * The pool decides the answer, since the table prefix is what it adds. See
+     * Connection::quoteTable() for how this differs from quoteIdentifier(). No
+     * connection is opened.
+     *
+     * @param  string                   $table Table name, optionally schema qualified ('reporting.users')
+     * @param  string|null              $name  Pool whose prefix applies; the default pool when omitted
+     * @return string                   Backtick-quoted name, with the table prefix applied
+     * @throws InvalidConfigException   When the pool name is not defined or its config is malformed
+     * @throws InvalidArgumentException When a segment is empty or the name has more than two segments
+     */
+    public function quoteTable(string $table, ?string $name = null): string
+    {
+        return $this->grammarFor($this->resolvePool($name ?? $this->defaultName))->quoteTable($table);
+    }
+
+    /**
      * Write many rows to the default pool's primary in chunks.
      *
      * Unlike insert(), which hands back a builder that resolves a connection
@@ -312,6 +330,7 @@ final class ConnectionManager
             $this->applyGrammar($connection, $pool);
             $this->applyCastMode($connection, $pool);
             $this->applyStrictMode($connection, $pool);
+            $this->applyMigrationsTable($connection, $pool);
             $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
@@ -367,6 +386,7 @@ final class ConnectionManager
                 $this->applyGrammar($connection, $pool);
                 $this->applyCastMode($connection, $pool);
                 $this->applyStrictMode($connection, $pool);
+                $this->applyMigrationsTable($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -539,6 +559,21 @@ final class ConnectionManager
     private function applyStrictMode(Connection $connection, PoolConfig $pool): void
     {
         $connection->setStrictMode($pool->strictMode);
+    }
+
+    /**
+     * Hand a new connection the name of the pool's migrations table.
+     *
+     * Applied to replicas as well, for the same reason as the strict-mode
+     * setting: every connection a pool hands out describes the same tables.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config supplying the table name
+     * @return void
+     */
+    private function applyMigrationsTable(Connection $connection, PoolConfig $pool): void
+    {
+        $connection->setMigrationsTable($pool->migrationsTable);
     }
 
     /**

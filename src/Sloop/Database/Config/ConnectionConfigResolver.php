@@ -71,6 +71,7 @@ final class ConnectionConfigResolver
         'prefix',
         'casts',
         'strict_mode',
+        'migrations_table',
     ];
 
     /**
@@ -215,6 +216,13 @@ final class ConnectionConfigResolver
     private const bool DEFAULT_STRICT_MODE = false;
 
     /**
+     * Default name of the table that records which migrations have run.
+     *
+     * @var string
+     */
+    private const string DEFAULT_MIGRATIONS_TABLE = 'migrations';
+
+    /**
      * Default table prefix when omitted: table names are used as written.
      *
      * @var string
@@ -293,6 +301,7 @@ final class ConnectionConfigResolver
         $prefix          = self::extractOptionalPrefix($name, $config) ?? self::DEFAULT_PREFIX;
         $casts           = self::extractOptionalCastMode($name, $config) ?? self::DEFAULT_CASTS;
         $strictMode      = self::extractBool($name, $config, 'strict_mode', self::DEFAULT_STRICT_MODE);
+        $migrationsTable = self::extractOptionalMigrationsTable($name, $config) ?? self::DEFAULT_MIGRATIONS_TABLE;
 
         return new PoolConfig(
             name:                  $name,
@@ -310,6 +319,7 @@ final class ConnectionConfigResolver
             prefix:                $prefix,
             casts:                 $casts,
             strictMode:            $strictMode,
+            migrationsTable:       $migrationsTable,
         );
     }
 
@@ -612,6 +622,40 @@ final class ConnectionConfigResolver
         if (preg_match('/\A[a-zA-Z0-9_]*\z/', $value) !== 1) {
             throw new InvalidConfigException(
                 'Connection [' . $name . ']: config key "prefix" must contain only alphanumeric and underscore characters, got "' . $value . '".',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract the optional `migrations_table`, returning null when absent.
+     *
+     * Held to the same characters as `prefix`, since both end up in a table
+     * name the framework writes. Unlike `prefix`, an empty value names no table
+     * at all, so it is refused rather than read as "none".
+     *
+     * @param  string                  $name   Pool name for error messages
+     * @param  array<array-key, mixed> $config Pool config array
+     * @return string|null
+     * @throws InvalidConfigException  When the value is not a string, or is not one or more alphanumeric and underscore characters
+     */
+    private static function extractOptionalMigrationsTable(string $name, array $config): ?string
+    {
+        if (!\array_key_exists('migrations_table', $config)) {
+            return null;
+        }
+
+        $value = $config['migrations_table'];
+        if (!\is_string($value)) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "migrations_table" must be a string.',
+            );
+        }
+
+        if (preg_match('/\A[a-zA-Z0-9_]+\z/', $value) !== 1) {
+            throw new InvalidConfigException(
+                'Connection [' . $name . ']: config key "migrations_table" must be one or more alphanumeric and underscore characters, got "' . $value . '".',
             );
         }
 

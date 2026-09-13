@@ -49,6 +49,7 @@ final class PoolConfigTest extends TestCase
             prefix: 'shop_',
             casts: CastMode::Datetime,
             strictMode: false,
+            migrationsTable: 'schema_history',
         );
 
         $this->assertSame('mydb', $pool->name);
@@ -65,6 +66,7 @@ final class PoolConfigTest extends TestCase
         $this->assertTrue($pool->persistent);
         $this->assertSame('shop_', $pool->prefix);
         $this->assertSame(CastMode::Datetime, $pool->casts);
+        $this->assertSame('schema_history', $pool->migrationsTable);
     }
 
     public function testStoresEmptyReplicas(): void
@@ -85,6 +87,7 @@ final class PoolConfigTest extends TestCase
             prefix: '',
             casts: CastMode::Off,
             strictMode: false,
+            migrationsTable: 'migrations',
         );
 
         $this->assertSame([], $pool->replicas);
@@ -121,6 +124,7 @@ final class PoolConfigTest extends TestCase
             prefix: '',
             casts: CastMode::Off,
             strictMode: false,
+            migrationsTable: 'migrations',
         );
 
         $this->assertCount(1, $pool->replicas);

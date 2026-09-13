@@ -48,6 +48,8 @@ final readonly class PoolConfig
      *                                                     carries no WHERE clause. Pool-level rather than per server,
      *                                                     because it guards the tables the pool holds rather than the
      *                                                     connection that reaches them
+     * @param string                $migrationsTable       Name of the table that records which migrations have run,
+     *                                                     before the table prefix is applied
      */
     public function __construct(
         public string $name,
@@ -65,6 +67,7 @@ final readonly class PoolConfig
         public string $prefix,
         public CastMode $casts,
         public bool $strictMode,
+        public string $migrationsTable,
     ) {
     }
 }

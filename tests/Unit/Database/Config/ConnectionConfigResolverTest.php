@@ -1513,6 +1513,95 @@ final class ConnectionConfigResolverTest extends TestCase
         );
     }
 
+    public function testValidatePoolAcceptsMigrationsTable(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'           => 'mysql',
+            'host'             => 'primary.example.com',
+            'database'         => 'app',
+            'migrations_table' => 'schema_history',
+        ]);
+
+        $this->assertSame('schema_history', $pool->migrationsTable);
+    }
+
+    public function testValidatePoolDefaultsMigrationsTableWhenOmitted(): void
+    {
+        $pool = ConnectionConfigResolver::validatePool('mydb', [
+            'driver'   => 'mysql',
+            'host'     => 'primary.example.com',
+            'database' => 'app',
+        ]);
+
+        $this->assertSame('migrations', $pool->migrationsTable);
+    }
+
+    /**
+     * @return array<string, array{mixed, string}>
+     */
+    public static function invalidMigrationsTableProvider(): array
+    {
+        return [
+            'empty'      => ['', 'Connection [mydb]: config key "migrations_table" must be one or more alphanumeric and underscore characters, got "".'],
+            'dot'        => ['app.migrations', 'Connection [mydb]: config key "migrations_table" must be one or more alphanumeric and underscore characters, got "app.migrations".'],
+            'backtick'   => ['migrations`', 'Connection [mydb]: config key "migrations_table" must be one or more alphanumeric and underscore characters, got "migrations`".'],
+            'space'      => ['migrations ', 'Connection [mydb]: config key "migrations_table" must be one or more alphanumeric and underscore characters, got "migrations ".'],
+            'newline'    => ["migrations\n", "Connection [mydb]: config key \"migrations_table\" must be one or more alphanumeric and underscore characters, got \"migrations\n\"."],
+            'non-string' => [123, 'Connection [mydb]: config key "migrations_table" must be a string.'],
+        ];
+    }
+
+    #[DataProvider('invalidMigrationsTableProvider')]
+    public function testValidatePoolRejectsInvalidMigrationsTable(mixed $table, string $expectedMessage): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validatePool('mydb', [
+                'driver'           => 'mysql',
+                'host'             => 'primary.example.com',
+                'database'         => 'app',
+                'migrations_table' => $table,
+            ]),
+        );
+        $this->assertSame($expectedMessage, $e->getMessage());
+    }
+
+    public function testValidatePoolRejectsMigrationsTableInsideReplica(): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validatePool('mydb', [
+                'driver'   => 'mysql',
+                'host'     => 'primary.example.com',
+                'database' => 'app',
+                'read'     => [
+                    ['host' => 'replica-1.example.com', 'migrations_table' => 'schema_history'],
+                ],
+            ]),
+        );
+        $this->assertSame(
+            'Connection [mydb]: "read[0]" has unsupported key "migrations_table". Pool-level keys must be set on the pool itself, not inside read[].',
+            $e->getMessage(),
+        );
+    }
+
+    public function testValidateRejectsMigrationsTableAtSingleConnectionLevel(): void
+    {
+        $e = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => ConnectionConfigResolver::validate('master', [
+                'driver'           => 'mysql',
+                'host'             => 'localhost',
+                'database'         => 'app',
+                'migrations_table' => 'schema_history',
+            ]),
+        );
+        $this->assertSame(
+            'Connection [master]: unsupported config key "migrations_table".',
+            $e->getMessage(),
+        );
+    }
+
     /**
      * @return array<string, array{string}>
      */

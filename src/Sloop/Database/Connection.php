@@ -113,6 +113,15 @@ final class Connection
     private bool $strictMode = false;
 
     /**
+     * Name of the table that records which migrations have run, before the table prefix.
+     *
+     * Defaults to `migrations`; ConnectionManager replaces it with the pool's setting.
+     *
+     * @var string
+     */
+    private string $migrationsTable = 'migrations';
+
+    /**
      * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
      *
      * @var int|null
@@ -331,6 +340,23 @@ final class Connection
     }
 
     /**
+     * Quote a table name the way the builders of this connection do.
+     *
+     * The counterpart of quoteIdentifier() for a name that stands for a table
+     * on its own, as in a CREATE TABLE written by hand. quoteIdentifier() reads
+     * a lone name as a column, and a column takes no prefix, so the two answer
+     * differently for the same word.
+     *
+     * @param  string                   $table Table name, optionally schema qualified ('reporting.users')
+     * @return string                   Backtick-quoted name, with the table prefix applied
+     * @throws InvalidArgumentException When a segment is empty or the name has more than two segments
+     */
+    public function quoteTable(string $table): string
+    {
+        return $this->grammar->quoteTable($table);
+    }
+
+    /**
      * Inject a PSR-3 logger and the per-connection logging options.
      *
      * Failure logging is unconditional once a logger is present. The options
@@ -388,6 +414,29 @@ final class Connection
     public function isStrictMode(): bool
     {
         return $this->strictMode;
+    }
+
+    /**
+     * Set the name of the table that records which migrations have run.
+     *
+     * ConnectionManager calls this with the pool's `migrations_table` setting.
+     *
+     * @param  string $table Table name, before the table prefix is applied
+     * @return void
+     */
+    public function setMigrationsTable(string $table): void
+    {
+        $this->migrationsTable = $table;
+    }
+
+    /**
+     * Name of the table that records which migrations have run, before the table prefix.
+     *
+     * @return string
+     */
+    public function migrationsTable(): string
+    {
+        return $this->migrationsTable;
     }
 
     /**
