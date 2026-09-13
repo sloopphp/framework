@@ -35,6 +35,9 @@
 # The run is also serialised per worktree where flock is installed, since two
 # gates in the same tree fight over the same caches and the same database.
 #
+# --with-integration also drops the sloop_test_* databases that no worktree in
+# `git worktree list` is named after.
+#
 # Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
 set -uo pipefail
@@ -81,6 +84,76 @@ integration_db_name() {
     fi
 
     printf 'sloop_test_%s' "$slug"
+}
+
+# Databases the worktrees that exist right now are using.
+#
+# Reads `git worktree list`, so a tree someone else is running the gate in is
+# named here whether or not its database exists yet. That is what keeps this
+# from deleting a database out from under a parallel session.
+#
+# Writes nothing and returns 1 when the worktrees cannot be listed. The caller
+# reads this through a command substitution and branches on the output being
+# empty, so both halves have to hold: an empty result is what stops the deletion,
+# and the return code is the contract this function is tested against.
+#
+# A tree removed with `rm -rf` rather than `git worktree remove` stays in the
+# listing with a `prunable` line until `git worktree prune` runs, so its database
+# keeps being protected. That is the safe direction, and filtering on `prunable`
+# would not be: the reason can be a mount that is briefly away, and dropping
+# those would take a running session's database with it.
+integration_dbs_in_use() {
+    local listing
+    listing=$(git worktree list --porcelain 2> /dev/null) || return 1
+
+    local paths
+    paths=$(printf '%s\n' "$listing" | sed -n 's/^worktree //p')
+    [ -n "$paths" ] || return 1
+
+    # integration_db_name ends without a newline, so calling it bare here would
+    # run the names together. Ending each line is what makes this a list; the
+    # consumer matches whole lines, and a concatenated one would protect nothing.
+    local path
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        printf '%s\n' "$(integration_db_name "$(basename "$path")")"
+    done <<< "$paths"
+}
+
+# The databases in $1 that no worktree in $2 is using.
+#
+# Both arguments are newline-separated lists: $1 as the server reports them, $2
+# as integration_dbs_in_use writes them. Only names carrying the prefix and
+# something after it are considered, which leaves the server's own databases and
+# the `sloop_test` that compose creates alone -- the latter is not derived from a
+# worktree, so nothing would ever protect it.
+#
+# $2 must not be empty. An empty protected list would mean every test database
+# is prunable, and the only way to get one is a failure upstream.
+prunable_databases() {
+    local all="$1" protected="$2"
+
+    [ -n "$protected" ] || return 1
+
+    local name
+    while IFS= read -r name; do
+        # Matched against what integration_db_name can produce, which is the
+        # prefix followed by [a-z0-9_] and nothing else. A looser test would put
+        # names this gate never created on the drop list, and a backtick in one
+        # of them would break the statement that drops it.
+        if [[ ! $name =~ ^sloop_test_[a-z0-9_]+$ ]]; then
+            continue
+        fi
+
+        # A here-string rather than a pipe: under `set -o pipefail` grep -q exits
+        # at its first match, and a writer still holding data takes SIGPIPE, so
+        # the pipeline reports 141 and a protected name reads as unprotected.
+        if grep -qxF -- "$name" <<< "$protected"; then
+            continue
+        fi
+
+        printf '%s\n' "$name"
+    done <<< "$all"
 }
 
 # Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
@@ -326,6 +399,51 @@ if [ "$with_integration" -eq 1 ]; then
 
     if [ "$integration_ready" -eq 1 ]; then
         printf '\n  (integration database: %s)\n' "$db_name"
+
+        # Drop the databases of worktrees that are gone. Every step here can
+        # fail into "delete nothing": an unreadable worktree list or database
+        # list leaves the loop without a set to work from, and prunable_databases
+        # refuses an empty protected list rather than treating every test
+        # database as unused.
+        in_use=$(integration_dbs_in_use)
+        if [ -z "$in_use" ]; then
+            printf '  (could not list the worktrees; left the databases alone)\n'
+        elif ! grep -qxF -- "$db_name" <<< "$in_use"; then
+            # The protected list and $db_name are built from two separate git
+            # calls, so this is where a disagreement between them surfaces. It
+            # is also the shape the first version of this failed in: the list
+            # came out concatenated and protected nothing, which this catches
+            # before anything is dropped.
+            printf '  (this tree is missing from the protected list; left the databases alone)\n'
+        else
+            for service in mysql mariadb; do
+                existing=$(docker compose exec -T "$service" mysql -uroot -proot \
+                    -N -e 'SHOW DATABASES' 2> /dev/null) || existing=''
+                if [ -z "$existing" ]; then
+                    printf '  (%s: could not list the databases; left them alone)\n' "$service"
+                    continue
+                fi
+
+                stale=$(prunable_databases "$existing" "$in_use") || continue
+                [ -n "$stale" ] || continue
+
+                drops=''
+                while IFS= read -r stale_db; do
+                    [ -n "$stale_db" ] || continue
+                    drops="${drops}DROP DATABASE IF EXISTS \`${stale_db}\`;"
+                done <<< "$stale"
+
+                if docker compose exec -T "$service" mysql -uroot -proot \
+                    -e "$drops" > /dev/null 2>&1; then
+                    printf '  (%s: dropped %s unused database(s): %s)\n' \
+                        "$service" "$(printf '%s\n' "$stale" | wc -l | tr -d ' ')" \
+                        "$(printf '%s' "$stale" | tr '\n' ' ')"
+                else
+                    printf '  (%s: could not drop the unused databases)\n' "$service"
+                fi
+            done
+        fi
+
         run_gate 'Integration (3306)' env DB_NAME="$db_name" \
             vendor/bin/phpunit --testsuite=Integration
         run_gate 'Integration (3307)' env DB_NAME="$db_name" DB_PORT=3307 \
