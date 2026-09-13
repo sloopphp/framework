@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Stub;
 
 use Pdo\Sqlite;
+use PDOException;
 use PDOStatement;
 
 /**
@@ -15,6 +16,9 @@ use PDOStatement;
  * columns and passes every other statement through, so the migrator can run
  * end to end in unit tests. The DDL itself is pinned by MigrationHistoryTest
  * and exercised against both servers in the integration suite.
+ *
+ * rollBack() can also be made to fail, for the path where a rollback fails
+ * while a migration's exception is on its way out.
  */
 final class MigrationSqlite extends Sqlite
 {
@@ -24,6 +28,13 @@ final class MigrationSqlite extends Sqlite
      * @var string
      */
     private const string HISTORY_DDL = '/\ACREATE TABLE IF NOT EXISTS (`[^`]+`) \(`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, /';
+
+    /**
+     * Whether rollBack() fails instead of rolling back.
+     *
+     * @var bool
+     */
+    public bool $failRollBack = false;
 
     /**
      * @param  string                  $query   Statement to prepare
@@ -38,5 +49,17 @@ final class MigrationSqlite extends Sqlite
         }
 
         return parent::prepare($query, $options);
+    }
+
+    /**
+     * @return bool True when the transaction was rolled back
+     */
+    public function rollBack(): bool
+    {
+        if ($this->failRollBack) {
+            throw new PDOException('Rollback failed.');
+        }
+
+        return parent::rollBack();
     }
 }

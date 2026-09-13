@@ -27,6 +27,8 @@ final class MigratorTest extends TestCase
 
     private string $directory;
 
+    private MigrationSqlite $pdo;
+
     private Connection $connection;
 
     protected function setUp(): void
@@ -34,14 +36,13 @@ final class MigratorTest extends TestCase
         $this->directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
         mkdir($this->directory);
 
-        $this->connection = new Connection(
-            new MigrationSqlite('sqlite::memory:', null, null, [
-                PDO::ATTR_EMULATE_PREPARES   => false,
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            ]),
-            'migrator_test',
-        );
+        $this->pdo = new MigrationSqlite('sqlite::memory:', null, null, [
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+
+        $this->connection = new Connection($this->pdo, 'migrator_test');
     }
 
     protected function tearDown(): void
@@ -338,6 +339,21 @@ final class MigratorTest extends TestCase
 
         $this->assertSame(1, $migrator->run());
         $this->assertSame([['body' => 'draft']], $this->connection->query('SELECT body FROM drafts')->asArray());
+    }
+
+    public function testRunPassesOnTheMigrationsExceptionWhenTheRollbackFails(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_throw_rollback_fails.php',
+            'MigratorThrowRollbackFails',
+            '$db->begin(); throw new \\DomainException(\'Migration failed first.\');',
+        );
+        $this->pdo->failRollBack = true;
+
+        $thrown = $this->assertThrows(DomainException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame('Migration failed first.', $thrown->getMessage());
+        $this->assertSame([], $this->history());
     }
 
     public function testRunReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
