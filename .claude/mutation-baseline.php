@@ -340,6 +340,13 @@ final class BraceTracker
 final class ScopeIndex
 {
     /**
+     * Brace depth change per plain brace token.
+     *
+     * @var array<string, int>
+     */
+    private const array BRACE_DEPTH = ['{' => 1, '}' => -1];
+
+    /**
      * Function spans per file, keyed by path and file identity.
      *
      * Each span is a start line, an end line and the scope name. Files are
@@ -546,36 +553,40 @@ final class ScopeIndex
         for ($cursor = $index + 1; $cursor < $count; $cursor++) {
             $token = $tokens[$cursor];
 
-            if (!\is_string($token)) {
-                if ($start !== null && self::opensInterpolation($token[0])) {
-                    // Closed by a plain '}', so it has to be counted here too.
-                    $depth++;
+            if ($start === null) {
+                if ($token === ';') {
+                    return null;
                 }
-
-                continue;
-            }
-
-            if ($token === ';' && $start === null) {
-                return null;
-            }
-
-            if ($token === '{') {
-                $start ??= self::lineOf($tokens, $cursor);
-
-                $depth++;
-
-                continue;
-            }
-
-            if ($token === '}') {
-                $depth--;
-                if ($depth === 0 && $start !== null) {
-                    return [$start, self::lineOf($tokens, $cursor)];
+                if ($token === '{') {
+                    $start = self::lineOf($tokens, $cursor);
                 }
+            }
+
+            $depth += self::depthChange($token, $start !== null);
+
+            if ($token === '}' && $depth === 0 && $start !== null) {
+                return [$start, self::lineOf($tokens, $cursor)];
             }
         }
 
         return null;
+    }
+
+    /**
+     * Report how a token moves the brace depth while walking a function body.
+     *
+     * @param  array{0: int, 1: string, 2: int}|string $token    Token to classify
+     * @param  bool                                    $bodyOpen Whether the opening brace of the body has been seen
+     * @return int                                     1 for an opener, -1 for a plain '}', zero otherwise
+     */
+    private static function depthChange(array|string $token, bool $bodyOpen): int
+    {
+        if (\is_string($token)) {
+            return self::BRACE_DEPTH[$token] ?? 0;
+        }
+
+        // Closed by a plain '}', so it has to be counted as an opener.
+        return $bodyOpen && self::opensInterpolation($token[0]) ? 1 : 0;
     }
 
     /**

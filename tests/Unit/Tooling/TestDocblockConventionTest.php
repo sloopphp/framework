@@ -13,6 +13,12 @@ final class TestDocblockConventionTest extends TestCase
 {
     private const string TESTS_DIR = __DIR__ . '/../../';
 
+    private const array DECLARATION_KINDS = [\T_CLASS => 'class', \T_FUNCTION => 'function'];
+
+    private const array VISIBILITY_MODIFIERS = [\T_PUBLIC, \T_PRIVATE, \T_PROTECTED];
+
+    private const array SKIPPED_TOKENS = [\T_WHITESPACE, \T_FINAL, \T_ABSTRACT, \T_STATIC, \T_READONLY, \T_COMMENT];
+
     /**
      * @return list<string>
      */
@@ -101,50 +107,60 @@ final class TestDocblockConventionTest extends TestCase
      */
     private function declarationAfter(array $tokens, int $index): ?array
     {
-        $visibility = [\T_PUBLIC, \T_PRIVATE, \T_PROTECTED];
-        $skip       = [\T_WHITESPACE, \T_FINAL, \T_ABSTRACT, \T_STATIC, \T_READONLY, \T_COMMENT];
+        [$cursor, $isPublic] = $this->skipModifiers($tokens, $index + 1, true);
 
-        $kind     = null;
-        $isPublic = true;
-        $count    = \count($tokens);
-
-        for ($i = $index + 1; $i < $count; $i++) {
-            $token = $tokens[$i];
-
-            if (\is_array($token) && $token[0] === \T_ATTRIBUTE) {
-                $i = $this->attributeEnd($tokens, $i);
-                continue;
-            }
-            if (\is_array($token) && \in_array($token[0], $visibility, true)) {
-                $isPublic = $token[0] === \T_PUBLIC;
-                continue;
-            }
-            if (\is_array($token) && \in_array($token[0], $skip, true)) {
-                continue;
-            }
-            if ($kind === null) {
-                if (!\is_array($token)) {
-                    return null;
-                }
-                if ($token[0] === \T_CLASS) {
-                    $kind = 'class';
-                    continue;
-                }
-                if ($token[0] === \T_FUNCTION) {
-                    $kind = 'function';
-                    continue;
-                }
-
-                return null;
-            }
-            if (\is_array($token) && $token[0] === \T_STRING) {
-                return ['kind' => $kind, 'name' => $token[1], 'isPublic' => $isPublic];
-            }
-
+        $token = $tokens[$cursor] ?? null;
+        $kind  = \is_array($token) ? (self::DECLARATION_KINDS[$token[0]] ?? null) : null;
+        if ($kind === null) {
             return null;
         }
 
-        return null;
+        [$cursor, $isPublic] = $this->skipModifiers($tokens, $cursor + 1, $isPublic);
+
+        $token = $tokens[$cursor] ?? null;
+        if (!\is_array($token) || $token[0] !== \T_STRING) {
+            return null;
+        }
+
+        return ['kind' => $kind, 'name' => $token[1], 'isPublic' => $isPublic];
+    }
+
+    /**
+     * Walk past attributes, modifiers, whitespace and comments.
+     *
+     * A visibility modifier on the way updates isPublic; the last one seen wins.
+     *
+     * @param  list<array{0:int,1:string,2:int}|string> $tokens   Full token stream
+     * @param  int                                      $start    Offset to start walking from
+     * @param  bool                                     $isPublic Visibility carried in from earlier tokens
+     * @return array{0:int,1:bool}                      Offset of the first other token (the token
+     *                                                  count when none remains) and the visibility
+     */
+    private function skipModifiers(array $tokens, int $start, bool $isPublic): array
+    {
+        $count = \count($tokens);
+        $i     = $start;
+
+        for (; $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (!\is_array($token)) {
+                break;
+            }
+            if ($token[0] === \T_ATTRIBUTE) {
+                $i = $this->attributeEnd($tokens, $i);
+                continue;
+            }
+            if (\in_array($token[0], self::VISIBILITY_MODIFIERS, true)) {
+                $isPublic = $token[0] === \T_PUBLIC;
+                continue;
+            }
+            if (!\in_array($token[0], self::SKIPPED_TOKENS, true)) {
+                break;
+            }
+        }
+
+        return [$i, $isPublic];
     }
 
     /**
@@ -172,26 +188,37 @@ final class TestDocblockConventionTest extends TestCase
                 continue;
             }
 
-            $name = $declaration['name'];
-            $line = $token[2];
-
-            if ($declaration['kind'] === 'class' && str_ends_with($name, 'Test')) {
-                $found[] = $line . ': class ' . $name . ' carries a docblock';
-                continue;
-            }
-            if ($declaration['kind'] !== 'function') {
-                continue;
-            }
-            if ($name === 'setUp' || $name === 'tearDown') {
-                $found[] = $line . ': ' . $name . '() carries a docblock';
-                continue;
-            }
-            if ($declaration['isPublic'] && str_starts_with($name, 'test') && $this->carriesProse($token[1])) {
-                $found[] = $line . ': ' . $name . '() carries a prose docblock';
+            $violation = $this->violationOf($declaration, $token[1]);
+            if ($violation !== null) {
+                $found[] = $token[2] . ': ' . $violation;
             }
         }
 
         return $found;
+    }
+
+    /**
+     * Report the convention a docblock breaks, given what it is attached to.
+     *
+     * @param  array{kind:string,name:string,isPublic:bool} $declaration Declaration the docblock precedes
+     * @param  string                                       $docblock    Raw T_DOC_COMMENT text
+     * @return string|null                                  Reason, or null when the docblock is allowed
+     */
+    private function violationOf(array $declaration, string $docblock): ?string
+    {
+        $name = $declaration['name'];
+
+        if ($declaration['kind'] === 'class') {
+            return str_ends_with($name, 'Test') ? 'class ' . $name . ' carries a docblock' : null;
+        }
+        if ($name === 'setUp' || $name === 'tearDown') {
+            return $name . '() carries a docblock';
+        }
+        if ($declaration['isPublic'] && str_starts_with($name, 'test') && $this->carriesProse($docblock)) {
+            return $name . '() carries a prose docblock';
+        }
+
+        return null;
     }
 
     public function testTestClassesAndTestMethodsCarryNoProseDocblock(): void
