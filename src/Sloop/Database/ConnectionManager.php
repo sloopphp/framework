@@ -330,6 +330,7 @@ final class ConnectionManager
             $this->applyGrammar($connection, $pool);
             $this->applyCastMode($connection, $pool);
             $this->applyStrictMode($connection, $pool);
+            $this->applyMigrationsTable($connection, $pool);
             $this->recoverResidualTransaction($connection, $pool);
             $this->primaryConnections[$name] = $connection;
         }
@@ -385,6 +386,7 @@ final class ConnectionManager
                 $this->applyGrammar($connection, $pool);
                 $this->applyCastMode($connection, $pool);
                 $this->applyStrictMode($connection, $pool);
+                $this->applyMigrationsTable($connection, $pool);
 
                 if ($pool->healthCheck) {
                     $connection->ping();
@@ -557,6 +559,21 @@ final class ConnectionManager
     private function applyStrictMode(Connection $connection, PoolConfig $pool): void
     {
         $connection->setStrictMode($pool->strictMode);
+    }
+
+    /**
+     * Hand a new connection the name of the pool's migrations table.
+     *
+     * Applied to replicas as well, for the same reason as the strict-mode
+     * setting: every connection a pool hands out describes the same tables.
+     *
+     * @param  Connection $connection Newly built Connection that has not yet been cached
+     * @param  PoolConfig $pool       Pool config supplying the table name
+     * @return void
+     */
+    private function applyMigrationsTable(Connection $connection, PoolConfig $pool): void
+    {
+        $connection->setMigrationsTable($pool->migrationsTable);
     }
 
     /**

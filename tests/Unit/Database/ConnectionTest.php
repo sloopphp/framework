@@ -1651,6 +1651,18 @@ final class ConnectionTest extends TestCase
         $this->assertSame('Identifier must not contain an empty segment, got users..', $error->getMessage());
     }
 
+    public function testMigrationsTableDefaultsToMigrations(): void
+    {
+        $this->assertSame('migrations', $this->connection->migrationsTable());
+    }
+
+    public function testSetMigrationsTableReplacesTheName(): void
+    {
+        $this->connection->setMigrationsTable('schema_history');
+
+        $this->assertSame('schema_history', $this->connection->migrationsTable());
+    }
+
     public function testQuoteTableCarriesTheTablePrefixOfTheGrammar(): void
     {
         // quoteIdentifier() reads a lone name as a column, which takes no

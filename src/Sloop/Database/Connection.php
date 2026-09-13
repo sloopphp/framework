@@ -113,6 +113,15 @@ final class Connection
     private bool $strictMode = false;
 
     /**
+     * Name of the table that records which migrations have run, before the table prefix.
+     *
+     * Defaults to `migrations`; ConnectionManager replaces it with the pool's setting.
+     *
+     * @var string
+     */
+    private string $migrationsTable = 'migrations';
+
+    /**
      * Per-session query timeout in milliseconds; null disables it. Set via setQueryTimeoutMs().
      *
      * @var int|null
@@ -405,6 +414,29 @@ final class Connection
     public function isStrictMode(): bool
     {
         return $this->strictMode;
+    }
+
+    /**
+     * Set the name of the table that records which migrations have run.
+     *
+     * ConnectionManager calls this with the pool's `migrations_table` setting.
+     *
+     * @param  string $table Table name, before the table prefix is applied
+     * @return void
+     */
+    public function setMigrationsTable(string $table): void
+    {
+        $this->migrationsTable = $table;
+    }
+
+    /**
+     * Name of the table that records which migrations have run, before the table prefix.
+     *
+     * @return string
+     */
+    public function migrationsTable(): string
+    {
+        return $this->migrationsTable;
     }
 
     /**

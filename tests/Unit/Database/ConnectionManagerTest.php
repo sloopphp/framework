@@ -3112,4 +3112,40 @@ final class ConnectionManagerTest extends TestCase
 
         $this->assertTrue($manager->connection(writable: false)->isStrictMode());
     }
+
+    public function testThePoolsMigrationsTableReachesTheConnection(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('primary.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'migrations_table' => 'schema_history',
+            ],
+        ], $factory);
+
+        $this->assertSame('schema_history', $manager->connection()->migrationsTable());
+    }
+
+    public function testAReplicaCarriesTheSameMigrationsTableAsThePrimary(): void
+    {
+        $factory = new ScriptedConnectionFactory();
+        $factory->expectSuccess('replica.internal', 0, $this->realConnection());
+
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'           => 'mysql',
+                'host'             => 'primary.internal',
+                'database'         => 'app',
+                'migrations_table' => 'schema_history',
+                'health_check'     => false,
+                'read'             => [['host' => 'replica.internal']],
+            ],
+        ], $factory);
+
+        $this->assertSame('schema_history', $manager->connection(writable: false)->migrationsTable());
+    }
 }
