@@ -377,7 +377,7 @@ final class MigratorTest extends TestCase
             'MigratorBeforeMissingClass',
             '$db->statement(\'CREATE TABLE before_missing (id INTEGER PRIMARY KEY)\');',
         );
-        $path = $this->directory . '/20260502000000_migrator_missing_class.php';
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260502000000_migrator_missing_class.php';
         $this->writeMigration('20260502000000_migrator_missing_class.php', 'MigratorMisnamedClass', '');
 
         $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->run());
@@ -394,14 +394,16 @@ final class MigratorTest extends TestCase
         $elsewhere = sys_get_temp_dir() . '/sloop_test_migrator_elsewhere_' . uniqid() . '.php';
         file_put_contents($elsewhere, '<?php final class MigratorDeclaredElsewhere {}');
         require_once $elsewhere;
+        $declaredIn = realpath($elsewhere);
         unlink($elsewhere);
-        $path = $this->directory . '/20260501000000_migrator_declared_elsewhere.php';
+        $this->assertIsString($declaredIn);
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_declared_elsewhere.php';
         $this->writeMigration('20260501000000_migrator_declared_elsewhere.php', 'MigratorDeclaredElsewhere', '');
 
         $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->run());
 
         $this->assertSame(
-            'Class MigratorDeclaredElsewhere of migration file ' . $path . ' is already declared in ' . $elsewhere . '.',
+            'Class MigratorDeclaredElsewhere of migration file ' . $path . ' is already declared in ' . $declaredIn . '.',
             $thrown->getMessage(),
         );
         $this->assertSame([], $this->history());
@@ -441,7 +443,7 @@ final class MigratorTest extends TestCase
                 require_once $elsewhere;
             }
         };
-        $path     = $this->directory . '/20260501000000_migrator_only_autoloadable.php';
+        $path     = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_only_autoloadable.php';
         $this->writeFile('20260501000000_migrator_only_autoloadable.php', '<?php');
         spl_autoload_register($autoload);
 
@@ -459,7 +461,7 @@ final class MigratorTest extends TestCase
 
     public function testRunRefusesAClassNameTakenByABuiltInClass(): void
     {
-        $path = $this->directory . '/20260501000000_exception.php';
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_exception.php';
         $this->writeMigration('20260501000000_exception.php', 'Exception', '');
 
         $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->run());
@@ -472,7 +474,7 @@ final class MigratorTest extends TestCase
 
     public function testRunRefusesAClassThatDoesNotExtendMigration(): void
     {
-        $path = $this->directory . '/20260501000000_migrator_not_a_migration.php';
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_not_a_migration.php';
         $this->writeFile(
             '20260501000000_migrator_not_a_migration.php',
             '<?php final class MigratorNotAMigration { public function up(): void {} }',
@@ -488,7 +490,7 @@ final class MigratorTest extends TestCase
 
     public function testRunRefusesAnAbstractMigration(): void
     {
-        $path = $this->directory . '/20260501000000_migrator_abstract.php';
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_abstract.php';
         $this->writeFile(
             '20260501000000_migrator_abstract.php',
             '<?php abstract class MigratorAbstract extends Sloop\Database\Migration\Migration {}',
@@ -505,7 +507,7 @@ final class MigratorTest extends TestCase
 
     public function testRunRefusesAMigrationWhoseConstructorRequiresArguments(): void
     {
-        $path = $this->directory . '/20260501000000_migrator_needs_argument.php';
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_needs_argument.php';
         $this->writeFile(
             '20260501000000_migrator_needs_argument.php',
             '<?php use Sloop\Database\Connection; final class MigratorNeedsArgument extends Sloop\Database\Migration\Migration {'
