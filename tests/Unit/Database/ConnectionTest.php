@@ -1650,4 +1650,34 @@ final class ConnectionTest extends TestCase
 
         $this->assertSame('Identifier must not contain an empty segment, got users..', $error->getMessage());
     }
+
+    public function testQuoteTableCarriesTheTablePrefixOfTheGrammar(): void
+    {
+        // quoteIdentifier() reads a lone name as a column, which takes no
+        // prefix; a table name on its own needs this one.
+        $this->connection->setGrammar(new Grammar('app_'));
+
+        $this->assertSame('`app_users`', $this->connection->quoteTable('users'));
+        $this->assertSame('`users`', $this->connection->quoteIdentifier('users'));
+    }
+
+    public function testQuoteTablePutsThePrefixOnTheTableOfASchemaQualifiedName(): void
+    {
+        $this->connection->setGrammar(new Grammar('app_'));
+
+        $this->assertSame('`reporting`.`app_users`', $this->connection->quoteTable('reporting.users'));
+    }
+
+    public function testQuoteTableRefusesANameWithMoreThanTwoSegments(): void
+    {
+        $error = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): string => $this->connection->quoteTable('reporting.users.id'),
+        );
+
+        $this->assertSame(
+            'A table name may have at most two segments (schema.table), got reporting.users.id.',
+            $error->getMessage(),
+        );
+    }
 }

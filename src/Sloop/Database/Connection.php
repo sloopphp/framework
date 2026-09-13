@@ -331,6 +331,23 @@ final class Connection
     }
 
     /**
+     * Quote a table name the way the builders of this connection do.
+     *
+     * The counterpart of quoteIdentifier() for a name that stands for a table
+     * on its own, as in a CREATE TABLE written by hand. quoteIdentifier() reads
+     * a lone name as a column, and a column takes no prefix, so the two answer
+     * differently for the same word.
+     *
+     * @param  string                   $table Table name, optionally schema qualified ('reporting.users')
+     * @return string                   Backtick-quoted name, with the table prefix applied
+     * @throws InvalidArgumentException When a segment is empty or the name has more than two segments
+     */
+    public function quoteTable(string $table): string
+    {
+        return $this->grammar->quoteTable($table);
+    }
+
+    /**
      * Inject a PSR-3 logger and the per-connection logging options.
      *
      * Failure logging is unconditional once a logger is present. The options

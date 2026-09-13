@@ -472,6 +472,40 @@ final class ConnectionManagerTest extends TestCase
         $this->assertSame('`rep_users`.`id`', $manager->quoteIdentifier('users.id', 'reporting'));
     }
 
+    public function testQuoteTableAppliesThePoolsPrefixWithoutOpeningAConnection(): void
+    {
+        $manager = $this->manager('master', [
+            'master' => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'prefix'   => 'app_',
+            ],
+        ], new ScriptedConnectionFactory());
+
+        $this->assertSame('`app_users`', $manager->quoteTable('users'));
+    }
+
+    public function testQuoteTableAnswersForTheNamedPool(): void
+    {
+        $manager = $this->manager('master', [
+            'master'    => [
+                'driver'   => 'mysql',
+                'host'     => 'primary.internal',
+                'database' => 'app',
+                'prefix'   => 'app_',
+            ],
+            'reporting' => [
+                'driver'   => 'mysql',
+                'host'     => 'reporting.internal',
+                'database' => 'reports',
+                'prefix'   => 'rep_',
+            ],
+        ], new ScriptedConnectionFactory());
+
+        $this->assertSame('`rep_users`', $manager->quoteTable('users', 'reporting'));
+    }
+
     public function testReplicaWritesTableNamesWithTheSamePrefixAsThePrimary(): void
     {
         // The prefix belongs to the pool, so a statement has to read the same
