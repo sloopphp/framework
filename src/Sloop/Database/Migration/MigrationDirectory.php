@@ -11,12 +11,13 @@ use UnexpectedValueException;
 /**
  * The directory migrations are read from, and the order they apply in.
  *
- * Only the top level is read. Entries whose names start with a dot, entries
- * that are not regular files, and files that do not end in `.php` are left
- * alone, so a `.gitkeep` or a README can sit beside the migrations. Every other
- * `.php` file must follow the naming convention: a helper script dropped into
- * the directory is reported rather than silently skipped, because a skipped
- * file here is a schema change that never runs.
+ * Only the top level is read. Entries whose names start with a dot,
+ * directories, and entries that do not end in `.php` are left alone, so a
+ * `.gitkeep` or a README can sit beside the migrations. Every other `.php`
+ * entry must follow the naming convention: a helper script dropped into the
+ * directory is reported rather than silently skipped, because a skipped file
+ * here is a schema change that never runs. For the same reason an entry that
+ * cannot be inspected, such as a dangling symlink, is kept rather than skipped.
  *
  * @internal Applications give the directory path rather than use this class.
  */
@@ -71,7 +72,7 @@ final readonly class MigrationDirectory
                 continue;
             }
 
-            if (is_file($this->path . \DIRECTORY_SEPARATOR . $entry)) {
+            if (!is_dir($this->path . \DIRECTORY_SEPARATOR . $entry)) {
                 $fileNames[] = $entry;
             }
         }

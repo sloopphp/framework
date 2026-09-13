@@ -47,7 +47,7 @@ final class MigrationDirectoryTest extends TestCase
     private function removeTree(string $path): void
     {
         if (!is_dir($path)) {
-            if (file_exists($path)) {
+            if (is_link($path) || file_exists($path)) {
                 unlink($path);
             }
 
@@ -197,6 +197,40 @@ final class MigrationDirectoryTest extends TestCase
         $this->assertStringContainsString('CreateUsersTable', $thrown->getMessage());
         $this->assertStringContainsString('20260501000000_create_users_table.php', $thrown->getMessage());
         $this->assertStringContainsString('20260601000000_create_users_table.php', $thrown->getMessage());
+    }
+
+    #[RequiresOperatingSystemFamily('Linux')]
+    public function testFilesStillReportsEntriesWhenTheDirectoryCannotBeSearched(): void
+    {
+        $this->touch('20260501000000_create_users_table.php');
+        $this->touch('helpers.php');
+        chmod($this->directory, 0o644);
+
+        try {
+            if (is_file($this->directory . '/helpers.php')) {
+                $this->markTestSkipped('The process can stat entries of a directory with no search permission (running as root).');
+            }
+
+            $thrown = $this->assertThrows(
+                UnexpectedValueException::class,
+                fn (): array => new MigrationDirectory($this->directory)->files(),
+            );
+        } finally {
+            chmod($this->directory, 0o755);
+        }
+
+        $this->assertStringContainsString('helpers.php', $thrown->getMessage());
+    }
+
+    #[RequiresOperatingSystemFamily('Linux')]
+    public function testFilesListsSymlinkWhoseTargetIsMissing(): void
+    {
+        symlink($this->directory . '/missing.php', $this->directory . '/20260501000000_create_users_table.php');
+
+        $this->assertSame(
+            ['20260501000000_create_users_table'],
+            $this->names(new MigrationDirectory($this->directory)->files()),
+        );
     }
 
     public function testFilesRejectsTwoDescriptionsThatBecomeTheSameClassName(): void
