@@ -112,7 +112,7 @@ final readonly class MigrationHistory
      * configured with, and is read as a time in PHP's default timezone.
      *
      * @return list<array{name: string, batch: int, appliedAt: DateTimeImmutable}> In the order the rows were recorded
-     * @throws UnexpectedValueException                                            If a name is not a string, a batch not an integer, or a time not written as Y-m-d H:i:s
+     * @throws UnexpectedValueException                                            If a name is not a string, a batch not an integer, or a time cannot be read
      */
     public function records(): array
     {
