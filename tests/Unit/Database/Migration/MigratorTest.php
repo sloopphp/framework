@@ -732,18 +732,25 @@ final class MigratorTest extends TestCase
             '$db->statement(\'CREATE TABLE cards (id INTEGER PRIMARY KEY)\');',
             '$db->statement(\'DROP TABLE cards\');',
         );
+        $this->writeMigration(
+            '20260503000000_migrator_rb_add_suits.php',
+            'MigratorRbAddSuits',
+            '$db->statement(\'CREATE TABLE suits (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE suits\');',
+        );
         $this->migrator()->run();
         unlink($this->directory . '/20260501000000_migrator_rb_add_decks.php');
+        unlink($this->directory . '/20260503000000_migrator_rb_add_suits.php');
 
         $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->rollback());
 
         $this->assertSame(
-            'Migration 20260501000000_migrator_rb_add_decks is recorded as applied, but its file is not in the '
-            . 'migration directory.',
+            'Migrations recorded as applied have no file in the migration directory: '
+            . '20260503000000_migrator_rb_add_suits, 20260501000000_migrator_rb_add_decks.',
             $thrown->getMessage(),
         );
-        $this->assertSame(['cards', 'decks', 'migrations'], $this->tables());
-        $this->assertCount(2, $this->history());
+        $this->assertSame(['cards', 'decks', 'migrations', 'suits'], $this->tables());
+        $this->assertCount(3, $this->history());
     }
 
     public function testRollbackRefusesAFileThatNoLongerDeclaresItsClassBeforeUndoingAny(): void

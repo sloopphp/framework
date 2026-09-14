@@ -145,24 +145,22 @@ final readonly class Migrator
             );
         }
 
-        $files = [];
-
-        foreach ($this->directory->files() as $file) {
-            $files[$file->name] = $file;
-        }
+        $files = array_column($this->directory->files(), null, 'name');
 
         $this->history->createIfMissing();
 
-        $names      = $steps === null ? $this->history->namesInLastBatch() : $this->history->lastNames($steps);
+        $names   = $steps === null ? $this->history->namesInLastBatch() : $this->history->lastNames($steps);
+        $missing = array_diff($names, array_keys($files));
+
+        if ($missing !== []) {
+            throw new UnexpectedValueException(
+                'Migrations recorded as applied have no file in the migration directory: ' . implode(', ', $missing) . '.',
+            );
+        }
+
         $migrations = [];
 
         foreach ($names as $name) {
-            if (!isset($files[$name])) {
-                throw new UnexpectedValueException(
-                    'Migration ' . $name . ' is recorded as applied, but its file is not in the migration directory.',
-                );
-            }
-
             $migrations[$name] = $this->load($files[$name]);
         }
 
