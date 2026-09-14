@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\Exception\DatabaseException;
+use Sloop\Database\Migration\MigrationStatus;
 use Sloop\Database\Migration\Migrator;
 use Sloop\Database\Query\Grammar;
 use Sloop\Tests\Support\ThrowsAssertions;
@@ -954,5 +955,216 @@ final class MigratorTest extends TestCase
 
         $this->assertSame(['app_schema_history'], $this->tables());
         $this->assertSame([], $this->history('app_schema_history'));
+    }
+
+    public function testStatusListsAppliedAndPendingMigrationsInNameOrder(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_st_add_zones.php',
+            'MigratorStAddZones',
+            '$db->statement(\'CREATE TABLE zones (id INTEGER PRIMARY KEY)\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260601000000_migrator_st_add_rooms.php',
+            'MigratorStAddRooms',
+            '$db->statement(\'CREATE TABLE rooms (id INTEGER PRIMARY KEY)\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260701000000_migrator_st_add_seats.php',
+            'MigratorStAddSeats',
+            '$db->statement(\'CREATE TABLE seats (id INTEGER PRIMARY KEY)\');',
+        );
+        $this->writeMigration(
+            '20260401000000_migrator_st_add_halls.php',
+            'MigratorStAddHalls',
+            '$db->statement(\'CREATE TABLE halls (id INTEGER PRIMARY KEY)\');',
+        );
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertSame(
+            [
+                ['20260401000000_migrator_st_add_halls', null, false, true],
+                ['20260501000000_migrator_st_add_zones', 1, true, true],
+                ['20260601000000_migrator_st_add_rooms', 2, true, true],
+                ['20260701000000_migrator_st_add_seats', null, false, true],
+            ],
+            array_map(
+                static fn (MigrationStatus $status): array => [
+                    $status->name,
+                    $status->batch,
+                    $status->appliedAt !== null,
+                    $status->hasFile,
+                ],
+                $statuses,
+            ),
+        );
+        $this->assertSame(['migrations', 'rooms', 'zones'], $this->tables());
+    }
+
+    public function testStatusReadsTheTimeEachMigrationWasRecorded(): void
+    {
+        $this->writeMigration('20260501000000_migrator_st_timed.php', 'MigratorStTimed', '');
+        $this->migrator()->run();
+        $this->connection->statement('UPDATE migrations SET applied_at = \'2026-09-14 10:30:05\'');
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertCount(1, $statuses);
+        $this->assertNotNull($statuses[0]->appliedAt);
+        $this->assertSame('2026-09-14 10:30:05', $statuses[0]->appliedAt->format('Y-m-d H:i:s'));
+    }
+
+    public function testStatusListsARecordedMigrationWhoseFileIsGone(): void
+    {
+        $this->writeMigration('20260501000000_migrator_st_gone.php', 'MigratorStGone', '');
+        $this->writeMigration('20260502000000_migrator_st_kept.php', 'MigratorStKept', '');
+        $this->migrator()->run();
+        unlink($this->directory . '/20260501000000_migrator_st_gone.php');
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertSame(
+            [
+                ['20260501000000_migrator_st_gone', 1, false],
+                ['20260502000000_migrator_st_kept', 1, true],
+            ],
+            array_map(
+                static fn (MigrationStatus $status): array => [$status->name, $status->batch, $status->hasFile],
+                $statuses,
+            ),
+        );
+    }
+
+    public function testStatusWithoutAHistoryTableListsEveryMigrationAsPendingAndCreatesNothing(): void
+    {
+        $this->writeMigration('20260501000000_migrator_st_untracked.php', 'MigratorStUntracked', '');
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertCount(1, $statuses);
+        $this->assertSame('20260501000000_migrator_st_untracked', $statuses[0]->name);
+        $this->assertNull($statuses[0]->batch);
+        $this->assertNull($statuses[0]->appliedAt);
+        $this->assertSame([], $this->tables());
+    }
+
+    public function testStatusLeavesAnOpenTransactionOpen(): void
+    {
+        $this->writeMigration('20260501000000_migrator_st_in_transaction.php', 'MigratorStInTransaction', '');
+        $this->migrator()->run();
+        $this->connection->begin();
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertTrue($this->connection->inTransaction());
+        $this->assertSame(1, $statuses[0]->batch);
+        $this->connection->rollback();
+    }
+
+    public function testStatusReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
+    {
+        $this->writeFile('create_things.php', '<?php');
+
+        $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->status());
+
+        $this->assertSame([], $this->tables());
+    }
+
+    public function testStatusReadsTheConfiguredHistoryTable(): void
+    {
+        $this->connection->setGrammar(new Grammar('app_'));
+        $this->connection->setMigrationsTable('schema_history');
+        $this->writeMigration('20260501000000_migrator_st_prefixed.php', 'MigratorStPrefixed', '');
+        $this->migrator()->run();
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertCount(1, $statuses);
+        $this->assertSame(1, $statuses[0]->batch);
+        $this->assertSame(['app_schema_history'], $this->tables());
+    }
+
+    public function testResetUndoesEveryMigrationNewestFirst(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rs_add_lakes.php',
+            'MigratorRsAddLakes',
+            '$db->statement(\'CREATE TABLE lakes (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'INSERT INTO undone (name) VALUES (\\\'lakes\\\')\'); $db->statement(\'DROP TABLE lakes\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rs_add_boats.php',
+            'MigratorRsAddBoats',
+            '$db->statement(\'CREATE TABLE boats (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'INSERT INTO undone (name) VALUES (\\\'boats\\\')\'); $db->statement(\'DROP TABLE boats\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260401000000_migrator_rs_add_docks.php',
+            'MigratorRsAddDocks',
+            '$db->statement(\'CREATE TABLE docks (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'INSERT INTO undone (name) VALUES (\\\'docks\\\')\'); $db->statement(\'DROP TABLE docks\');',
+        );
+        $this->migrator()->run();
+        $this->connection->statement('CREATE TABLE undone (name TEXT)');
+
+        $this->assertSame(3, $this->migrator()->reset());
+
+        $this->assertSame(
+            [['name' => 'docks'], ['name' => 'boats'], ['name' => 'lakes']],
+            $this->connection->query('SELECT name FROM undone ORDER BY rowid')->asArray(),
+        );
+        $this->assertSame(['migrations', 'undone'], $this->tables());
+        $this->assertSame([], $this->history());
+    }
+
+    public function testResetWithNothingAppliedUndoesNothing(): void
+    {
+        $this->assertSame(0, $this->migrator()->reset());
+
+        $this->assertSame(['migrations'], $this->tables());
+    }
+
+    public function testResetRefusesToStartInsideATransaction(): void
+    {
+        $this->connection->begin();
+
+        $thrown = $this->assertThrows(LogicException::class, fn () => $this->migrator()->reset());
+
+        $this->assertSame(
+            'Cannot roll back migrations inside a transaction: the first schema change would commit it.',
+            $thrown->getMessage(),
+        );
+        $this->assertSame([], $this->tables());
+    }
+
+    public function testResetRefusesARecordedMigrationWhoseFileIsGoneBeforeUndoingAny(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rs_add_ports.php',
+            'MigratorRsAddPorts',
+            '$db->statement(\'CREATE TABLE ports (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE ports\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rs_add_piers.php',
+            'MigratorRsAddPiers',
+            '$db->statement(\'CREATE TABLE piers (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE piers\');',
+        );
+        $this->migrator()->run();
+        unlink($this->directory . '/20260501000000_migrator_rs_add_ports.php');
+
+        $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->reset());
+
+        $this->assertSame(
+            'Migrations recorded as applied have no file in the migration directory: 20260501000000_migrator_rs_add_ports.',
+            $thrown->getMessage(),
+        );
+        $this->assertSame(['migrations', 'piers', 'ports'], $this->tables());
+        $this->assertCount(2, $this->history());
     }
 }

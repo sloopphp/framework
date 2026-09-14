@@ -74,6 +74,22 @@ final class MigrationHistoryTest extends TestCase
         );
     }
 
+    public function testExistsAsksInformationSchemaAboutTheTable(): void
+    {
+        $this->connection->setGrammar(new Grammar('app_'));
+        $this->connection->setMigrationsTable('schema_history');
+
+        $this->assertThrows(
+            DatabaseException::class,
+            fn () => new MigrationHistory($this->connection)->exists(),
+        );
+
+        $this->assertSame(
+            ['prepare: SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'],
+            $this->pdo->calls,
+        );
+    }
+
     public function testAppliedNamesIsEmptyBeforeAnyMigrationRuns(): void
     {
         $this->createSqliteTable('migrations');
@@ -177,6 +193,113 @@ final class MigrationHistoryTest extends TestCase
         $this->assertSame(
             ['20260601000000_create_posts_table', '20260501000000_create_users_table'],
             $history->lastNames(3),
+        );
+    }
+
+    public function testRecordsIsEmptyBeforeAnyMigrationRuns(): void
+    {
+        $this->createSqliteTable('migrations');
+
+        $this->assertSame([], new MigrationHistory($this->connection)->records());
+    }
+
+    public function testRecordsReadsEachNameWithItsBatchAndTheTimeItWasRecorded(): void
+    {
+        $this->createSqliteTable('migrations');
+        $this->pdo->exec(
+            'INSERT INTO migrations (name, batch, applied_at) VALUES '
+            . "('20260502000000_create_posts_table', 2, '2026-09-14 10:30:05'), "
+            . "('20260501000000_create_users_table', 1, '2026-09-13 23:59:59')",
+        );
+
+        $records = new MigrationHistory($this->connection)->records();
+
+        $this->assertCount(2, $records);
+        $this->assertSame('20260502000000_create_posts_table', $records[0]['name']);
+        $this->assertSame(2, $records[0]['batch']);
+        $this->assertSame('2026-09-14 10:30:05', $records[0]['appliedAt']->format('Y-m-d H:i:s'));
+        $this->assertSame('20260501000000_create_users_table', $records[1]['name']);
+        $this->assertSame(1, $records[1]['batch']);
+        $this->assertSame('2026-09-13 23:59:59', $records[1]['appliedAt']->format('Y-m-d H:i:s'));
+    }
+
+    public function testRecordsReadsATimeThatTheDefaultTimezoneSkipsForSummerTime(): void
+    {
+        $this->createSqliteTable('migrations');
+        $this->pdo->exec(
+            "INSERT INTO migrations (name, batch, applied_at) VALUES ('20260501000000_create_users_table', 1, '2026-03-29 02:30:00')",
+        );
+        $timezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Berlin');
+
+        try {
+            $records = new MigrationHistory($this->connection)->records();
+        } finally {
+            date_default_timezone_set($timezone);
+        }
+
+        $this->assertCount(1, $records);
+        $this->assertSame('2026-03-29 03:30:00 CEST', $records[0]['appliedAt']->format('Y-m-d H:i:s T'));
+    }
+
+    public function testRecordsSaysTheCheckCouldNotRunWhenThePatternGivesUp(): void
+    {
+        $this->createSqliteTable('migrations');
+        $this->pdo->exec(
+            "INSERT INTO migrations (name, batch, applied_at) VALUES ('20260501000000_create_users_table', 1, '2026-09-14 10:30:05')",
+        );
+        $backtrackLimit = \ini_get('pcre.backtrack_limit');
+        $jit            = \ini_get('pcre.jit');
+        ini_set('pcre.backtrack_limit', '1');
+        ini_set('pcre.jit', '0');
+
+        try {
+            $thrown = $this->assertThrows(
+                UnexpectedValueException::class,
+                fn () => new MigrationHistory($this->connection)->records(),
+            );
+        } finally {
+            ini_set('pcre.backtrack_limit', (string) $backtrackLimit);
+            ini_set('pcre.jit', (string) $jit);
+        }
+
+        $this->assertSame(
+            'Migration history applied_at could not be checked (Backtrack limit exhausted).',
+            $thrown->getMessage(),
+        );
+    }
+
+    /**
+     * @return array<string, array{string|null, string}>
+     */
+    public static function timesNotInTheColumnShape(): array
+    {
+        return [
+            'ISO 8601 separator' => ['2026-09-14T10:30:05', "string '2026-09-14T10:30:05'"],
+            'day past the month' => ['2026-02-30 10:30:05', "string '2026-02-30 10:30:05'"],
+            'date only'          => ['2026-09-14', "string '2026-09-14'"],
+            'zero date'          => ['0000-00-00 00:00:00', "string '0000-00-00 00:00:00'"],
+            'unpadded month'     => ['2026-9-14 10:30:05', "string '2026-9-14 10:30:05'"],
+            'null'               => [null, 'null'],
+        ];
+    }
+
+    #[DataProvider('timesNotInTheColumnShape')]
+    public function testRecordsRefusesATimeNotInTheColumnShape(?string $appliedAt, string $described): void
+    {
+        $this->createSqliteTable('migrations');
+        $statement = $this->pdo->prepare('INSERT INTO migrations (name, batch, applied_at) VALUES (?, 1, ?)');
+        $this->assertNotFalse($statement);
+        $statement->execute(['20260501000000_create_users_table', $appliedAt]);
+
+        $thrown = $this->assertThrows(
+            UnexpectedValueException::class,
+            fn () => new MigrationHistory($this->connection)->records(),
+        );
+
+        $this->assertSame(
+            'Migration history applied_at must be a time written as Y-m-d H:i:s, got ' . $described . '.',
+            $thrown->getMessage(),
         );
     }
 

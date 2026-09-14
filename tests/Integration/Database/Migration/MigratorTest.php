@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Sloop\Tests\Integration\Database\Migration;
 
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Sloop\Database\CastMode;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Migration\Migrator;
+use Sloop\Database\Query\Grammar;
 use Sloop\Tests\Support\MigrationIntegrationTestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -307,5 +310,86 @@ final class MigratorTest extends MigrationIntegrationTestCase
             ],
             $this->history(),
         );
+    }
+
+    /**
+     * @return array<string, array{CastMode}>
+     */
+    public static function castModes(): array
+    {
+        return [
+            'off'      => [CastMode::Off],
+            'datetime' => [CastMode::Datetime],
+        ];
+    }
+
+    #[DataProvider('castModes')]
+    public function testStatusReadsTheBatchAndTimeOfAppliedMigrationsWhateverThePoolCasts(CastMode $castMode): void
+    {
+        $this->connection->setCastMode($castMode);
+        $suffix = $castMode->name;
+        $this->writeMigration(
+            '20260501000000_it_st_create_venues_' . strtolower($suffix) . '.php',
+            'ItStCreateVenues' . $suffix,
+            '$db->statement(\'CREATE TABLE test_migration_venues (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration('20260601000000_it_st_create_stages_' . strtolower($suffix) . '.php', 'ItStCreateStages' . $suffix, '');
+        $this->connection->statement(
+            'UPDATE ' . self::HISTORY_TABLE . ' SET applied_at = \'2026-09-14 10:30:05\'',
+        );
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertCount(2, $statuses);
+        $this->assertSame(1, $statuses[0]->batch);
+        $this->assertNotNull($statuses[0]->appliedAt);
+        $this->assertSame('2026-09-14 10:30:05', $statuses[0]->appliedAt->format('Y-m-d H:i:s'));
+        $this->assertTrue($statuses[0]->hasFile);
+        $this->assertNull($statuses[1]->batch);
+        $this->assertNull($statuses[1]->appliedAt);
+    }
+
+    public function testStatusFindsThePrefixedHistoryTableAndLeavesATransactionOpen(): void
+    {
+        $this->connection->setGrammar(new Grammar('test_migration_'));
+        $this->connection->setMigrationsTable('history');
+        $this->writeMigration('20260501000000_it_st_prefixed_history.php', 'ItStPrefixedHistory', '');
+
+        $this->assertNull($this->migrator()->status()[0]->batch);
+        $this->assertSame([], $this->migrationTableNames());
+
+        $this->migrator()->run();
+        $this->connection->begin();
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertTrue($this->connection->inTransaction());
+        $this->connection->rollback();
+        $this->assertSame(1, $statuses[0]->batch);
+        $this->assertSame(['test_migration_history'], $this->migrationTableNames());
+    }
+
+    public function testResetUndoesEverySchemaChangeAcrossBatches(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_rs_create_teams.php',
+            'ItRsCreateTeams',
+            '$db->statement(\'CREATE TABLE test_migration_teams (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_teams\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260601000000_it_rs_add_name_to_teams.php',
+            'ItRsAddNameToTeams',
+            '$db->statement(\'ALTER TABLE test_migration_teams ADD COLUMN name VARCHAR(32) NULL\');',
+            '$db->statement(\'ALTER TABLE test_migration_teams DROP COLUMN name\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertSame(2, $this->migrator()->reset());
+
+        $this->assertSame([self::HISTORY_TABLE], $this->migrationTableNames());
+        $this->assertSame([], $this->history());
     }
 }

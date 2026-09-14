@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Database\Migration;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
+use Sloop\Database\CastMode;
 use Sloop\Database\Connection;
 use UnexpectedValueException;
 
@@ -29,6 +31,30 @@ final readonly class MigrationHistory
     public function __construct(
         private Connection $connection,
     ) {
+    }
+
+    /**
+     * Whether the table exists in the connection's current database.
+     *
+     * Asks information_schema rather than creating the table or reading it and
+     * catching the failure: creating commits any open transaction, and a failed
+     * read is logged as an error by the connection.
+     *
+     * The name asked for is the quoted, prefixed name with its backticks taken
+     * off. The grammar accepts only letters, digits and underscores in a prefix,
+     * and the `migrations_table` setting is held to the same, so for a
+     * configured pool the quoting adds nothing else to take off.
+     *
+     * @return bool
+     */
+    public function exists(): bool
+    {
+        $quoted = $this->connection->quoteTable($this->connection->migrationsTable());
+
+        return !$this->connection->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            [substr($quoted, 1, -1)],
+        )->isEmpty();
     }
 
     /**
@@ -76,6 +102,37 @@ final readonly class MigrationHistory
         }
 
         return $names;
+    }
+
+    /**
+     * Read every recorded migration with its batch and the time it was recorded.
+     *
+     * The time is read as the server writes the column, rather than under the
+     * pool's CastMode, so it comes back the same way whatever the pool is
+     * configured with, and is read as a time in PHP's default timezone.
+     *
+     * @return list<array{name: string, batch: int, appliedAt: DateTimeImmutable}> In the order the rows were recorded
+     * @throws UnexpectedValueException                                            If a name is not a string, a batch not an integer, or a time cannot be read
+     */
+    public function records(): array
+    {
+        $rows = $this->connection->select('name', 'batch', 'applied_at')
+            ->from($this->connection->migrationsTable())
+            ->orderBy('id')
+            ->castMode(CastMode::Off)
+            ->get();
+
+        $records = [];
+
+        foreach ($rows as $row) {
+            $records[] = [
+                'name'      => $this->name($row['name'] ?? null),
+                'batch'     => $this->batch($row['batch'] ?? null),
+                'appliedAt' => $this->appliedAt($row['applied_at'] ?? null),
+            ];
+        }
+
+        return $records;
     }
 
     /**
@@ -201,6 +258,49 @@ final readonly class MigrationHistory
         }
 
         return $value;
+    }
+
+    /**
+     * Read a time from the table.
+     *
+     * The value must have the shape the server writes the column in, and must
+     * be a real date: a day PHP would roll into the next month, such as the
+     * 30th of February, is refused. A wall-clock time that PHP's default
+     * timezone skips when it moves to summer time is still accepted, since the
+     * server may have written it under a timezone that does not skip it.
+     *
+     * @param  mixed                    $value Value read from the applied_at column
+     * @return DateTimeImmutable
+     * @throws UnexpectedValueException If the value is not a string written as Y-m-d H:i:s, or not a real date, or
+     *                                  the pattern that checks the shape could not run
+     */
+    private function appliedAt(mixed $value): DateTimeImmutable
+    {
+        if (!\is_string($value)) {
+            throw new UnexpectedValueException(
+                'Migration history applied_at must be a time written as Y-m-d H:i:s, got ' . get_debug_type($value) . '.',
+            );
+        }
+
+        $shaped = preg_match('/\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\z/', $value);
+
+        // A pattern that did not run says nothing about the value, so it is
+        // not reported as a malformed one.
+        if ($shaped === false) {
+            throw new UnexpectedValueException(
+                'Migration history applied_at could not be checked (' . preg_last_error_msg() . ').',
+            );
+        }
+
+        $time = $shaped === 1 ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value) : false;
+
+        if ($time === false || DateTimeImmutable::getLastErrors() !== false) {
+            throw new UnexpectedValueException(
+                'Migration history applied_at must be a time written as Y-m-d H:i:s, got string \'' . $value . '\'.',
+            );
+        }
+
+        return $time;
     }
 
     /**
