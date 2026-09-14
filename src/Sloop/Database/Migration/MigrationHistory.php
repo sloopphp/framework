@@ -72,16 +72,39 @@ final readonly class MigrationHistory
         $names = [];
 
         foreach ($values as $value) {
-            if (!\is_string($value)) {
-                throw new UnexpectedValueException(
-                    'Migration history name must be a string, got ' . get_debug_type($value) . '.',
-                );
-            }
-
-            $names[] = $value;
+            $names[] = $this->name($value);
         }
 
         return $names;
+    }
+
+    /**
+     * List the names of the migrations in the most recent batches, newest first.
+     *
+     * Batches are counted as they appear in the table, not by their numbers,
+     * so a gap between batch numbers does not shorten the list. Within a batch
+     * the migrations come in the reverse of the order they were recorded, the
+     * order in which they can be undone.
+     *
+     * @param  int                      $batches How many of the most recent batches to list
+     * @return list<string>
+     * @throws UnexpectedValueException If a name comes back as anything but a string, or a batch as anything but an integer
+     */
+    public function namesInLastBatches(int $batches): array
+    {
+        $rows = $this->connection->select('name', 'batch')
+            ->from($this->connection->migrationsTable())
+            ->orderBy('batch', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+
+        $namesByBatch = [];
+
+        foreach ($rows as $row) {
+            $namesByBatch[$this->batch($row['batch'] ?? null)][] = $this->name($row['name'] ?? null);
+        }
+
+        return array_merge(...\array_slice($namesByBatch, 0, $batches));
     }
 
     /**
@@ -100,13 +123,7 @@ final readonly class MigrationHistory
             return 0;
         }
 
-        if (!\is_int($batch)) {
-            throw new UnexpectedValueException(
-                'Migration history batch must be an integer, got ' . get_debug_type($batch) . '.',
-            );
-        }
-
-        return $batch;
+        return $this->batch($batch);
     }
 
     /**
@@ -126,5 +143,54 @@ final readonly class MigrationHistory
         $this->connection->insert($this->connection->migrationsTable())
             ->set(['name' => $name, 'batch' => $batch])
             ->execute();
+    }
+
+    /**
+     * Remove the record of a migration, once it has been undone.
+     *
+     * @param  string $name Migration name: the file name without the extension
+     * @return void
+     */
+    public function delete(string $name): void
+    {
+        $this->connection->delete($this->connection->migrationsTable())
+            ->where('name', $name)
+            ->execute();
+    }
+
+    /**
+     * Check a name read from the table.
+     *
+     * @param  mixed                    $value Value read from the name column
+     * @return string
+     * @throws UnexpectedValueException If the value is not a string
+     */
+    private function name(mixed $value): string
+    {
+        if (!\is_string($value)) {
+            throw new UnexpectedValueException(
+                'Migration history name must be a string, got ' . get_debug_type($value) . '.',
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Check a batch number read from the table.
+     *
+     * @param  mixed                    $value Value read from the batch column
+     * @return int
+     * @throws UnexpectedValueException If the value is not an integer
+     */
+    private function batch(mixed $value): int
+    {
+        if (!\is_int($value)) {
+            throw new UnexpectedValueException(
+                'Migration history batch must be an integer, got ' . get_debug_type($value) . '.',
+            );
+        }
+
+        return $value;
     }
 }

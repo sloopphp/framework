@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Database\Migration;
 
+use Closure;
 use InvalidArgumentException;
 use LogicException;
 use ReflectionClass;
@@ -14,7 +15,7 @@ use Throwable;
 use UnexpectedValueException;
 
 /**
- * Applies the migrations in a directory that have not run yet.
+ * Applies the migrations in a directory that have not run yet, and undoes the most recent ones.
  *
  * Migrations run one at a time over the given connection, oldest first, and
  * each is recorded in the history table as soon as its up() returns. None of
@@ -94,29 +95,120 @@ final readonly class Migrator
         foreach ($pending as $file) {
             $migration = $this->load($file);
 
-            try {
-                $migration->up($this->connection);
-            } catch (Throwable $e) {
-                $this->rollBackLeftOpen();
-
-                throw $e;
-            }
-
-            // The history row would join a transaction the migration left
-            // open, and vanish with it if that transaction never commits.
-            if ($this->connection->inTransaction()) {
-                $this->connection->rollback();
-
-                throw new LogicException(
-                    'Migration ' . $file->name . ' left a transaction open: it was rolled back and the migration '
-                    . 'was not recorded. Commit or roll back inside up().',
-                );
-            }
+            $this->perform(
+                $file->name,
+                fn () => $migration->up($this->connection),
+                'up',
+                'was not recorded',
+            );
 
             $this->history->record($file->name, $batch);
         }
 
         return \count($pending);
+    }
+
+    /**
+     * Undo the migrations applied by the most recent runs.
+     *
+     * The migrations one call to run() applied form a batch. This undoes the
+     * given number of the most recent batches, calling down() on their
+     * migrations from the last applied back to the first, and removes each
+     * from the history as soon as its down() returns. Asking for more batches than were recorded undoes every
+     * migration.
+     *
+     * Every migration to undo must still have its file, declaring a usable
+     * class, and all of them are checked before the first down() is called.
+     * When a migration throws, any transaction it left open is rolled back and
+     * the exception is passed on untouched: the ones undone before it stay out
+     * of the history, and it and the ones after it are undone on the next call.
+     *
+     * @param  int                      $steps Number of batches to undo, counting back from the most recent
+     * @return int                      Number of migrations undone
+     * @throws InvalidArgumentException If the number of batches is less than 1
+     * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
+     */
+    public function rollback(int $steps = 1): int
+    {
+        if ($steps < 1) {
+            throw new InvalidArgumentException('Rollback steps must be 1 or greater, got ' . $steps . '.');
+        }
+
+        if ($this->connection->inTransaction()) {
+            throw new LogicException(
+                'Cannot roll back migrations inside a transaction: the first schema change would commit it.',
+            );
+        }
+
+        $files = [];
+
+        foreach ($this->directory->files() as $file) {
+            $files[$file->name] = $file;
+        }
+
+        $this->history->createIfMissing();
+
+        $migrations = [];
+
+        foreach ($this->history->namesInLastBatches($steps) as $name) {
+            if (!isset($files[$name])) {
+                throw new UnexpectedValueException(
+                    'Migration ' . $name . ' is recorded as applied, but its file is not in the migration directory.',
+                );
+            }
+
+            $migrations[$name] = $this->load($files[$name]);
+        }
+
+        foreach ($migrations as $name => $migration) {
+            $this->perform(
+                $name,
+                fn () => $migration->down($this->connection),
+                'down',
+                'was left in the history',
+            );
+
+            $this->history->delete($name);
+        }
+
+        return \count($migrations);
+    }
+
+    /**
+     * Call up() or down() on a migration, and make sure it left no transaction open.
+     *
+     * A transaction left open is rolled back and refused, because the history
+     * change that follows would join it and vanish with it if it never
+     * committed. When the migration throws, a transaction it left open is
+     * rolled back and the exception is passed on untouched.
+     *
+     * @param  string          $name           Migration name, for the message
+     * @param  Closure(): void $call           Call to the migration's method
+     * @param  string          $method         Name of the method called, for the message
+     * @param  string          $historyOutcome What became of the history entry, for the message
+     * @return void
+     * @throws LogicException  If the migration left a transaction open
+     */
+    private function perform(string $name, Closure $call, string $method, string $historyOutcome): void
+    {
+        try {
+            $call();
+        } catch (Throwable $e) {
+            $this->rollBackLeftOpen();
+
+            throw $e;
+        }
+
+        if ($this->connection->inTransaction()) {
+            $this->connection->rollback();
+
+            throw new LogicException(
+                'Migration ' . $name . ' left a transaction open: it was rolled back and the migration '
+                . $historyOutcome . '. Commit or roll back inside ' . $method . '().',
+            );
+        }
     }
 
     /**

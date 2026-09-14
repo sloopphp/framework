@@ -8,6 +8,7 @@ use DomainException;
 use InvalidArgumentException;
 use LogicException;
 use PDO;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\Exception\DatabaseException;
@@ -61,7 +62,7 @@ final class MigratorTest extends TestCase
         file_put_contents($this->directory . '/' . $fileName, $source);
     }
 
-    private function writeMigration(string $fileName, string $className, string $up): void
+    private function writeMigration(string $fileName, string $className, string $up, string $down = ''): void
     {
         $this->writeFile(
             $fileName,
@@ -76,6 +77,7 @@ final class MigratorTest extends TestCase
             . '    }' . "\n\n"
             . '    public function down(Connection $db): void' . "\n"
             . '    {' . "\n"
+            . '        ' . $down . "\n"
             . '    }' . "\n"
             . '}' . "\n",
         );
@@ -537,5 +539,363 @@ final class MigratorTest extends TestCase
         $this->assertSame(1, $this->migrator()->run());
 
         $this->assertSame(['migrations', 'optional'], $this->tables());
+    }
+
+    public function testRollbackUndoesTheLastBatchInReverseOrder(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_owners.php',
+            'MigratorRbAddOwners',
+            '$db->statement(\'CREATE TABLE owners (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE owners\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260601000000_migrator_rb_add_pets.php',
+            'MigratorRbAddPets',
+            '$db->statement(\'CREATE TABLE pets (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'INSERT INTO undone (name) VALUES (\\\'pets\\\')\'); $db->statement(\'DROP TABLE pets\');',
+        );
+        $this->writeMigration(
+            '20260602000000_migrator_rb_add_toys.php',
+            'MigratorRbAddToys',
+            '$db->statement(\'CREATE TABLE toys (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'INSERT INTO undone (name) VALUES (\\\'toys\\\')\'); $db->statement(\'DROP TABLE toys\');',
+        );
+        $this->migrator()->run();
+        $this->connection->statement('CREATE TABLE undone (name TEXT)');
+
+        $this->assertSame(2, $this->migrator()->rollback());
+
+        $this->assertSame(
+            [['name' => 'toys'], ['name' => 'pets']],
+            $this->connection->query('SELECT name FROM undone ORDER BY rowid')->asArray(),
+        );
+        $this->assertSame(['migrations', 'owners', 'undone'], $this->tables());
+        $this->assertSame([['name' => '20260501000000_migrator_rb_add_owners', 'batch' => 1]], $this->history());
+    }
+
+    public function testRollbackUndoesTheGivenNumberOfBatches(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_farms.php',
+            'MigratorRbAddFarms',
+            '$db->statement(\'CREATE TABLE farms (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE farms\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260601000000_migrator_rb_add_barns.php',
+            'MigratorRbAddBarns',
+            '$db->statement(\'CREATE TABLE barns (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE barns\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260701000000_migrator_rb_add_silos.php',
+            'MigratorRbAddSilos',
+            '$db->statement(\'CREATE TABLE silos (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE silos\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertSame(2, $this->migrator()->rollback(2));
+
+        $this->assertSame(['farms', 'migrations'], $this->tables());
+        $this->assertSame([['name' => '20260501000000_migrator_rb_add_farms', 'batch' => 1]], $this->history());
+    }
+
+    public function testRollbackOfMoreBatchesThanRecordedUndoesEveryMigration(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_ponds.php',
+            'MigratorRbAddPonds',
+            '$db->statement(\'CREATE TABLE ponds (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE ponds\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertSame(1, $this->migrator()->rollback(5));
+
+        $this->assertSame(['migrations'], $this->tables());
+        $this->assertSame([], $this->history());
+    }
+
+    public function testRollbackWithNothingAppliedUndoesNothing(): void
+    {
+        $this->assertSame(0, $this->migrator()->rollback());
+
+        $this->assertSame(['migrations'], $this->tables());
+    }
+
+    public function testRunAfterRollbackAppliesTheUndoneMigrationsAgainAsANewBatch(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_hives.php',
+            'MigratorRbAddHives',
+            '$db->statement(\'CREATE TABLE hives (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE hives\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rb_add_combs.php',
+            'MigratorRbAddCombs',
+            '$db->statement(\'CREATE TABLE combs (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE combs\');',
+        );
+        $this->migrator()->run();
+        $this->migrator()->rollback();
+
+        $this->assertSame(2, $this->migrator()->run());
+
+        $this->assertSame(['combs', 'hives', 'migrations'], $this->tables());
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_migrator_rb_add_hives', 'batch' => 1],
+                ['name' => '20260502000000_migrator_rb_add_combs', 'batch' => 1],
+            ],
+            $this->history(),
+        );
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function stepsBelowOne(): array
+    {
+        return [
+            'zero'     => [0],
+            'negative' => [-1],
+        ];
+    }
+
+    #[DataProvider('stepsBelowOne')]
+    public function testRollbackRefusesStepsBelowOne(int $steps): void
+    {
+        $thrown = $this->assertThrows(InvalidArgumentException::class, fn () => $this->migrator()->rollback($steps));
+
+        $this->assertSame('Rollback steps must be 1 or greater, got ' . $steps . '.', $thrown->getMessage());
+        $this->assertSame([], $this->tables());
+    }
+
+    public function testRollbackRefusesToStartInsideATransaction(): void
+    {
+        $this->connection->begin();
+
+        $thrown = $this->assertThrows(LogicException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(
+            'Cannot roll back migrations inside a transaction: the first schema change would commit it.',
+            $thrown->getMessage(),
+        );
+        $this->assertSame([], $this->tables());
+    }
+
+    public function testRollbackReadsTheWholeDirectoryBeforeUndoingAny(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_crates.php',
+            'MigratorRbAddCrates',
+            '$db->statement(\'CREATE TABLE crates (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE crates\');',
+        );
+        $this->migrator()->run();
+        $this->writeFile('create_things.php', '<?php');
+
+        $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(['crates', 'migrations'], $this->tables());
+        $this->assertCount(1, $this->history());
+    }
+
+    public function testRollbackRefusesARecordedMigrationWhoseFileIsGoneBeforeUndoingAny(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_decks.php',
+            'MigratorRbAddDecks',
+            '$db->statement(\'CREATE TABLE decks (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE decks\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rb_add_cards.php',
+            'MigratorRbAddCards',
+            '$db->statement(\'CREATE TABLE cards (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE cards\');',
+        );
+        $this->migrator()->run();
+        unlink($this->directory . '/20260501000000_migrator_rb_add_decks.php');
+
+        $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(
+            'Migration 20260501000000_migrator_rb_add_decks is recorded as applied, but its file is not in the '
+            . 'migration directory.',
+            $thrown->getMessage(),
+        );
+        $this->assertSame(['cards', 'decks', 'migrations'], $this->tables());
+        $this->assertCount(2, $this->history());
+    }
+
+    public function testRollbackRefusesAFileThatNoLongerDeclaresItsClassBeforeUndoingAny(): void
+    {
+        $this->writeMigration(
+            '20260502000000_migrator_rb_add_pins.php',
+            'MigratorRbAddPins',
+            '$db->statement(\'CREATE TABLE pins (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE pins\');',
+        );
+        $this->connection->statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, '
+            . 'name TEXT NOT NULL UNIQUE, batch INTEGER NOT NULL, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+        $this->connection->statement('CREATE TABLE boards (id INTEGER PRIMARY KEY)');
+        $this->connection->statement('CREATE TABLE pins (id INTEGER PRIMARY KEY)');
+        $this->connection->statement(
+            'INSERT INTO migrations (name, batch) VALUES '
+            . '(\'20260501000000_migrator_rb_add_boards\', 1), (\'20260502000000_migrator_rb_add_pins\', 1)',
+        );
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_rb_add_boards.php';
+        $this->writeMigration('20260501000000_migrator_rb_add_boards.php', 'MigratorRbMisnamedBoards', '');
+
+        $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(
+            'Migration file ' . $path . ' must declare class MigratorRbAddBoards, without a namespace.',
+            $thrown->getMessage(),
+        );
+        $this->assertSame(['boards', 'migrations', 'pins'], $this->tables());
+        $this->assertCount(2, $this->history());
+    }
+
+    public function testRollbackStopsAtAFailingMigrationAndResumesFromItOnTheNextRollback(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_shelves.php',
+            'MigratorRbAddShelves',
+            '$db->statement(\'CREATE TABLE shelves (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE shelves\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rb_seed_books.php',
+            'MigratorRbSeedBooks',
+            '',
+            '$db->statement(\'DELETE FROM books\');',
+        );
+        $this->writeMigration(
+            '20260503000000_migrator_rb_add_racks.php',
+            'MigratorRbAddRacks',
+            '$db->statement(\'CREATE TABLE racks (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE racks\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(['migrations', 'shelves'], $this->tables());
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_migrator_rb_add_shelves', 'batch' => 1],
+                ['name' => '20260502000000_migrator_rb_seed_books', 'batch' => 1],
+            ],
+            $this->history(),
+        );
+
+        $this->connection->statement('CREATE TABLE books (id INTEGER)');
+
+        $this->assertSame(2, $this->migrator()->rollback());
+
+        $this->assertSame(['books', 'migrations'], $this->tables());
+        $this->assertSame([], $this->history());
+    }
+
+    public function testRollbackRollsBackAndRefusesATransactionAMigrationLeftOpen(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_logs.php',
+            'MigratorRbAddLogs',
+            '$db->statement(\'CREATE TABLE logs (body TEXT)\');',
+            '$db->statement(\'DROP TABLE logs\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rb_leave_open.php',
+            'MigratorRbLeaveOpen',
+            '',
+            '$db->begin(); $db->statement(\'INSERT INTO logs (body) VALUES (\\\'undone\\\')\');',
+        );
+        $this->migrator()->run();
+
+        $thrown = $this->assertThrows(LogicException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(
+            'Migration 20260502000000_migrator_rb_leave_open left a transaction open: it was rolled back and the '
+            . 'migration was left in the history. Commit or roll back inside down().',
+            $thrown->getMessage(),
+        );
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame([], $this->connection->query('SELECT body FROM logs')->asArray());
+        $this->assertCount(2, $this->history());
+    }
+
+    public function testRollbackRollsBackATransactionAFailingMigrationLeftOpenSoTheNextRollbackCanStart(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_notices.php',
+            'MigratorRbAddNotices',
+            '$db->statement(\'CREATE TABLE notices (body TEXT)\');',
+            '$db->statement(\'DROP TABLE notices\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rb_throw_while_open.php',
+            'MigratorRbThrowWhileOpen',
+            '',
+            '$db->begin(); $db->statement(\'INSERT INTO notices (body) VALUES (\\\'undone\\\')\'); '
+            . 'if (!$db->query(\'SELECT name FROM sqlite_master WHERE name = \\\'ready\\\'\')->asArray()) { '
+            . 'throw new \\DomainException(\'Not ready.\'); } $db->commit();',
+        );
+        $migrator = $this->migrator();
+        $migrator->run();
+
+        $thrown = $this->assertThrows(DomainException::class, fn () => $migrator->rollback());
+
+        $this->assertSame('Not ready.', $thrown->getMessage());
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame([], $this->connection->query('SELECT body FROM notices')->asArray());
+
+        $this->connection->statement('CREATE TABLE ready (id INTEGER)');
+
+        $this->assertSame(2, $migrator->rollback());
+        $this->assertSame([], $this->history());
+    }
+
+    public function testRollbackPassesOnTheMigrationsExceptionWhenTheRollbackFails(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_throw_rollback_fails.php',
+            'MigratorRbThrowRollbackFails',
+            '',
+            '$db->begin(); throw new \\DomainException(\'Down failed first.\');',
+        );
+        $this->migrator()->run();
+        $this->pdo->failRollBack = true;
+
+        $thrown = $this->assertThrows(DomainException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame('Down failed first.', $thrown->getMessage());
+        $this->assertCount(1, $this->history());
+    }
+
+    public function testRollbackHandsTheMigrationTheMigratorsConnection(): void
+    {
+        $this->connection->setGrammar(new Grammar('app_'));
+        $this->connection->setMigrationsTable('schema_history');
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_badges.php',
+            'MigratorRbAddBadges',
+            '$db->statement(\'CREATE TABLE \' . $db->quoteTable(\'badges\') . \' (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE \' . $db->quoteTable(\'badges\'));',
+        );
+        $this->migrator()->run();
+
+        $this->assertSame(1, $this->migrator()->rollback());
+
+        $this->assertSame(['app_schema_history'], $this->tables());
+        $this->assertSame([], $this->history('app_schema_history'));
     }
 }
