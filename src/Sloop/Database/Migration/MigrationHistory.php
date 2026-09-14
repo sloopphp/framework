@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Database\Migration;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
+use Sloop\Database\CastMode;
 use Sloop\Database\Connection;
 use UnexpectedValueException;
 
@@ -76,6 +78,37 @@ final readonly class MigrationHistory
         }
 
         return $names;
+    }
+
+    /**
+     * Read every recorded migration with its batch and the time it was recorded.
+     *
+     * The time is read as the server writes the column, rather than under the
+     * pool's CastMode, so it comes back the same way whatever the pool is
+     * configured with, and is read as a time in PHP's default timezone.
+     *
+     * @return list<array{name: string, batch: int, appliedAt: DateTimeImmutable}> In the order the rows were recorded
+     * @throws UnexpectedValueException                                            If a name is not a string, a batch not an integer, or a time not written as Y-m-d H:i:s
+     */
+    public function records(): array
+    {
+        $rows = $this->connection->select('name', 'batch', 'applied_at')
+            ->from($this->connection->migrationsTable())
+            ->orderBy('id')
+            ->castMode(CastMode::Off)
+            ->get();
+
+        $records = [];
+
+        foreach ($rows as $row) {
+            $records[] = [
+                'name'      => $this->name($row['name'] ?? null),
+                'batch'     => $this->batch($row['batch'] ?? null),
+                'appliedAt' => $this->appliedAt($row['applied_at'] ?? null),
+            ];
+        }
+
+        return $records;
     }
 
     /**
@@ -201,6 +234,31 @@ final readonly class MigrationHistory
         }
 
         return $value;
+    }
+
+    /**
+     * Read a time from the table.
+     *
+     * Parsed against the exact format and written back to compare, so a value
+     * PHP would otherwise roll over, such as the 30th of February, is refused
+     * rather than read as another day.
+     *
+     * @param  mixed                    $value Value read from the applied_at column
+     * @return DateTimeImmutable
+     * @throws UnexpectedValueException If the value is not a string written as Y-m-d H:i:s
+     */
+    private function appliedAt(mixed $value): DateTimeImmutable
+    {
+        $time = \is_string($value) ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value) : false;
+
+        if ($time === false || $time->format('Y-m-d H:i:s') !== $value) {
+            throw new UnexpectedValueException(
+                'Migration history applied_at must be a time written as Y-m-d H:i:s, got '
+                . (\is_string($value) ? 'string \'' . $value . '\'' : get_debug_type($value)) . '.',
+            );
+        }
+
+        return $time;
     }
 
     /**

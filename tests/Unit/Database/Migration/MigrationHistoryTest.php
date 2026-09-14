@@ -180,6 +180,65 @@ final class MigrationHistoryTest extends TestCase
         );
     }
 
+    public function testRecordsIsEmptyBeforeAnyMigrationRuns(): void
+    {
+        $this->createSqliteTable('migrations');
+
+        $this->assertSame([], new MigrationHistory($this->connection)->records());
+    }
+
+    public function testRecordsReadsEachNameWithItsBatchAndTheTimeItWasRecorded(): void
+    {
+        $this->createSqliteTable('migrations');
+        $this->pdo->exec(
+            'INSERT INTO migrations (name, batch, applied_at) VALUES '
+            . "('20260502000000_create_posts_table', 2, '2026-09-14 10:30:05'), "
+            . "('20260501000000_create_users_table', 1, '2026-09-13 23:59:59')",
+        );
+
+        $records = new MigrationHistory($this->connection)->records();
+
+        $this->assertCount(2, $records);
+        $this->assertSame('20260502000000_create_posts_table', $records[0]['name']);
+        $this->assertSame(2, $records[0]['batch']);
+        $this->assertSame('2026-09-14 10:30:05', $records[0]['appliedAt']->format('Y-m-d H:i:s'));
+        $this->assertSame('20260501000000_create_users_table', $records[1]['name']);
+        $this->assertSame(1, $records[1]['batch']);
+        $this->assertSame('2026-09-13 23:59:59', $records[1]['appliedAt']->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * @return array<string, array{string|null, string}>
+     */
+    public static function timesNotInTheColumnShape(): array
+    {
+        return [
+            'ISO 8601 separator' => ['2026-09-14T10:30:05', "string '2026-09-14T10:30:05'"],
+            'day past the month' => ['2026-02-30 10:30:05', "string '2026-02-30 10:30:05'"],
+            'date only'          => ['2026-09-14', "string '2026-09-14'"],
+            'null'               => [null, 'null'],
+        ];
+    }
+
+    #[DataProvider('timesNotInTheColumnShape')]
+    public function testRecordsRefusesATimeNotInTheColumnShape(?string $appliedAt, string $described): void
+    {
+        $this->createSqliteTable('migrations');
+        $statement = $this->pdo->prepare('INSERT INTO migrations (name, batch, applied_at) VALUES (?, 1, ?)');
+        $this->assertNotFalse($statement);
+        $statement->execute(['20260501000000_create_users_table', $appliedAt]);
+
+        $thrown = $this->assertThrows(
+            UnexpectedValueException::class,
+            fn () => new MigrationHistory($this->connection)->records(),
+        );
+
+        $this->assertSame(
+            'Migration history applied_at must be a time written as Y-m-d H:i:s, got ' . $described . '.',
+            $thrown->getMessage(),
+        );
+    }
+
     public function testDeleteRemovesOnlyTheNamedMigration(): void
     {
         $this->createSqliteTable('migrations');
