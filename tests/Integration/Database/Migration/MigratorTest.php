@@ -44,7 +44,7 @@ final class MigratorTest extends MigrationIntegrationTestCase
         parent::tearDown();
     }
 
-    private function writeMigration(string $fileName, string $className, string $up): void
+    private function writeMigration(string $fileName, string $className, string $up, string $down = ''): void
     {
         file_put_contents(
             $this->directory . '/' . $fileName,
@@ -59,6 +59,7 @@ final class MigratorTest extends MigrationIntegrationTestCase
             . '    }' . "\n\n"
             . '    public function down(Connection $db): void' . "\n"
             . '    {' . "\n"
+            . '        ' . $down . "\n"
             . '    }' . "\n"
             . '}' . "\n",
         );
@@ -198,5 +199,113 @@ final class MigratorTest extends MigrationIntegrationTestCase
 
         $this->assertSame(['test_migration_committed', self::HISTORY_TABLE], $this->migrationTableNames());
         $this->assertSame([], $this->history());
+    }
+
+    public function testRollbackUndoesABatchInTheReverseOfTheOrderItRan(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_rb1x.php',
+            'ItRb1x',
+            '$db->statement(\'CREATE TABLE test_migration_orders (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_orders\');',
+        );
+        $this->writeMigration(
+            '20260501000000_it_rb_x.php',
+            'ItRbX',
+            '$db->statement(\'ALTER TABLE test_migration_orders ADD COLUMN total INT NULL\');',
+            '$db->statement(\'ALTER TABLE test_migration_orders DROP COLUMN total\');',
+        );
+        $this->assertSame(2, $this->migrator()->run());
+
+        $this->assertSame(2, $this->migrator()->rollback());
+
+        $this->assertSame([self::HISTORY_TABLE], $this->migrationTableNames());
+        $this->assertSame([], $this->history());
+    }
+
+    public function testRollbackWithStepsUndoesPartOfABatchAndRunAppliesItAgain(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_rb_create_shops.php',
+            'ItRbCreateShops',
+            '$db->statement(\'CREATE TABLE test_migration_shops (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_shops\');',
+        );
+        $this->migrator()->run();
+        $this->writeMigration(
+            '20260601000000_it_rb_create_items.php',
+            'ItRbCreateItems',
+            '$db->statement(\'CREATE TABLE test_migration_items (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_items\');',
+        );
+        $this->writeMigration(
+            '20260701000000_it_rb_add_price_to_items.php',
+            'ItRbAddPriceToItems',
+            '$db->statement(\'ALTER TABLE test_migration_items ADD COLUMN price INT NULL\');',
+            '$db->statement(\'ALTER TABLE test_migration_items DROP COLUMN price\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertSame(1, $this->migrator()->rollback(1));
+
+        $this->assertSame(
+            [['name' => 'id']],
+            $this->connection->query(
+                'SELECT column_name AS name FROM information_schema.columns '
+                    . 'WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position',
+                ['test_migration_items'],
+            )->asArray(),
+        );
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_it_rb_create_shops', 'batch' => 1],
+                ['name' => '20260601000000_it_rb_create_items', 'batch' => 2],
+            ],
+            $this->history(),
+        );
+
+        $this->assertSame(1, $this->migrator()->run());
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_it_rb_create_shops', 'batch' => 1],
+                ['name' => '20260601000000_it_rb_create_items', 'batch' => 2],
+                ['name' => '20260701000000_it_rb_add_price_to_items', 'batch' => 3],
+            ],
+            $this->history(),
+        );
+    }
+
+    public function testRollbackKeepsTheMigrationsUndoneBeforeOneThatFailsAndTheSchemaChangesItMade(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_rb_create_carts.php',
+            'ItRbCreateCarts',
+            '$db->statement(\'CREATE TABLE test_migration_carts (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_carts\');',
+        );
+        $this->writeMigration(
+            '20260502000000_it_rb_create_lines.php',
+            'ItRbCreateLines',
+            '$db->statement(\'CREATE TABLE test_migration_lines (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_lines\'); $db->statement(\'DROP TABLE test_migration_absent\');',
+        );
+        $this->writeMigration(
+            '20260503000000_it_rb_create_coupons.php',
+            'ItRbCreateCoupons',
+            '$db->statement(\'CREATE TABLE test_migration_coupons (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_coupons\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->rollback());
+
+        $this->assertSame(['test_migration_carts', self::HISTORY_TABLE], $this->migrationTableNames());
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_it_rb_create_carts', 'batch' => 1],
+                ['name' => '20260502000000_it_rb_create_lines', 'batch' => 1],
+            ],
+            $this->history(),
+        );
     }
 }

@@ -120,6 +120,78 @@ final class MigrationHistoryTest extends TestCase
         $this->assertSame(3, $history->lastBatch());
     }
 
+    public function testNamesInLastBatchAndLastNamesAreEmptyBeforeAnyMigrationRuns(): void
+    {
+        $this->createSqliteTable('migrations');
+        $history = new MigrationHistory($this->connection);
+
+        $this->assertSame([], $history->namesInLastBatch());
+        $this->assertSame([], $history->lastNames(1));
+    }
+
+    public function testNamesInLastBatchListsTheHighestBatchNewestFirst(): void
+    {
+        $this->createSqliteTable('migrations');
+        $history = new MigrationHistory($this->connection);
+
+        $history->record('20260701000000_create_tags_table', 5);
+        $history->record('20260501000000_create_users_table', 1);
+        $history->record('20260401000000_create_roles_table', 5);
+        $history->record('20260601000000_create_posts_table', 2);
+
+        $this->assertSame(
+            ['20260401000000_create_roles_table', '20260701000000_create_tags_table'],
+            $history->namesInLastBatch(),
+        );
+    }
+
+    public function testLastNamesCountsMigrationsAcrossBatchesNewestFirst(): void
+    {
+        $this->createSqliteTable('migrations');
+        $history = new MigrationHistory($this->connection);
+
+        $history->record('20260501000000_create_users_table', 1);
+        $history->record('20260601000000_create_posts_table', 2);
+        $history->record('20260502000000_add_email_to_users', 2);
+        $history->record('20260701000000_create_tags_table', 3);
+
+        $this->assertSame(['20260701000000_create_tags_table'], $history->lastNames(1));
+        $this->assertSame(
+            [
+                '20260701000000_create_tags_table',
+                '20260502000000_add_email_to_users',
+                '20260601000000_create_posts_table',
+            ],
+            $history->lastNames(3),
+        );
+    }
+
+    public function testLastNamesListsEveryMigrationWhenAskedForMoreThanRecorded(): void
+    {
+        $this->createSqliteTable('migrations');
+        $history = new MigrationHistory($this->connection);
+
+        $history->record('20260501000000_create_users_table', 1);
+        $history->record('20260601000000_create_posts_table', 2);
+
+        $this->assertSame(
+            ['20260601000000_create_posts_table', '20260501000000_create_users_table'],
+            $history->lastNames(3),
+        );
+    }
+
+    public function testDeleteRemovesOnlyTheNamedMigration(): void
+    {
+        $this->createSqliteTable('migrations');
+        $history = new MigrationHistory($this->connection);
+        $history->record('20260501000000_create_users_table', 1);
+        $history->record('20260502000000_create_posts_table', 1);
+
+        $history->delete('20260501000000_create_users_table');
+
+        $this->assertSame(['20260502000000_create_posts_table'], $history->appliedNames());
+    }
+
     public function testRecordWritesTheNameAndBatch(): void
     {
         $this->createSqliteTable('migrations');
@@ -141,7 +213,12 @@ final class MigrationHistoryTest extends TestCase
 
         $history->record('20260501000000_create_users_table', 1);
 
+        $history->record('20260502000000_create_posts_table', 1);
+        $history->delete('20260502000000_create_posts_table');
+
         $this->assertSame(['20260501000000_create_users_table'], $history->appliedNames());
+        $this->assertSame(['20260501000000_create_users_table'], $history->namesInLastBatch());
+        $this->assertSame(['20260501000000_create_users_table'], $history->lastNames(2));
         $this->assertSame(1, $history->lastBatch());
     }
 
@@ -181,6 +258,32 @@ final class MigrationHistoryTest extends TestCase
         );
 
         $this->assertSame('Migration history name must be a string, got int.', $thrown->getMessage());
+    }
+
+    public function testNamesInLastBatchRefusesANameThatIsNotAString(): void
+    {
+        $this->createSqliteTable('migrations', nameType: '');
+        $this->pdo->exec('INSERT INTO migrations (name, batch) VALUES (20260501, 1)');
+
+        $thrown = $this->assertThrows(
+            UnexpectedValueException::class,
+            fn () => new MigrationHistory($this->connection)->namesInLastBatch(),
+        );
+
+        $this->assertSame('Migration history name must be a string, got int.', $thrown->getMessage());
+    }
+
+    public function testLastNamesRefusesABatchThatIsNotAnInteger(): void
+    {
+        $this->createSqliteTable('migrations', batchType: '');
+        $this->pdo->exec("INSERT INTO migrations (name, batch) VALUES ('20260501000000_create_users_table', '2x')");
+
+        $thrown = $this->assertThrows(
+            UnexpectedValueException::class,
+            fn () => new MigrationHistory($this->connection)->lastNames(1),
+        );
+
+        $this->assertSame('Migration history batch must be an integer, got string.', $thrown->getMessage());
     }
 
     public function testLastBatchRefusesABatchThatIsNotAnInteger(): void
