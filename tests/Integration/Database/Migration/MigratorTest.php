@@ -223,7 +223,7 @@ final class MigratorTest extends MigrationIntegrationTestCase
         $this->assertSame([], $this->history());
     }
 
-    public function testRollbackUndoesTheGivenNumberOfBatchesAndLeavesTheRest(): void
+    public function testRollbackWithStepsUndoesPartOfABatchAndRunAppliesItAgain(): void
     {
         $this->writeMigration(
             '20260501000000_it_rb_create_shops.php',
@@ -238,7 +238,6 @@ final class MigratorTest extends MigrationIntegrationTestCase
             '$db->statement(\'CREATE TABLE test_migration_items (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
             '$db->statement(\'DROP TABLE test_migration_items\');',
         );
-        $this->migrator()->run();
         $this->writeMigration(
             '20260701000000_it_rb_add_price_to_items.php',
             'ItRbAddPriceToItems',
@@ -247,17 +246,30 @@ final class MigratorTest extends MigrationIntegrationTestCase
         );
         $this->migrator()->run();
 
-        $this->assertSame(2, $this->migrator()->rollback(2));
+        $this->assertSame(1, $this->migrator()->rollback(1));
 
-        $this->assertSame([self::HISTORY_TABLE, 'test_migration_shops'], $this->migrationTableNames());
-        $this->assertSame([['name' => '20260501000000_it_rb_create_shops', 'batch' => 1]], $this->history());
-
-        $this->assertSame(2, $this->migrator()->run());
+        $this->assertSame(
+            [['name' => 'id']],
+            $this->connection->query(
+                'SELECT column_name AS name FROM information_schema.columns '
+                    . 'WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position',
+                ['test_migration_items'],
+            )->asArray(),
+        );
         $this->assertSame(
             [
                 ['name' => '20260501000000_it_rb_create_shops', 'batch' => 1],
                 ['name' => '20260601000000_it_rb_create_items', 'batch' => 2],
-                ['name' => '20260701000000_it_rb_add_price_to_items', 'batch' => 2],
+            ],
+            $this->history(),
+        );
+
+        $this->assertSame(1, $this->migrator()->run());
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_it_rb_create_shops', 'batch' => 1],
+                ['name' => '20260601000000_it_rb_create_items', 'batch' => 2],
+                ['name' => '20260701000000_it_rb_add_price_to_items', 'batch' => 3],
             ],
             $this->history(),
         );

@@ -575,7 +575,7 @@ final class MigratorTest extends TestCase
         $this->assertSame([['name' => '20260501000000_migrator_rb_add_owners', 'batch' => 1]], $this->history());
     }
 
-    public function testRollbackUndoesTheGivenNumberOfBatches(): void
+    public function testRollbackWithStepsUndoesThatManyMigrationsCountingBackAcrossBatches(): void
     {
         $this->writeMigration(
             '20260501000000_migrator_rb_add_farms.php',
@@ -590,22 +590,32 @@ final class MigratorTest extends TestCase
             '$db->statement(\'CREATE TABLE barns (id INTEGER PRIMARY KEY)\');',
             '$db->statement(\'DROP TABLE barns\');',
         );
-        $this->migrator()->run();
         $this->writeMigration(
-            '20260701000000_migrator_rb_add_silos.php',
+            '20260602000000_migrator_rb_add_silos.php',
             'MigratorRbAddSilos',
             '$db->statement(\'CREATE TABLE silos (id INTEGER PRIMARY KEY)\');',
             '$db->statement(\'DROP TABLE silos\');',
         );
         $this->migrator()->run();
 
+        $this->assertSame(1, $this->migrator()->rollback(1));
+
+        $this->assertSame(['barns', 'farms', 'migrations'], $this->tables());
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_migrator_rb_add_farms', 'batch' => 1],
+                ['name' => '20260601000000_migrator_rb_add_barns', 'batch' => 2],
+            ],
+            $this->history(),
+        );
+
         $this->assertSame(2, $this->migrator()->rollback(2));
 
-        $this->assertSame(['farms', 'migrations'], $this->tables());
-        $this->assertSame([['name' => '20260501000000_migrator_rb_add_farms', 'batch' => 1]], $this->history());
+        $this->assertSame(['migrations'], $this->tables());
+        $this->assertSame([], $this->history());
     }
 
-    public function testRollbackOfMoreBatchesThanRecordedUndoesEveryMigration(): void
+    public function testRollbackWithMoreStepsThanRecordedUndoesEveryMigration(): void
     {
         $this->writeMigration(
             '20260501000000_migrator_rb_add_ponds.php',
@@ -624,6 +634,7 @@ final class MigratorTest extends TestCase
     public function testRollbackWithNothingAppliedUndoesNothing(): void
     {
         $this->assertSame(0, $this->migrator()->rollback());
+        $this->assertSame(0, $this->migrator()->rollback(3));
 
         $this->assertSame(['migrations'], $this->tables());
     }
@@ -803,6 +814,45 @@ final class MigratorTest extends TestCase
 
         $this->assertSame(['books', 'migrations'], $this->tables());
         $this->assertSame([], $this->history());
+    }
+
+    public function testRollbackWithStepsCountsFromWhatIsStillRecordedWhenCalledAgainAfterAFailure(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_rb_add_vaults.php',
+            'MigratorRbAddVaults',
+            '$db->statement(\'CREATE TABLE vaults (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE vaults\');',
+        );
+        $this->writeMigration(
+            '20260502000000_migrator_rb_add_coins.php',
+            'MigratorRbAddCoins',
+            '$db->statement(\'CREATE TABLE coins (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE coins\');',
+        );
+        $this->writeMigration(
+            '20260503000000_migrator_rb_seed_ledgers.php',
+            'MigratorRbSeedLedgers',
+            '',
+            '$db->statement(\'DELETE FROM ledgers\');',
+        );
+        $this->writeMigration(
+            '20260504000000_migrator_rb_add_keys.php',
+            'MigratorRbAddKeys',
+            '$db->statement(\'CREATE TABLE keys (id INTEGER PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE keys\');',
+        );
+        $this->migrator()->run();
+
+        $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->rollback(3));
+        $this->assertSame(['coins', 'migrations', 'vaults'], $this->tables());
+
+        $this->connection->statement('CREATE TABLE ledgers (id INTEGER)');
+
+        $this->assertSame(2, $this->migrator()->rollback(2));
+
+        $this->assertSame(['ledgers', 'migrations', 'vaults'], $this->tables());
+        $this->assertSame([['name' => '20260501000000_migrator_rb_add_vaults', 'batch' => 1]], $this->history());
     }
 
     public function testRollbackRollsBackAndRefusesATransactionAMigrationLeftOpen(): void

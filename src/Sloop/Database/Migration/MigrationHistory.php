@@ -79,32 +79,33 @@ final readonly class MigrationHistory
     }
 
     /**
-     * List the names of the migrations in the most recent batches, newest first.
+     * List the names of the migrations in the most recent batch, newest first.
      *
-     * Batches are counted as they appear in the table, not by their numbers,
-     * so a gap between batch numbers does not shorten the list. Within a batch
-     * the migrations come in the reverse of the order they were recorded, the
-     * order in which they can be undone.
+     * The most recent batch is the highest batch number in the table. Within
+     * it the migrations come in the reverse of the order they were recorded,
+     * the order in which they can be undone.
      *
-     * @param  int                      $batches How many of the most recent batches to list
      * @return list<string>
      * @throws UnexpectedValueException If a name comes back as anything but a string, or a batch as anything but an integer
      */
-    public function namesInLastBatches(int $batches): array
+    public function namesInLastBatch(): array
     {
-        $rows = $this->connection->select('name', 'batch')
-            ->from($this->connection->migrationsTable())
-            ->orderBy('batch', 'DESC')
-            ->orderBy('id', 'DESC')
-            ->get();
+        return $this->namesByBatchNewestFirst()[0] ?? [];
+    }
 
-        $namesByBatch = [];
-
-        foreach ($rows as $row) {
-            $namesByBatch[$this->batch($row['batch'] ?? null)][] = $this->name($row['name'] ?? null);
-        }
-
-        return array_merge(...\array_slice($namesByBatch, 0, $batches));
+    /**
+     * List the names of the most recently applied migrations, newest first.
+     *
+     * Counted across batches: the most recent batch first, and within a batch
+     * in the reverse of the order they were recorded.
+     *
+     * @param  int                      $count How many migrations to list at most
+     * @return list<string>
+     * @throws UnexpectedValueException If a name comes back as anything but a string, or a batch as anything but an integer
+     */
+    public function lastNames(int $count): array
+    {
+        return \array_slice(array_merge(...$this->namesByBatchNewestFirst()), 0, $count);
     }
 
     /**
@@ -156,6 +157,32 @@ final readonly class MigrationHistory
         $this->connection->delete($this->connection->migrationsTable())
             ->where('name', $name)
             ->execute();
+    }
+
+    /**
+     * Read every name, grouped by batch, the most recent batch first.
+     *
+     * Ordered by id within a batch rather than by name, for the reason
+     * appliedNames() gives.
+     *
+     * @return list<list<string>>       Names of each batch, newest first
+     * @throws UnexpectedValueException If a name comes back as anything but a string, or a batch as anything but an integer
+     */
+    private function namesByBatchNewestFirst(): array
+    {
+        $rows = $this->connection->select('name', 'batch')
+            ->from($this->connection->migrationsTable())
+            ->orderBy('batch', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+
+        $namesByBatch = [];
+
+        foreach ($rows as $row) {
+            $namesByBatch[$this->batch($row['batch'] ?? null)][] = $this->name($row['name'] ?? null);
+        }
+
+        return array_values($namesByBatch);
     }
 
     /**

@@ -109,30 +109,33 @@ final readonly class Migrator
     }
 
     /**
-     * Undo the migrations applied by the most recent runs.
+     * Undo the most recent batch, or the given number of the most recent migrations.
      *
-     * The migrations one call to run() applied form a batch. This undoes the
-     * given number of the most recent batches, calling down() on their
-     * migrations from the last applied back to the first, and removes each
-     * from the history as soon as its down() returns. Asking for more batches than were recorded undoes every
-     * migration.
+     * The migrations one call to run() applied form a batch. Without a count,
+     * the most recent batch is undone. With one, that many migrations are
+     * undone, counting back across batches. Either way down() is called from
+     * the last applied back to the first, and each migration is removed from
+     * the history as soon as its down() returns. A count larger than the
+     * number recorded undoes every migration.
      *
      * Every migration to undo must still have its file, declaring a usable
      * class, and all of them are checked before the first down() is called.
      * When a migration throws, any transaction it left open is rolled back and
      * the exception is passed on untouched: the ones undone before it stay out
-     * of the history, and it and the ones after it are undone on the next call.
+     * of the history, and it and the ones after it remain recorded. The count
+     * is taken from what is still recorded on each call, so after a failure
+     * pass the number of migrations that are still to be undone.
      *
-     * @param  int                      $steps Number of batches to undo, counting back from the most recent
+     * @param  int|null                 $steps Number of migrations to undo, or null for the most recent batch
      * @return int                      Number of migrations undone
-     * @throws InvalidArgumentException If the number of batches is less than 1
+     * @throws InvalidArgumentException If the number of migrations is less than 1
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
      * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
      */
-    public function rollback(int $steps = 1): int
+    public function rollback(?int $steps = null): int
     {
-        if ($steps < 1) {
+        if ($steps !== null && $steps < 1) {
             throw new InvalidArgumentException('Rollback steps must be 1 or greater, got ' . $steps . '.');
         }
 
@@ -150,9 +153,10 @@ final readonly class Migrator
 
         $this->history->createIfMissing();
 
+        $names      = $steps === null ? $this->history->namesInLastBatch() : $this->history->lastNames($steps);
         $migrations = [];
 
-        foreach ($this->history->namesInLastBatches($steps) as $name) {
+        foreach ($names as $name) {
             if (!isset($files[$name])) {
                 throw new UnexpectedValueException(
                     'Migration ' . $name . ' is recorded as applied, but its file is not in the migration directory.',
