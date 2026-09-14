@@ -15,8 +15,9 @@ use PDOStatement;
  * This connection swaps that statement for a SQLite table of the same
  * columns, and the table's existence check against information_schema for
  * one against sqlite_master, and passes every other statement through, so the
- * migrator can run end to end in unit tests. The DDL itself is pinned by MigrationHistoryTest
- * and exercised against both servers in the integration suite.
+ * migrator can run end to end in unit tests. The DDL itself is pinned by
+ * MigrationHistoryTest and exercised against both servers in the integration
+ * suite.
  *
  * rollBack() can also be made to fail, for the path where a rollback fails
  * while a migration's exception is on its way out.

@@ -271,18 +271,32 @@ final readonly class MigrationHistory
      *
      * @param  mixed                    $value Value read from the applied_at column
      * @return DateTimeImmutable
-     * @throws UnexpectedValueException If the value is not a string written as Y-m-d H:i:s, or not a real date
+     * @throws UnexpectedValueException If the value is not a string written as Y-m-d H:i:s, or not a real date, or
+     *                                  the pattern that checks the shape could not run
      */
     private function appliedAt(mixed $value): DateTimeImmutable
     {
-        $time = \is_string($value) && preg_match('/\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\z/', $value) === 1
-            ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value)
-            : false;
+        if (!\is_string($value)) {
+            throw new UnexpectedValueException(
+                'Migration history applied_at must be a time written as Y-m-d H:i:s, got ' . get_debug_type($value) . '.',
+            );
+        }
+
+        $shaped = preg_match('/\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\z/', $value);
+
+        // A pattern that did not run says nothing about the value, so it is
+        // not reported as a malformed one.
+        if ($shaped === false) {
+            throw new UnexpectedValueException(
+                'Migration history applied_at could not be checked (' . preg_last_error_msg() . ').',
+            );
+        }
+
+        $time = $shaped === 1 ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value) : false;
 
         if ($time === false || DateTimeImmutable::getLastErrors() !== false) {
             throw new UnexpectedValueException(
-                'Migration history applied_at must be a time written as Y-m-d H:i:s, got '
-                . (\is_string($value) ? 'string \'' . $value . '\'' : get_debug_type($value)) . '.',
+                'Migration history applied_at must be a time written as Y-m-d H:i:s, got string \'' . $value . '\'.',
             );
         }
 

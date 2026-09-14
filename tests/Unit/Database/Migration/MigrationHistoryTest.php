@@ -242,6 +242,33 @@ final class MigrationHistoryTest extends TestCase
         $this->assertSame('2026-03-29 03:30:00 CEST', $records[0]['appliedAt']->format('Y-m-d H:i:s T'));
     }
 
+    public function testRecordsSaysTheCheckCouldNotRunWhenThePatternGivesUp(): void
+    {
+        $this->createSqliteTable('migrations');
+        $this->pdo->exec(
+            "INSERT INTO migrations (name, batch, applied_at) VALUES ('20260501000000_create_users_table', 1, '2026-09-14 10:30:05')",
+        );
+        $backtrackLimit = \ini_get('pcre.backtrack_limit');
+        $jit            = \ini_get('pcre.jit');
+        ini_set('pcre.backtrack_limit', '1');
+        ini_set('pcre.jit', '0');
+
+        try {
+            $thrown = $this->assertThrows(
+                UnexpectedValueException::class,
+                fn () => new MigrationHistory($this->connection)->records(),
+            );
+        } finally {
+            ini_set('pcre.backtrack_limit', (string) $backtrackLimit);
+            ini_set('pcre.jit', (string) $jit);
+        }
+
+        $this->assertSame(
+            'Migration history applied_at could not be checked (Backtrack limit exhausted).',
+            $thrown->getMessage(),
+        );
+    }
+
     /**
      * @return array<string, array{string|null, string}>
      */
