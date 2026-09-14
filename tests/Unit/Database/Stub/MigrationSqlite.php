@@ -12,9 +12,10 @@ use PDOStatement;
  * SQLite connection that accepts the migration history table's MySQL DDL.
  *
  * MigrationHistory creates its table with MySQL syntax, which SQLite rejects.
- * This connection swaps that one statement for a SQLite table of the same
- * columns and passes every other statement through, so the migrator can run
- * end to end in unit tests. The DDL itself is pinned by MigrationHistoryTest
+ * This connection swaps that statement for a SQLite table of the same
+ * columns, and the table's existence check against information_schema for
+ * one against sqlite_master, and passes every other statement through, so the
+ * migrator can run end to end in unit tests. The DDL itself is pinned by MigrationHistoryTest
  * and exercised against both servers in the integration suite.
  *
  * rollBack() can also be made to fail, for the path where a rollback fails
@@ -30,6 +31,13 @@ final class MigrationSqlite extends Sqlite
     private const string HISTORY_DDL = '/\ACREATE TABLE IF NOT EXISTS (`[^`]+`) \(`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, /';
 
     /**
+     * The history table's existence check against information_schema.
+     *
+     * @var string
+     */
+    private const string EXISTS_QUERY = 'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?';
+
+    /**
      * Whether rollBack() fails instead of rolling back.
      *
      * @var bool
@@ -43,6 +51,10 @@ final class MigrationSqlite extends Sqlite
      */
     public function prepare(string $query, array $options = []): PDOStatement|false
     {
+        if ($query === self::EXISTS_QUERY) {
+            $query = 'SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = ?';
+        }
+
         if (preg_match(self::HISTORY_DDL, $query, $matches) === 1) {
             $query = 'CREATE TABLE IF NOT EXISTS ' . $matches[1] . ' (id INTEGER PRIMARY KEY AUTOINCREMENT, '
                 . 'name TEXT NOT NULL UNIQUE, batch INTEGER NOT NULL, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)';

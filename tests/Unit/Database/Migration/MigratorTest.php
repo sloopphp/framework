@@ -1038,24 +1038,30 @@ final class MigratorTest extends TestCase
         );
     }
 
-    public function testStatusOnAnEmptyDirectoryCreatesTheHistoryTableAndListsNothing(): void
+    public function testStatusWithoutAHistoryTableListsEveryMigrationAsPendingAndCreatesNothing(): void
     {
-        $this->assertSame([], $this->migrator()->status());
+        $this->writeMigration('20260501000000_migrator_st_untracked.php', 'MigratorStUntracked', '');
 
-        $this->assertSame(['migrations'], $this->tables());
+        $statuses = $this->migrator()->status();
+
+        $this->assertCount(1, $statuses);
+        $this->assertSame('20260501000000_migrator_st_untracked', $statuses[0]->name);
+        $this->assertNull($statuses[0]->batch);
+        $this->assertNull($statuses[0]->appliedAt);
+        $this->assertSame([], $this->tables());
     }
 
-    public function testStatusRefusesToRunInsideATransaction(): void
+    public function testStatusLeavesAnOpenTransactionOpen(): void
     {
+        $this->writeMigration('20260501000000_migrator_st_in_transaction.php', 'MigratorStInTransaction', '');
+        $this->migrator()->run();
         $this->connection->begin();
 
-        $thrown = $this->assertThrows(LogicException::class, fn () => $this->migrator()->status());
+        $statuses = $this->migrator()->status();
 
-        $this->assertSame(
-            'Cannot read migration status inside a transaction: creating the history table would commit it.',
-            $thrown->getMessage(),
-        );
-        $this->assertSame([], $this->tables());
+        $this->assertTrue($this->connection->inTransaction());
+        $this->assertSame(1, $statuses[0]->batch);
+        $this->connection->rollback();
     }
 
     public function testStatusReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void

@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Sloop\Database\CastMode;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Migration\Migrator;
+use Sloop\Database\Query\Grammar;
 use Sloop\Tests\Support\MigrationIntegrationTestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -347,6 +348,26 @@ final class MigratorTest extends MigrationIntegrationTestCase
         $this->assertTrue($statuses[0]->hasFile);
         $this->assertNull($statuses[1]->batch);
         $this->assertNull($statuses[1]->appliedAt);
+    }
+
+    public function testStatusFindsThePrefixedHistoryTableAndLeavesATransactionOpen(): void
+    {
+        $this->connection->setGrammar(new Grammar('test_migration_'));
+        $this->connection->setMigrationsTable('history');
+        $this->writeMigration('20260501000000_it_st_prefixed_history.php', 'ItStPrefixedHistory', '');
+
+        $this->assertNull($this->migrator()->status()[0]->batch);
+        $this->assertSame([], $this->migrationTableNames());
+
+        $this->migrator()->run();
+        $this->connection->begin();
+
+        $statuses = $this->migrator()->status();
+
+        $this->assertTrue($this->connection->inTransaction());
+        $this->connection->rollback();
+        $this->assertSame(1, $statuses[0]->batch);
+        $this->assertSame(['test_migration_history'], $this->migrationTableNames());
     }
 
     public function testResetUndoesEverySchemaChangeAcrossBatches(): void

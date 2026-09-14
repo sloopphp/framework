@@ -34,6 +34,30 @@ final readonly class MigrationHistory
     }
 
     /**
+     * Whether the table exists in the connection's current database.
+     *
+     * Asks information_schema rather than creating the table or reading it and
+     * catching the failure: creating commits any open transaction, and a failed
+     * read is logged as an error by the connection.
+     *
+     * The name asked for is the quoted, prefixed name with its backticks taken
+     * off. The grammar accepts only letters, digits and underscores in a prefix,
+     * and the `migrations_table` setting is held to the same, so for a
+     * configured pool the quoting adds nothing else to take off.
+     *
+     * @return bool
+     */
+    public function exists(): bool
+    {
+        $quoted = $this->connection->quoteTable($this->connection->migrationsTable());
+
+        return !$this->connection->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            [substr($quoted, 1, -1)],
+        )->isEmpty();
+    }
+
+    /**
      * Create the table unless it already exists.
      *
      * @return void
@@ -239,19 +263,23 @@ final readonly class MigrationHistory
     /**
      * Read a time from the table.
      *
-     * Parsed against the exact format and written back to compare, so a value
-     * PHP would otherwise roll over, such as the 30th of February, is refused
-     * rather than read as another day.
+     * The value must have the shape the server writes the column in, and must
+     * be a real date: a day PHP would roll into the next month, such as the
+     * 30th of February, is refused. A wall-clock time that PHP's default
+     * timezone skips when it moves to summer time is still accepted, since the
+     * server may have written it under a timezone that does not skip it.
      *
      * @param  mixed                    $value Value read from the applied_at column
      * @return DateTimeImmutable
-     * @throws UnexpectedValueException If the value is not a string written as Y-m-d H:i:s
+     * @throws UnexpectedValueException If the value is not a string written as Y-m-d H:i:s, or not a real date
      */
     private function appliedAt(mixed $value): DateTimeImmutable
     {
-        $time = \is_string($value) ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value) : false;
+        $time = \is_string($value) && preg_match('/\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\z/', $value) === 1
+            ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value)
+            : false;
 
-        if ($time === false || $time->format('Y-m-d H:i:s') !== $value) {
+        if ($time === false || DateTimeImmutable::getLastErrors() !== false) {
             throw new UnexpectedValueException(
                 'Migration history applied_at must be a time written as Y-m-d H:i:s, got '
                 . (\is_string($value) ? 'string \'' . $value . '\'' : get_debug_type($value)) . '.',

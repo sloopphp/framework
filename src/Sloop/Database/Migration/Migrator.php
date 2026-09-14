@@ -167,29 +167,20 @@ final readonly class Migrator
      *
      * Ordered by name, which is the order run() applies them in. A migration
      * recorded in the history whose file is gone is listed too, with hasFile
-     * false. The history table is created if it does not exist yet, which is
-     * why this refuses to run inside a transaction like run() does.
+     * false. Nothing is written: when the history table does not exist yet,
+     * every migration is listed as not applied and the table is not created,
+     * so this can be called inside a transaction.
      *
      * @return list<MigrationStatus>
-     * @throws LogicException           If the connection is inside a transaction
      * @throws RuntimeException         If the directory cannot be read
      * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a history row cannot be read
      */
     public function status(): array
     {
-        if ($this->connection->inTransaction()) {
-            throw new LogicException(
-                'Cannot read migration status inside a transaction: creating the history table would commit it.',
-            );
-        }
-
-        $files = array_column($this->directory->files(), null, 'name');
-
-        $this->history->createIfMissing();
-
+        $files    = array_column($this->directory->files(), null, 'name');
         $statuses = [];
 
-        foreach ($this->history->records() as $record) {
+        foreach ($this->history->exists() ? $this->history->records() : [] as $record) {
             $statuses[$record['name']] = new MigrationStatus(
                 $record['name'],
                 $record['batch'],

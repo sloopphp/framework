@@ -74,6 +74,22 @@ final class MigrationHistoryTest extends TestCase
         );
     }
 
+    public function testExistsAsksInformationSchemaAboutTheTable(): void
+    {
+        $this->connection->setGrammar(new Grammar('app_'));
+        $this->connection->setMigrationsTable('schema_history');
+
+        $this->assertThrows(
+            DatabaseException::class,
+            fn () => new MigrationHistory($this->connection)->exists(),
+        );
+
+        $this->assertSame(
+            ['prepare: SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'],
+            $this->pdo->calls,
+        );
+    }
+
     public function testAppliedNamesIsEmptyBeforeAnyMigrationRuns(): void
     {
         $this->createSqliteTable('migrations');
@@ -207,6 +223,25 @@ final class MigrationHistoryTest extends TestCase
         $this->assertSame('2026-09-13 23:59:59', $records[1]['appliedAt']->format('Y-m-d H:i:s'));
     }
 
+    public function testRecordsReadsATimeThatTheDefaultTimezoneSkipsForSummerTime(): void
+    {
+        $this->createSqliteTable('migrations');
+        $this->pdo->exec(
+            "INSERT INTO migrations (name, batch, applied_at) VALUES ('20260501000000_create_users_table', 1, '2026-03-29 02:30:00')",
+        );
+        $timezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Berlin');
+
+        try {
+            $records = new MigrationHistory($this->connection)->records();
+        } finally {
+            date_default_timezone_set($timezone);
+        }
+
+        $this->assertCount(1, $records);
+        $this->assertSame('2026-03-29 03:30:00 CEST', $records[0]['appliedAt']->format('Y-m-d H:i:s T'));
+    }
+
     /**
      * @return array<string, array{string|null, string}>
      */
@@ -216,6 +251,8 @@ final class MigrationHistoryTest extends TestCase
             'ISO 8601 separator' => ['2026-09-14T10:30:05', "string '2026-09-14T10:30:05'"],
             'day past the month' => ['2026-02-30 10:30:05', "string '2026-02-30 10:30:05'"],
             'date only'          => ['2026-09-14', "string '2026-09-14'"],
+            'zero date'          => ['0000-00-00 00:00:00', "string '0000-00-00 00:00:00'"],
+            'unpadded month'     => ['2026-9-14 10:30:05', "string '2026-9-14 10:30:05'"],
             'null'               => [null, 'null'],
         ];
     }
