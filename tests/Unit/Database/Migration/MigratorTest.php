@@ -363,7 +363,107 @@ final class MigratorTest extends TestCase
         $this->assertSame([], $this->history());
     }
 
-    public function testRunReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
+    public function testRunTurnsAutocommitOnWhileMigratingAndBackOffAfterwards(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_run.php', 'MigratorAcRun', '');
+        $this->pdo->autocommit = 0;
+
+        $this->assertSame(1, $this->migrator()->run());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunTurnsAutocommitOnWhenTheSettingComesBackAsAString(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_string.php', 'MigratorAcString', '');
+        $this->pdo->autocommit = '0';
+
+        $this->assertSame(1, $this->migrator()->run());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunLeavesAutocommitAloneWhenItIsOn(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_already_on.php', 'MigratorAcAlreadyOn', '');
+
+        $this->assertSame(1, $this->migrator()->run());
+
+        $this->assertSame([], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunTurnsAutocommitBackOffWhenAMigrationThrows(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_ac_throws.php',
+            'MigratorAcThrows',
+            'throw new \\DomainException(\'Migration failed.\');',
+        );
+        $this->pdo->autocommit = 0;
+
+        $this->assertThrows(DomainException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunPassesOnTheMigrationsExceptionWhenTurningAutocommitBackOffFails(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_ac_throws_restore_fails.php',
+            'MigratorAcThrowsRestoreFails',
+            'throw new \\DomainException(\'Migration failed before the setting was restored.\');',
+        );
+        $this->pdo->autocommit               = 0;
+        $this->pdo->failTurningAutocommitOff = true;
+
+        $thrown = $this->assertThrows(DomainException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame('Migration failed before the setting was restored.', $thrown->getMessage());
+    }
+
+    public function testRunReportsAFailureToTurnAutocommitBackOff(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_restore_fails.php', 'MigratorAcRestoreFails', '');
+        $this->pdo->autocommit               = 0;
+        $this->pdo->failTurningAutocommitOff = true;
+
+        $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->run());
+    }
+
+    public function testRollbackTurnsAutocommitOnWhileUndoingAndBackOffAfterwards(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_rollback.php', 'MigratorAcRollback', '');
+        $this->migrator()->run();
+        $this->pdo->autocommit = 0;
+
+        $this->assertSame(1, $this->migrator()->rollback());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testStatusTurnsAutocommitOnWhileReadingAndBackOffAfterwards(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_status.php', 'MigratorAcStatus', '');
+        $this->pdo->autocommit = 0;
+
+        $this->assertCount(1, $this->migrator()->status());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testStatusInsideATransactionLeavesAutocommitAlone(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_status_in_transaction.php', 'MigratorAcStatusInTransaction', '');
+        $this->pdo->autocommit = 0;
+        $this->connection->begin();
+
+        $this->migrator()->status();
+
+        $this->connection->rollback();
+        $this->assertSame([], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunReadsTheWholeDirectoryBeforeCreatingTheHistoryTable(): void
     {
         $this->writeMigration(
             '20260501000000_migrator_before_bad_name.php',

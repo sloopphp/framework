@@ -23,6 +23,9 @@ use UnexpectedValueException;
  * the moment a migration changed the schema, and its commit would then fail.
  * A migration that only changes data and needs that protection opens a
  * transaction itself inside up().
+ *
+ * On a session with autocommit off, autocommit is turned on while a method
+ * runs and turned back off when it returns or throws.
  */
 final readonly class Migrator
 {
@@ -76,35 +79,7 @@ final readonly class Migrator
             );
         }
 
-        $files = $this->directory->files();
-
-        $this->history->createIfMissing();
-
-        $applied = array_flip($this->history->appliedNames());
-        $pending = [];
-
-        foreach ($files as $file) {
-            if (!isset($applied[$file->name])) {
-                $pending[] = $file;
-            }
-        }
-
-        $batch = $this->history->lastBatch() + 1;
-
-        foreach ($pending as $file) {
-            $migration = $this->load($file);
-
-            $this->perform(
-                $file->name,
-                fn () => $migration->up($this->connection),
-                'up',
-                'was not recorded',
-            );
-
-            $this->history->record($file->name, $batch);
-        }
-
-        return \count($pending);
+        return $this->withAutocommit($this->applyPending(...));
     }
 
     /**
@@ -174,6 +149,18 @@ final readonly class Migrator
      */
     public function status(): array
     {
+        return $this->withAutocommit($this->readStatuses(...));
+    }
+
+    /**
+     * Read the status of every migration in the directory or the history.
+     *
+     * @return list<MigrationStatus>
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a history row cannot be read
+     */
+    private function readStatuses(): array
+    {
         $files    = array_column($this->directory->files(), null, 'name');
         $statuses = [];
 
@@ -196,6 +183,47 @@ final readonly class Migrator
     }
 
     /**
+     * Apply and record every migration that has not run yet, as one batch.
+     *
+     * @return int                      Number of migrations applied
+     * @throws LogicException           If a migration leaves a transaction open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file cannot be read or does not declare a usable migration class
+     */
+    private function applyPending(): int
+    {
+        $files = $this->directory->files();
+
+        $this->history->createIfMissing();
+
+        $applied = array_flip($this->history->appliedNames());
+        $pending = [];
+
+        foreach ($files as $file) {
+            if (!isset($applied[$file->name])) {
+                $pending[] = $file;
+            }
+        }
+
+        $batch = $this->history->lastBatch() + 1;
+
+        foreach ($pending as $file) {
+            $migration = $this->load($file);
+
+            $this->perform(
+                $file->name,
+                fn () => $migration->up($this->connection),
+                'up',
+                'was not recorded',
+            );
+
+            $this->history->record($file->name, $batch);
+        }
+
+        return \count($pending);
+    }
+
+    /**
      * Undo the migrations a caller picks from the history, in the order given.
      *
      * The names are read once the history table is known to exist, so the
@@ -215,6 +243,20 @@ final readonly class Migrator
             );
         }
 
+        return $this->withAutocommit(fn (): int => $this->undoPicked($names));
+    }
+
+    /**
+     * Undo and remove from the history the migrations a caller picks.
+     *
+     * @param  Closure(): list<string>  $names Reads the names of the migrations to undo, in the order to undo them
+     * @return int                      Number of migrations undone
+     * @throws LogicException           If a migration leaves a transaction open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
+     */
+    private function undoPicked(Closure $names): int
+    {
         $files = array_column($this->directory->files(), null, 'name');
 
         $this->history->createIfMissing();
@@ -246,6 +288,64 @@ final readonly class Migrator
         }
 
         return \count($migrations);
+    }
+
+    /**
+     * Run an operation with autocommit on, and turn it back off afterwards if it was off.
+     *
+     * With autocommit off a statement stays uncommitted until something
+     * commits it, so the history change after the last migration would be
+     * lost when the session ends. The setting is read from the server: PDO
+     * reports the value the connection was opened with, even when a persistent
+     * connection carries another. Inside a transaction nothing is changed,
+     * because turning autocommit on would commit that transaction.
+     *
+     * status() goes through here too: with autocommit off a read opens a
+     * transaction, and a later run() on the connection would refuse to start.
+     * When the operation throws, a failure to turn autocommit back off is
+     * dropped, so the exception passed on is the operation's own.
+     *
+     * @template T
+     * @param  Closure(): T $operation Operation to run
+     * @return T
+     */
+    private function withAutocommit(Closure $operation): mixed
+    {
+        if ($this->connection->inTransaction() || !$this->autocommitIsOff()) {
+            return $operation();
+        }
+
+        $this->connection->statement('SET autocommit = 1');
+
+        try {
+            $result = $operation();
+        } catch (Throwable $e) {
+            try {
+                $this->connection->statement('SET autocommit = 0');
+            } catch (DatabaseException) {
+            }
+
+            throw $e;
+        }
+
+        $this->connection->statement('SET autocommit = 0');
+
+        return $result;
+    }
+
+    /**
+     * Report whether the session has autocommit off.
+     *
+     * The value comes back as a string when the pool's options set
+     * PDO::ATTR_STRINGIFY_FETCHES.
+     *
+     * @return bool
+     */
+    private function autocommitIsOff(): bool
+    {
+        $row = $this->connection->query('SELECT @@autocommit AS autocommit')->first();
+
+        return \in_array($row['autocommit'] ?? null, [0, '0'], true);
     }
 
     /**

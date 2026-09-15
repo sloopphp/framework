@@ -52,10 +52,18 @@ abstract class MigrationIntegrationTestCase extends IntegrationTestCase
     /**
      * Drop the tables this test created.
      *
+     * A transaction the test left open is rolled back first: it holds a
+     * metadata lock on the tables it touched, and the DROP from another
+     * session would wait for that lock instead of failing.
+     *
      * @return void
      */
     protected function tearDown(): void
     {
+        if ($this->connection->inTransaction()) {
+            $this->connection->rollback();
+        }
+
         $this->dropMigrationTables();
 
         parent::tearDown();

@@ -19,8 +19,13 @@ use PDOStatement;
  * MigrationHistoryTest and exercised against both servers in the integration
  * suite.
  *
+ * The server's autocommit setting is stood in for as well: reading it
+ * returns $autocommit, and setting it records the value in
+ * $autocommitSettings instead of reaching SQLite.
+ *
  * rollBack() can also be made to fail, for the path where a rollback fails
- * while a migration's exception is on its way out.
+ * while a migration's exception is on its way out, and turning autocommit off
+ * can be made to fail in the same way.
  */
 final class MigrationSqlite extends Sqlite
 {
@@ -39,6 +44,27 @@ final class MigrationSqlite extends Sqlite
     private const string EXISTS_QUERY = 'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?';
 
     /**
+     * The autocommit setting reads return: 1 for on, 0 for off, read back as a string when given as one.
+     *
+     * @var int|string
+     */
+    public int|string $autocommit = 1;
+
+    /**
+     * Every autocommit value set, in order.
+     *
+     * @var list<int>
+     */
+    public array $autocommitSettings = [];
+
+    /**
+     * Whether turning autocommit off fails.
+     *
+     * @var bool
+     */
+    public bool $failTurningAutocommitOff = false;
+
+    /**
      * Whether rollBack() fails instead of rolling back.
      *
      * @var bool
@@ -52,6 +78,22 @@ final class MigrationSqlite extends Sqlite
      */
     public function prepare(string $query, array $options = []): PDOStatement|false
     {
+        if ($query === 'SELECT @@autocommit AS autocommit') {
+            $query = \is_string($this->autocommit)
+                ? 'SELECT \'' . $this->autocommit . '\' AS autocommit'
+                : 'SELECT ' . $this->autocommit . ' AS autocommit';
+        }
+
+        if (preg_match('/\ASET autocommit = ([01])\z/', $query, $setting) === 1) {
+            if ($setting[1] === '0' && $this->failTurningAutocommitOff) {
+                throw new PDOException('Setting autocommit failed.');
+            }
+
+            $this->autocommit           = (int) $setting[1];
+            $this->autocommitSettings[] = $this->autocommit;
+            $query = 'SELECT 1';
+        }
+
         if ($query === self::EXISTS_QUERY) {
             $query = 'SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = ?';
         }
