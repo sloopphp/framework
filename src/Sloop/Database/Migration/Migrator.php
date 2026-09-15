@@ -66,7 +66,7 @@ final readonly class Migrator
      * @return int                      Number of migrations applied
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file does not declare a usable migration class
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file cannot be read or does not declare a usable migration class
      */
     public function run(): int
     {
@@ -129,7 +129,7 @@ final readonly class Migrator
      * @throws InvalidArgumentException If the number of migrations is less than 1
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
      */
     public function rollback(?int $steps = null): int
     {
@@ -153,7 +153,7 @@ final readonly class Migrator
      * @return int                      Number of migrations undone
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
      */
     public function reset(): int
     {
@@ -205,7 +205,7 @@ final readonly class Migrator
      * @return int                      Number of migrations undone
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
      */
     private function undo(Closure $names): int
     {

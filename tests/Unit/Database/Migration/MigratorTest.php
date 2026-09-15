@@ -36,8 +36,11 @@ final class MigratorTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
-        mkdir($this->directory);
+        $directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
+        mkdir($directory);
+        $resolved = realpath($directory);
+        $this->assertIsString($resolved);
+        $this->directory = $resolved;
 
         $this->pdo = new MigrationSqlite('sqlite::memory:', null, null, [
             PDO::ATTR_EMULATE_PREPARES   => false,
