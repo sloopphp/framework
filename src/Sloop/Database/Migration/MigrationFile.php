@@ -23,7 +23,7 @@ final readonly class MigrationFile
      * File name convention: timestamp, underscore, snake_case description.
      *
      * The description starts with a letter and its words are joined by single
-     * underscores, so the StudlyCase class name is a valid PHP identifier.
+     * underscores.
      *
      * @var string
      */

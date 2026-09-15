@@ -17,9 +17,8 @@ use UnexpectedValueException;
 /**
  * Applies the migrations in a directory that have not run yet, undoes applied ones, and reports where each stands.
  *
- * Migrations run one at a time over the given connection, oldest first, and
- * each is recorded in the history table as soon as its up() returns. None of
- * them is wrapped in a transaction: MySQL and MariaDB commit any open
+ * Migrations run one at a time over the given connection, oldest first.
+ * None of them is wrapped in a transaction: MySQL and MariaDB commit any open
  * transaction when a DDL statement runs, so a wrapper would protect nothing
  * the moment a migration changed the schema, and its commit would then fail.
  * A migration that only changes data and needs that protection opens a
@@ -114,9 +113,8 @@ final readonly class Migrator
      * The migrations one call to run() applied form a batch. Without a count,
      * the most recent batch is undone. With one, that many migrations are
      * undone, counting back across batches. Either way down() is called from
-     * the last applied back to the first, and each migration is removed from
-     * the history as soon as its down() returns. A count larger than the
-     * number recorded undoes every migration.
+     * the last applied back to the first. A count larger than the number
+     * recorded undoes every migration.
      *
      * Every migration to undo must still have its file, declaring a usable
      * class, and all of them are checked before the first down() is called.
@@ -165,11 +163,10 @@ final readonly class Migrator
     /**
      * List every migration in the directory or the history, and where it stands.
      *
-     * Ordered by name, which is the order run() applies them in. A migration
-     * recorded in the history whose file is gone is listed too, with hasFile
-     * false. Nothing is written: when the history table does not exist yet,
-     * every migration is listed as not applied and the table is not created,
-     * so this can be called inside a transaction.
+     * Ordered by name. A migration recorded in the history whose file is gone
+     * is listed too, with hasFile false. Nothing is written: when the history
+     * table does not exist yet, every migration is listed as not applied and
+     * the table is not created, so this can be called inside a transaction.
      *
      * @return list<MigrationStatus>
      * @throws RuntimeException         If the directory cannot be read
@@ -317,13 +314,17 @@ final readonly class Migrator
      *
      * @param  MigrationFile            $file File to load
      * @return Migration
-     * @throws UnexpectedValueException If the file does not declare its class, the class is declared in another file, or it is not a concrete Migration that takes no constructor arguments
+     * @throws UnexpectedValueException If the file cannot be read or does not declare its class, the class is declared in another file, or it is not a concrete Migration that takes no constructor arguments
      */
     private function load(MigrationFile $file): Migration
     {
         $className = $file->className;
 
         if (!class_exists($className, false)) {
+            if (!is_readable($file->path)) {
+                throw new UnexpectedValueException('Migration file ' . $file->path . ' cannot be read.');
+            }
+
             (static function (string $path): void {
                 require_once $path;
             })($file->path);
