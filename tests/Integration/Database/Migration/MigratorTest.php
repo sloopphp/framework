@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Integration\Database\Migration;
 
+use DomainException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Sloop\Database\CastMode;
@@ -82,6 +83,22 @@ final class MigratorTest extends MigrationIntegrationTestCase
     private function migrator(): Migrator
     {
         return new Migrator($this->connection, $this->directory);
+    }
+
+    /**
+     * @return list<array<mixed>>
+     */
+    private function historySeenByAnotherSession(): array
+    {
+        return static::openConnection()->select('name', 'batch')
+            ->from(self::HISTORY_TABLE)
+            ->orderBy('id')
+            ->get();
+    }
+
+    private function autocommit(): mixed
+    {
+        return $this->connection->query('SELECT @@autocommit AS autocommit')->first()['autocommit'] ?? null;
     }
 
     public function testRunAppliesSchemaChangesAndRecordsThem(): void
@@ -392,4 +409,118 @@ final class MigratorTest extends MigrationIntegrationTestCase
         $this->assertSame([self::HISTORY_TABLE], $this->migrationTableNames());
         $this->assertSame([], $this->history());
     }
+
+    public function testRunCommitsEveryRecordOnASessionWithAutocommitOff(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_ac_create_users.php',
+            'ItAcCreateUsers',
+            '$db->statement(\'CREATE TABLE test_migration_users (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+        );
+        $this->writeMigration(
+            '20260502000000_it_ac_create_roles.php',
+            'ItAcCreateRoles',
+            '$db->statement(\'CREATE TABLE test_migration_roles (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+        );
+        $this->connection->statement('SET autocommit = 0');
+
+        $this->assertSame(2, $this->migrator()->run());
+
+        $this->assertSame(
+            [
+                ['name' => '20260501000000_it_ac_create_users', 'batch' => 1],
+                ['name' => '20260502000000_it_ac_create_roles', 'batch' => 1],
+            ],
+            $this->historySeenByAnotherSession(),
+        );
+        $this->assertSame(0, $this->autocommit());
+    }
+
+    public function testRunAppliesADataChangeOnASessionWithAutocommitOff(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_ac_create_flags.php',
+            'ItAcCreateFlags',
+            '$db->statement(\'CREATE TABLE test_migration_flags (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+        );
+        $this->writeMigration(
+            '20260502000000_it_ac_seed_flags.php',
+            'ItAcSeedFlags',
+            '$db->statement(\'INSERT INTO test_migration_flags (id) VALUES (1)\');',
+        );
+        $this->connection->statement('SET autocommit = 0');
+
+        $this->assertSame(2, $this->migrator()->run());
+
+        $this->assertCount(2, $this->historySeenByAnotherSession());
+        $this->assertSame(
+            [['id' => 1]],
+            static::openConnection()->select('id')->from('test_migration_flags')->get(),
+        );
+    }
+
+    public function testRollbackCommitsEveryRemovalOnASessionWithAutocommitOff(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_ac_create_pins.php',
+            'ItAcCreatePins',
+            '$db->statement(\'CREATE TABLE test_migration_pins (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_pins\');',
+        );
+        $this->writeMigration(
+            '20260502000000_it_ac_create_tags.php',
+            'ItAcCreateTags',
+            '$db->statement(\'CREATE TABLE test_migration_tags (id INT UNSIGNED NOT NULL PRIMARY KEY)\');',
+            '$db->statement(\'DROP TABLE test_migration_tags\');',
+        );
+        $this->migrator()->run();
+        $this->connection->statement('SET autocommit = 0');
+
+        $this->assertSame(2, $this->migrator()->rollback());
+
+        $this->assertSame([], $this->historySeenByAnotherSession());
+        $this->assertSame(0, $this->autocommit());
+    }
+
+    public function testRunTurnsAutocommitBackOffWhenAMigrationFails(): void
+    {
+        $this->writeMigration(
+            '20260501000000_it_ac_failing.php',
+            'ItAcFailing',
+            'throw new \DomainException(\'Migration failed.\');',
+        );
+        $this->connection->statement('SET autocommit = 0');
+
+        $this->assertThrows(DomainException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame(0, $this->autocommit());
+    }
+
+    public function testStatusLeavesNoTransactionOpenOnASessionWithAutocommitOff(): void
+    {
+        $this->writeMigration('20260501000000_it_ac_status_then_run.php', 'ItAcStatusThenRun', '');
+        $this->migrator()->run();
+        $this->connection->statement('SET autocommit = 0');
+
+        $this->migrator()->status();
+
+        $this->assertFalse($this->connection->inTransaction());
+        $this->assertSame(0, $this->migrator()->run());
+        $this->assertSame(0, $this->autocommit());
+    }
+
+    public function testStatusInsideATransactionOnASessionWithAutocommitOffCommitsNothing(): void
+    {
+        $this->connection->statement('CREATE TABLE test_migration_notes (id INT UNSIGNED NOT NULL PRIMARY KEY)');
+        $this->writeMigration('20260501000000_it_ac_status_in_transaction.php', 'ItAcStatusInTransaction', '');
+        $this->migrator()->run();
+        $this->connection->statement('SET autocommit = 0');
+        $this->connection->statement('INSERT INTO test_migration_notes (id) VALUES (1)');
+
+        $this->migrator()->status();
+        $this->connection->rollback();
+
+        $this->assertSame([], static::openConnection()->select('id')->from('test_migration_notes')->get());
+    }
+
 }

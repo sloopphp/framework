@@ -21,8 +21,11 @@ final class MigrationDirectoryTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/sloop_test_migrations_' . uniqid();
-        mkdir($this->directory);
+        $directory = sys_get_temp_dir() . '/sloop_test_migrations_' . uniqid();
+        mkdir($directory);
+        $resolved = realpath($directory);
+        $this->assertIsString($resolved);
+        $this->directory = $resolved;
     }
 
     protected function tearDown(): void

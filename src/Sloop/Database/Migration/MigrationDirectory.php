@@ -24,7 +24,10 @@ use UnexpectedValueException;
 final readonly class MigrationDirectory
 {
     /**
-     * Directory path with trailing separators removed.
+     * Absolute directory path with trailing separators removed.
+     *
+     * Resolved here, so a relative path is taken from the working directory
+     * and the files later required are the ones that were listed.
      *
      * @var string
      */
@@ -38,11 +41,13 @@ final readonly class MigrationDirectory
      */
     public function __construct(string $path)
     {
-        if (!is_dir($path)) {
+        $resolved = is_dir($path) ? realpath($path) : false;
+
+        if ($resolved === false) {
             throw new InvalidArgumentException('Migration directory does not exist: ' . $path);
         }
 
-        $this->path = rtrim($path, '/' . \DIRECTORY_SEPARATOR);
+        $this->path = rtrim($resolved, '/' . \DIRECTORY_SEPARATOR);
     }
 
     /**

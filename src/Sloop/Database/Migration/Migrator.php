@@ -17,9 +17,8 @@ use UnexpectedValueException;
 /**
  * Applies the migrations in a directory that have not run yet, undoes applied ones, and reports where each stands.
  *
- * Migrations run one at a time over the given connection, oldest first, and
- * each is recorded in the history table as soon as its up() returns. None of
- * them is wrapped in a transaction: MySQL and MariaDB commit any open
+ * Migrations run one at a time over the given connection, oldest first.
+ * None of them is wrapped in a transaction: MySQL and MariaDB commit any open
  * transaction when a DDL statement runs, so a wrapper would protect nothing
  * the moment a migration changed the schema, and its commit would then fail.
  * A migration that only changes data and needs that protection opens a
@@ -67,7 +66,7 @@ final readonly class Migrator
      * @return int                      Number of migrations applied
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file does not declare a usable migration class
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file cannot be read or does not declare a usable migration class
      */
     public function run(): int
     {
@@ -77,6 +76,119 @@ final readonly class Migrator
             );
         }
 
+        return $this->withAutocommit($this->applyPending(...));
+    }
+
+    /**
+     * Undo the most recent batch, or the given number of the most recent migrations.
+     *
+     * The migrations one call to run() applied form a batch. Without a count,
+     * the most recent batch is undone. With one, that many migrations are
+     * undone, counting back across batches. Either way down() is called from
+     * the last applied back to the first. A count larger than the number
+     * recorded undoes every migration.
+     *
+     * Every migration to undo must still have its file, declaring a usable
+     * class, and all of them are checked before the first down() is called.
+     * When a migration throws, any transaction it left open is rolled back and
+     * the exception is passed on untouched: the ones undone before it stay out
+     * of the history, and it and the ones after it remain recorded. The count
+     * is taken from what is still recorded on each call, so after a failure
+     * pass the number of migrations that are still to be undone.
+     *
+     * @param  int|null                 $steps Number of migrations to undo, or null for the most recent batch
+     * @return int                      Number of migrations undone
+     * @throws InvalidArgumentException If the number of migrations is less than 1
+     * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
+     */
+    public function rollback(?int $steps = null): int
+    {
+        if ($steps !== null && $steps < 1) {
+            throw new InvalidArgumentException('Rollback steps must be 1 or greater, got ' . $steps . '.');
+        }
+
+        return $this->undo(
+            fn (): array => $steps === null ? $this->history->namesInLastBatch() : $this->history->lastNames($steps),
+        );
+    }
+
+    /**
+     * Undo every migration that has been applied, newest first.
+     *
+     * Behaves as rollback() given a count of every recorded migration: the
+     * same checks run before the first down(), and a failure leaves the ones
+     * before it undone and the rest recorded. Every table the migrations
+     * created is dropped along the way, so this is for development databases.
+     *
+     * @return int                      Number of migrations undone
+     * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
+     */
+    public function reset(): int
+    {
+        return $this->undo(fn (): array => array_reverse($this->history->appliedNames()));
+    }
+
+    /**
+     * List every migration in the directory or the history, and where it stands.
+     *
+     * Ordered by name. A migration recorded in the history whose file is gone
+     * is listed too, with hasFile false. Nothing is written: when the history
+     * table does not exist yet, every migration is listed as not applied and
+     * the table is not created, so this can be called inside a transaction.
+     *
+     * @return list<MigrationStatus>
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a history row cannot be read
+     */
+    public function status(): array
+    {
+        return $this->withAutocommit($this->readStatuses(...));
+    }
+
+    /**
+     * Read the status of every migration in the directory or the history.
+     *
+     * @return list<MigrationStatus>
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a history row cannot be read
+     */
+    private function readStatuses(): array
+    {
+        $files    = array_column($this->directory->files(), null, 'name');
+        $statuses = [];
+
+        foreach ($this->history->exists() ? $this->history->records() : [] as $record) {
+            $statuses[$record['name']] = new MigrationStatus(
+                $record['name'],
+                $record['batch'],
+                $record['appliedAt'],
+                isset($files[$record['name']]),
+            );
+        }
+
+        foreach (array_keys($files) as $name) {
+            $statuses[$name] ??= new MigrationStatus($name, null, null, true);
+        }
+
+        ksort($statuses, \SORT_STRING);
+
+        return array_values($statuses);
+    }
+
+    /**
+     * Apply and record every migration that has not run yet, as one batch.
+     *
+     * @return int                      Number of migrations applied
+     * @throws LogicException           If a migration leaves a transaction open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a file cannot be read or does not declare a usable migration class
+     */
+    private function applyPending(): int
+    {
         $files = $this->directory->files();
 
         $this->history->createIfMissing();
@@ -109,96 +221,6 @@ final readonly class Migrator
     }
 
     /**
-     * Undo the most recent batch, or the given number of the most recent migrations.
-     *
-     * The migrations one call to run() applied form a batch. Without a count,
-     * the most recent batch is undone. With one, that many migrations are
-     * undone, counting back across batches. Either way down() is called from
-     * the last applied back to the first, and each migration is removed from
-     * the history as soon as its down() returns. A count larger than the
-     * number recorded undoes every migration.
-     *
-     * Every migration to undo must still have its file, declaring a usable
-     * class, and all of them are checked before the first down() is called.
-     * When a migration throws, any transaction it left open is rolled back and
-     * the exception is passed on untouched: the ones undone before it stay out
-     * of the history, and it and the ones after it remain recorded. The count
-     * is taken from what is still recorded on each call, so after a failure
-     * pass the number of migrations that are still to be undone.
-     *
-     * @param  int|null                 $steps Number of migrations to undo, or null for the most recent batch
-     * @return int                      Number of migrations undone
-     * @throws InvalidArgumentException If the number of migrations is less than 1
-     * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
-     * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
-     */
-    public function rollback(?int $steps = null): int
-    {
-        if ($steps !== null && $steps < 1) {
-            throw new InvalidArgumentException('Rollback steps must be 1 or greater, got ' . $steps . '.');
-        }
-
-        return $this->undo(
-            fn (): array => $steps === null ? $this->history->namesInLastBatch() : $this->history->lastNames($steps),
-        );
-    }
-
-    /**
-     * Undo every migration that has been applied, newest first.
-     *
-     * Behaves as rollback() given a count of every recorded migration: the
-     * same checks run before the first down(), and a failure leaves the ones
-     * before it undone and the rest recorded. Every table the migrations
-     * created is dropped along the way, so this is for development databases.
-     *
-     * @return int                      Number of migrations undone
-     * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
-     * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
-     */
-    public function reset(): int
-    {
-        return $this->undo(fn (): array => array_reverse($this->history->appliedNames()));
-    }
-
-    /**
-     * List every migration in the directory or the history, and where it stands.
-     *
-     * Ordered by name, which is the order run() applies them in. A migration
-     * recorded in the history whose file is gone is listed too, with hasFile
-     * false. Nothing is written: when the history table does not exist yet,
-     * every migration is listed as not applied and the table is not created,
-     * so this can be called inside a transaction.
-     *
-     * @return list<MigrationStatus>
-     * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, or a history row cannot be read
-     */
-    public function status(): array
-    {
-        $files    = array_column($this->directory->files(), null, 'name');
-        $statuses = [];
-
-        foreach ($this->history->exists() ? $this->history->records() : [] as $record) {
-            $statuses[$record['name']] = new MigrationStatus(
-                $record['name'],
-                $record['batch'],
-                $record['appliedAt'],
-                isset($files[$record['name']]),
-            );
-        }
-
-        foreach (array_keys($files) as $name) {
-            $statuses[$name] ??= new MigrationStatus($name, null, null, true);
-        }
-
-        ksort($statuses, \SORT_STRING);
-
-        return array_values($statuses);
-    }
-
-    /**
      * Undo the migrations a caller picks from the history, in the order given.
      *
      * The names are read once the history table is known to exist, so the
@@ -208,7 +230,7 @@ final readonly class Migrator
      * @return int                      Number of migrations undone
      * @throws LogicException           If the connection is inside a transaction, or a migration leaves one open
      * @throws RuntimeException         If the directory cannot be read
-     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file does not declare a usable migration class
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
      */
     private function undo(Closure $names): int
     {
@@ -218,6 +240,20 @@ final readonly class Migrator
             );
         }
 
+        return $this->withAutocommit(fn (): int => $this->undoPicked($names));
+    }
+
+    /**
+     * Undo and remove from the history the migrations a caller picks.
+     *
+     * @param  Closure(): list<string>  $names Reads the names of the migrations to undo, in the order to undo them
+     * @return int                      Number of migrations undone
+     * @throws LogicException           If a migration leaves a transaction open
+     * @throws RuntimeException         If the directory cannot be read
+     * @throws UnexpectedValueException If a file breaks the naming convention, two files would declare the same class, a migration to undo has no file, or its file cannot be read or does not declare a usable migration class
+     */
+    private function undoPicked(Closure $names): int
+    {
         $files = array_column($this->directory->files(), null, 'name');
 
         $this->history->createIfMissing();
@@ -249,6 +285,64 @@ final readonly class Migrator
         }
 
         return \count($migrations);
+    }
+
+    /**
+     * Run an operation with autocommit on, and turn it back off afterwards if it was off.
+     *
+     * With autocommit off a statement stays uncommitted until something
+     * commits it, so the history change after the last migration would be
+     * lost when the session ends. The setting is read from the server: PDO
+     * reports the value the connection was opened with, even when a persistent
+     * connection carries another. Inside a transaction nothing is changed,
+     * because turning autocommit on would commit that transaction.
+     *
+     * status() goes through here too: with autocommit off a read opens a
+     * transaction, and a later run() on the connection would refuse to start.
+     * When the operation throws, a failure to turn autocommit back off is
+     * dropped, so the exception passed on is the operation's own.
+     *
+     * @template T
+     * @param  Closure(): T $operation Operation to run
+     * @return T
+     */
+    private function withAutocommit(Closure $operation): mixed
+    {
+        if ($this->connection->inTransaction() || !$this->autocommitIsOff()) {
+            return $operation();
+        }
+
+        $this->connection->statement('SET autocommit = 1');
+
+        try {
+            $result = $operation();
+        } catch (Throwable $e) {
+            try {
+                $this->connection->statement('SET autocommit = 0');
+            } catch (DatabaseException) {
+            }
+
+            throw $e;
+        }
+
+        $this->connection->statement('SET autocommit = 0');
+
+        return $result;
+    }
+
+    /**
+     * Report whether the session has autocommit off.
+     *
+     * The value comes back as a string when the pool's options set
+     * PDO::ATTR_STRINGIFY_FETCHES.
+     *
+     * @return bool
+     */
+    private function autocommitIsOff(): bool
+    {
+        $row = $this->connection->query('SELECT @@autocommit AS autocommit')->first();
+
+        return \in_array($row['autocommit'] ?? null, [0, '0'], true);
     }
 
     /**
@@ -317,13 +411,17 @@ final readonly class Migrator
      *
      * @param  MigrationFile            $file File to load
      * @return Migration
-     * @throws UnexpectedValueException If the file does not declare its class, the class is declared in another file, or it is not a concrete Migration that takes no constructor arguments
+     * @throws UnexpectedValueException If the file cannot be read or does not declare its class, the class is declared in another file, or it is not a concrete Migration that takes no constructor arguments
      */
     private function load(MigrationFile $file): Migration
     {
         $className = $file->className;
 
         if (!class_exists($className, false)) {
+            if (!is_readable($file->path)) {
+                throw new UnexpectedValueException('Migration file ' . $file->path . ' cannot be read.');
+            }
+
             (static function (string $path): void {
                 require_once $path;
             })($file->path);

@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use LogicException;
 use PDO;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresOperatingSystemFamily;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\Exception\DatabaseException;
@@ -35,8 +36,11 @@ final class MigratorTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
-        mkdir($this->directory);
+        $directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
+        mkdir($directory);
+        $resolved = realpath($directory);
+        $this->assertIsString($resolved);
+        $this->directory = $resolved;
 
         $this->pdo = new MigrationSqlite('sqlite::memory:', null, null, [
             PDO::ATTR_EMULATE_PREPARES   => false,
@@ -359,7 +363,107 @@ final class MigratorTest extends TestCase
         $this->assertSame([], $this->history());
     }
 
-    public function testRunReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
+    public function testRunTurnsAutocommitOnAndBackOffWhenItIsOff(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_run.php', 'MigratorAcRun', '');
+        $this->pdo->autocommit = 0;
+
+        $this->assertSame(1, $this->migrator()->run());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunTurnsAutocommitOnWhenTheSettingComesBackAsAString(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_string.php', 'MigratorAcString', '');
+        $this->pdo->autocommit = '0';
+
+        $this->assertSame(1, $this->migrator()->run());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunLeavesAutocommitAloneWhenItIsOn(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_already_on.php', 'MigratorAcAlreadyOn', '');
+
+        $this->assertSame(1, $this->migrator()->run());
+
+        $this->assertSame([], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunTurnsAutocommitBackOffWhenAMigrationThrows(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_ac_throws.php',
+            'MigratorAcThrows',
+            'throw new \\DomainException(\'Migration failed.\');',
+        );
+        $this->pdo->autocommit = 0;
+
+        $this->assertThrows(DomainException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunPassesOnTheMigrationsExceptionWhenTurningAutocommitBackOffFails(): void
+    {
+        $this->writeMigration(
+            '20260501000000_migrator_ac_throws_restore_fails.php',
+            'MigratorAcThrowsRestoreFails',
+            'throw new \\DomainException(\'Migration failed before the setting was restored.\');',
+        );
+        $this->pdo->autocommit               = 0;
+        $this->pdo->failTurningAutocommitOff = true;
+
+        $thrown = $this->assertThrows(DomainException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame('Migration failed before the setting was restored.', $thrown->getMessage());
+    }
+
+    public function testRunReportsAFailureToTurnAutocommitBackOff(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_restore_fails.php', 'MigratorAcRestoreFails', '');
+        $this->pdo->autocommit               = 0;
+        $this->pdo->failTurningAutocommitOff = true;
+
+        $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->run());
+    }
+
+    public function testRollbackTurnsAutocommitOnAndBackOffWhenItIsOff(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_rollback.php', 'MigratorAcRollback', '');
+        $this->migrator()->run();
+        $this->pdo->autocommit = 0;
+
+        $this->assertSame(1, $this->migrator()->rollback());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testStatusTurnsAutocommitOnAndBackOffWhenItIsOff(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_status.php', 'MigratorAcStatus', '');
+        $this->pdo->autocommit = 0;
+
+        $this->assertCount(1, $this->migrator()->status());
+
+        $this->assertSame([1, 0], $this->pdo->autocommitSettings);
+    }
+
+    public function testStatusInsideATransactionLeavesAutocommitAlone(): void
+    {
+        $this->writeMigration('20260501000000_migrator_ac_status_in_transaction.php', 'MigratorAcStatusInTransaction', '');
+        $this->pdo->autocommit = 0;
+        $this->connection->begin();
+
+        $this->migrator()->status();
+
+        $this->connection->rollback();
+        $this->assertSame([], $this->pdo->autocommitSettings);
+    }
+
+    public function testRunReadsTheWholeDirectoryBeforeCreatingTheHistoryTable(): void
     {
         $this->writeMigration(
             '20260501000000_migrator_before_bad_name.php',
@@ -390,6 +494,55 @@ final class MigratorTest extends TestCase
             $thrown->getMessage(),
         );
         $this->assertSame([['name' => '20260501000000_migrator_before_missing_class', 'batch' => 1]], $this->history());
+    }
+
+    #[RequiresOperatingSystemFamily('Linux')]
+    public function testRunRefusesAMigrationFileThatCannotBeRead(): void
+    {
+        $path = $this->directory . \DIRECTORY_SEPARATOR . '20260501000000_migrator_unreadable_file.php';
+        symlink($this->directory . '/missing.php', $path);
+
+        $thrown = $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->run());
+
+        $this->assertSame('Migration file ' . $path . ' cannot be read.', $thrown->getMessage());
+    }
+
+    public function testRunLoadsTheListedFilesWhenGivenARelativeDirectory(): void
+    {
+        $fileName = '20260501000000_migrator_relative_directory.php';
+        $this->writeMigration(
+            $fileName,
+            'MigratorRelativeDirectory',
+            '$db->statement(\'CREATE TABLE listed_file (id INTEGER PRIMARY KEY)\');',
+        );
+
+        $shadow          = sys_get_temp_dir() . '/sloop_test_migrator_shadow_' . uniqid();
+        $shadowDirectory = $shadow . '/' . basename($this->directory);
+        mkdir($shadowDirectory, 0o777, true);
+        file_put_contents(
+            $shadowDirectory . '/' . $fileName,
+            '<?php throw new LogicException(\'The file on the include_path was required.\');',
+        );
+
+        $workingDirectory = getcwd();
+        $includePath      = get_include_path();
+        $this->assertIsString($workingDirectory);
+        $this->assertIsString($includePath);
+        chdir(\dirname($this->directory));
+        set_include_path($shadow);
+
+        try {
+            $applied = new Migrator($this->connection, basename($this->directory))->run();
+        } finally {
+            set_include_path($includePath);
+            chdir($workingDirectory);
+            unlink($shadowDirectory . '/' . $fileName);
+            rmdir($shadowDirectory);
+            rmdir($shadow);
+        }
+
+        $this->assertSame(1, $applied);
+        $this->assertContains('listed_file', $this->tables());
     }
 
     public function testRunRefusesAClassAlreadyDeclaredElsewhere(): void
@@ -1064,13 +1217,11 @@ final class MigratorTest extends TestCase
         $this->connection->rollback();
     }
 
-    public function testStatusReadsTheWholeDirectoryBeforeTouchingTheDatabase(): void
+    public function testStatusRejectsAFileThatBreaksTheNamingConvention(): void
     {
         $this->writeFile('create_things.php', '<?php');
 
         $this->assertThrows(UnexpectedValueException::class, fn () => $this->migrator()->status());
-
-        $this->assertSame([], $this->tables());
     }
 
     public function testStatusReadsTheConfiguredHistoryTable(): void
