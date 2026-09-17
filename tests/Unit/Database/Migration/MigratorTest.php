@@ -363,7 +363,7 @@ final class MigratorTest extends TestCase
         $this->assertSame([], $this->history());
     }
 
-    public function testRunTurnsAutocommitOnWhileMigratingAndBackOffAfterwards(): void
+    public function testRunTurnsAutocommitOnAndBackOffWhenItIsOff(): void
     {
         $this->writeMigration('20260501000000_migrator_ac_run.php', 'MigratorAcRun', '');
         $this->pdo->autocommit = 0;
@@ -430,7 +430,7 @@ final class MigratorTest extends TestCase
         $this->assertThrows(DatabaseException::class, fn () => $this->migrator()->run());
     }
 
-    public function testRollbackTurnsAutocommitOnWhileUndoingAndBackOffAfterwards(): void
+    public function testRollbackTurnsAutocommitOnAndBackOffWhenItIsOff(): void
     {
         $this->writeMigration('20260501000000_migrator_ac_rollback.php', 'MigratorAcRollback', '');
         $this->migrator()->run();
@@ -441,7 +441,7 @@ final class MigratorTest extends TestCase
         $this->assertSame([1, 0], $this->pdo->autocommitSettings);
     }
 
-    public function testStatusTurnsAutocommitOnWhileReadingAndBackOffAfterwards(): void
+    public function testStatusTurnsAutocommitOnAndBackOffWhenItIsOff(): void
     {
         $this->writeMigration('20260501000000_migrator_ac_status.php', 'MigratorAcStatus', '');
         $this->pdo->autocommit = 0;

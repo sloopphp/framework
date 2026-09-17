@@ -23,9 +23,6 @@ use UnexpectedValueException;
  * the moment a migration changed the schema, and its commit would then fail.
  * A migration that only changes data and needs that protection opens a
  * transaction itself inside up().
- *
- * On a session with autocommit off, autocommit is turned on while a method
- * runs and turned back off when it returns or throws.
  */
 final readonly class Migrator
 {

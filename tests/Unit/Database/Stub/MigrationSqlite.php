@@ -21,7 +21,7 @@ use PDOStatement;
  *
  * The server's autocommit setting is stood in for as well: reading it
  * returns $autocommit, and setting it records the value in
- * $autocommitSettings instead of reaching SQLite.
+ * $autocommitSettings.
  *
  * rollBack() can also be made to fail, for the path where a rollback fails
  * while a migration's exception is on its way out, and turning autocommit off
