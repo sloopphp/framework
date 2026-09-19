@@ -18,9 +18,11 @@ enum Chars: string
      *
      * The kana and kanji sets use the Script property (`sc=`), not the
      * Script_Extensions that a bare `\p{Han}` means in PCRE2 10.40 and later:
-     * the extensions also cover punctuation shared by the scripts (、。「」・〜),
-     * which belongs to ZenkakuSymbols. The sound marks and the prolonged sound
-     * mark have no script of their own, so they are listed explicitly.
+     * the extensions also cover punctuation shared by the scripts (、。「」〜),
+     * which belongs to ZenkakuSymbols. The sound marks, the prolonged sound
+     * marks, and the middle dots that separate the parts of a katakana name
+     * have no script of their own, so they are listed explicitly; the
+     * full-width middle dot is in ZenkakuSymbols as well.
      *
      * @var array<string, string>
      */
@@ -41,7 +43,7 @@ enum Chars: string
         'at'              => '@',
         'letter'          => '\p{L}',
         'hiragana'        => '\p{sc=Hiragana}\x{3099}-\x{309C}\x{30FC}',
-        'katakana'        => '\p{sc=Katakana}\x{3099}-\x{309C}\x{30FC}\x{FF65}\x{FF70}\x{FF9E}\x{FF9F}',
+        'katakana'        => '\p{sc=Katakana}\x{3099}-\x{309C}\x{30FB}\x{30FC}\x{FF65}\x{FF70}\x{FF9E}\x{FF9F}',
         'kanji'           => '\p{sc=Han}',
         'zenkaku_symbols' => '\x{3000}-\x{303F}\x{30A0}\x{30FB}\x{FF01}-\x{FF0F}\x{FF1A}-\x{FF20}\x{FF3B}-\x{FF40}\x{FF5B}-\x{FF60}\x{FFE0}-\x{FFE6}',
         'emoji'           => '\p{Extended_Pictographic}\x{200D}\x{FE0F}\x{20E3}\x{1F3FB}-\x{1F3FF}\x{1F1E6}-\x{1F1FF}\x{E0020}-\x{E007F}',
@@ -96,7 +98,7 @@ enum Chars: string
     /** Hiragana, the (semi-)voiced sound marks, and the prolonged sound mark `ー`. */
     case Hiragana = 'hiragana';
 
-    /** Katakana and half-width katakana, with their (semi-)voiced sound marks and prolonged sound marks, and the half-width middle dot `･`. */
+    /** Katakana and half-width katakana, with their (semi-)voiced sound marks and prolonged sound marks, and the middle dots `・` `･` that separate the parts of a name. */
     case Katakana = 'katakana';
 
     /** Han ideographs (kanji), including `々` and `〇`; not the shared punctuation `、。「」`. */

@@ -234,7 +234,7 @@ final class StringRuleTest extends TestCase
         yield 'at' => [Chars::At, ['@'], ['a']];
         yield 'letter' => [Chars::Letter, ['José', 'Müller', 'あア漢'], ['a1', 'a b']];
         yield 'hiragana' => [Chars::Hiragana, ['ひらがなー', "か\u{3099}", 'か゛'], ['カ', '漢', 'a', '・', '〜', '、']];
-        yield 'katakana' => [Chars::Katakana, ['カタカナー', 'ｶﾀｶﾅ', 'ｶﾞｰ', 'ﾃﾞｰﾀ', 'ヴ', 'ｼﾞｮﾝ･ｽﾐｽ'], ['ひ', '漢', '「」', '・']];
+        yield 'katakana' => [Chars::Katakana, ['カタカナー', 'ｶﾀｶﾅ', 'ｶﾞｰ', 'ﾃﾞｰﾀ', 'ヴ', 'ジョン・スミス', 'ｼﾞｮﾝ･ｽﾐｽ'], ['ひ', '漢', '「」', '、', 'ｰ｡']];
         yield 'kanji' => [Chars::Kanji, ['漢字々〇'], ['ひ', 'カ', '、', '。', '「', '〆']];
         yield 'zenkaku symbols' => [Chars::ZenkakuSymbols, ["、。「」\u{3000}・゠！＃（）＝￥"], ['!', 'Ａ', '１', '･']];
         yield 'emoji' => [Chars::Emoji, ['😀', '👍🏽', '👨‍👩‍👧', '🇯🇵', '❤️'], ['a', '1']];
@@ -264,11 +264,6 @@ final class StringRuleTest extends TestCase
 
         $this->assertSame([], self::failedRules($rule, 'A1'));
         $this->assertSame(['chars'], self::failedRules($rule, 'a1'));
-    }
-
-    public function testKatakanaWithZenkakuSymbolsAcceptsAForeignName(): void
-    {
-        $this->assertSame([], self::failedRules(Rule::string()->chars([Chars::Katakana, Chars::ZenkakuSymbols]), 'ジョン・スミス'));
     }
 
     public function testCharsErrorListsTheSetNames(): void
