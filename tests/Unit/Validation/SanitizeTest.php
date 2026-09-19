@@ -22,6 +22,8 @@ final class SanitizeTest extends TestCase
         yield 'strip control chars' => [Sanitize::StripControlChars, "a\x00b\x07c\x1Bd\x7Fe\u{85}f\u{9F}g", 'abcdefg'];
         yield 'strip control chars keeps tab and newlines' => [Sanitize::StripControlChars, "a\tb\nc\rd", "a\tb\nc\rd"];
         yield 'strip control chars keeps other characters' => [Sanitize::StripControlChars, "あ\u{A0}😀", "あ\u{A0}😀"];
+        yield 'strip newlines' => [Sanitize::StripNewlines, "a\r\nb\nc\rd\te", "abcd\te"];
+        yield 'strip tabs' => [Sanitize::StripTabs, "a\tb\t\nc", "ab\nc"];
     }
 
     #[DataProvider('cases')]

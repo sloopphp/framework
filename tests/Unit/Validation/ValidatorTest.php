@@ -273,6 +273,13 @@ final class ValidatorTest extends TestCase
         $this->assertSame(['v' => 'abc!'], $result->values());
     }
 
+    public function testSanitizersCombineIntoASingleLineField(): void
+    {
+        $rule = Rule::string(Sanitize::StripControlChars, Sanitize::StripNewlines, Sanitize::StripTabs);
+
+        $this->assertSame(['v' => 'abcd'], new Validator(['v' => $rule])->validate(['v' => "a\x00b\r\nc\td"])->values());
+    }
+
     public function testSanitizingToEmptyMakesTheFieldEmpty(): void
     {
         $result = new Validator(['v' => Rule::string(Sanitize::Trim)->required()])->validate(['v' => "  \u{3000}"]);
