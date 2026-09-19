@@ -16,6 +16,12 @@ enum Chars: string
     /**
      * PCRE character class contents keyed by case value.
      *
+     * The kana and kanji sets use the Script property (`sc=`), not the
+     * Script_Extensions that a bare `\p{Han}` means in PCRE2 10.40 and later:
+     * the extensions also cover punctuation shared by the scripts (、。「」・〜),
+     * which belongs to ZenkakuSymbols. The sound marks and the prolonged sound
+     * mark have no script of their own, so they are listed explicitly.
+     *
      * @var array<string, string>
      */
     private const array PATTERNS = [
@@ -34,9 +40,9 @@ enum Chars: string
         'brackets'        => '()',
         'at'              => '@',
         'letter'          => '\p{L}',
-        'hiragana'        => '\p{Hiragana}\x{30FC}',
-        'katakana'        => '\p{Katakana}\x{30FC}',
-        'kanji'           => '\p{Han}',
+        'hiragana'        => '\p{sc=Hiragana}\x{3099}-\x{309C}\x{30FC}',
+        'katakana'        => '\p{sc=Katakana}\x{3099}-\x{309C}\x{30FC}\x{FF70}\x{FF9E}\x{FF9F}',
+        'kanji'           => '\p{sc=Han}',
         'zenkaku_symbols' => '\x{3000}-\x{303F}\x{FF01}-\x{FF0F}\x{FF1A}-\x{FF20}\x{FF3B}-\x{FF40}\x{FF5B}-\x{FF60}\x{FFE0}-\x{FFE6}',
         'emoji'           => '\p{Extended_Pictographic}\x{200D}\x{FE0F}\x{20E3}\x{1F3FB}-\x{1F3FF}\x{1F1E6}-\x{1F1FF}\x{E0020}-\x{E007F}',
         'hex'             => '0-9a-fA-F',
@@ -87,13 +93,13 @@ enum Chars: string
     /** Letters of any script (Unicode category L), including kanji and kana. */
     case Letter = 'letter';
 
-    /** Hiragana and the prolonged sound mark `ー`. */
+    /** Hiragana, the (semi-)voiced sound marks, and the prolonged sound mark `ー`. */
     case Hiragana = 'hiragana';
 
-    /** Katakana, half-width katakana, and the prolonged sound mark `ー`. */
+    /** Katakana and half-width katakana, with their (semi-)voiced sound marks and prolonged sound marks. */
     case Katakana = 'katakana';
 
-    /** Han ideographs (kanji), including `々` and `〇`. */
+    /** Han ideographs (kanji), including `々` and `〇`; not the shared punctuation `、。「」`. */
     case Kanji = 'kanji';
 
     /** CJK symbols and punctuation (U+3000-U+303F, including the ideographic space) and full-width ASCII symbols and currency signs. */

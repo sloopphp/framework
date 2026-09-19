@@ -71,7 +71,7 @@ final class DecimalRuleTest extends TestCase
     #[DataProvider('rejectedValues')]
     public function testRejects(mixed $input): void
     {
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('decimal', ['precision' => 10, 'scale' => 2], 'The v field must be a number with at most 10 digits, 2 of them after the decimal point.'),
             self::onlyError(Rule::decimal(10, 2), $input),
         );
@@ -183,15 +183,15 @@ final class DecimalRuleTest extends TestCase
 
     public function testBoundErrorsKeepTheDeclaredForm(): void
     {
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('between', ['min' => '0.01', 'max' => 100], 'The v field must be between 0.01 and 100.'),
             self::onlyError(Rule::decimal(10, 2)->between('0.01', 100), '0'),
         );
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('min', ['min' => '0.5'], 'The v field must be at least 0.5.'),
             self::onlyError(Rule::decimal(10, 2)->min('0.5'), '0'),
         );
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('max', ['max' => 1], 'The v field must not be greater than 1.'),
             self::onlyError(Rule::decimal(10, 2)->max(1), '2'),
         );
@@ -232,6 +232,7 @@ final class DecimalRuleTest extends TestCase
         $this->assertSame('0.00', self::valueOf(Rule::decimal(10, 2)->default(0), null));
         $this->assertSame('1.50', self::valueOf(Rule::decimal(10, 2)->default('1.5'), ''));
         $this->assertSame('1.25', self::valueOf(Rule::decimal(10, 2)->default('1.25'), null));
+        $this->assertSame('99999999.99', self::valueOf(Rule::decimal(10, 2)->default('99999999.99'), null));
     }
 
     /**
@@ -241,6 +242,7 @@ final class DecimalRuleTest extends TestCase
     {
         yield 'not a decimal' => ['abc'];
         yield 'too many fraction digits' => ['1.234'];
+        yield 'too many integer digits' => [123456789];
     }
 
     #[DataProvider('invalidDefaults')]
@@ -249,7 +251,7 @@ final class DecimalRuleTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::decimal(10, 2)->default($default));
 
         $this->assertSame(
-            'The default of decimal(10, 2) must be a decimal with at most 2 fraction digits, got ' . $default . '.',
+            'The default of decimal(10, 2) must be a decimal that fits it, got ' . $default . '.',
             $e->getMessage(),
         );
     }

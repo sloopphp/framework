@@ -43,7 +43,7 @@ final class StringRuleTest extends TestCase
     #[DataProvider('nonStrings')]
     public function testNonStringIsATypeFailure(mixed $input): void
     {
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('string', [], 'The v field must be a string.'),
             self::onlyError(Rule::string()->minLength(100), $input),
         );
@@ -84,11 +84,11 @@ final class StringRuleTest extends TestCase
 
     public function testLengthErrorsCarryTheirBound(): void
     {
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('maxLength', ['max' => 1], 'The v field must not be longer than 1 characters.'),
             self::onlyError(Rule::string()->maxLength(1), 'ab'),
         );
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('exactLength', ['length' => 3], 'The v field must be exactly 3 characters.'),
             self::onlyError(Rule::string()->exactLength(3), 'ab'),
         );
@@ -128,7 +128,7 @@ final class StringRuleTest extends TestCase
         $rule = Rule::string()->regex('/\A[a-z]+\z/');
 
         $this->assertSame([], self::failedRules($rule, 'abc'));
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('regex', ['pattern' => '/\A[a-z]+\z/'], 'The v field format is invalid.'),
             self::onlyError($rule, 'ab1'),
         );
@@ -169,7 +169,7 @@ final class StringRuleTest extends TestCase
         $rule = Rule::string()->in(['a', 'b']);
 
         $this->assertSame([], self::failedRules($rule, 'b'));
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('in', ['values' => ['a', 'b']], 'The selected v is invalid.'),
             self::onlyError($rule, 'c'),
         );
@@ -180,7 +180,7 @@ final class StringRuleTest extends TestCase
         $rule = Rule::string()->notIn(['admin']);
 
         $this->assertSame([], self::failedRules($rule, 'user'));
-        $this->assertEquals(new ValidationError('notIn', ['values' => ['admin']], 'The selected v is invalid.'), self::onlyError($rule, 'admin'));
+        self::assertErrorSame(new ValidationError('notIn', ['values' => ['admin']], 'The selected v is invalid.'), self::onlyError($rule, 'admin'));
     }
 
     public function testInComparesStrictly(): void
@@ -233,9 +233,9 @@ final class StringRuleTest extends TestCase
         yield 'brackets' => [Chars::Brackets, ['()'], ['[', '{']];
         yield 'at' => [Chars::At, ['@'], ['a']];
         yield 'letter' => [Chars::Letter, ['José', 'Müller', 'あア漢'], ['a1', 'a b']];
-        yield 'hiragana' => [Chars::Hiragana, ['ひらがなー'], ['カ', '漢', 'a']];
-        yield 'katakana' => [Chars::Katakana, ['カタカナー', 'ｶﾀｶﾅ'], ['ひ', '漢']];
-        yield 'kanji' => [Chars::Kanji, ['漢字々〇'], ['ひ', 'カ']];
+        yield 'hiragana' => [Chars::Hiragana, ['ひらがなー', "か\u{3099}", 'か゛'], ['カ', '漢', 'a', '・', '〜', '、']];
+        yield 'katakana' => [Chars::Katakana, ['カタカナー', 'ｶﾀｶﾅ', 'ｶﾞｰ', 'ﾃﾞｰﾀ', 'ヴ'], ['ひ', '漢', '「」', '・']];
+        yield 'kanji' => [Chars::Kanji, ['漢字々〇'], ['ひ', 'カ', '、', '。', '「', '〆']];
         yield 'zenkaku symbols' => [Chars::ZenkakuSymbols, ["、。「」\u{3000}！＃（）＝￥"], ['!', 'Ａ', '１']];
         yield 'emoji' => [Chars::Emoji, ['😀', '👍🏽', '👨‍👩‍👧', '🇯🇵', '❤️'], ['a', '1']];
         yield 'hex' => [Chars::Hex, ['09afAF'], ['g', 'G']];
@@ -268,7 +268,7 @@ final class StringRuleTest extends TestCase
 
     public function testCharsErrorListsTheSetNames(): void
     {
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('chars', ['chars' => ['alpha', 'zenkaku_symbols']], 'The v field contains characters that are not allowed.'),
             self::onlyError(Rule::string()->chars([Chars::Alpha, Chars::ZenkakuSymbols]), '1'),
         );
@@ -321,7 +321,7 @@ final class StringRuleTest extends TestCase
 
         $this->assertSame([], self::failedRules($rule, 'https://example.com'));
         $this->assertSame([], self::failedRules($rule, 'ftp://example.com'));
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('url', ['schemes' => ['HTTPS', 'ftp']], 'The v field must be a valid URL.'),
             self::onlyError($rule, 'http://example.com'),
         );

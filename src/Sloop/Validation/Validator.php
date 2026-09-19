@@ -25,15 +25,15 @@ final readonly class Validator
     /**
      * Field rules keyed by field name.
      *
-     * @var array<string, FieldRule<*>>
+     * @var array<string, FieldRule<covariant mixed>>
      */
     private array $rules;
 
     /**
      * Create a validator.
      *
-     * @param  array<string, FieldRule<*>> $rules Field rules keyed by field name
-     * @throws InvalidArgumentException When a same() / different() rule names a field that has no rule
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @throws InvalidArgumentException                  When a same() / different() rule names a field that has no rule
      */
     public function __construct(array $rules)
     {
@@ -53,10 +53,10 @@ final readonly class Validator
     /**
      * A copy of this validator with one more field; this validator is unchanged.
      *
-     * @param string $field Field name
-     * @param  FieldRule<*>         $rule  Rules of the field
+     * @param  string                     $field Field name
+     * @param  FieldRule<covariant mixed> $rule  Rules of the field
      * @return self
-     * @throws InvalidArgumentException When the field already has rules, or a comparison names a field that has no rule
+     * @throws InvalidArgumentException   When the field already has rules, or a comparison names a field that has no rule
      */
     public function with(string $field, FieldRule $rule): self
     {

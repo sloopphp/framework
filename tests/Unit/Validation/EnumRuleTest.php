@@ -68,7 +68,7 @@ final class EnumRuleTest extends TestCase
     #[DataProvider('rejectedInputs')]
     public function testRejects(string $enum, mixed $input): void
     {
-        $this->assertEquals(new ValidationError('enum', [], 'The selected v is invalid.'), self::onlyError(Rule::enum($enum), $input));
+        self::assertErrorSame(new ValidationError('enum', [], 'The selected v is invalid.'), self::onlyError(Rule::enum($enum), $input));
     }
 
     public function testSanitizersFollowTheEnumClass(): void
@@ -88,14 +88,14 @@ final class EnumRuleTest extends TestCase
     {
         $in = Rule::enum(Payment::class)->in([Payment::Cash, Payment::Card]);
         $this->assertSame([], self::failedRules($in, 'cash'));
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('in', ['values' => ['cash', 'card']], 'The selected v is invalid.'),
             self::onlyError($in, 'transfer'),
         );
 
         $notIn = Rule::enum(Priority::class)->notIn([Priority::Negative]);
         $this->assertSame([], self::failedRules($notIn, 1));
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('notIn', ['values' => [-5]], 'The selected v is invalid.'),
             self::onlyError($notIn, '-5'),
         );

@@ -14,9 +14,40 @@ use Sloop\Validation\Validator;
 trait ValidatesOneField
 {
     /**
+     * Assert that two errors match, comparing the parameter values with their types.
+     *
+     * assertEquals() would treat `'100'` and `100` as equal, and the params
+     * reach clients as JSON, where the two differ.
+     */
+    private static function assertErrorSame(ValidationError $expected, ValidationError $actual): void
+    {
+        self::assertSame(
+            [$expected->rule, $expected->params, $expected->message],
+            [$actual->rule, $actual->params, $actual->message],
+        );
+    }
+
+    /**
+     * Assert that two error maps match field by field, with assertErrorSame() for each error.
+     *
+     * @param array<string, list<ValidationError>> $expected
+     * @param array<string, list<ValidationError>> $actual
+     */
+    private static function assertErrorsSame(array $expected, array $actual): void
+    {
+        self::assertSame(array_keys($expected), array_keys($actual));
+        foreach ($expected as $field => $errors) {
+            self::assertCount(\count($errors), $actual[$field]);
+            foreach ($errors as $index => $error) {
+                self::assertErrorSame($error, $actual[$field][$index]);
+            }
+        }
+    }
+
+    /**
      * Validated value of the field, asserting that validation passed.
      *
-     * @param FieldRule<*> $rule
+     * @param FieldRule<covariant mixed> $rule
      */
     private static function valueOf(FieldRule $rule, mixed $input): mixed
     {
@@ -29,7 +60,7 @@ trait ValidatesOneField
     /**
      * Names of the rules that failed for the value; empty when it passed.
      *
-     * @param  FieldRule<*> $rule
+     * @param  FieldRule<covariant mixed> $rule
      * @return list<string>
      */
     private static function failedRules(FieldRule $rule, mixed $input): array
@@ -42,7 +73,7 @@ trait ValidatesOneField
     /**
      * The single error of the field.
      *
-     * @param FieldRule<*> $rule
+     * @param FieldRule<covariant mixed> $rule
      */
     private static function onlyError(FieldRule $rule, mixed $input): ValidationError
     {

@@ -64,7 +64,7 @@ final class NumberRulesTest extends TestCase
     #[DataProvider('rejectedInts')]
     public function testIntRejects(mixed $input): void
     {
-        $this->assertEquals(new ValidationError('int', [], 'The v field must be an integer.'), self::onlyError(Rule::int(), $input));
+        self::assertErrorSame(new ValidationError('int', [], 'The v field must be an integer.'), self::onlyError(Rule::int(), $input));
     }
 
     public function testIntBounds(): void
@@ -83,9 +83,9 @@ final class NumberRulesTest extends TestCase
 
     public function testIntBoundErrors(): void
     {
-        $this->assertEquals(new ValidationError('min', ['min' => 1000], 'The v field must be at least 1000.'), self::onlyError(Rule::int()->min(1000), 1));
-        $this->assertEquals(new ValidationError('max', ['max' => 1], 'The v field must not be greater than 1.'), self::onlyError(Rule::int()->max(1), 2));
-        $this->assertEquals(
+        self::assertErrorSame(new ValidationError('min', ['min' => 1000], 'The v field must be at least 1000.'), self::onlyError(Rule::int()->min(1000), 1));
+        self::assertErrorSame(new ValidationError('max', ['max' => 1], 'The v field must not be greater than 1.'), self::onlyError(Rule::int()->max(1), 2));
+        self::assertErrorSame(
             new ValidationError('between', ['min' => 1, 'max' => 3], 'The v field must be between 1 and 3.'),
             self::onlyError(Rule::int()->between(1, 3), 5),
         );
@@ -113,8 +113,8 @@ final class NumberRulesTest extends TestCase
 
     public function testIntListErrorsCarryTheValues(): void
     {
-        $this->assertEquals(new ValidationError('in', ['values' => [1, 2]], 'The selected v is invalid.'), self::onlyError(Rule::int()->in([1, 2]), 3));
-        $this->assertEquals(new ValidationError('notIn', ['values' => [1]], 'The selected v is invalid.'), self::onlyError(Rule::int()->notIn([1]), 1));
+        self::assertErrorSame(new ValidationError('in', ['values' => [1, 2]], 'The selected v is invalid.'), self::onlyError(Rule::int()->in([1, 2]), 3));
+        self::assertErrorSame(new ValidationError('notIn', ['values' => [1]], 'The selected v is invalid.'), self::onlyError(Rule::int()->notIn([1]), 1));
     }
 
     public function testIntEmptyListsThrow(): void
@@ -164,7 +164,7 @@ final class NumberRulesTest extends TestCase
     #[DataProvider('rejectedFloats')]
     public function testFloatRejects(mixed $input): void
     {
-        $this->assertEquals(new ValidationError('float', [], 'The v field must be a number.'), self::onlyError(Rule::float(), $input));
+        self::assertErrorSame(new ValidationError('float', [], 'The v field must be a number.'), self::onlyError(Rule::float(), $input));
     }
 
     public function testFloatBounds(): void
@@ -183,20 +183,20 @@ final class NumberRulesTest extends TestCase
 
     public function testFloatBoundErrorKeepsFractionDigits(): void
     {
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('min', ['min' => 0.0001], 'The v field must be at least 0.0001.'),
             self::onlyError(Rule::float()->min(0.0001), 0),
         );
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('between', ['min' => 0.5, 'max' => 2], 'The v field must be between 0.5 and 2.'),
             self::onlyError(Rule::float()->between(0.5, 2), 3),
         );
-        $this->assertEquals(
+        self::assertErrorSame(
             new ValidationError('max', ['max' => 1.25], 'The v field must not be greater than 1.25.'),
             self::onlyError(Rule::float()->max(1.25), 2),
         );
-        $this->assertEquals(new ValidationError('in', ['values' => [1, 2.5]], 'The selected v is invalid.'), self::onlyError(Rule::float()->in([1, 2.5]), 3));
-        $this->assertEquals(new ValidationError('notIn', ['values' => [1]], 'The selected v is invalid.'), self::onlyError(Rule::float()->notIn([1]), 1));
+        self::assertErrorSame(new ValidationError('in', ['values' => [1, 2.5]], 'The selected v is invalid.'), self::onlyError(Rule::float()->in([1, 2.5]), 3));
+        self::assertErrorSame(new ValidationError('notIn', ['values' => [1]], 'The selected v is invalid.'), self::onlyError(Rule::float()->notIn([1]), 1));
     }
 
     public function testFloatBetweenWithEqualBoundsIsAccepted(): void
@@ -276,7 +276,7 @@ final class NumberRulesTest extends TestCase
     #[DataProvider('rejectedBools')]
     public function testBoolRejects(mixed $input): void
     {
-        $this->assertEquals(new ValidationError('bool', [], 'The v field must be true or false.'), self::onlyError(Rule::bool(), $input));
+        self::assertErrorSame(new ValidationError('bool', [], 'The v field must be true or false.'), self::onlyError(Rule::bool(), $input));
     }
 
     public function testDefaultsOfEachType(): void

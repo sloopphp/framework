@@ -88,16 +88,16 @@ final class DecimalRule extends FieldRule
      *
      * @param  int|string               $value Default value
      * @return self
-     * @throws InvalidArgumentException When the value is not a decimal or has more fraction digits than $scale
+     * @throws InvalidArgumentException When the value is not a decimal or does not fit $precision and $scale
      * @throws LogicException           When the field is required or a default has already been declared
      */
     public function default(int|string $value): self
     {
         $literal = DecimalLiteral::parse((string) $value);
-        if ($literal === null || \strlen($literal->fraction) > $this->scale) {
+        if ($literal === null || !$this->fits($literal)) {
             throw new InvalidArgumentException(
-                'The default of decimal(' . $this->precision . ', ' . $this->scale . ') must be a decimal with at most '
-                . $this->scale . ' fraction digits, got ' . $value . '.',
+                'The default of decimal(' . $this->precision . ', ' . $this->scale . ') must be a decimal that fits it, got '
+                . $value . '.',
             );
         }
 
@@ -175,10 +175,7 @@ final class DecimalRule extends FieldRule
         };
         $literal = $text === null ? null : DecimalLiteral::parse($text);
 
-        if ($literal === null
-            || \strlen($literal->fraction) > $this->scale
-            || \strlen($literal->integer) > $this->precision - $this->scale
-        ) {
+        if ($literal === null || !$this->fits($literal)) {
             return new TypeMismatch();
         }
 
@@ -227,6 +224,18 @@ final class DecimalRule extends FieldRule
     protected function comparable(mixed $value): string
     {
         return $value->format();
+    }
+
+    /**
+     * Whether the literal fits DECIMAL($precision, $scale) without rounding.
+     *
+     * @param  DecimalLiteral $literal Parsed value
+     * @return bool
+     */
+    private function fits(DecimalLiteral $literal): bool
+    {
+        return \strlen($literal->fraction) <= $this->scale
+            && \strlen($literal->integer) <= $this->precision - $this->scale;
     }
 
     /**

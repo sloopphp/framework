@@ -20,6 +20,7 @@ use UnexpectedValueException;
 final class ValidatorTest extends TestCase
 {
     use ThrowsAssertions;
+    use ValidatesOneField;
 
     protected function setUp(): void
     {
@@ -88,7 +89,7 @@ final class ValidatorTest extends TestCase
     {
         $result = new Validator(['name' => Rule::string()->minLength(3)])->validate(['name' => 'ab']);
 
-        $this->assertEquals(
+        self::assertErrorsSame(
             ['name' => [new ValidationError('minLength', ['min' => 3], 'The name field must be at least 3 characters.')]],
             $result->errors(),
         );
@@ -137,7 +138,7 @@ final class ValidatorTest extends TestCase
     {
         $result = new Validator(['v' => Rule::string()->required()->minLength(3)])->validate($data);
 
-        $this->assertEquals(['v' => [new ValidationError('required', [], 'The v field is required.')]], $result->errors());
+        self::assertErrorsSame(['v' => [new ValidationError('required', [], 'The v field is required.')]], $result->errors());
     }
 
     /**
@@ -206,7 +207,7 @@ final class ValidatorTest extends TestCase
     {
         $result = new Validator(['age' => Rule::int()->min(10)->max(5)])->validate(['age' => 'abc']);
 
-        $this->assertEquals(
+        self::assertErrorsSame(
             ['age' => [new ValidationError('int', [], 'The age field must be an integer.')]],
             $result->errors(),
         );
@@ -443,7 +444,7 @@ final class ValidatorTest extends TestCase
             'password' => Rule::string()->label('Password'),
         ])->validate(['password' => 'a', 'confirm' => 'b']);
 
-        $this->assertEquals(
+        self::assertErrorsSame(
             ['confirm' => [new ValidationError('same', ['other' => 'password'], 'The confirm field must match Password.')]],
             $result->errors(),
         );
@@ -456,7 +457,7 @@ final class ValidatorTest extends TestCase
             'new' => Rule::string()->different('old', message: '{label} vs {other}'),
         ])->validate(['old' => 'a', 'new' => 'a']);
 
-        $this->assertEquals(
+        self::assertErrorsSame(
             ['new' => [new ValidationError('different', ['other' => 'old'], 'new vs old')]],
             $result->errors(),
         );
