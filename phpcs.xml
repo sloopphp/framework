@@ -3,6 +3,7 @@
     <description>Sloop Framework Coding Standard</description>
 
     <file>src</file>
+    <file>lang</file>
     <file>tests</file>
     <!-- Named rather than scanned as a directory: .claude also holds the git
          worktrees a parallel session works in, and an exclude-pattern cannot

@@ -68,6 +68,21 @@
             // call yields the same hex prefix. No black-box test can observe
             // the difference, so the mutation cannot be killed.
             "ignore": [
+                // DecimalLiteral::compare returns -1 or 1 when the signs differ.
+                // Every caller reads only the sign of the result (>= 0, <= 0,
+                // > 0), so -2 and 2 behave the same.
+                "Sloop\\Validation\\DecimalLiteral::compare::79",
+                // StringRule::email with dns: true looks up the MX record of the
+                // part after the last "@". A unit test cannot reach a DNS server
+                // reliably, so the domain extraction on this line is never
+                // compared against a live answer; only the negative path (a
+                // domain under .invalid) is tested.
+                "Sloop\\Validation\\StringRule::email::169",
+                // StringRule::length falls back to 0 when grapheme_strlen()
+                // returns false or null, which it does only for invalid UTF-8.
+                // Rule::string() rejects invalid UTF-8 before any length rule
+                // runs, so the fallback value is never read.
+                "Sloop\\Validation\\StringRule::length",
                 "Sloop\\Support\\Str::randomHex",
                 // Connection::sleepBackoff / logQuerySuccess convert seconds to
                 // milliseconds with a literal 1000. Shifting it to 1001 changes
@@ -104,6 +119,11 @@
             // shift without running thousands of samples; equivalent in
             // practice for unit-test purposes.
             "ignore": [
+                // DecimalLiteral::compare::79: see IncrementInteger.
+                "Sloop\\Validation\\DecimalLiteral::compare::79",
+                // StringRule::email::169 and StringRule::length: see IncrementInteger.
+                "Sloop\\Validation\\StringRule::email::169",
+                "Sloop\\Validation\\StringRule::length",
                 "Sloop\\Support\\Str::randomHex",
                 "Sloop\\Support\\Str::random",
                 // Same millisecond-conversion literal as IncrementInteger above,
@@ -143,6 +163,56 @@
                 "Sloop\\Database\\Connection::shouldMeasureElapsed"
             ]
         },
+        "Plus": {
+            // StringRule::email::169: see IncrementInteger (needs a live DNS lookup).
+            "ignore": [
+                "Sloop\\Validation\\StringRule::email::169"
+            ]
+        },
+        "NotIdentical": {
+            // StringRule::email::169: see IncrementInteger (needs a live DNS lookup).
+            "ignore": [
+                "Sloop\\Validation\\StringRule::email::169"
+            ]
+        },
+        "UnwrapSubstr": {
+            // StringRule::email::169: see IncrementInteger (needs a live DNS lookup).
+            "ignore": [
+                "Sloop\\Validation\\StringRule::email::169"
+            ]
+        },
+        "CastFloat": {
+            // NumberParser::float::49 and FloatRule::bound turn an int into a
+            // float for a function declared to return float. Under
+            // strict_types PHP still widens an int return value to float, so
+            // the value is a float with or without the cast.
+            "ignore": [
+                "Sloop\\Validation\\NumberParser::float::49",
+                "Sloop\\Validation\\FloatRule::bound"
+            ]
+        },
+        "UnwrapArrayValues": {
+            // Rule's factories pass the variadic sanitizers through
+            // array_values() to keep them a list. FieldRule only iterates
+            // them in order, so string keys from named-argument unpacking
+            // would change nothing.
+            "ignore": [
+                "Sloop\\Validation\\Rule"
+            ]
+        },
+        "ProtectedVisibility": {
+            // FieldRule::typeParams / output / comparable are defaults that
+            // DecimalRule overrides. Infection runs only the tests covering
+            // the mutated line, and those are the tests of the rules that do
+            // not override the method, for which private and protected behave
+            // the same. Made private by hand, each one fails DecimalRuleTest
+            // (15, 24 and 2 failures), so the full suite does detect it.
+            "ignore": [
+                "Sloop\\Validation\\FieldRule::typeParams",
+                "Sloop\\Validation\\FieldRule::output",
+                "Sloop\\Validation\\FieldRule::comparable"
+            ]
+        },
         "AssignCoalesce": {
             // Connection::dialect and RouteRequestHandler::reflectParameters
             // memoize with `??=`. Replacing it with `=` recomputes the value
@@ -151,6 +221,10 @@
             // value nor the number of round trips to a collaborator changes.
             // Same reasoning as the Str::snake / Str::studly entries below.
             "ignore": [
+                // ValidationMessages::defaults memoizes the framework's message
+                // file. Re-reading the same file on every call returns the same
+                // array.
+                "Sloop\\Validation\\ValidationMessages::defaults",
                 "Sloop\\Database\\Connection::dialect",
                 "Sloop\\Http\\RouteRequestHandler::reflectParameters"
             ]
@@ -274,7 +348,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::150",
+                "Sloop\\Foundation\\Application::dispatchRoute::152",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.
