@@ -6,6 +6,7 @@ namespace Sloop\Validation;
 
 use Closure;
 use LogicException;
+use RuntimeException;
 use UnexpectedValueException;
 
 /**
@@ -197,6 +198,7 @@ abstract class FieldRule
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @return FieldOutcome
      * @throws UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
      */
     public function evaluate(mixed $raw): FieldOutcome
     {
@@ -383,6 +385,7 @@ abstract class FieldRule
      * @param  string                   $value Valid UTF-8 input
      * @return string
      * @throws UnexpectedValueException When a closure returns something other than a string
+     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
      */
     private function sanitize(string $value): string
     {

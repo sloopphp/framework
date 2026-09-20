@@ -25,8 +25,9 @@ enum Chars: string
      * full-width middle dot is in ZenkakuSymbols as well.
      *
      * Characters that would otherwise be read as character-class syntax are
-     * escaped: a class that both starts and ends with an unescaped `.` is read
-     * as a POSIX collating element and does not compile.
+     * escaped: an unescaped `.` at the start of a class opens a POSIX collating
+     * element, and the class does not compile when a second `.` closes it
+     * before the `]` (`[..]` and `[.,!?:;&.]` fail, `[.]` and `[.,]` compile).
      *
      * @var array<string, string>
      */

@@ -74,7 +74,7 @@ final readonly class Validator
      *
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
-     * @throws \RuntimeException         When a message pattern cannot be formatted
+     * @throws \RuntimeException         When a message pattern cannot be formatted, or PCRE aborts while a sanitizer is running
      * @throws \UnexpectedValueException When a sanitizer closure returns something other than a string
      */
     public function validate(array $data): ValidationResult

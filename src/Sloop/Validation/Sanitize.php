@@ -51,8 +51,9 @@ enum Sanitize
     /**
      * Apply this sanitizer.
      *
-     * @param  string $value Valid UTF-8 input
+     * @param  string           $value Valid UTF-8 input
      * @return string
+     * @throws RuntimeException When PCRE aborts (e.g. on the backtrack limit)
      */
     public function apply(string $value): string
     {
