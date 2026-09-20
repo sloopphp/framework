@@ -40,6 +40,7 @@ use Sloop\Log\TraceContext;
 use Sloop\Routing\Route;
 use Sloop\Routing\Router;
 use Sloop\Support\Arr;
+use Sloop\Validation\ValidationMessages;
 
 /**
  * Application bootstrap and HTTP request handler.
@@ -84,6 +85,7 @@ final class Application implements RequestHandlerInterface
 
         $this->registerCoreBindings();
         $this->loadConfig();
+        $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
         $this->loadRoutes();
@@ -492,6 +494,21 @@ final class Application implements RequestHandlerInterface
 
         $environment = getenv('APP_ENV');
         Config::load($configPath, \is_string($environment) ? $environment : null);
+    }
+
+    /**
+     * Load the application's validation message overrides if the lang directory exists.
+     *
+     * @return void
+     * @throws \LogicException           If the messages were already loaded
+     * @throws \InvalidArgumentException If lang/en/validation.php is not a map of known rule names to valid messages
+     */
+    private function loadValidationMessages(): void
+    {
+        $langPath = Path::base('lang');
+        if (is_dir($langPath)) {
+            ValidationMessages::load($langPath);
+        }
     }
 
     /**

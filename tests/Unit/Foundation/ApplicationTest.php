@@ -38,6 +38,7 @@ use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\HealthController;
 use Sloop\Tests\Unit\Foundation\Stub\InvalidChannelFactory;
 use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
+use Sloop\Validation\ValidationMessages;
 
 /*
  * Integration tests for Application boot sequence and request dispatch.
@@ -83,6 +84,7 @@ final class ApplicationTest extends TestCase
         Path::reset();
         Config::reset();
         Log::reset();
+        ValidationMessages::reset();
     }
 
     protected function tearDown(): void
@@ -90,6 +92,7 @@ final class ApplicationTest extends TestCase
         Path::reset();
         Config::reset();
         Log::reset();
+        ValidationMessages::reset();
 
         $this->cleanDir($this->tmpDir);
     }
@@ -162,6 +165,24 @@ final class ApplicationTest extends TestCase
 
         $this->assertTrue(Config::isLoaded());
         $this->assertSame('TestApp', Config::get('app.name'));
+    }
+
+    public function testLoadsValidationMessagesOnBoot(): void
+    {
+        mkdir($this->tmpDir . '/lang/en', 0777, true);
+        file_put_contents($this->tmpDir . '/lang/en/validation.php', '<?php return ["required" => "{label} is missing"];');
+
+        new Application($this->tmpDir);
+
+        $this->assertSame('{label} is missing', ValidationMessages::get('required'));
+    }
+
+    public function testBootsWithoutLangDirectory(): void
+    {
+        new Application($this->tmpDir);
+
+        $this->assertSame('The {label} field is required.', ValidationMessages::get('required'));
+        ValidationMessages::load($this->tmpDir);
     }
 
     public function testReturns404ForUnknownRoute(): void
