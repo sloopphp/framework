@@ -26,7 +26,8 @@ enum Sanitize
      * escape when it is written into HTML. StripNewlines, StripTabs and
      * StripControlChars have to be declared before it: strip_tags() leaves `<`
      * as text when the next byte is whitespace, and deleting that byte
-     * afterwards turns the text back into a tag, so the order is rejected.
+     * afterwards turns the text back into a tag. A closure that deletes
+     * interior whitespace has the same effect and is not checked.
      */
     case StripTags;
 

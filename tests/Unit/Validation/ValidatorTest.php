@@ -300,6 +300,16 @@ final class ValidatorTest extends TestCase
         $this->assertSame(['v' => null], new Validator(['v' => $rule])->validate(['v' => '<' . $interior . 'img src=x onerror=alert(1)>'])->values());
     }
 
+    public function testASanitizerAfterStripTagsThrowsEvenWithAnotherOneBetween(): void
+    {
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::string(Sanitize::StripTags, Sanitize::Trim, Sanitize::StripNewlines),
+        );
+
+        $this->assertSame('Sanitize::StripNewlines must come before Sanitize::StripTags, not after it.', $e->getMessage());
+    }
+
     public function testTrimIsAcceptedAfterStripTags(): void
     {
         $rule = Rule::string(Sanitize::StripTags, Sanitize::Trim);
