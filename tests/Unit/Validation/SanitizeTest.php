@@ -43,6 +43,6 @@ final class SanitizeTest extends TestCase
         // without depending on a PCRE limit, which the JIT changes.
         $e = $this->assertThrows(RuntimeException::class, static fn () => Sanitize::Trim->apply("\xff"));
 
-        $this->assertMatchesRegularExpression('/\ACould not sanitize the value \(.+\)\.\z/', $e->getMessage());
+        $this->assertSame('Could not sanitize the value (Malformed UTF-8 characters, possibly incorrectly encoded).', $e->getMessage());
     }
 }

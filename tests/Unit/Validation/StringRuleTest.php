@@ -146,13 +146,21 @@ final class StringRuleTest extends TestCase
 
     public function testRegexAbortedByPcreCountsAsFailure(): void
     {
+        // The subject has to end in the character the pattern needs, or PCRE
+        // answers from its pre-scan without ever backtracking; with the limit
+        // lifted this pattern matches, so only an abort yields 'regex'.
         $limit = \ini_get('pcre.backtrack_limit');
+        $jit   = \ini_get('pcre.jit');
         ini_set('pcre.backtrack_limit', '1');
+        ini_set('pcre.jit', '0');
         try {
-            $this->assertSame(['regex'], self::failedRules(Rule::string()->regex('/(a+)+b/'), 'aaaaaaaaaac'));
+            $this->assertSame(['regex'], self::failedRules(Rule::string()->regex('/(a+)+c/'), 'aaaaaaaaaac'));
         } finally {
             ini_set('pcre.backtrack_limit', (string) $limit);
+            ini_set('pcre.jit', (string) $jit);
         }
+
+        $this->assertSame([], self::failedRules(Rule::string()->regex('/(a+)+c/'), 'aaaaaaaaaac'));
     }
 
     public function testInvalidRegexThrowsAtDeclaration(): void
