@@ -27,6 +27,14 @@ final class ValidationMessagesTest extends TestCase
         ValidationMessages::reset();
     }
 
+    /**
+     * The message file the loader reads under a lang directory, with this platform's separator.
+     */
+    private static function messageFile(string $langPath): string
+    {
+        return $langPath . \DIRECTORY_SEPARATOR . 'en' . \DIRECTORY_SEPARATOR . 'validation.php';
+    }
+
     public function testFrameworkMessagesAreUsedWithoutLoad(): void
     {
         $this->assertSame('The {label} field is required.', ValidationMessages::get('required'));
@@ -94,7 +102,7 @@ final class ValidationMessagesTest extends TestCase
 
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => ValidationMessages::load($path));
 
-        $this->assertSame('Unknown validation rule "minLen" in ' . $path . '/en/validation.php.', $e->getMessage());
+        $this->assertSame('Unknown validation rule "minLen" in ' . self::messageFile($path) . '.', $e->getMessage());
     }
 
     public function testFileNotReturningAnArrayThrows(): void
@@ -103,7 +111,7 @@ final class ValidationMessagesTest extends TestCase
 
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => ValidationMessages::load($path));
 
-        $this->assertSame('Validation message file ' . $path . '/en/validation.php must return an array.', $e->getMessage());
+        $this->assertSame('Validation message file ' . self::messageFile($path) . ' must return an array.', $e->getMessage());
     }
 
     public function testFileWithNonStringMessageThrows(): void
@@ -112,7 +120,7 @@ final class ValidationMessagesTest extends TestCase
 
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => ValidationMessages::load($path));
 
-        $this->assertSame('Validation message file ' . $path . '/en/validation.php must map rule names to strings.', $e->getMessage());
+        $this->assertSame('Validation message file ' . self::messageFile($path) . ' must map rule names to strings.', $e->getMessage());
     }
 
     public function testFileWithQuotedPlaceholderThrows(): void
