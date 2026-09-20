@@ -35,7 +35,7 @@ final class Rule
      *
      * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
      * @return StringRule
-     * @throws \InvalidArgumentException          When a sanitizer that deletes characters inside the value follows Sanitize::StripTags
+     * @throws \InvalidArgumentException          When Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public static function string(Sanitize|Closure ...$sanitizers): StringRule
     {
@@ -47,7 +47,7 @@ final class Rule
      *
      * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
      * @return IntRule
-     * @throws \InvalidArgumentException          When a sanitizer that deletes characters inside the value follows Sanitize::StripTags
+     * @throws \InvalidArgumentException          When Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public static function int(Sanitize|Closure ...$sanitizers): IntRule
     {
@@ -59,7 +59,7 @@ final class Rule
      *
      * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
      * @return FloatRule
-     * @throws \InvalidArgumentException          When a sanitizer that deletes characters inside the value follows Sanitize::StripTags
+     * @throws \InvalidArgumentException          When Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public static function float(Sanitize|Closure ...$sanitizers): FloatRule
     {
@@ -71,7 +71,7 @@ final class Rule
      *
      * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
      * @return BoolRule
-     * @throws \InvalidArgumentException          When a sanitizer that deletes characters inside the value follows Sanitize::StripTags
+     * @throws \InvalidArgumentException          When Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public static function bool(Sanitize|Closure ...$sanitizers): BoolRule
     {
@@ -85,7 +85,7 @@ final class Rule
      * @param  int                                $scale         Maximum number of digits after the point
      * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
      * @return DecimalRule
-     * @throws \InvalidArgumentException          When $precision is below 1, $scale is outside 0..$precision, or a sanitizer that deletes characters inside the value follows Sanitize::StripTags
+     * @throws \InvalidArgumentException          When $precision is below 1, $scale is outside 0..$precision, or Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public static function decimal(int $precision, int $scale, Sanitize|Closure ...$sanitizers): DecimalRule
     {
@@ -99,7 +99,7 @@ final class Rule
      * @param  class-string<E>                    $enum          Backed enum class
      * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
      * @return EnumRule<E>
-     * @throws \InvalidArgumentException          When $enum is not a backed enum, or a sanitizer that deletes characters inside the value follows Sanitize::StripTags
+     * @throws \InvalidArgumentException          When $enum is not a backed enum, or Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public static function enum(string $enum, Sanitize|Closure ...$sanitizers): EnumRule
     {

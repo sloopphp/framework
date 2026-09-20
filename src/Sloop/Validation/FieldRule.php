@@ -89,7 +89,7 @@ abstract class FieldRule
      * Create a rule set for one field.
      *
      * @param  list<Sanitize|Closure(string): mixed> $sanitizers Sanitizers applied before validation, in order
-     * @throws InvalidArgumentException              When a sanitizer that deletes characters inside the value follows StripTags
+     * @throws InvalidArgumentException              When Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
      */
     public function __construct(
         private array $sanitizers,
