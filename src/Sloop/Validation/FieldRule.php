@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Validation;
 
 use Closure;
+use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
 use UnexpectedValueException;
@@ -87,11 +88,27 @@ abstract class FieldRule
     /**
      * Create a rule set for one field.
      *
-     * @param list<Sanitize|Closure(string): mixed> $sanitizers Sanitizers applied before validation, in order
+     * @param  list<Sanitize|Closure(string): mixed> $sanitizers Sanitizers applied before validation, in order
+     * @throws InvalidArgumentException              When a sanitizer that deletes characters inside the value follows StripTags
      */
     public function __construct(
         private array $sanitizers,
     ) {
+        $strippedTags = false;
+        foreach ($sanitizers as $sanitizer) {
+            if ($sanitizer === Sanitize::StripTags) {
+                $strippedTags = true;
+                continue;
+            }
+            // strip_tags() leaves a `<` as text when the next character is
+            // whitespace; deleting that character afterwards turns the text
+            // back into a tag.
+            if ($strippedTags && \in_array($sanitizer, [Sanitize::StripNewlines, Sanitize::StripTabs, Sanitize::StripControlChars], true)) {
+                throw new InvalidArgumentException(
+                    'Sanitize::' . $sanitizer->name . ' must come before Sanitize::StripTags, not after it.',
+                );
+            }
+        }
     }
 
     /**

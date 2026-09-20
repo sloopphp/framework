@@ -274,6 +274,39 @@ final class ValidatorTest extends TestCase
         $this->assertSame(['v' => 'abc!'], $result->values());
     }
 
+    /**
+     * @return iterable<string, array{Sanitize, string}>
+     */
+    public static function interiorDeletingSanitizers(): iterable
+    {
+        yield 'newlines' => [Sanitize::StripNewlines, "\n"];
+        yield 'tabs' => [Sanitize::StripTabs, "\t"];
+        yield 'control chars' => [Sanitize::StripControlChars, "\x0B"];
+    }
+
+    #[DataProvider('interiorDeletingSanitizers')]
+    public function testSanitizerThatDeletesInteriorCharactersAfterStripTagsThrows(Sanitize $after, string $interior): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string(Sanitize::StripTags, $after));
+
+        $this->assertSame('Sanitize::' . $after->name . ' must come before Sanitize::StripTags, not after it.', $e->getMessage());
+    }
+
+    #[DataProvider('interiorDeletingSanitizers')]
+    public function testTheSameSanitizerBeforeStripTagsRemovesTheTag(Sanitize $before, string $interior): void
+    {
+        $rule = Rule::string($before, Sanitize::StripTags);
+
+        $this->assertSame(['v' => null], new Validator(['v' => $rule])->validate(['v' => '<' . $interior . 'img src=x onerror=alert(1)>'])->values());
+    }
+
+    public function testTrimIsAcceptedAfterStripTags(): void
+    {
+        $rule = Rule::string(Sanitize::StripTags, Sanitize::Trim);
+
+        $this->assertSame(['v' => 'text'], new Validator(['v' => $rule])->validate(['v' => ' <b>text</b> '])->values());
+    }
+
     public function testSanitizersCombineIntoASingleLineField(): void
     {
         $rule = Rule::string(Sanitize::StripControlChars, Sanitize::StripNewlines, Sanitize::StripTabs);

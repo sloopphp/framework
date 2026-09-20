@@ -23,10 +23,10 @@ enum Sanitize
      * Remove HTML and PHP tags (strip_tags()).
      *
      * A normalizer, not an output encoder: what it leaves is still text to
-     * escape when it is written into HTML. Put the whitespace and control
-     * character sanitizers before it, not after: strip_tags() leaves `<` as
-     * text when the next byte is whitespace, and deleting that byte afterwards
-     * turns the text back into a tag.
+     * escape when it is written into HTML. StripNewlines, StripTabs and
+     * StripControlChars have to be declared before it: strip_tags() leaves `<`
+     * as text when the next byte is whitespace, and deleting that byte
+     * afterwards turns the text back into a tag, so the order is rejected.
      */
     case StripTags;
 
