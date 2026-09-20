@@ -271,7 +271,7 @@ final class StringRuleTest extends TestCase
     public function testEverySetPairBuildsAValidCharacterClass(): void
     {
         $samples = [];
-        foreach (self::charSets() as [$set, $accepted, $rejected]) {
+        foreach (self::charSets() as [$set, $accepted]) {
             $samples[$set->value] = $accepted[0];
         }
 
@@ -279,9 +279,6 @@ final class StringRuleTest extends TestCase
             foreach (Chars::cases() as $second) {
                 $pair = $first->value . ' + ' . $second->value;
                 $rule = Rule::string()->chars([$first, $second]);
-                // A class that does not compile also reports 'chars', so the
-                // accepted samples are what tells the two apart (a broken class
-                // rejects them too).
                 $this->assertSame([], self::failedRules($rule, self::sample($samples, $first)), $pair);
                 $this->assertSame([], self::failedRules($rule, self::sample($samples, $second)), $pair);
                 $this->assertSame(['chars'], self::failedRules($rule, "\u{FFFD}"), $pair);
