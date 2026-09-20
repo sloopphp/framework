@@ -589,6 +589,30 @@ final class ValidatorTest extends TestCase
         $this->assertSame(['minLength', 'same'], self::rules($result->errors()['a']));
     }
 
+    public function testAComparisonThatFailedDoesNotStopTheComparisonsPointingAtThatField(): void
+    {
+        $rules = [
+            'a' => Rule::string()->same('b'),
+            'b' => Rule::string()->same('c'),
+            'c' => Rule::string(),
+        ];
+        $data  = ['a' => 'x', 'b' => 'y', 'c' => 'z'];
+
+        $this->assertSame(['a', 'b'], array_keys(new Validator($rules)->validate($data)->errors()));
+        $this->assertSame(['b', 'a'], array_keys(new Validator(array_reverse($rules))->validate($data)->errors()));
+    }
+
+    public function testComparisonWithAnEmptyOtherFieldWithoutADefaultComparesWithNull(): void
+    {
+        $validator = new Validator([
+            'a' => Rule::string()->same('b'),
+            'b' => Rule::string(),
+        ]);
+
+        $this->assertSame(['same'], self::rules($validator->validate(['a' => 'x'])->errors()['a']));
+        $this->assertFalse($validator->validate([])->failed());
+    }
+
     public function testComparisonWithAnEmptyOtherFieldComparesWithItsDefault(): void
     {
         $validator = new Validator([

@@ -22,8 +22,8 @@ use UnexpectedValueException;
  * value runs no rule other than required() and yields the declared default;
  * a value of the wrong type stops before the declared rules.
  *
- * Every subclass declares default() with the native type of its validated
- * value, and passes the value on to withDefault().
+ * Every subclass declares default() with a native type and passes the value
+ * on to withDefault().
  *
  * @template T
  */
@@ -181,8 +181,10 @@ abstract class FieldRule
     /**
      * Fail unless the validated value equals the validated value of another field.
      *
-     * Both sides are compared after sanitizing and type conversion. When the
-     * other field itself failed, this rule is not evaluated.
+     * Both sides are compared after sanitizing and type conversion. The rule
+     * is not evaluated when the other field failed a rule of its own; a
+     * failure of the other field's own same() / different() does not stop it,
+     * so the result does not depend on the order of the fields.
      *
      * @param  string                    $field   Name of the other field
      * @param  string|null               $message Message for this rule only

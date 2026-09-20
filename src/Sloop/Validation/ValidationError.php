@@ -10,8 +10,9 @@ namespace Sloop\Validation;
  * The rule name is the builder method that failed (the type name when the
  * value did not have the declared type), and it doubles as the key of the
  * default message in the language file. Parameter names match the
- * placeholders of that message, so a client can rebuild or translate the
- * message from the structure alone.
+ * placeholders of that message; `{label}` is not among them, and the
+ * placeholder of same() / different() holds the other field's name where the
+ * message shows its label.
  */
 final readonly class ValidationError
 {

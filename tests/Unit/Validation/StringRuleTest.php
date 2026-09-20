@@ -293,6 +293,15 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['chars'], self::failedRules(Rule::string()->chars([Chars::Dots]), 'a'));
     }
 
+    public function testCharsMatchesTheWholeValue(): void
+    {
+        $rule = Rule::string()->chars([Chars::Alpha]);
+
+        $this->assertSame(['chars'], self::failedRules($rule, "abc\n"));
+        $this->assertSame(['chars'], self::failedRules($rule, "\nabc"));
+        $this->assertSame(['chars'], self::failedRules($rule, "ab\nc"));
+    }
+
     public function testCharsAcceptsTheUnionOfTheSets(): void
     {
         $rule = Rule::string()->chars([Chars::Uppercase, Chars::Numeric]);

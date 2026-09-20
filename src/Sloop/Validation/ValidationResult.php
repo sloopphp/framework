@@ -48,8 +48,8 @@ final readonly class ValidationResult
     /**
      * Validated values keyed by field name.
      *
-     * Only the fields declared in the rules appear; any other key of the input
-     * is dropped. Each value has the type its factory declares (an int for
+     * Only the fields declared in the rules that passed appear; a field that
+     * failed and any key of the input without a rule are dropped. Each value has the type its factory declares (an int for
      * Rule::int(), a string for Rule::string(), and so on), or the declared
      * default when the field was empty.
      *
