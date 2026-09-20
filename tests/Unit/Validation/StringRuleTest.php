@@ -258,6 +258,23 @@ final class StringRuleTest extends TestCase
         }
     }
 
+    public function testEverySetPairBuildsAValidCharacterClass(): void
+    {
+        foreach (Chars::cases() as $first) {
+            foreach (Chars::cases() as $second) {
+                $rule = Rule::string()->chars([$first, $second]);
+                $this->assertSame(['chars'], self::failedRules($rule, "\u{FFFD}"), $first->value . ' + ' . $second->value);
+            }
+        }
+    }
+
+    public function testDotsAndPunctuationAreEscapedInTheCharacterClass(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->chars([Chars::Dots]), '...'));
+        $this->assertSame([], self::failedRules(Rule::string()->chars([Chars::Punctuation, Chars::Dots]), '.,!?'));
+        $this->assertSame(['chars'], self::failedRules(Rule::string()->chars([Chars::Dots]), 'a'));
+    }
+
     public function testCharsAcceptsTheUnionOfTheSets(): void
     {
         $rule = Rule::string()->chars([Chars::Uppercase, Chars::Numeric]);

@@ -24,6 +24,10 @@ enum Chars: string
      * have no script of their own, so they are listed explicitly; the
      * full-width middle dot is in ZenkakuSymbols as well.
      *
+     * Characters that would otherwise be read as character-class syntax are
+     * escaped: a class that both starts and ends with an unescaped `.` is read
+     * as a POSIX collating element and does not compile.
+     *
      * @var array<string, string>
      */
     private const array PATTERNS = [
@@ -34,9 +38,9 @@ enum Chars: string
         'spaces'          => ' ',
         'newlines'        => '\r\n',
         'tabs'            => '\t',
-        'dots'            => '.',
+        'dots'            => '\.',
         'commas'          => ',',
-        'punctuation'     => '.,!?:;&',
+        'punctuation'     => '\.,!?:;&',
         'dashes'          => '_\-',
         'slashes'         => '\/\\\\',
         'brackets'        => '()',

@@ -6,10 +6,14 @@ namespace Sloop\Tests\Unit\Validation;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\Sanitize;
 
 final class SanitizeTest extends TestCase
 {
+    use ThrowsAssertions;
+
     /**
      * @return iterable<string, array{Sanitize, string, string}>
      */
@@ -30,5 +34,18 @@ final class SanitizeTest extends TestCase
     public function testApply(Sanitize $sanitize, string $input, string $expected): void
     {
         $this->assertSame($expected, $sanitize->apply($input));
+    }
+
+    public function testApplyThrowsWhenPcreGivesUp(): void
+    {
+        $limit = \ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            $e = $this->assertThrows(RuntimeException::class, static fn () => Sanitize::Trim->apply(str_repeat(' ', 100) . 'a'));
+        } finally {
+            ini_set('pcre.backtrack_limit', (string) $limit);
+        }
+
+        $this->assertSame('Could not sanitize the value (Backtrack limit exhausted).', $e->getMessage());
     }
 }
