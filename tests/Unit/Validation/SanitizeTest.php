@@ -38,14 +38,11 @@ final class SanitizeTest extends TestCase
 
     public function testApplyThrowsWhenPcreGivesUp(): void
     {
-        $limit = \ini_get('pcre.backtrack_limit');
-        ini_set('pcre.backtrack_limit', '1');
-        try {
-            $e = $this->assertThrows(RuntimeException::class, static fn () => Sanitize::Trim->apply(str_repeat(' ', 100) . 'a'));
-        } finally {
-            ini_set('pcre.backtrack_limit', (string) $limit);
-        }
+        // The engine only sanitizes valid UTF-8, so this reaches apply() only
+        // when it is called directly; it is how the failure path is observable
+        // without depending on a PCRE limit, which the JIT changes.
+        $e = $this->assertThrows(RuntimeException::class, static fn () => Sanitize::Trim->apply("\xff"));
 
-        $this->assertSame('Could not sanitize the value (Backtrack limit exhausted).', $e->getMessage());
+        $this->assertMatchesRegularExpression('/\ACould not sanitize the value \(.+\)\.\z/', $e->getMessage());
     }
 }
