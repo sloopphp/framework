@@ -93,6 +93,50 @@ final class Rule
     }
 
     /**
+     * A field that must be an array, whatever it holds.
+     *
+     * The elements reach the caller untouched. Use list() to give them all one
+     * type, or shape() to give each key its own.
+     *
+     * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
+     * @return AnyArrayRule
+     */
+    public static function array(ArraySanitize|Closure ...$sanitizers): AnyArrayRule
+    {
+        return new AnyArrayRule(array_values($sanitizers));
+    }
+
+    /**
+     * A field that must be an array whose elements all satisfy one rule.
+     *
+     * The validated value is renumbered from zero, so the keys of the input do
+     * not reach the caller.
+     *
+     * @param  FieldRule<covariant mixed>                                                $element       Rules every element must satisfy
+     * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
+     * @return ListRule
+     */
+    public static function list(FieldRule $element, ArraySanitize|Closure ...$sanitizers): ListRule
+    {
+        return new ListRule($element, array_values($sanitizers));
+    }
+
+    /**
+     * A field that must be an array whose declared keys each have their own rules.
+     *
+     * Keys of the input without a rule are dropped.
+     *
+     * @param  array<string, FieldRule<covariant mixed>>                                 $fields        Rules of each key
+     * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
+     * @return ShapeRule
+     * @throws \InvalidArgumentException                                                 When no key is declared, or a comparison names a key that has no rule
+     */
+    public static function shape(array $fields, ArraySanitize|Closure ...$sanitizers): ShapeRule
+    {
+        return new ShapeRule($fields, array_values($sanitizers));
+    }
+
+    /**
      * A field whose validated value is a case of a backed enum.
      *
      * @template E of BackedEnum

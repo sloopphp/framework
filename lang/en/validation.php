@@ -30,7 +30,12 @@ return [
     'ip'          => 'The {label} field must be a valid IP address.',
     'min'         => 'The {label} field must be at least {min}.',
     'max'         => 'The {label} field must not be greater than {max}.',
-    'between'     => 'The {label} field must be between {min} and {max}.',
+    'between'      => 'The {label} field must be between {min} and {max}.',
+    'array'        => 'The {label} field must be an array.',
+    'minCount'     => 'The {label} field must have at least {min} items.',
+    'maxCount'     => 'The {label} field must not have more than {max} items.',
+    'betweenCount' => 'The {label} field must have between {min} and {max} items.',
+    'exactCount'   => 'The {label} field must have exactly {count} items.',
     'same'        => 'The {label} field must match {other}.',
     'different'   => 'The {label} field and {other} must be different.',
 ];

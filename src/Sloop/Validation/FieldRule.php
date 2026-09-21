@@ -241,7 +241,7 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, [new Failure($this->typeRule(), $this->typeParams())]);
         }
 
-        $failures = [];
+        [$failures, $typed] = $this->validateChildren($typed);
         foreach ($this->checks as $check) {
             if (!($check->passes)($typed)) {
                 $failures[] = new Failure($check->rule, $check->params, $check->message);
@@ -285,6 +285,21 @@ abstract class FieldRule
     public function comparisons(): array
     {
         return $this->comparisons;
+    }
+
+    /**
+     * Validate what the value holds, for a type that holds other values.
+     *
+     * Runs after the type check and before the rules declared on this field,
+     * so a rule such as a count sees the value the elements produced. A type
+     * that holds nothing answers with no failures and the value unchanged.
+     *
+     * @param  T                       $typed Value of the declared type
+     * @return array{list<Failure>, T} Failures of the elements, and the value to carry on with
+     */
+    protected function validateChildren(mixed $typed): array
+    {
+        return [[], $typed];
     }
 
     /**
