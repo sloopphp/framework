@@ -254,11 +254,22 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame([1, 2], self::valueOf(Rule::list(Rule::int()), [3 => '1', 9 => '2']));
     }
 
-    public function testListKeepsTheInputKeyInTheErrorOfAMap(): void
+    public function testListCountsPositionsWhateverKeysTheInputCameUnder(): void
     {
-        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => ['a' => 'x']])->errors();
+        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => ['a' => 1, 'b' => 'x']])->errors();
 
-        $this->assertSame(['v.a'], array_keys($errors));
+        $this->assertSame(['v.1'], array_keys($errors));
+    }
+
+    public function testAnInputKeyReachesNeitherTheErrorNorTheMessage(): void
+    {
+        $hostile = '<script>alert(1)</script>';
+        $errors  = new Validator(['v' => Rule::list(Rule::string()->minLength(3))])
+            ->validate(['v' => [$hostile => 'x']])
+            ->errors();
+
+        $this->assertSame(['v.0'], array_keys($errors));
+        $this->assertSame('The 0 field must be at least 3 characters.', $errors['v.0'][0]->message);
     }
 
     public function testListDropsTheWholeFieldFromTheValuesWhenAnElementFails(): void

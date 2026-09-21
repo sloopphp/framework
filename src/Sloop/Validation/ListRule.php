@@ -13,8 +13,8 @@ use InvalidArgumentException;
  * Every element is validated with the same rule, and every element that fails
  * is reported: the errors are keyed by the path down to the element, so the
  * second element of `items` is `items.1`. Any array is accepted, not only a
- * list; the validated value is renumbered from zero, so the keys of the input
- * do not reach it, but they do key the errors.
+ * list, and the keys of the input reach nothing the caller reads — the
+ * validated value and the errors both count positions from zero.
  */
 final class ListRule extends ArrayRule
 {
@@ -73,12 +73,12 @@ final class ListRule extends ArrayRule
     {
         $failures = [];
         $values   = [];
-        foreach ($typed as $key => $item) {
+        foreach (array_values($typed) as $position => $item) {
             $outcome = $this->element->evaluate($item);
             foreach ($outcome->failures as $failure) {
                 $failures[] = $failure->under(
-                    $key,
-                    $this->element->displayLabel() ?? (string) $key,
+                    $position,
+                    $this->element->displayLabel() ?? (string) $position,
                     $this->element->fieldMessage(),
                 );
             }

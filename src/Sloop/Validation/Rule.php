@@ -109,10 +109,10 @@ final class Rule
     /**
      * A field that must be an array whose elements all satisfy one rule.
      *
-     * Any array is accepted, not only a list: the validated value is renumbered
-     * from zero, so the keys of the input do not reach it. They do key the
-     * errors, so a failing `items['a']` is reported as `items.a`. A default, in
-     * contrast, reaches the caller as it is and has to be a list already.
+     * Any array is accepted, not only a list. The keys of the input reach
+     * neither the validated value nor the errors: both count positions from
+     * zero, so the second element is `items.1` whatever key it came under. A
+     * default, in contrast, reaches the caller as it is and has to be a list.
      *
      * @param  FieldRule<covariant mixed>                                                $element       Rules every element must satisfy
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
