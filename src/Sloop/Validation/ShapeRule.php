@@ -78,75 +78,15 @@ final class ShapeRule extends ArrayRule
             );
         }
 
-        return parent::default($value);
-    }
+        $filled = [];
+        foreach ($this->fields as $key => $rule) {
+            // A key the default leaves out takes what it would have taken had
+            // the field come in without it, so that the two ways of reaching a
+            // value give the same shape.
+            $filled[$key] = \array_key_exists($key, $value) ? $value[$key] : $rule->evaluate(null)->value;
+        }
 
-    /**
-     * Refused: the value of a shape always holds exactly the declared keys, so a count says nothing about the input.
-     *
-     * @param  string                   $rule Name of the count rule that was called
-     * @return never
-     * @throws InvalidArgumentException Always
-     */
-    private function refuseCount(string $rule): never
-    {
-        throw new InvalidArgumentException(
-            $rule . '() says nothing about a shape: its value always holds the '
-            . \count($this->fields) . ' declared keys, whatever comes in.',
-        );
-    }
-
-    /**
-     * Refused on a shape; see refuseCount().
-     *
-     * @param  int                      $min     Ignored
-     * @param  string|null              $message Ignored
-     * @return never
-     * @throws InvalidArgumentException Always
-     */
-    public function minCount(int $min, ?string $message = null): never
-    {
-        $this->refuseCount('minCount');
-    }
-
-    /**
-     * Refused on a shape; see refuseCount().
-     *
-     * @param  int                      $max     Ignored
-     * @param  string|null              $message Ignored
-     * @return never
-     * @throws InvalidArgumentException Always
-     */
-    public function maxCount(int $max, ?string $message = null): never
-    {
-        $this->refuseCount('maxCount');
-    }
-
-    /**
-     * Refused on a shape; see refuseCount().
-     *
-     * @param  int                      $min     Ignored
-     * @param  int                      $max     Ignored
-     * @param  string|null              $message Ignored
-     * @return never
-     * @throws InvalidArgumentException Always
-     */
-    public function betweenCount(int $min, int $max, ?string $message = null): never
-    {
-        $this->refuseCount('betweenCount');
-    }
-
-    /**
-     * Refused on a shape; see refuseCount().
-     *
-     * @param  int                      $count   Ignored
-     * @param  string|null              $message Ignored
-     * @return never
-     * @throws InvalidArgumentException Always
-     */
-    public function exactCount(int $count, ?string $message = null): never
-    {
-        $this->refuseCount('exactCount');
+        return parent::default($filled);
     }
 
     /**

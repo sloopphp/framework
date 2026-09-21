@@ -18,6 +18,8 @@ use InvalidArgumentException;
  */
 final class ListRule extends ArrayRule
 {
+    use CountsElements;
+
     /**
      * Create a rule set for a list field.
      *
@@ -74,7 +76,11 @@ final class ListRule extends ArrayRule
         foreach ($typed as $key => $item) {
             $outcome = $this->element->evaluate($item);
             foreach ($outcome->failures as $failure) {
-                $failures[] = $failure->under($key, (string) $key, $this->element->fieldMessage());
+                $failures[] = $failure->under(
+                    $key,
+                    $this->element->displayLabel() ?? (string) $key,
+                    $this->element->fieldMessage(),
+                );
             }
             $values[] = $outcome->value;
         }

@@ -396,6 +396,22 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame('The unit price field must be an integer.', $errors['items.0.price'][0]->message);
     }
 
+    public function testTheLabelOfAListElementNamesItInTheMessage(): void
+    {
+        $rule   = Rule::list(Rule::string()->label('tag')->minLength(3));
+        $errors = new Validator(['v' => $rule])->validate(['v' => ['ok!', 'ab']])->errors();
+
+        $this->assertSame(['v.1'], array_keys($errors));
+        $this->assertSame('The tag field must be at least 3 characters.', $errors['v.1'][0]->message);
+    }
+
+    public function testAListElementWithoutALabelIsNamedByItsIndex(): void
+    {
+        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => ['x']])->errors();
+
+        $this->assertSame('The 0 field must be an integer.', $errors['v.0'][0]->message);
+    }
+
     public function testTheMessageOfAnElementAppliesToItsOwnFailures(): void
     {
         $rule   = Rule::list(Rule::int()->message('Every quantity has to be a whole number.'));
@@ -448,38 +464,6 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(['a' => 1, 'b' => 0], self::valueOf($rule, ['a' => 1]));
     }
 
-    /**
-     * @return iterable<string, array{Closure(): mixed, string}>
-     */
-    public static function refusedShapeCounts(): iterable
-    {
-        yield 'minCount' => [
-            static fn (): mixed => Rule::shape(['a' => Rule::int()])->minCount(1),
-            'minCount() says nothing about a shape: its value always holds the 1 declared keys, whatever comes in.',
-        ];
-        yield 'maxCount' => [
-            static fn (): mixed => Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->maxCount(1),
-            'maxCount() says nothing about a shape: its value always holds the 2 declared keys, whatever comes in.',
-        ];
-        yield 'betweenCount' => [
-            static fn (): mixed => Rule::shape(['a' => Rule::int()])->betweenCount(1, 2),
-            'betweenCount() says nothing about a shape: its value always holds the 1 declared keys, whatever comes in.',
-        ];
-        yield 'exactCount' => [
-            static fn (): mixed => Rule::shape(['a' => Rule::int()])->exactCount(1),
-            'exactCount() says nothing about a shape: its value always holds the 1 declared keys, whatever comes in.',
-        ];
-    }
-
-    /**
-     * @param Closure(): mixed $declare
-     */
-    #[DataProvider('refusedShapeCounts')]
-    public function testAShapeRefusesACountRule(Closure $declare, string $message): void
-    {
-        $this->assertSame($message, $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage());
-    }
-
     public function testTheDefaultOfAListMustBeAList(): void
     {
         $this->assertSame(
@@ -491,11 +475,28 @@ final class ArrayRuleTest extends TestCase
         );
     }
 
-    public function testTheDefaultOfAShapeMayHoldTheKeysItDeclares(): void
+    public function testTheDefaultOfAShapeFillsInTheKeysItLeavesOut(): void
     {
         $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->default(['a' => 1]);
 
-        $this->assertSame(['a' => 1], self::valueOf($rule, null));
+        $this->assertSame(['a' => 1, 'b' => null], self::valueOf($rule, null));
+    }
+
+    public function testAKeyLeftOutOfTheDefaultTakesItsOwnDefault(): void
+    {
+        $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()->default(0)])->default(['a' => 1]);
+
+        $this->assertSame(['a' => 1, 'b' => 0], self::valueOf($rule, null));
+    }
+
+    public function testTheDefaultOfAShapeGivesTheSameShapeAsValidatingDoes(): void
+    {
+        $fields = ['a' => Rule::int(), 'b' => Rule::int()->default(0)];
+
+        $viaDefault = self::valueOf(Rule::shape($fields)->default(['a' => 1]), null);
+        $viaInput   = self::valueOf(Rule::shape($fields), ['a' => 1]);
+
+        $this->assertSame($viaInput, $viaDefault);
     }
 
     public function testTheDefaultOfAShapeCannotHoldAnUndeclaredKey(): void

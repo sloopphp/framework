@@ -12,4 +12,5 @@ namespace Sloop\Validation;
  */
 final class AnyArrayRule extends ArrayRule
 {
+    use CountsElements;
 }
