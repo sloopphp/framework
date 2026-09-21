@@ -212,11 +212,11 @@ abstract class FieldRule
     /**
      * Validate one raw value.
      *
-     * @internal Called by Validator.
+     * @internal Called by Validator, and by ListRule for each of its elements.
      *
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @return FieldOutcome
-     * @throws UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
      * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
      */
     public function evaluate(mixed $raw): FieldOutcome
@@ -254,7 +254,7 @@ abstract class FieldRule
     /**
      * The label set with label(), if any.
      *
-     * @internal Read by Validator when building messages.
+     * @internal Read by Validator and ShapeRule when building messages.
      *
      * @return string|null
      */
@@ -266,7 +266,7 @@ abstract class FieldRule
     /**
      * The message set with message(), if any.
      *
-     * @internal Read by Validator when building messages.
+     * @internal Read by Validator and by the array rules when building messages.
      *
      * @return string|null
      */
@@ -278,7 +278,7 @@ abstract class FieldRule
     /**
      * The declared same() / different() rules.
      *
-     * @internal Read by Validator, which evaluates them once every field has its value.
+     * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
      *
      * @return list<Comparison>
      */

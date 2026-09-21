@@ -16,7 +16,7 @@ namespace Sloop\Validation;
  * key the error, and $labelPath holds the same steps as they are shown to a
  * person.
  *
- * @internal Produced by FieldRule, consumed by Validator.
+ * @internal Produced by FieldRule, deepened by the array rules, consumed by Validator.
  */
 final readonly class Failure
 {

@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Validation;
 
+use Closure;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\ArraySanitize;
+use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\ValidationError;
 use Sloop\Validation\Validator;
+use UnexpectedValueException;
 
 final class ArrayRuleTest extends TestCase
 {
@@ -156,7 +159,7 @@ final class ArrayRuleTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{\Sloop\Validation\FieldRule<covariant mixed>, mixed, ValidationError}>
+     * @return iterable<string, array{FieldRule<covariant mixed>, mixed, ValidationError}>
      */
     public static function countFailures(): iterable
     {
@@ -183,11 +186,11 @@ final class ArrayRuleTest extends TestCase
     }
 
     /**
-     * @param \Sloop\Validation\FieldRule<covariant mixed> $rule
+     * @param FieldRule<covariant mixed> $rule
      */
     #[DataProvider('countFailures')]
     public function testACountFailureCarriesItsBoundsAsParameters(
-        \Sloop\Validation\FieldRule $rule,
+        FieldRule $rule,
         mixed $input,
         ValidationError $expected,
     ): void {
@@ -195,7 +198,7 @@ final class ArrayRuleTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{\Closure(): mixed, string}>
+     * @return iterable<string, array{Closure(): mixed, string}>
      */
     public static function rejectedCountArguments(): iterable
     {
@@ -207,10 +210,10 @@ final class ArrayRuleTest extends TestCase
     }
 
     /**
-     * @param \Closure(): mixed $declare
+     * @param Closure(): mixed $declare
      */
     #[DataProvider('rejectedCountArguments')]
-    public function testACountRuleRefusesAnImpossibleBound(\Closure $declare, string $message): void
+    public function testACountRuleRefusesAnImpossibleBound(Closure $declare, string $message): void
     {
         $this->assertSame($message, $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage());
     }
@@ -229,7 +232,7 @@ final class ArrayRuleTest extends TestCase
         $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => [1, 'x']])->errors();
 
         $this->assertSame(['v.1'], array_keys($errors));
-        self::assertErrorSame(new ValidationError('int', [], 'The v.1 field must be an integer.'), $errors['v.1'][0]);
+        self::assertErrorSame(new ValidationError('int', [], 'The 1 field must be an integer.'), $errors['v.1'][0]);
     }
 
     public function testListReportsEveryFailingElementRatherThanStoppingAtTheFirst(): void
@@ -294,7 +297,7 @@ final class ArrayRuleTest extends TestCase
         $errors = new Validator(['v' => $rule])->validate(['v' => ['price' => 'x']])->errors();
 
         $this->assertSame(['v.price'], array_keys($errors));
-        self::assertErrorSame(new ValidationError('int', [], 'The v.price field must be an integer.'), $errors['v.price'][0]);
+        self::assertErrorSame(new ValidationError('int', [], 'The price field must be an integer.'), $errors['v.price'][0]);
     }
 
     public function testShapeDropsTheKeysItDoesNotDeclare(): void
@@ -325,7 +328,7 @@ final class ArrayRuleTest extends TestCase
         $errors = $validator->validate(['v' => ['password' => 'a', 'confirm' => 'b']])->errors();
         $this->assertSame(['v.confirm'], array_keys($errors));
         self::assertErrorSame(
-            new ValidationError('same', ['other' => 'password'], 'The v.confirm field must match password.'),
+            new ValidationError('same', ['other' => 'password'], 'The confirm field must match password.'),
             $errors['v.confirm'][0],
         );
     }
@@ -338,7 +341,7 @@ final class ArrayRuleTest extends TestCase
         ]);
         $errors = new Validator(['v' => $rule])->validate(['v' => ['password' => 'a', 'confirm' => 'b']])->errors();
 
-        $this->assertSame('The v.confirm field must match the password.', $errors['v.confirm'][0]->message);
+        $this->assertSame('The confirm field must match the password.', $errors['v.confirm'][0]->message);
     }
 
     public function testShapeRefusesAComparisonNamingAKeyItDoesNotDeclare(): void
@@ -363,7 +366,7 @@ final class ArrayRuleTest extends TestCase
 
         $this->assertSame(['items.1.price'], array_keys($errors));
         self::assertErrorSame(
-            new ValidationError('int', [], 'The items.1.price field must be an integer.'),
+            new ValidationError('int', [], 'The price field must be an integer.'),
             $errors['items.1.price'][0],
         );
     }
@@ -390,7 +393,7 @@ final class ArrayRuleTest extends TestCase
         $errors = new Validator(['items' => $rule])->validate(['items' => [['price' => 'x']]])->errors();
 
         $this->assertSame(['items.0.price'], array_keys($errors));
-        $this->assertSame('The order lines.0.unit price field must be an integer.', $errors['items.0.price'][0]->message);
+        $this->assertSame('The unit price field must be an integer.', $errors['items.0.price'][0]->message);
     }
 
     public function testTheMessageOfAnElementAppliesToItsOwnFailures(): void
@@ -401,6 +404,28 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame('Every quantity has to be a whole number.', $errors['v.0'][0]->message);
     }
 
+    public function testAShapeRefusesAKeyThatIsNotAName(): void
+    {
+        $this->assertSame(
+            'shape() needs named keys, and 0 is a number: PHP turns a numeric key into an int, which cannot name a field.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::shape(['0' => Rule::int()]),
+            )->getMessage(),
+        );
+    }
+
+    public function testAnElementOfAListCannotCompareWithAnotherField(): void
+    {
+        $this->assertSame(
+            'The element of list() cannot compare with another field: there is no set of siblings to name.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::list(Rule::string()->same('other')),
+            )->getMessage(),
+        );
+    }
+
     public function testTheMessageOfOneRuleWinsOverTheMessageOfTheElement(): void
     {
         $rule   = Rule::list(Rule::int()->min(10, 'At least ten.')->message('Not a whole number.'));
@@ -409,20 +434,11 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame('At least ten.', $errors['v.0'][0]->message);
     }
 
-    public function testACountRuleOfAShapeCountsTheKeysThatCameInRatherThanTheOnesThatPassed(): void
+    public function testAShapeHoldsEveryDeclaredKeyWhetherOrNotItCameIn(): void
     {
-        $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->exactCount(2);
+        $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()]);
 
-        $errors = new Validator(['v' => $rule])->validate(['v' => ['a' => 1, 'b' => 'x']])->errors();
-
-        $this->assertSame(['v.b'], array_keys($errors));
-    }
-
-    public function testACountRuleOfAShapeDoesNotCountAKeyThatWasNotSubmitted(): void
-    {
-        $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->exactCount(1);
-
-        $this->assertSame(['a' => 1], self::valueOf($rule, ['a' => 1]));
+        $this->assertSame(['a' => 1, 'b' => null], self::valueOf($rule, ['a' => 1]));
     }
 
     public function testAKeyOfAShapeThatWasNotSubmittedTakesItsDeclaredDefault(): void
@@ -430,6 +446,67 @@ final class ArrayRuleTest extends TestCase
         $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()->default(0)]);
 
         $this->assertSame(['a' => 1, 'b' => 0], self::valueOf($rule, ['a' => 1]));
+    }
+
+    /**
+     * @return iterable<string, array{Closure(): mixed, string}>
+     */
+    public static function refusedShapeCounts(): iterable
+    {
+        yield 'minCount' => [
+            static fn (): mixed => Rule::shape(['a' => Rule::int()])->minCount(1),
+            'minCount() says nothing about a shape: its value always holds the 1 declared keys, whatever comes in.',
+        ];
+        yield 'maxCount' => [
+            static fn (): mixed => Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->maxCount(1),
+            'maxCount() says nothing about a shape: its value always holds the 2 declared keys, whatever comes in.',
+        ];
+        yield 'betweenCount' => [
+            static fn (): mixed => Rule::shape(['a' => Rule::int()])->betweenCount(1, 2),
+            'betweenCount() says nothing about a shape: its value always holds the 1 declared keys, whatever comes in.',
+        ];
+        yield 'exactCount' => [
+            static fn (): mixed => Rule::shape(['a' => Rule::int()])->exactCount(1),
+            'exactCount() says nothing about a shape: its value always holds the 1 declared keys, whatever comes in.',
+        ];
+    }
+
+    /**
+     * @param Closure(): mixed $declare
+     */
+    #[DataProvider('refusedShapeCounts')]
+    public function testAShapeRefusesACountRule(Closure $declare, string $message): void
+    {
+        $this->assertSame($message, $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage());
+    }
+
+    public function testTheDefaultOfAListMustBeAList(): void
+    {
+        $this->assertSame(
+            'The default of list() must be a list, and this one has other keys.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::list(Rule::int())->default(['k' => 1]),
+            )->getMessage(),
+        );
+    }
+
+    public function testTheDefaultOfAShapeMayHoldTheKeysItDeclares(): void
+    {
+        $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->default(['a' => 1]);
+
+        $this->assertSame(['a' => 1], self::valueOf($rule, null));
+    }
+
+    public function testTheDefaultOfAShapeCannotHoldAnUndeclaredKey(): void
+    {
+        $this->assertSame(
+            'The default of shape() holds keys it does not declare: zzz.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::shape(['a' => Rule::int()])->default(['zzz' => 1]),
+            )->getMessage(),
+        );
     }
 
     // ---------------------------------------------------------------
@@ -466,7 +543,7 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(
             'An array sanitizer closure must return an array, got string.',
             $this->assertThrows(
-                \UnexpectedValueException::class,
+                UnexpectedValueException::class,
                 static fn (): mixed => new Validator(['v' => $rule])->validate(['v' => ['a']]),
             )->getMessage(),
         );

@@ -76,7 +76,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
      * @throws \RuntimeException         When a message pattern cannot be formatted, or PCRE aborts while a sanitizer is running
-     * @throws \UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
      */
     public function validate(array $data): ValidationResult
     {
@@ -126,7 +126,7 @@ final readonly class Validator
      *
      * ShapeRule validates its keys through this, so that the messages of the
      * failures are resolved once, by the validator of the outermost field,
-     * with the whole path in the label.
+     * which is the one that knows the language file.
      *
      * @internal Called by ShapeRule.
      *
@@ -180,10 +180,12 @@ final readonly class Validator
     }
 
     /**
-     * Label of a failure: the field's label, plus the path to the element that failed.
+     * Label of a failure: the name of the value that failed, not the way down to it.
      *
-     * The field's label is its label() if set and its name otherwise, and each
-     * further step is the element's label() if set and its key otherwise.
+     * For a field it is its label() if set and its name otherwise. For a value
+     * inside an array it is the innermost step alone — the element's label() if
+     * set and its key otherwise — so that a message reads about `price` rather
+     * than about `items.0.price`. The way down is in the key of the error.
      *
      * @param  string       $field   Field name
      * @param  Failure|null $failure Failed rule, when the label names the element it happened on
@@ -191,11 +193,10 @@ final readonly class Validator
      */
     private function label(string $field, ?Failure $failure = null): string
     {
-        $label = $this->rules[$field]->displayLabel() ?? $field;
         if ($failure === null || $failure->labelPath === []) {
-            return $label;
+            return $this->rules[$field]->displayLabel() ?? $field;
         }
 
-        return $label . '.' . implode('.', $failure->labelPath);
+        return $failure->labelPath[\count($failure->labelPath) - 1];
     }
 }

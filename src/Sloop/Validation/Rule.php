@@ -126,10 +126,10 @@ final class Rule
      *
      * Keys of the input without a rule are dropped.
      *
-     * @param  array<string, FieldRule<covariant mixed>>                                 $fields        Rules of each key
+     * @param  array<array-key, FieldRule<covariant mixed>>                              $fields        Rules of each key, named (a numeric key is refused)
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
      * @return ShapeRule
-     * @throws \InvalidArgumentException                                                 When no key is declared, or a comparison names a key that has no rule
+     * @throws \InvalidArgumentException                                                 When no key is declared, a key is not a name, or a comparison names a key that has no rule
      */
     public static function shape(array $fields, ArraySanitize|Closure ...$sanitizers): ShapeRule
     {
