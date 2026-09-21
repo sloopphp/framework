@@ -32,7 +32,7 @@ trait CountsElements
             throw new InvalidArgumentException('minCount() needs a count of 0 or more, got ' . $min . '.');
         }
 
-        return $this->withCheck('minCount', ['min' => $min], static fn (array $value): bool => \count($value) >= $min, $message);
+        return $this->withSizeCheck('minCount', ['min' => $min], static fn (array $value): bool => \count($value) >= $min, $message);
     }
 
     /**
@@ -49,7 +49,7 @@ trait CountsElements
             throw new InvalidArgumentException('maxCount() needs a count of 0 or more, got ' . $max . '.');
         }
 
-        return $this->withCheck('maxCount', ['max' => $max], static fn (array $value): bool => \count($value) <= $max, $message);
+        return $this->withSizeCheck('maxCount', ['max' => $max], static fn (array $value): bool => \count($value) <= $max, $message);
     }
 
     /**
@@ -70,7 +70,7 @@ trait CountsElements
             throw new InvalidArgumentException('betweenCount() needs min <= max, got ' . $min . ' and ' . $max . '.');
         }
 
-        return $this->withCheck(
+        return $this->withSizeCheck(
             'betweenCount',
             ['min' => $min, 'max' => $max],
             static fn (array $value): bool => \count($value) >= $min && \count($value) <= $max,
@@ -92,6 +92,6 @@ trait CountsElements
             throw new InvalidArgumentException('exactCount() needs a count of 0 or more, got ' . $count . '.');
         }
 
-        return $this->withCheck('exactCount', ['count' => $count], static fn (array $value): bool => \count($value) === $count, $message);
+        return $this->withSizeCheck('exactCount', ['count' => $count], static fn (array $value): bool => \count($value) === $count, $message);
     }
 }

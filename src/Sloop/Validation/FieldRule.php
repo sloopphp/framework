@@ -18,9 +18,10 @@ use UnexpectedValueException;
  *
  * Processing order for one value: sanitize (only when the raw value is a
  * valid UTF-8 string), then the emptiness check (a missing key, null, and ''
- * all count as empty), then the type check, then every declared rule. An empty
- * value runs no rule other than required() and yields the declared default;
- * a value of the wrong type stops before the declared rules.
+ * all count as empty), then the type check, then the rules on the size of the
+ * value, then what it holds, then every other declared rule. An empty value
+ * runs no rule other than required() and yields the declared default; a value
+ * of the wrong type or the wrong size stops before what it holds is read.
  *
  * Every subclass declares default() with a native type and passes the value
  * on to withDefault().
@@ -77,6 +78,13 @@ abstract class FieldRule
      * @var list<Check<T>>
      */
     private array $checks = [];
+
+    /**
+     * Declared rules on the size of the value, which run before what it holds is read.
+     *
+     * @var list<Check<T>>
+     */
+    private array $sizeChecks = [];
 
     /**
      * Declared same() / different() rules.
@@ -242,14 +250,41 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, [new Failure($this->typeRule(), $this->typeParams())]);
         }
 
+        // A value of the wrong size stops here, the way one of the wrong type
+        // does: a field declaring a maximum should not do the work of
+        // validating far more than that before saying so.
+        $failures = $this->run($this->sizeChecks, $typed);
+        if ($failures !== []) {
+            return new FieldOutcome(null, null, false, $failures);
+        }
+
         [$failures, $typed] = $this->validateChildren($typed);
-        foreach ($this->checks as $check) {
+
+        return new FieldOutcome(
+            $this->output($typed),
+            $this->comparable($typed),
+            true,
+            [...$failures, ...$this->run($this->checks, $typed)],
+        );
+    }
+
+    /**
+     * Run a set of rules over a value, keeping every failure.
+     *
+     * @param  list<Check<T>> $checks Rules to run
+     * @param  T              $typed  Value of the declared type
+     * @return list<Failure>
+     */
+    private function run(array $checks, mixed $typed): array
+    {
+        $failures = [];
+        foreach ($checks as $check) {
             if (!($check->passes)($typed)) {
                 $failures[] = new Failure($check->rule, $check->params, $check->message);
             }
         }
 
-        return new FieldOutcome($this->output($typed), $this->comparable($typed), true, $failures);
+        return $failures;
     }
 
     /**
@@ -391,6 +426,28 @@ abstract class FieldRule
 
         $copy           = clone $this;
         $copy->checks[] = new Check($rule, $params, $passes, $message);
+
+        return $copy;
+    }
+
+    /**
+     * Append a rule on the size of the value, which runs before what it holds is read.
+     *
+     * @param  string                                                 $rule    Rule name, also the language file key
+     * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name
+     * @param  Closure(T): bool                                       $passes  Returns true when the value satisfies the rule
+     * @param  string|null                                            $message Message for this rule only
+     * @return static
+     * @throws \InvalidArgumentException                              When the message template is malformed
+     */
+    protected function withSizeCheck(string $rule, array $params, Closure $passes, ?string $message): static
+    {
+        if ($message !== null) {
+            ValidationMessages::assertValidPattern($message);
+        }
+
+        $copy               = clone $this;
+        $copy->sizeChecks[] = new Check($rule, $params, $passes, $message);
 
         return $copy;
     }

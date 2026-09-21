@@ -140,6 +140,42 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(['exactCount'], self::failedRules($rule, [1]));
     }
 
+    public function testACountFailureStopsBeforeTheElementsAreValidated(): void
+    {
+        $rule   = Rule::list(Rule::int())->maxCount(1);
+        $errors = new Validator(['v' => $rule])->validate(['v' => ['x', 'y', 'z']])->errors();
+
+        $this->assertSame(['v'], array_keys($errors));
+        $this->assertSame(['maxCount'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['v']));
+    }
+
+    public function testAPassingCountStillValidatesTheElements(): void
+    {
+        $errors = new Validator(['v' => Rule::list(Rule::int())->maxCount(5)])->validate(['v' => ['x', 'y', 'z']])->errors();
+
+        $this->assertSame(['v.0', 'v.1', 'v.2'], array_keys($errors));
+    }
+
+    public function testACountFailureStopsAComparisonFromRunning(): void
+    {
+        $validator = new Validator([
+            'a' => Rule::array()->maxCount(1)->same('b'),
+            'b' => Rule::array(),
+        ]);
+
+        $errors = $validator->validate(['a' => [1, 2], 'b' => ['different']])->errors();
+
+        $this->assertSame(['maxCount'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['a']));
+    }
+
+    public function testACountRuleLeavesTheRuleItWasCalledOnUnchanged(): void
+    {
+        $base = Rule::array();
+
+        $this->assertSame(['maxCount'], self::failedRules($base->maxCount(1), [1, 2, 3]));
+        $this->assertSame([], self::failedRules($base, [1, 2, 3]));
+    }
+
     public function testCountRulesCountTheKeysOfAMapToo(): void
     {
         $this->assertSame([], self::failedRules(Rule::array()->exactCount(2), ['a' => 1, 'b' => 2]));
