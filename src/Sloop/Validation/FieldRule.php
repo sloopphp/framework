@@ -212,7 +212,8 @@ abstract class FieldRule
     /**
      * Validate one raw value.
      *
-     * @internal Called by Validator, and by ListRule for each of its elements.
+     * @internal Called by Validator, by ListRule for each of its elements, and by ShapeRule
+     *           when its default says nothing for a key.
      *
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @return FieldOutcome

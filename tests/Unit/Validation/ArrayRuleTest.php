@@ -489,18 +489,46 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(['a' => 1, 'b' => 0], self::valueOf($rule, null));
     }
 
-    public function testTheDefaultOfAShapeMustHoldTheKeysThatAreRequired(): void
+    /**
+     * The three ways a default can say nothing about a key.
+     *
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function defaultsSayingNothing(): iterable
+    {
+        yield 'key left out' => [[]];
+        yield 'key set to null' => [['a' => null]];
+        yield 'key set to the empty string' => [['a' => '']];
+    }
+
+    /**
+     * @param array<string, mixed> $default
+     */
+    #[DataProvider('defaultsSayingNothing')]
+    public function testADefaultSayingNothingForARequiredKeyIsRefused(array $default): void
     {
         $this->assertSame(
-            'The default of shape() leaves out "b", which is required.',
+            'The default of shape() has no value for "a", which is required.',
             $this->assertThrows(
                 InvalidArgumentException::class,
-                static fn (): mixed => Rule::shape([
-                    'a' => Rule::string(),
-                    'b' => Rule::string()->required(),
-                ])->default(['a' => 'x']),
+                static fn (): mixed => Rule::shape(['a' => Rule::string()->required()])->default($default),
             )->getMessage(),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $default
+     */
+    #[DataProvider('defaultsSayingNothing')]
+    public function testADefaultSayingNothingForAKeyGivesWhatValidatingWouldHaveGiven(array $default): void
+    {
+        $fields = ['a' => Rule::string()->default('d'), 'b' => Rule::string()];
+
+        $viaDefault = self::valueOf(Rule::shape($fields)->default($default), null);
+        $viaInput   = self::valueOf(Rule::shape($fields), $default);
+
+        $this->assertSame($viaInput, $viaDefault);
+        $this->assertSame(['a' => 'd', 'b' => null], $viaDefault);
     }
 
     public function testTheDefaultOfAShapeMayHoldTheKeysThatAreRequired(): void
@@ -513,14 +541,11 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(['a' => 'x', 'b' => 'y'], self::valueOf($rule, null));
     }
 
-    public function testTheDefaultOfAShapeGivesTheSameShapeAsValidatingDoes(): void
+    public function testADefaultKeepsTheValuesThatOnlyLookEmpty(): void
     {
-        $fields = ['a' => Rule::int(), 'b' => Rule::int()->default(0)];
+        $rule = Rule::shape(['a' => Rule::bool(), 'b' => Rule::int()])->default(['a' => false, 'b' => 0]);
 
-        $viaDefault = self::valueOf(Rule::shape($fields)->default(['a' => 1]), null);
-        $viaInput   = self::valueOf(Rule::shape($fields), ['a' => 1]);
-
-        $this->assertSame($viaInput, $viaDefault);
+        $this->assertSame(['a' => false, 'b' => 0], self::valueOf($rule, null));
     }
 
     public function testTheDefaultOfAShapeCannotHoldAnUndeclaredKey(): void

@@ -64,9 +64,17 @@ final class ShapeRule extends ArrayRule
      * a default carrying anything else would break it without any rule having
      * failed.
      *
+     * A key the default says nothing for — missing, null or '' — takes what an
+     * input without it would have taken, so that both ways of reaching a value
+     * give the same shape. A `false`, a `0` and a `'0'` say something and are
+     * kept. Emptiness is read the way validation reads it, which is before any
+     * sanitizer has run: the default does not go through them, so a value that
+     * only a sanitizer would empty (`'  '` under Sanitize::Trim) counts as a
+     * value here.
+     *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value holds a key this shape does not declare, or leaves out a required one
+     * @throws InvalidArgumentException When $value holds a key this shape does not declare, or says nothing for a required one
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
@@ -80,19 +88,22 @@ final class ShapeRule extends ArrayRule
 
         $filled = [];
         foreach ($this->fields as $key => $rule) {
-            if (\array_key_exists($key, $value)) {
+            // The three ways of saying nothing are the same here as everywhere
+            // else in validation, so one test has to cover a missing key and a
+            // null alike: array_key_exists() would let the null through.
+            if (isset($value[$key]) && $value[$key] !== '') {
                 $filled[$key] = $value[$key];
                 continue;
             }
 
-            // A key the default leaves out takes what it would have taken had
-            // the field come in without it, so that the two ways of reaching a
-            // value give the same shape. A required key has no such value:
+            // A key the default says nothing for takes what it would have taken
+            // had the field come in without it, so that the two ways of reaching
+            // a value give the same shape. A required key has no such value:
             // every input without it fails, so there is nothing to fill with.
             $outcome = $rule->evaluate(null);
             if ($outcome->failures !== []) {
                 throw new InvalidArgumentException(
-                    'The default of shape() leaves out "' . $key . '", which is required.',
+                    'The default of shape() has no value for "' . $key . '", which is required.',
                 );
             }
             $filled[$key] = $outcome->value;
