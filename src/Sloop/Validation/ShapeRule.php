@@ -66,7 +66,7 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value holds a key this shape does not declare
+     * @throws InvalidArgumentException When $value holds a key this shape does not declare, or leaves out a required one
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
@@ -80,10 +80,22 @@ final class ShapeRule extends ArrayRule
 
         $filled = [];
         foreach ($this->fields as $key => $rule) {
+            if (\array_key_exists($key, $value)) {
+                $filled[$key] = $value[$key];
+                continue;
+            }
+
             // A key the default leaves out takes what it would have taken had
             // the field come in without it, so that the two ways of reaching a
-            // value give the same shape.
-            $filled[$key] = \array_key_exists($key, $value) ? $value[$key] : $rule->evaluate(null)->value;
+            // value give the same shape. A required key has no such value:
+            // every input without it fails, so there is nothing to fill with.
+            $outcome = $rule->evaluate(null);
+            if ($outcome->failures !== []) {
+                throw new InvalidArgumentException(
+                    'The default of shape() leaves out "' . $key . '", which is required.',
+                );
+            }
+            $filled[$key] = $outcome->value;
         }
 
         return parent::default($filled);

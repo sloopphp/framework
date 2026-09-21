@@ -12,9 +12,9 @@ use InvalidArgumentException;
  *
  * Every element is validated with the same rule, and every element that fails
  * is reported: the errors are keyed by the path down to the element, so the
- * second element of `items` is `items.1`. The validated value is a list of
- * the elements' validated values, renumbered from zero, so the keys of the
- * input do not reach the caller.
+ * second element of `items` is `items.1`. Any array is accepted, not only a
+ * list; the validated value is renumbered from zero, so the keys of the input
+ * do not reach it, but they do key the errors.
  */
 final class ListRule extends ArrayRule
 {

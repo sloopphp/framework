@@ -13,6 +13,8 @@ use InvalidArgumentException;
  * through and minCount(1) is what rejects it. Only the array types whose size
  * follows the input use these: a shape always holds exactly the keys it
  * declares, so counting it would say nothing about what came in.
+ *
+ * @phpstan-require-extends ArrayRule
  */
 trait CountsElements
 {

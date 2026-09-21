@@ -489,6 +489,30 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(['a' => 1, 'b' => 0], self::valueOf($rule, null));
     }
 
+    public function testTheDefaultOfAShapeMustHoldTheKeysThatAreRequired(): void
+    {
+        $this->assertSame(
+            'The default of shape() leaves out "b", which is required.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::shape([
+                    'a' => Rule::string(),
+                    'b' => Rule::string()->required(),
+                ])->default(['a' => 'x']),
+            )->getMessage(),
+        );
+    }
+
+    public function testTheDefaultOfAShapeMayHoldTheKeysThatAreRequired(): void
+    {
+        $rule = Rule::shape([
+            'a' => Rule::string(),
+            'b' => Rule::string()->required(),
+        ])->default(['a' => 'x', 'b' => 'y']);
+
+        $this->assertSame(['a' => 'x', 'b' => 'y'], self::valueOf($rule, null));
+    }
+
     public function testTheDefaultOfAShapeGivesTheSameShapeAsValidatingDoes(): void
     {
         $fields = ['a' => Rule::int(), 'b' => Rule::int()->default(0)];
