@@ -490,8 +490,6 @@ final class ArrayRuleTest extends TestCase
     }
 
     /**
-     * The three ways a default can say nothing about a key.
-     *
      * @return iterable<string, array{array<string, mixed>}>
      */
     public static function defaultsSayingNothing(): iterable

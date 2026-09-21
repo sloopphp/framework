@@ -57,7 +57,7 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
-     * Use this value when the field is empty (missing or null).
+     * Use this value when the field is empty (missing, null, or '').
      *
      * The default is handed to the caller as it is, so it may only hold keys
      * this shape declares: the type of the field is what the caller reads, and

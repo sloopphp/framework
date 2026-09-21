@@ -32,7 +32,7 @@ abstract class ArrayRule extends FieldRule
     }
 
     /**
-     * Use this value when the field is empty (missing or null).
+     * Use this value when the field is empty (missing, null, or '').
      *
      * @param  array<array-key, mixed> $value Value to use for an empty field
      * @return static
