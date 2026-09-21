@@ -15,11 +15,9 @@ use InvalidArgumentException;
  *     ]);
  *     $result = $validator->validate($input);
  *
- * One validator can validate any number of inputs. Every rule of every field
- * runs, so a field reports all its failures at once; an empty value runs only
- * required(), and a failure of the type or of the size of a value stops what
- * comes after it. same() / different() run after all fields, so the order of
- * the fields does not matter.
+ * One validator can validate any number of inputs. What runs for one field,
+ * and in what order, is described on FieldRule. same() / different() run after
+ * all fields, so the order of the fields does not matter.
  */
 final readonly class Validator
 {
