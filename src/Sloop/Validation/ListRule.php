@@ -16,8 +16,8 @@ use InvalidArgumentException;
  * list, and the keys of the input reach nothing the caller reads — the
  * validated value and the errors both count positions from zero.
  *
- * A rule on the number of elements runs before any of them is read, so a
- * failure there is the only error the field reports.
+ * A rule on the number of elements runs before any of them is read, so no
+ * element is reported alongside a failure there.
  */
 final class ListRule extends ArrayRule
 {

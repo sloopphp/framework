@@ -250,9 +250,7 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, [new Failure($this->typeRule(), $this->typeParams())]);
         }
 
-        // A value of the wrong size stops here, the way one of the wrong type
-        // does: a field declaring a maximum should not do the work of
-        // validating far more than that before saying so.
+        // A value of the wrong size stops here, the way one of the wrong type does.
         $failures = $this->run($this->sizeChecks, $typed);
         if ($failures !== []) {
             return new FieldOutcome(null, null, false, $failures);
@@ -433,10 +431,10 @@ abstract class FieldRule
     /**
      * Append a rule on the size of the value, which runs before what it holds is read.
      *
-     * A failure here ends the field: the value is not handed to the caller,
-     * same() / different() do not run, and no other declared rule of the field
-     * runs. Use it only where reading what the value holds is pointless once
-     * the rule has failed; anything else belongs in withCheck().
+     * A failure here ends the field: the value is not handed to the caller and
+     * same() / different() do not run. Use it only where reading what the value
+     * holds is pointless once the rule has failed; anything else belongs in
+     * withCheck().
      *
      * @param  string                                                 $rule    Rule name, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name

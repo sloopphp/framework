@@ -17,9 +17,9 @@ use InvalidArgumentException;
  *
  * One validator can validate any number of inputs. Every rule of every field
  * runs, so a field reports all its failures at once; an empty value runs only
- * required(), and a failure of the type or of the size of a value stops the
- * remaining rules of that field. same() / different() run after all fields, so
- * the order of the fields does not matter.
+ * required(), and a failure of the type or of the size of a value stops what
+ * comes after it. same() / different() run after all fields, so the order of
+ * the fields does not matter.
  */
 final readonly class Validator
 {

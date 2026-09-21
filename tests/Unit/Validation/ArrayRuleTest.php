@@ -156,6 +156,13 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame(['v.0', 'v.1', 'v.2'], array_keys($errors));
     }
 
+    public function testEveryCountRuleRunsEvenAfterOneOfThemFails(): void
+    {
+        $rule = Rule::array()->exactCount(2)->minCount(4)->maxCount(0);
+
+        $this->assertSame(['exactCount', 'minCount', 'maxCount'], self::failedRules($rule, [1]));
+    }
+
     public function testACountFailureStopsAComparisonFromRunning(): void
     {
         $validator = new Validator([
