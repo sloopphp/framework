@@ -315,7 +315,7 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame([], $result->values());
     }
 
-    public function testACountRuleOfAListSeesTheElementsThatWereValidated(): void
+    public function testACountRuleSeesTheArrayTheSanitizersProduced(): void
     {
         $rule = Rule::list(Rule::int(), ArraySanitize::RemoveEmpty)->minCount(2);
 

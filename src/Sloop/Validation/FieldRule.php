@@ -326,9 +326,9 @@ abstract class FieldRule
     /**
      * Validate what the value holds, for a type that holds other values.
      *
-     * Runs after the type check and before the rules declared on this field,
-     * so a rule such as a count sees the value the elements produced. A type
-     * that holds nothing answers with no failures and the value unchanged.
+     * Runs after the type check and after the rules on the size of the value,
+     * and before every other rule declared on this field. A type that holds
+     * nothing answers with no failures and the value unchanged.
      *
      * @param  T                       $typed Value of the declared type
      * @return array{list<Failure>, T} Failures of the elements, and the value to carry on with
@@ -432,6 +432,11 @@ abstract class FieldRule
 
     /**
      * Append a rule on the size of the value, which runs before what it holds is read.
+     *
+     * A failure here ends the field: the value is not handed to the caller,
+     * same() / different() do not run, and no other declared rule of the field
+     * runs. Use it only where reading what the value holds is pointless once
+     * the rule has failed; anything else belongs in withCheck().
      *
      * @param  string                                                 $rule    Rule name, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name

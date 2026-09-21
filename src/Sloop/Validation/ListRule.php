@@ -15,6 +15,9 @@ use InvalidArgumentException;
  * second element of `items` is `items.1`. Any array is accepted, not only a
  * list, and the keys of the input reach nothing the caller reads — the
  * validated value and the errors both count positions from zero.
+ *
+ * A rule on the number of elements runs before any of them is read, so a
+ * failure there is the only error the field reports.
  */
 final class ListRule extends ArrayRule
 {
@@ -63,6 +66,8 @@ final class ListRule extends ArrayRule
 
     /**
      * Validate every element, keeping the failures of all of them.
+     *
+     * Not reached when a rule on the number of elements has failed.
      *
      * @param  array<array-key, mixed>                       $typed Value of the declared type
      * @return array{list<Failure>, array<array-key, mixed>}
