@@ -17,7 +17,7 @@ final readonly class ValidationResult
      * Create a result.
      *
      * @param array<string, mixed>                           $values Validated values of the fields that passed, keyed by field name
-     * @param array<string, non-empty-list<ValidationError>> $errors Errors keyed by field name; fields that passed are absent
+     * @param array<string, non-empty-list<ValidationError>> $errors Errors keyed by field name, or by the path to the element that failed; what passed is absent
      */
     public function __construct(
         private array $values,
@@ -37,6 +37,12 @@ final readonly class ValidationResult
 
     /**
      * Errors keyed by field name, in the order the rules ran.
+     *
+     * A failure inside an array is keyed by the path down to the value that
+     * failed, with the steps joined by dots: the second element of `items` is
+     * `items.1`, and its `price` key is `items.1.price`. A field name or a key
+     * holding a dot of its own is therefore ambiguous here: a field `a.b` and
+     * the key `b` of a field `a` are both reported as `a.b`.
      *
      * @return array<string, non-empty-list<ValidationError>>
      */

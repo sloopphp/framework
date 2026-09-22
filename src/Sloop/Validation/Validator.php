@@ -15,11 +15,10 @@ use InvalidArgumentException;
  *     ]);
  *     $result = $validator->validate($input);
  *
- * One validator can validate any number of inputs. Every rule of every field
- * runs, so a field reports all its failures at once; an empty value runs only
- * required(), and a type failure stops the remaining rules of that field.
- * same() / different() run after all fields, so the order of the fields does
- * not matter.
+ * One validator can validate any number of inputs. A failure in one field does
+ * not stop the others; what runs for one field, and in what order, is described
+ * on FieldRule. same() / different() run after all fields, so the order of the
+ * fields does not matter.
  */
 final readonly class Validator
 {
@@ -76,31 +75,11 @@ final readonly class Validator
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
      * @throws \RuntimeException         When a message pattern cannot be formatted, or PCRE aborts while a sanitizer is running
-     * @throws \UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
      */
     public function validate(array $data): ValidationResult
     {
-        $outcomes = [];
-        $failures = [];
-        foreach ($this->rules as $field => $rule) {
-            $outcomes[$field] = $rule->evaluate($data[$field] ?? null);
-            $failures[$field] = $outcomes[$field]->failures;
-        }
-
-        foreach ($this->rules as $field => $rule) {
-            if (!$outcomes[$field]->comparing) {
-                continue;
-            }
-            foreach ($rule->comparisons() as $comparison) {
-                $other = $comparison->other;
-                if ($outcomes[$other]->failures !== []) {
-                    continue;
-                }
-                if (!$comparison->passes($outcomes[$field]->comparable, $outcomes[$other]->comparable)) {
-                    $failures[$field][] = new Failure($comparison->rule, ['other' => $other], $comparison->message);
-                }
-            }
-        }
+        [$outcomes, $failures] = $this->evaluateFields($data);
 
         $values = [];
         $errors = [];
@@ -109,7 +88,9 @@ final readonly class Validator
                 $values[$field] = $outcomes[$field]->value;
                 continue;
             }
-            $errors[$field] = array_map(fn (Failure $failure): ValidationError => $this->error($field, $failure), $fieldFailures);
+            foreach ($fieldFailures as $failure) {
+                $errors[$this->key($field, $failure)][] = $this->error($field, $failure);
+            }
         }
 
         return new ValidationResult($values, $errors);
@@ -131,22 +112,90 @@ final readonly class Validator
     {
         $rule    = $this->rules[$field];
         $pattern = $failure->message ?? $rule->fieldMessage() ?? ValidationMessages::get($failure->rule);
-        $args    = [...$failure->params, 'label' => $this->label($field)];
-        if (isset($failure->params['other']) && \is_string($failure->params['other'])) {
-            $args['other'] = $this->label($failure->params['other']);
+        $args    = [...$failure->params, 'label' => $this->label($field, $failure)];
+        if ($failure->otherLabel !== null) {
+            $args['other'] = $failure->otherLabel;
         }
 
         return new ValidationError($failure->rule, $failure->params, ValidationMessages::format($pattern, $args));
     }
 
     /**
-     * Label of a field: its label() if set, its name otherwise.
+     * Run every field rule and every comparison, before any message is resolved.
      *
-     * @param  string $field Field name
+     * ShapeRule validates its keys through this, so that the messages of the
+     * failures are resolved once, by the validator of the outermost field,
+     * which is the one that knows the language file.
+     *
+     * @internal Called by ShapeRule.
+     *
+     * @param  array<array-key, mixed>                                          $data Input
+     * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
+     * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
+     * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running
+     */
+    public function evaluateFields(array $data): array
+    {
+        $outcomes = [];
+        $failures = [];
+        foreach ($this->rules as $field => $rule) {
+            $outcomes[$field] = $rule->evaluate($data[$field] ?? null);
+            $failures[$field] = $outcomes[$field]->failures;
+        }
+
+        foreach ($this->rules as $field => $rule) {
+            if (!$outcomes[$field]->comparing) {
+                continue;
+            }
+            foreach ($rule->comparisons() as $comparison) {
+                $other = $comparison->other;
+                if ($outcomes[$other]->failures !== []) {
+                    continue;
+                }
+                if (!$comparison->passes($outcomes[$field]->comparable, $outcomes[$other]->comparable)) {
+                    $failures[$field][] = new Failure(
+                        $comparison->rule,
+                        ['other' => $other],
+                        $comparison->message,
+                        otherLabel: $this->label($other),
+                    );
+                }
+            }
+        }
+
+        return [$outcomes, $failures];
+    }
+
+    /**
+     * Key the error is reported under: the field name, plus the path to the element that failed.
+     *
+     * @param  string  $field   Field name
+     * @param  Failure $failure Failed rule
      * @return string
      */
-    private function label(string $field): string
+    private function key(string $field, Failure $failure): string
     {
-        return $this->rules[$field]->displayLabel() ?? $field;
+        return $failure->path === [] ? $field : $field . '.' . implode('.', $failure->path);
+    }
+
+    /**
+     * Label of a failure: the name of the value that failed, not the way down to it.
+     *
+     * For a field it is its label() if set and its name otherwise. For a value
+     * inside an array it is the innermost step alone — the element's label() if
+     * set and its key otherwise — so that a message reads about `price` rather
+     * than about `items.0.price`. The way down is in the key of the error.
+     *
+     * @param  string       $field   Field name
+     * @param  Failure|null $failure Failed rule, when the label names the element it happened on
+     * @return string
+     */
+    private function label(string $field, ?Failure $failure = null): string
+    {
+        if ($failure === null || $failure->labelPath === []) {
+            return $this->rules[$field]->displayLabel() ?? $field;
+        }
+
+        return $failure->labelPath[\count($failure->labelPath) - 1];
     }
 }

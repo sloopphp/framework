@@ -85,6 +85,17 @@ final class ValidatorTest extends TestCase
         $this->assertSame(['age'], array_keys($result->errors()));
     }
 
+    public function testAFailureInOneFieldDoesNotStopTheOthers(): void
+    {
+        $result = new Validator([
+            'a' => Rule::int(),
+            'b' => Rule::list(Rule::int())->maxCount(1),
+            'c' => Rule::string()->required(),
+        ])->validate(['a' => 'x', 'b' => [1, 2]]);
+
+        $this->assertSame(['a', 'b', 'c'], array_keys($result->errors()));
+    }
+
     public function testErrorCarriesRuleParamsAndMessage(): void
     {
         $result = new Validator(['name' => Rule::string()->minLength(3)])->validate(['name' => 'ab']);

@@ -18,9 +18,10 @@ use UnexpectedValueException;
  *
  * Processing order for one value: sanitize (only when the raw value is a
  * valid UTF-8 string), then the emptiness check (a missing key, null, and ''
- * all count as empty), then the type check, then every declared rule. An empty
- * value runs no rule other than required() and yields the declared default;
- * a value of the wrong type stops before the declared rules.
+ * all count as empty), then the type check, then the rules on the size of the
+ * value, then what it holds, then every other declared rule. An empty value
+ * runs no rule other than required() and yields the declared default; a value
+ * of the wrong type or the wrong size stops before what it holds is read.
  *
  * Every subclass declares default() with a native type and passes the value
  * on to withDefault().
@@ -77,6 +78,13 @@ abstract class FieldRule
      * @var list<Check<T>>
      */
     private array $checks = [];
+
+    /**
+     * Declared rules on the size of the value, which run before what it holds is read.
+     *
+     * @var list<Check<T>>
+     */
+    private array $sizeChecks = [];
 
     /**
      * Declared same() / different() rules.
@@ -212,11 +220,12 @@ abstract class FieldRule
     /**
      * Validate one raw value.
      *
-     * @internal Called by Validator.
+     * @internal Called by Validator, by ListRule for each of its elements, and by ShapeRule
+     *           when its default says nothing for a key.
      *
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @return FieldOutcome
-     * @throws UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
      * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
      */
     public function evaluate(mixed $raw): FieldOutcome
@@ -241,20 +250,45 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, [new Failure($this->typeRule(), $this->typeParams())]);
         }
 
+        // A value of the wrong size stops here, the way one of the wrong type does.
+        $failures = $this->run($this->sizeChecks, $typed);
+        if ($failures !== []) {
+            return new FieldOutcome(null, null, false, $failures);
+        }
+
+        [$failures, $typed] = $this->validateChildren($typed);
+
+        return new FieldOutcome(
+            $this->output($typed),
+            $this->comparable($typed),
+            true,
+            [...$failures, ...$this->run($this->checks, $typed)],
+        );
+    }
+
+    /**
+     * Run a set of rules over a value, keeping every failure.
+     *
+     * @param  list<Check<T>> $checks Rules to run
+     * @param  T              $typed  Value of the declared type
+     * @return list<Failure>
+     */
+    private function run(array $checks, mixed $typed): array
+    {
         $failures = [];
-        foreach ($this->checks as $check) {
+        foreach ($checks as $check) {
             if (!($check->passes)($typed)) {
                 $failures[] = new Failure($check->rule, $check->params, $check->message);
             }
         }
 
-        return new FieldOutcome($this->output($typed), $this->comparable($typed), true, $failures);
+        return $failures;
     }
 
     /**
      * The label set with label(), if any.
      *
-     * @internal Read by Validator when building messages.
+     * @internal Read by Validator and ShapeRule when building messages.
      *
      * @return string|null
      */
@@ -266,7 +300,7 @@ abstract class FieldRule
     /**
      * The message set with message(), if any.
      *
-     * @internal Read by Validator when building messages.
+     * @internal Read by Validator and by the array rules when building messages.
      *
      * @return string|null
      */
@@ -278,13 +312,28 @@ abstract class FieldRule
     /**
      * The declared same() / different() rules.
      *
-     * @internal Read by Validator, which evaluates them once every field has its value.
+     * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
      *
      * @return list<Comparison>
      */
     public function comparisons(): array
     {
         return $this->comparisons;
+    }
+
+    /**
+     * Validate what the value holds, for a type that holds other values.
+     *
+     * Runs after the type check and after the rules on the size of the value,
+     * and before every other rule declared on this field. A type that holds
+     * nothing answers with no failures and the value unchanged.
+     *
+     * @param  T                       $typed Value of the declared type
+     * @return array{list<Failure>, T} Failures of the elements, and the value to carry on with
+     */
+    protected function validateChildren(mixed $typed): array
+    {
+        return [[], $typed];
     }
 
     /**
@@ -375,6 +424,33 @@ abstract class FieldRule
 
         $copy           = clone $this;
         $copy->checks[] = new Check($rule, $params, $passes, $message);
+
+        return $copy;
+    }
+
+    /**
+     * Append a rule on the size of the value, which runs before what it holds is read.
+     *
+     * A failure here ends the field: the value is not handed to the caller and
+     * same() / different() do not run. Use it only where reading what the value
+     * holds is pointless once the rule has failed; anything else belongs in
+     * withCheck().
+     *
+     * @param  string                                                 $rule    Rule name, also the language file key
+     * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name
+     * @param  Closure(T): bool                                       $passes  Returns true when the value satisfies the rule
+     * @param  string|null                                            $message Message for this rule only
+     * @return static
+     * @throws \InvalidArgumentException                              When the message template is malformed
+     */
+    protected function withSizeCheck(string $rule, array $params, Closure $passes, ?string $message): static
+    {
+        if ($message !== null) {
+            ValidationMessages::assertValidPattern($message);
+        }
+
+        $copy               = clone $this;
+        $copy->sizeChecks[] = new Check($rule, $params, $passes, $message);
 
         return $copy;
     }

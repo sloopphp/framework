@@ -93,6 +93,53 @@ final class Rule
     }
 
     /**
+     * A field that must be an array, whatever it holds.
+     *
+     * The elements reach the caller untouched. Use list() to give them all one
+     * type, or shape() to give each key its own.
+     *
+     * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
+     * @return AnyArrayRule
+     */
+    public static function array(ArraySanitize|Closure ...$sanitizers): AnyArrayRule
+    {
+        return new AnyArrayRule(array_values($sanitizers));
+    }
+
+    /**
+     * A field that must be an array whose elements all satisfy one rule.
+     *
+     * Any array is accepted, not only a list. The keys of the input reach
+     * neither the validated value nor the errors: both count positions from
+     * zero, so the second element is `items.1` whatever key it came under. A
+     * default, in contrast, reaches the caller as it is and has to be a list.
+     *
+     * @param  FieldRule<covariant mixed>                                                $element       Rules every element must satisfy
+     * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
+     * @return ListRule
+     * @throws \InvalidArgumentException                                                 When the element declares same() or different()
+     */
+    public static function list(FieldRule $element, ArraySanitize|Closure ...$sanitizers): ListRule
+    {
+        return new ListRule($element, array_values($sanitizers));
+    }
+
+    /**
+     * A field that must be an array whose declared keys each have their own rules.
+     *
+     * Keys of the input without a rule are dropped.
+     *
+     * @param  array<array-key, FieldRule<covariant mixed>>                              $fields        Rules of each key, named (a numeric key is refused)
+     * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
+     * @return ShapeRule
+     * @throws \InvalidArgumentException                                                 When no key is declared, a key is not a name, or a comparison names a key that has no rule
+     */
+    public static function shape(array $fields, ArraySanitize|Closure ...$sanitizers): ShapeRule
+    {
+        return new ShapeRule($fields, array_values($sanitizers));
+    }
+
+    /**
      * A field whose validated value is a case of a backed enum.
      *
      * @template E of BackedEnum

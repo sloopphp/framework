@@ -18,7 +18,7 @@ final readonly class FieldOutcome
      * @param mixed         $comparable Value same() / different() compare; differs from $value only where
      *                                  the output is an object that `===` would compare by identity
      * @param bool          $comparing  Whether same() / different() should run on this field: false when the
-     *                                  field was empty or did not have the declared type
+     *                                  field was empty, did not have the declared type, or failed a rule on its size
      * @param list<Failure> $failures   Rules that failed, in the order they were declared
      */
     public function __construct(
