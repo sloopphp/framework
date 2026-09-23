@@ -50,9 +50,8 @@ final class ListRule extends ArrayRule
      * caller reads, and a default that is not one would break it without any
      * rule having failed.
      *
-     * Every element is read by the element rule the way that rule reads its own
-     * default, so a date is reduced to one the element could itself have
-     * produced rather than being kept as it was written.
+     * A date a default element names is reduced to one the element could itself
+     * have produced rather than being kept as it was written.
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static

@@ -663,6 +663,12 @@ final class ArrayRuleTest extends TestCase
             static fn (DateTime $d): FieldRule => Rule::list(Rule::shape(['t' => Rule::dateTime()]))->default([['t' => $d]]),
             static fn (array $v): mixed => \is_array($v[0]) ? $v[0]['t'] : null,
         ];
+        // A list at the top of a default is prepared by default() itself; only a
+        // list a container holds is reached through prepareDefault().
+        yield 'a shape holding a list' => [
+            static fn (DateTime $d): FieldRule => Rule::shape(['t' => Rule::list(Rule::dateTime())])->default(['t' => [$d]]),
+            static fn (array $v): mixed => \is_array($v['t']) ? $v['t'][0] : null,
+        ];
     }
 
     /**

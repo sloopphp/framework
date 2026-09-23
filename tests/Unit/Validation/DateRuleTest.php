@@ -39,7 +39,7 @@ final class DateRuleTest extends TestCase
         }
     }
 
-    public function testValueIsMidnightInThePhpDefaultTimeZone(): void
+    public function testValueIsTheStartOfTheDateInThePhpDefaultTimeZone(): void
     {
         // The suite runs in UTC, so a zone with an offset is needed to show
         // that the date is read where the application runs rather than in UTC.
@@ -47,6 +47,17 @@ final class DateRuleTest extends TestCase
 
         $this->assertInstanceOf(DateTimeImmutable::class, $value);
         $this->assertSame('2026-01-02T00:00:00+09:00', $value->format('Y-m-d\TH:i:sP'));
+    }
+
+    public function testValueIsTheStartOfTheDateWhereTheClockSkipsMidnight(): void
+    {
+        // Chile moved to summer time at 00:00 on 14 August 2016, so that day
+        // has no 00:00 and starts at 01:00. A failure here is a change in the
+        // system tzdata as readily as one in this field.
+        $value = self::inTimeZone('America/Santiago', static fn (): mixed => self::valueOf(Rule::date(), '2016-08-14'));
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $value);
+        $this->assertSame('2016-08-14T01:00:00-03:00', $value->format('Y-m-d\TH:i:sP'));
     }
 
     public function testComparisonUsesTheSameZoneAsTheValue(): void
