@@ -79,7 +79,7 @@ abstract class TemporalRule extends FieldRule
     }
 
     /**
-     * Reduce a declared default the way default() does.
+     * Bring a declared default into the frame the caller reads it in.
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed

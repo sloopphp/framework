@@ -312,17 +312,13 @@ abstract class FieldRule
     /**
      * Prepare a value a container declares as the default of this field.
      *
-     * A container reaches the default of what it holds through here, so that a
-     * date written into a container's default is reduced the way one written
-     * into this field's own default is. This is the preparation default() does
-     * before it stores a value, and nothing else: emptiness, required() and
-     * the declared checks are not part of it. A value that does not have the
-     * declared type is returned as it is.
+     * A container hands its default to the caller without running the rules of
+     * what it holds, so what this returns is what the caller reads. Emptiness,
+     * required() and the declared checks have no part in it, and a value that
+     * does not have the declared type is returned as it is.
      *
-     * Only a type whose validated value is already the one the caller reads
-     * prepares anything here. A type that keeps a form of its own and converts
-     * it on the way out cannot: a container hands its default out without
-     * converting what it holds, so the form kept here would reach the caller.
+     * A type that keeps a form of its own and converts it on the way out has
+     * nothing to do here: the form it keeps is what would reach the caller.
      *
      * @param  mixed $value Value the container's default holds for this field
      * @return mixed

@@ -92,7 +92,7 @@ final class DateTimeRule extends TemporalRule
      *
      * The value is parsed in whatever zone the input's offset named, since
      * that is how the offset is read at all. Keeping that zone would hand the
-     * caller a wall clock that differs by up to a day between two inputs
+     * caller a wall clock that differs by up to two days between two inputs
      * naming instants moments apart, and `format('Y-m-d H:i:s')` — the short
      * way to write one to a database — would record it.
      *
