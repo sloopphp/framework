@@ -15,9 +15,12 @@ use InvalidArgumentException;
  *
  * The input must match the declared format exactly; a value PHP would repair
  * (`2026-1-2`, `2026-02-30`) or read past (`2026-01-02 x`) is a type failure.
- * The validated value is midnight of that date in the PHP default time zone,
+ * The validated value is the start of that date in the PHP default time zone,
  * because `Y-m-d` carries no offset of its own and the caller's own reading of
- * a bare date is the day as it falls where the application runs.
+ * a bare date is the day as it falls where the application runs. That is
+ * midnight, except in a zone whose clock skips it: America/Santiago goes from
+ * 23:59:59 straight to 01:00 on the day its summer time starts, so a date of
+ * that day is 01:00 there.
  *
  * Comparisons reduce their limit to the date it falls on where the
  * application runs. The format itself may not carry a time: dateTime() is the
