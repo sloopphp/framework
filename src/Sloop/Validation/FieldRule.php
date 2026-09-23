@@ -313,10 +313,11 @@ abstract class FieldRule
      * Prepare a value a container declares as the default of this field.
      *
      * A container reaches the default of what it holds through here, so that a
-     * value written into the container's default is read the way one written
-     * into this field's own default is. A value that does not have the
-     * declared type is returned as it is, which is what a container does with
-     * it when no rule prepares anything.
+     * date written into a container's default is reduced the way one written
+     * into this field's own default is. This is the preparation default() does
+     * before it stores a value, and nothing else: emptiness, required() and
+     * the declared checks are not part of it. A value that does not have the
+     * declared type is returned as it is.
      *
      * Only a type whose validated value is already the one the caller reads
      * prepares anything here. A type that keeps a form of its own and converts

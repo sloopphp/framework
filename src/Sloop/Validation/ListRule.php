@@ -52,7 +52,7 @@ final class ListRule extends ArrayRule
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule does not take
+     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule refuses at declaration
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
@@ -73,11 +73,11 @@ final class ListRule extends ArrayRule
     }
 
     /**
-     * Read every element of a declared default the way the element rule reads its own.
+     * Prepare every element of a declared default with the element rule.
      *
      * @param  array<array-key, mixed>  $value Default as the caller declared it
      * @return list<mixed>
-     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule does not take
+     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule refuses at declaration
      */
     private function prepareElements(array $value): array
     {

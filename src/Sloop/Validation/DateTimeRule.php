@@ -20,6 +20,11 @@ use DateTimeZone;
  *
  * Fractional seconds are optional and kept, up to microseconds, because
  * JavaScript's `Date.toISOString()` always writes three of them.
+ *
+ * The validated value is the instant in UTC. The offset the input carried has
+ * done its work by then — it is what made the instant unambiguous — and two
+ * clients naming one instant from different zones hand the caller the same
+ * value rather than two that only compare equal.
  */
 final class DateTimeRule extends TemporalRule
 {
@@ -67,14 +72,36 @@ final class DateTimeRule extends TemporalRule
     }
 
     /**
-     * Take the limit as the instant it already names.
+     * Take the limit as the instant it already names, read in UTC.
+     *
+     * The instant is what the comparison uses, so the zone does not change the
+     * verdict. It is UTC because a default declared on a container reaches the
+     * caller through here rather than through output(), and the two have to
+     * agree on the frame.
      *
      * @param  DateTimeInterface $limit Limit as the caller declared it
      * @return DateTimeImmutable
      */
     protected function alignLimit(DateTimeInterface $limit): DateTimeImmutable
     {
-        return DateTimeImmutable::createFromInterface($limit);
+        return DateTimeImmutable::createFromInterface($limit)->setTimezone(new DateTimeZone('UTC'));
+    }
+
+    /**
+     * Hand the caller the instant in UTC.
+     *
+     * The value is parsed in whatever zone the input's offset named, since
+     * that is how the offset is read at all. Keeping that zone would hand the
+     * caller a wall clock that differs by up to a day between two inputs
+     * naming instants moments apart, and `format('Y-m-d H:i:s')` — the short
+     * way to write one to a database — would record it.
+     *
+     * @param  DateTimeImmutable $value Validated value
+     * @return DateTimeImmutable
+     */
+    protected function output(mixed $value): DateTimeImmutable
+    {
+        return $value->setTimezone(new DateTimeZone('UTC'));
     }
 
     /**

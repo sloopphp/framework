@@ -73,7 +73,7 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule does not take
+     * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule refuses at declaration
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
@@ -98,7 +98,7 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, mixed>  $value Default as the caller declared it
      * @return array<array-key, mixed>
-     * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule does not take
+     * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule refuses at declaration
      */
     private function fill(array $value): array
     {

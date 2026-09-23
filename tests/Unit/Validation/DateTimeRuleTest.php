@@ -109,6 +109,36 @@ final class DateTimeRuleTest extends TestCase
         $this->assertSame($default->format('U.u'), $value->format('U.u'));
     }
 
+    public function testValidatedValueIsInUtcWhateverOffsetTheInputCarried(): void
+    {
+        // Two clients naming one instant from different zones hand the caller
+        // the same value, not two that only compare equal. The wall clock is
+        // what format() writes to a database, so it has to agree as well.
+        $east = self::valueOf(Rule::dateTime(), '2026-01-02T12:00:00+09:00');
+        $west = self::valueOf(Rule::dateTime(), '2026-01-01T22:00:00-05:00');
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $east);
+        $this->assertInstanceOf(DateTimeImmutable::class, $west);
+        $this->assertSame('UTC', $east->getTimezone()->getName());
+        $this->assertSame('UTC', $west->getTimezone()->getName());
+        $this->assertSame('2026-01-02 03:00:00', $east->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-01-02 03:00:00', $west->format('Y-m-d H:i:s'));
+    }
+
+    public function testADefaultDeclaredOnAContainerIsInUtcToo(): void
+    {
+        // A container's default reaches the caller through prepareDefault()
+        // rather than through output(), so the two have to agree on the frame.
+        $declared = new DateTimeImmutable('2026-01-02T03:04:05+14:00');
+        $value    = self::valueOf(Rule::shape(['t' => Rule::dateTime()])->default(['t' => $declared]), null);
+
+        $this->assertIsArray($value);
+        $at = $value['t'];
+        $this->assertInstanceOf(DateTimeImmutable::class, $at);
+        $this->assertSame('UTC', $at->getTimezone()->getName());
+        $this->assertSame('2026-01-01 13:04:05', $at->format('Y-m-d H:i:s'));
+    }
+
     /**
      * @return iterable<string, array{string, string, bool}>
      */
