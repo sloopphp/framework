@@ -140,7 +140,7 @@ final class Rule
      * Any array is accepted, not only a list. The keys of the input reach
      * neither the validated value nor the errors: both count positions from
      * zero, so the second element is `items.1` whatever key it came under. A
-     * default, in contrast, reaches the caller as it is and has to be a list.
+     * default has to be a list already.
      *
      * @param  FieldRule<covariant mixed>                                                $element       Rules every element must satisfy
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array

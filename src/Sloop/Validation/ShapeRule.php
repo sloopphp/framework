@@ -63,9 +63,6 @@ final class ShapeRule extends ArrayRule
      * field is what the caller reads, and a default carrying anything else
      * would break it without any rule having failed.
      *
-     * A date the default names for a key is reduced to one the key could itself
-     * have produced rather than being kept as it was written.
-     *
      * A key the default says nothing for — missing, null or '' — takes what an
      * input without it would have taken, so that both ways of reaching a value
      * give the same shape. A `false`, a `0` and a `'0'` say something and are

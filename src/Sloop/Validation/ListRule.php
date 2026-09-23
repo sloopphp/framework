@@ -50,9 +50,6 @@ final class ListRule extends ArrayRule
      * caller reads, and a default that is not one would break it without any
      * rule having failed.
      *
-     * A date a default element names is reduced to one the element could itself
-     * have produced rather than being kept as it was written.
-     *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
      * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule does not take
