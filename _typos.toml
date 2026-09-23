@@ -21,4 +21,9 @@ extend-ignore-re = [
 
     # LogManagerTest: marker string used to check the order Processors are applied.
     "'BA'",
+
+    # DateRuleTest: a date format built from the month and the day with no
+    # separator, which is what makes it unable to read back what it writes.
+    # It appears both bare and escaped, inside the expected exception message.
+    "\\\\?'nd\\\\?'",
 ]
