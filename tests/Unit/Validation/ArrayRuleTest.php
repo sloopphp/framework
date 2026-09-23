@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Validation;
 
 use Closure;
+use DateTime;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
+use Sloop\Tests\Unit\Validation\Stub\Payment;
+use Sloop\Tests\Unit\Validation\Stub\Priority;
 use Sloop\Validation\ArraySanitize;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
@@ -609,6 +613,121 @@ final class ArrayRuleTest extends TestCase
                 static fn (): mixed => Rule::shape(['a' => Rule::int()])->default(['zzz' => 1]),
             )->getMessage(),
         );
+    }
+
+    public function testAKeyOfADefaultIsReducedByTheRuleOfThatKey(): void
+    {
+        $rule = Rule::shape(['d' => Rule::date('Y-m')])->default(['d' => new DateTimeImmutable('2026-03-15')]);
+
+        $value = self::valueOf($rule, null);
+        $this->assertIsArray($value);
+        $date = $value['d'];
+        $this->assertInstanceOf(DateTimeImmutable::class, $date);
+        $this->assertSame('2026-03-01', $date->format('Y-m-d'));
+    }
+
+    public function testAnElementOfADefaultIsReducedByTheElementRule(): void
+    {
+        $rule = Rule::list(Rule::date('Y-m'))->default([
+            new DateTimeImmutable('2026-03-15'),
+            new DateTimeImmutable('2026-04-20'),
+        ]);
+
+        $value = self::valueOf($rule, null);
+        $this->assertIsArray($value);
+        $this->assertCount(2, $value);
+
+        // Every element is reduced, not only the one that happens to be first.
+        $first  = $value[0];
+        $second = $value[1];
+        $this->assertInstanceOf(DateTimeImmutable::class, $first);
+        $this->assertInstanceOf(DateTimeImmutable::class, $second);
+        $this->assertSame('2026-03-01', $first->format('Y-m-d'));
+        $this->assertSame('2026-04-01', $second->format('Y-m-d'));
+    }
+
+    /**
+     * @return iterable<string, array{Closure(DateTime): FieldRule<covariant mixed>, Closure(array<array-key, mixed>): mixed}>
+     */
+    public static function containersDefaultingToADate(): iterable
+    {
+        yield 'a shape' => [
+            static fn (DateTime $d): FieldRule => Rule::shape(['t' => Rule::dateTime()])->default(['t' => $d]),
+            static fn (array $v): mixed => $v['t'],
+        ];
+        yield 'a list' => [
+            static fn (DateTime $d): FieldRule => Rule::list(Rule::dateTime())->default([$d]),
+            static fn (array $v): mixed => $v[0],
+        ];
+        yield 'a list of shapes' => [
+            static fn (DateTime $d): FieldRule => Rule::list(Rule::shape(['t' => Rule::dateTime()]))->default([['t' => $d]]),
+            static fn (array $v): mixed => \is_array($v[0]) ? $v[0]['t'] : null,
+        ];
+    }
+
+    /**
+     * @param Closure(DateTime): FieldRule<covariant mixed> $declare
+     * @param Closure(array<array-key, mixed>): mixed       $read
+     */
+    #[DataProvider('containersDefaultingToADate')]
+    public function testADefaultNamingAMutableDateDoesNotHandThatDateOut(Closure $declare, Closure $read): void
+    {
+        $mutable = new DateTime('2026-01-02T03:04:05+09:00');
+        $rule    = $declare($mutable);
+
+        $declared = self::valueOf($rule, null);
+        $this->assertIsArray($declared);
+        $first = $read($declared);
+        $this->assertInstanceOf(DateTimeImmutable::class, $first);
+        $this->assertNotSame($mutable, $first);
+
+        // The caller would otherwise be handed the very object the default
+        // named, and moving it would move the default of every later input.
+        $mutable->modify('+10 years');
+        $later = self::valueOf($rule, null);
+        $this->assertIsArray($later);
+        $second = $read($later);
+        $this->assertInstanceOf(DateTimeImmutable::class, $second);
+        $this->assertSame($first->format('Y-m-d'), $second->format('Y-m-d'));
+    }
+
+    public function testADefaultNamingADateItsKeyCannotReadIsRefusedTheWayTheKeyRefusesIt(): void
+    {
+        // A day number cannot hold 31 December of a leap year: it reads back
+        // into the year after the epoch.
+        $held    = new DateTimeImmutable('2024-12-31');
+        $message = 'date() reads dates with \'z\', which does not read back the local date 2024-12-31.';
+
+        $this->assertSame($message, $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::shape(['d' => Rule::date('z')])->default(['d' => $held]),
+        )->getMessage());
+
+        $this->assertSame($message, $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::date('z')->default($held),
+        )->getMessage());
+    }
+
+    public function testADefaultNamingACaseOfAnotherEnumIsRefused(): void
+    {
+        $this->assertSame(
+            'default() needs a case of ' . Payment::class . ', got ' . Priority::class . '.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::shape(['s' => Rule::enum(Payment::class)])->default(['s' => Priority::High]),
+            )->getMessage(),
+        );
+    }
+
+    public function testADefaultNamingSomethingOfAnotherTypeIsKeptAsItIs(): void
+    {
+        // The type of what a default names is not checked, here or anywhere
+        // else a default is declared; this holds the behaviour still while
+        // that is so.
+        $rule = Rule::shape(['d' => Rule::date()])->default(['d' => 'not a date']);
+
+        $this->assertSame(['d' => 'not a date'], self::valueOf($rule, null));
     }
 
     // ---------------------------------------------------------------

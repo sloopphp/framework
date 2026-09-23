@@ -46,22 +46,55 @@ final class ListRule extends ArrayRule
     /**
      * Use this value when the field is empty (missing, null, or '').
      *
-     * The default is handed to the caller as it is, so it has to be a list
-     * already: the type of the field is what the caller reads, and a default
-     * that is not one would break it without any rule having failed.
+     * The default has to be a list already: the type of the field is what the
+     * caller reads, and a default that is not one would break it without any
+     * rule having failed.
+     *
+     * Every element is read by the element rule the way that rule reads its own
+     * default, so a date is reduced to one the element could itself have
+     * produced rather than being kept as it was written.
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value is not a list
+     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule does not take
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
+    {
+        return $this->withDefault($this->prepareElements($value));
+    }
+
+    /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field
+     * @return mixed
+     * @throws InvalidArgumentException When $value is an array this list does not take as a default
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        return \is_array($value) ? $this->prepareElements($value) : $value;
+    }
+
+    /**
+     * Read every element of a declared default the way the element rule reads its own.
+     *
+     * @param  array<array-key, mixed>  $value Default as the caller declared it
+     * @return list<mixed>
+     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule does not take
+     */
+    private function prepareElements(array $value): array
     {
         if (!array_is_list($value)) {
             throw new InvalidArgumentException('The default of list() must be a list, and this one has other keys.');
         }
 
-        return parent::default($value);
+        $prepared = [];
+        foreach ($value as $item) {
+            $prepared[] = $this->element->prepareDefault($item);
+        }
+
+        return $prepared;
     }
 
     /**

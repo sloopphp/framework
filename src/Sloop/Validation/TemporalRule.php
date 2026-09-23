@@ -79,6 +79,18 @@ abstract class TemporalRule extends FieldRule
     }
 
     /**
+     * Reduce a declared default the way default() does.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field
+     * @return mixed
+     * @throws InvalidArgumentException When the value cannot be brought into the frame of this field
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        return $value instanceof DateTimeInterface ? $this->alignLimit($value) : $value;
+    }
+
+    /**
      * Formats accepted for this field, tried in the given order.
      *
      * Each one is passed to DateTimeImmutable::createFromFormat() as written,

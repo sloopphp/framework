@@ -310,6 +310,28 @@ abstract class FieldRule
     }
 
     /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * A container reaches the default of what it holds through here, so that a
+     * value written into the container's default is read the way one written
+     * into this field's own default is. A value that does not have the
+     * declared type is returned as it is, which is what a container does with
+     * it when no rule prepares anything.
+     *
+     * Only a type whose validated value is already the one the caller reads
+     * prepares anything here. A type that keeps a form of its own and converts
+     * it on the way out cannot: a container hands its default out without
+     * converting what it holds, so the form kept here would reach the caller.
+     *
+     * @param  mixed $value Value the container's default holds for this field
+     * @return mixed
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        return $value;
+    }
+
+    /**
      * The declared same() / different() rules.
      *
      * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
