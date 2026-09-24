@@ -312,9 +312,7 @@ abstract class FieldRule
     /**
      * Prepare a value a container declares as the default of this field.
      *
-     * A value that does not have the declared type is returned as it is.
-     *
-     * Rule::decimal() does not override this, and the measurement is why:
+     * Rule::decimal() does not override this:
      * shape(['n' => decimal(10, 2)])->default(['n' => '1.5']) reaches the
      * caller as '1.5', where decimal(10, 2)->default('1.5') gives '1.50'.
      *
