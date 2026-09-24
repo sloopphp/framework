@@ -312,13 +312,11 @@ abstract class FieldRule
     /**
      * Prepare a value a container declares as the default of this field.
      *
-     * A container hands its default to the caller without running the rules of
-     * what it holds, so what this returns is what the caller reads. Emptiness,
-     * required() and the declared checks have no part in it, and a value that
-     * does not have the declared type is returned as it is.
+     * A value that does not have the declared type is returned as it is.
      *
-     * A type that keeps a form of its own and converts it on the way out has
-     * nothing to do here: the form it keeps is what would reach the caller.
+     * Rule::decimal() does not override this, and the measurement is why:
+     * shape(['n' => decimal(10, 2)])->default(['n' => '1.5']) reaches the
+     * caller as '1.5', where decimal(10, 2)->default('1.5') gives '1.50'.
      *
      * @param  mixed $value Value the container's default holds for this field
      * @return mixed
