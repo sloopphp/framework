@@ -59,10 +59,9 @@ final class ShapeRule extends ArrayRule
     /**
      * Use this value when the field is empty (missing, null, or '').
      *
-     * The default is handed to the caller as it is, so it may only hold keys
-     * this shape declares: the type of the field is what the caller reads, and
-     * a default carrying anything else would break it without any rule having
-     * failed.
+     * The default may only hold keys this shape declares: the type of the
+     * field is what the caller reads, and a default carrying anything else
+     * would break it without any rule having failed.
      *
      * A key the default says nothing for — missing, null or '' — takes what an
      * input without it would have taken, so that both ways of reaching a value
@@ -74,10 +73,34 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value holds a key this shape does not declare, or says nothing for a required one
+     * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule refuses at declaration
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
+    {
+        return $this->withDefault($this->fill($value));
+    }
+
+    /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field
+     * @return mixed
+     * @throws InvalidArgumentException When $value is an array this shape does not take as a default
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        return \is_array($value) ? $this->fill($value) : $value;
+    }
+
+    /**
+     * Give every declared key the value the default names for it.
+     *
+     * @param  array<array-key, mixed>  $value Default as the caller declared it
+     * @return array<array-key, mixed>
+     * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule refuses at declaration
+     */
+    private function fill(array $value): array
     {
         $undeclared = array_diff_key($value, $this->fields);
         if ($undeclared !== []) {
@@ -92,7 +115,7 @@ final class ShapeRule extends ArrayRule
             // else in validation, so one test has to cover a missing key and a
             // null alike: array_key_exists() would let the null through.
             if (isset($value[$key]) && $value[$key] !== '') {
-                $filled[$key] = $value[$key];
+                $filled[$key] = $rule->prepareDefault($value[$key]);
                 continue;
             }
 
@@ -109,7 +132,7 @@ final class ShapeRule extends ArrayRule
             $filled[$key] = $outcome->value;
         }
 
-        return parent::default($filled);
+        return $filled;
     }
 
     /**

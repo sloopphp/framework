@@ -93,6 +93,34 @@ final class Rule
     }
 
     /**
+     * A field whose validated value is a calendar date.
+     *
+     * @param  string                             $format        Format the input must match, as DateTimeImmutable::createFromFormat() reads it
+     * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
+     * @return DateRule
+     * @throws \InvalidArgumentException          When $format is empty, does not read back what it writes, carries a time of day or a time zone, or Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
+     */
+    public static function date(string $format = 'Y-m-d', Sanitize|Closure ...$sanitizers): DateRule
+    {
+        return new DateRule($format, array_values($sanitizers));
+    }
+
+    /**
+     * A field whose validated value is an instant in time.
+     *
+     * The input is a date and a time that must carry an offset (`+09:00`, `Z`, `+0900`
+     * or `+09`); fractional seconds are optional.
+     *
+     * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
+     * @return DateTimeRule
+     * @throws \InvalidArgumentException          When Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
+     */
+    public static function dateTime(Sanitize|Closure ...$sanitizers): DateTimeRule
+    {
+        return new DateTimeRule(array_values($sanitizers));
+    }
+
+    /**
      * A field that must be an array, whatever it holds.
      *
      * The elements reach the caller untouched. Use list() to give them all one
@@ -112,7 +140,7 @@ final class Rule
      * Any array is accepted, not only a list. The keys of the input reach
      * neither the validated value nor the errors: both count positions from
      * zero, so the second element is `items.1` whatever key it came under. A
-     * default, in contrast, reaches the caller as it is and has to be a list.
+     * default has to be a list already.
      *
      * @param  FieldRule<covariant mixed>                                                $element       Rules every element must satisfy
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array

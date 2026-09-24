@@ -58,11 +58,19 @@ final class EnumRule extends FieldRule
      */
     public function default(BackedEnum $value): self
     {
-        if (!$value instanceof $this->enum) {
-            throw new InvalidArgumentException('default() needs a case of ' . $this->enum . ', got ' . $value::class . '.');
-        }
+        return $this->withDefault($this->caseOf($value));
+    }
 
-        return $this->withDefault($value);
+    /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field
+     * @return mixed
+     * @throws InvalidArgumentException When the value is a case of another enum
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        return $value instanceof BackedEnum ? $this->caseOf($value) : $value;
     }
 
     /**
@@ -120,6 +128,22 @@ final class EnumRule extends FieldRule
     protected function typeRule(): string
     {
         return 'enum';
+    }
+
+    /**
+     * Read a declared default as a case of this field's own enum.
+     *
+     * @param  BackedEnum               $value Case as the caller declared it
+     * @return E
+     * @throws InvalidArgumentException When the case belongs to another enum
+     */
+    private function caseOf(BackedEnum $value): BackedEnum
+    {
+        if (!$value instanceof $this->enum) {
+            throw new InvalidArgumentException('default() needs a case of ' . $this->enum . ', got ' . $value::class . '.');
+        }
+
+        return $value;
     }
 
     /**

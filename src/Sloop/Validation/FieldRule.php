@@ -310,6 +310,21 @@ abstract class FieldRule
     }
 
     /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * Rule::decimal() does not override this:
+     * shape(['n' => decimal(10, 2)])->default(['n' => '1.5']) reaches the
+     * caller as '1.5', where decimal(10, 2)->default('1.5') gives '1.50'.
+     *
+     * @param  mixed $value Value the container's default holds for this field
+     * @return mixed
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        return $value;
+    }
+
+    /**
      * The declared same() / different() rules.
      *
      * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
