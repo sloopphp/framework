@@ -365,7 +365,7 @@ abstract class FieldRule
      * visitor left alone as ''. A subclass widens this where its own transport
      * has another way of saying the same thing.
      *
-     * @param  mixed $value Raw value after sanitizing
+     * @param  mixed $value Raw input after sanitizing, or a declared default as it is
      * @return bool
      */
     protected function isEmpty(mixed $value): bool
@@ -391,7 +391,7 @@ abstract class FieldRule
     /**
      * Convert a non-empty raw value to the declared type.
      *
-     * @param  mixed          $value Raw value that isEmpty() rejected
+     * @param  mixed          $value Raw value after sanitizing, for which isEmpty() returned false
      * @return T|TypeMismatch
      */
     abstract protected function coerce(mixed $value): mixed;

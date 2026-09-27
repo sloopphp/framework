@@ -22,6 +22,11 @@ final class FileRuleTest extends TestCase
     use ThrowsAssertions;
     use ValidatesOneField;
 
+    /**
+     * A one-pixel PNG, small enough to inline and real enough for finfo.
+     */
+    private const string PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
     /** @var list<string> */
     private array $tmpFiles = [];
 
@@ -43,11 +48,6 @@ final class FileRuleTest extends TestCase
 
         return $path;
     }
-
-    /**
-     * A one-pixel PNG, small enough to inline and real enough for finfo.
-     */
-    private const string PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
     private static function upload(string $body, int $error = \UPLOAD_ERR_OK, string $clientType = 'application/octet-stream'): UploadedFile
     {
@@ -379,6 +379,16 @@ final class FileRuleTest extends TestCase
         $this->assertSame(['attachments.back'], array_keys($result->errors()));
     }
 
+    public function testAnEmptyUploadInsideAListIsANullElementThatTheCountRulesSee(): void
+    {
+        $empty = self::upload('', \UPLOAD_ERR_NO_FILE);
+
+        $passing = new Validator(['p' => Rule::list(Rule::file())->minCount(1)])->validate(['p' => [$empty]]);
+
+        $this->assertSame(['p' => [null]], $passing->values());
+        $this->assertSame(['maxCount'], self::failedRules(Rule::list(Rule::file())->maxCount(0), [$empty]));
+    }
+
     public function testAMultipleFileFieldLeftEmptyFailsMinCountOnTheList(): void
     {
         $input = UploadedFiles::fromGlobals([
@@ -389,6 +399,7 @@ final class FileRuleTest extends TestCase
 
         $this->assertTrue($result->failed());
         $this->assertSame(['photos'], array_keys($result->errors()));
+        $this->assertSame('minCount', $result->errors()['photos'][0]->rule);
     }
 
     public function testASingleFileFieldLeftEmptyFailsRequired(): void
@@ -401,6 +412,7 @@ final class FileRuleTest extends TestCase
 
         $this->assertTrue($result->failed());
         $this->assertSame(['avatar'], array_keys($result->errors()));
+        $this->assertSame('required', $result->errors()['avatar'][0]->rule);
     }
 
     public function testAListOfStringsIsStillComparedByValue(): void

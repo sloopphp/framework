@@ -12,8 +12,8 @@
     ],
     "require": {
         "php": "^8.5",
-        "ext-filter": "*",
         "ext-fileinfo": "*",
+        "ext-filter": "*",
         "ext-intl": "*",
         "ext-mbstring": "*",
         "ext-pdo": "*",

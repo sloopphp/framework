@@ -150,7 +150,7 @@ final class FileRule extends FieldRule
     /**
      * Count an upload that carries nothing as an empty field.
      *
-     * @param  mixed $value Raw value after sanitizing
+     * @param  mixed $value Raw input after sanitizing, or a declared default as it is
      * @return bool
      */
     protected function isEmpty(mixed $value): bool
