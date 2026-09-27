@@ -70,8 +70,12 @@ short_digest() {
 #
 # Every worktree of a clone lists the main worktree first, so each of them
 # arrives at the same answer, while two clones on one machine do not. Writes
-# nothing and returns 1 when the worktrees cannot be listed or nothing can hash
+# nothing and returns 1 when no worktree record can be read or nothing can hash
 # the path; the caller then leaves the databases alone.
+#
+# Only the first record is needed, so a listing git fails partway through still
+# yields the id. That is safe because integration_dbs_in_use refuses such a
+# listing on its own, and nothing is dropped without that list.
 integration_clone_id() {
     local field
     while IFS= read -r -d '' field; do
@@ -450,7 +454,9 @@ if [ "$with_integration" -eq 1 ]; then
         # refuses an empty protected list rather than treating every test
         # database as unused.
         in_use=$(integration_dbs_in_use "$clone_id")
-        if [ -z "$in_use" ]; then
+        if [ -z "$clone_id" ]; then
+            printf '  (could not tell which clone this is; left the databases alone)\n'
+        elif [ -z "$in_use" ]; then
             printf '  (could not list the worktrees; left the databases alone)\n'
         elif ! grep -qxF -- "$db_name" <<< "$in_use"; then
             # The protected list and $db_name are built from two separate git
