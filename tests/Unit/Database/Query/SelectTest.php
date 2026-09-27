@@ -2014,7 +2014,8 @@ final class SelectTest extends TestCase
     {
         $this->seedUsers();
 
-        $e = $this->assertThrowsInvalidArgument(
+        $e = $this->assertThrows(
+            UnexpectedValueException::class,
             fn () => $this->connection->select()->from('users')->pluck('name', 'nickname'),
         );
         $this->assertSame(
@@ -2027,7 +2028,8 @@ final class SelectTest extends TestCase
     {
         $this->seedUsers();
 
-        $e = $this->assertThrowsInvalidArgument(
+        $e = $this->assertThrows(
+            UnexpectedValueException::class,
             fn () => $this->connection->select()->from('users')->pluck('name', 'weight'),
         );
         $this->assertSame(
