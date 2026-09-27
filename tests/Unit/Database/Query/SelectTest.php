@@ -507,32 +507,105 @@ final class SelectTest extends TestCase
         );
     }
 
-    public function testRawSqlLeavesAPlaceholderWithNoValueAlone(): void
+    public function testRawSqlKeepsTheTextAfterTheLastPlaceholder(): void
     {
-        // The `?` inside the expression's string literal is not a placeholder,
-        // so the rendering runs out of values before the SQL runs out of marks.
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->orderBy('id');
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = \'active\' ORDER BY `id` ASC',
+            $select->toRawSql(),
+        );
+    }
+
+    public function testRawSqlSkipsAQuestionMarkInsideAStringLiteral(): void
+    {
         $select = $this->connection->select(Expression::of("CONCAT(name, '?')"))
             ->from('users')
             ->where('status', 'active');
 
         $this->assertSame(
-            'SELECT CONCAT(name, \'\'active\'\') FROM `users` WHERE `status` = ?',
+            'SELECT CONCAT(name, \'?\') FROM `users` WHERE `status` = \'active\'',
             $select->toRawSql(),
         );
     }
 
-    public function testRawSqlCannotTellAQuestionMarkInsideANameFromAPlaceholder(): void
+    public function testRawSqlSkipsAQuestionMarkInsideAName(): void
     {
-        // Pinned because it is a limitation rather than an accident: the value
-        // lands inside the name and the one after it moves up. The statement
-        // that runs is unaffected, and the text stops matching it visibly.
         $select = $this->connection->select()
             ->from('users')
             ->where('a?b', 'FIRST')
             ->andWhere('status', 'SECOND');
 
         $this->assertSame(
-            'SELECT * FROM `users` WHERE `a\'FIRST\'b` = \'SECOND\' AND `status` = ?',
+            'SELECT * FROM `users` WHERE `a?b` = \'FIRST\' AND `status` = \'SECOND\'',
+            $select->toRawSql(),
+        );
+    }
+
+    public function testRawSqlKeepsANameOpenPastADoubledBacktick(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('a`?b', 'FIRST');
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `a``?b` = \'FIRST\'',
+            $select->toRawSql(),
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function escapedQuoteLiteralProvider(): array
+    {
+        return [
+            'doubled quote'   => ["CONCAT(name, 'it''s?')"],
+            'backslash quote' => ["CONCAT(name, 'it\\'s?')"],
+        ];
+    }
+
+    #[DataProvider('escapedQuoteLiteralProvider')]
+    public function testRawSqlKeepsAStringLiteralOpenPastAnEscapedQuote(string $sql): void
+    {
+        $select = $this->connection->select(Expression::of($sql))
+            ->from('users')
+            ->where('status', 'active');
+
+        $this->assertSame(
+            'SELECT ' . $sql . ' FROM `users` WHERE `status` = \'active\'',
+            $select->toRawSql(),
+        );
+    }
+
+    public function testRawSqlCountsEveryQuestionMarkWhenAnUnclosedQuoteHidesAPlaceholder(): void
+    {
+        // The stray quote pairs with the next one and hides the expression's
+        // own placeholder, so the marks outside quotes no longer match the
+        // values. The rendering falls back to taking every `?` in order.
+        $select = $this->connection->select(Expression::of("CONCAT(name, 'O, ?, 'k')", ['v']))
+            ->from('users')
+            ->where('status', 'active');
+
+        $this->assertSame(
+            'SELECT CONCAT(name, \'O, \'v\', \'k\') FROM `users` WHERE `status` = \'active\'',
+            $select->toRawSql(),
+        );
+    }
+
+    public function testRawSqlLeavesAPlaceholderWithNoValueAlone(): void
+    {
+        // The unclosed quote lets the `?` inside the literal count, so there is
+        // one mark more than values and the last one is left as written.
+        $select = $this->connection->select(Expression::of("'a', '?"))
+            ->from('users')
+            ->where('status', 'active');
+
+        $this->assertSame(
+            'SELECT \'a\', \'\'active\' FROM `users` WHERE `status` = ?',
             $select->toRawSql(),
         );
     }
