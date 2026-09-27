@@ -22,12 +22,14 @@ script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 # Load the functions under test without running the gates: take just their
 # definitions.
 eval "$(sed -n '/^gate_count() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^short_digest() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^integration_clone_id() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^integration_db_name() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^integration_dbs_in_use() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^prunable_databases() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^run_actionlint() {/,/^}/p' "$script_dir/quality-gate.sh")"
 
-for fn in gate_count integration_db_name integration_dbs_in_use prunable_databases run_actionlint; do
+for fn in gate_count short_digest integration_clone_id integration_db_name integration_dbs_in_use prunable_databases run_actionlint; do
     if ! declare -f "$fn" > /dev/null; then
         echo "$fn could not be loaded from quality-gate.sh" >&2
         exit 1
@@ -136,13 +138,18 @@ check 'composer audit: reports no count' 'composer audit' '' \
 check 'unknown gate: reports no count' 'Some New Gate' '' \
     'whatever the tool printed'
 
+# The clone id every database name below is built with. Any eight characters of
+# [a-z0-9_] will do; what integration_clone_id derives is checked further down.
+clone='c0ffee00'
+prefix="sloop_test_${clone}_"
+
 # Assert the database name derived from a worktree directory name.
 #
 # $1 case name, $2 directory name, $3 expected database name
 check_db_name() {
     local case_name="$1" want="$3" got
 
-    got=$(integration_db_name "$2")
+    got=$(integration_db_name "$clone" "$2")
 
     if [ "$got" = "$want" ]; then
         printf '  ok   %s\n' "$case_name"
@@ -153,49 +160,58 @@ check_db_name() {
     fi
 }
 
-check_db_name 'db name: the repository itself' 'framework' 'sloop_test_framework'
+check_db_name 'db name: the repository itself' 'framework' "${prefix}framework"
 
 # What the worktree tool produces: the name a session passes to it, which is
 # allowed to hold dashes and dots.
-check_db_name 'db name: dashes' 'fix-chunk-by-id' 'sloop_test_fix_chunk_by_id'
-check_db_name 'db name: dots' 'v0.1.probe' 'sloop_test_v0_1_probe'
-check_db_name 'db name: upper case' 'Feature-A' 'sloop_test_feature_a'
+check_db_name 'db name: dashes' 'fix-chunk-by-id' "${prefix}fix_chunk_by_id"
+check_db_name 'db name: dots' 'v0.1.probe' "${prefix}v0_1_probe"
+check_db_name 'db name: upper case' 'Feature-A' "${prefix}feature_a"
 
-# The whole identifier has to fit in 64 characters and the prefix takes 11, so
-# a slug longer than 53 is cut. The digest is what keeps two worktrees whose
-# names share a long prefix on separate databases; plain truncation would put
-# them on the same one.
+# The whole identifier has to fit in 64 characters and the prefix with the clone
+# id takes 20, so a slug longer than 44 is cut. The digest is what keeps two
+# worktrees whose names share a long prefix on separate databases; plain
+# truncation would put them on the same one.
 long_a='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffff-1'
 long_b='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffff-2'
 
 check_db_name 'db name: at the limit, kept whole' \
-    'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff' \
-    'sloop_test_aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefff'
+    'aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeee' \
+    "${prefix}aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeee"
 
 # One past the limit: the branch has to take over here and nowhere earlier.
-one_over='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeefffg'
+one_over='aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeee'
 check_db_name 'db name: one past the limit' "$one_over" \
-    "sloop_test_${one_over:0:44}_$(printf '%s' "$one_over" | sha256sum | cut -c1-8)"
+    "${prefix}${one_over:0:35}_$(printf '%s' "$one_over" | sha256sum | cut -c1-8)"
 
 check_db_name 'db name: past the limit, digest tail' "$long_a" \
-    "sloop_test_$(printf '%s' "${long_a:0:44}" | tr -c 'a-z0-9' '_')_$(printf '%s' "$long_a" | sha256sum | cut -c1-8)"
+    "${prefix}$(printf '%s' "${long_a:0:35}" | tr -c 'a-z0-9' '_')_$(printf '%s' "$long_a" | sha256sum | cut -c1-8)"
 
-if [ "$(integration_db_name "$long_a")" != "$(integration_db_name "$long_b")" ]; then
+if [ "$(integration_db_name "$clone" "$long_a")" != "$(integration_db_name "$clone" "$long_b")" ]; then
     printf '  ok   %s\n' 'db name: names sharing a long prefix stay apart'
     passed=$((passed + 1))
 else
     printf '  FAIL %s: both became [%s]\n' \
-        'db name: names sharing a long prefix stay apart' "$(integration_db_name "$long_a")"
+        'db name: names sharing a long prefix stay apart' "$(integration_db_name "$clone" "$long_a")"
     failed=$((failed + 1))
 fi
 
-full_name=$(integration_db_name "$long_a")
-if [ "${#full_name}" -le 64 ]; then
-    printf '  ok   %s\n' 'db name: stays within the 64 character cap'
+full_name=$(integration_db_name "$clone" "$long_a")
+if [ "${#full_name}" -eq 64 ]; then
+    printf '  ok   %s\n' 'db name: fills the 64 character cap exactly'
     passed=$((passed + 1))
 else
     printf '  FAIL %s: %d characters\n' \
-        'db name: stays within the 64 character cap' "${#full_name}"
+        'db name: fills the 64 character cap exactly' "${#full_name}"
+    failed=$((failed + 1))
+fi
+
+# The same worktree name in two clones: the reason the clone id is in the name.
+if [ "$(integration_db_name 'c0ffee00' framework)" != "$(integration_db_name 'deadbeef' framework)" ]; then
+    printf '  ok   %s\n' 'db name: two clones keep the same worktree name apart'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s\n' 'db name: two clones keep the same worktree name apart'
     failed=$((failed + 1))
 fi
 
@@ -232,10 +248,10 @@ require_stub() {
 }
 
 # The database name the function has to produce when it cannot hash: the slug
-# cut to 53, with nothing else added. Comparing against the whole string rather
+# cut to 44, with nothing else added. Comparing against the whole string rather
 # than its shape is what makes a broken stub fail instead of pass — with no
 # hasher reached at all the name comes back as the bare prefix.
-hash_free_want="sloop_test_$(printf '%s' "$long_a" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | cut -c1-53)"
+hash_free_want="${prefix}$(printf '%s' "$long_a" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | cut -c1-44)"
 
 # The caller reads this function through a command substitution, so anything it
 # writes on stdout lands inside the database name. A notice about a missing hash
@@ -243,7 +259,7 @@ hash_free_want="sloop_test_$(printf '%s' "$long_a" | tr '[:upper:]' '[:lower:]' 
 # the notice in it.
 hash_free_dir=$(stub_path bash tr cut)
 require_stub "$hash_free_dir"
-hash_free_name=$(PATH="$hash_free_dir" integration_db_name "$long_a" 2>/dev/null)
+hash_free_name=$(PATH="$hash_free_dir" integration_db_name "$clone" "$long_a" 2>/dev/null)
 rm -rf "$hash_free_dir"
 
 if [ "$hash_free_name" = "$hash_free_want" ]; then
@@ -266,7 +282,7 @@ for hasher in md5sum cksum; do
     require_stub "$dir"
 
     for name in "$long_a" "$long_b" "$cksum_input"; do
-        got=$(PATH="$dir" integration_db_name "$name" 2>/dev/null)
+        got=$(PATH="$dir" integration_db_name "$clone" "$name" 2>/dev/null)
 
         case "$got" in
             sloop_test_*[!a-z0-9_]*)
@@ -286,8 +302,8 @@ for hasher in md5sum cksum; do
         esac
     done
 
-    a=$(PATH="$dir" integration_db_name "$long_a" 2>/dev/null)
-    b=$(PATH="$dir" integration_db_name "$long_b" 2>/dev/null)
+    a=$(PATH="$dir" integration_db_name "$clone" "$long_a" 2>/dev/null)
+    b=$(PATH="$dir" integration_db_name "$clone" "$long_b" 2>/dev/null)
     rm -rf "$dir"
 
     if [ "$a" != "$b" ]; then
@@ -357,7 +373,7 @@ verbose: Found total 0 errors in 0 ms for .github/workflows/ci.yml'
 check_prunable() {
     local case_name="$1" want="$4" got
 
-    got=$(prunable_databases "$2" "$3")
+    got=$(prunable_databases "$2" "$3" "$clone")
 
     if [ "$got" = "$want" ]; then
         printf '  ok   %s\n' "$case_name"
@@ -370,48 +386,61 @@ check_prunable() {
 
 # What a server holds in practice: its own databases, the one compose creates,
 # the tree the gate is running in, and the leftovers of trees that are gone.
-all_databases='information_schema
+all_databases="information_schema
 mysql
 performance_schema
 sys
 sloop_test
-sloop_test_framework
-sloop_test_cte
-sloop_test_union'
+${prefix}framework
+${prefix}cte
+${prefix}union"
 
 check_prunable 'prune: leftovers of removed worktrees' \
-    "$all_databases" 'sloop_test_framework' \
-    'sloop_test_cte
-sloop_test_union'
+    "$all_databases" "${prefix}framework" \
+    "${prefix}cte
+${prefix}union"
 
 # The reason this exists: a parallel session is running the gate in its own
 # tree, and its database has to survive even though this process is not using it.
 check_prunable 'prune: a parallel session keeps its database' \
-    "$all_databases" 'sloop_test_framework
-sloop_test_cte' \
-    'sloop_test_union'
+    "$all_databases" "${prefix}framework
+${prefix}cte" \
+    "${prefix}union"
+
+# Another clone's worktrees are not in this clone's `git worktree list`, so
+# nothing here could protect them. Its databases are left to that clone.
+check_prunable 'prune: another clone keeps its databases' \
+    "${prefix}gone
+sloop_test_deadbeef_framework
+sloop_test_deadbeef_gone" "${prefix}framework" "${prefix}gone"
+
+# Names from before the clone id was part of them could belong to any clone.
+check_prunable 'prune: names without a clone id are left alone' \
+    "${prefix}gone
+sloop_test_framework
+sloop_test_cte" "${prefix}framework" "${prefix}gone"
 
 # `sloop_test` comes from compose, not from a worktree, so nothing derived from
 # `git worktree list` would ever name it. Dropping it would take the server's
 # default database with it.
 check_prunable 'prune: the database compose creates is left alone' \
-    'sloop_test
-sloop_test_gone' 'sloop_test_framework' 'sloop_test_gone'
+    "sloop_test
+${prefix}gone" "${prefix}framework" "${prefix}gone"
 
 check_prunable 'prune: databases outside the prefix are left alone' \
     'mysql
 sys
 sloopy_test_x
-sloop_testing' 'sloop_test_framework' ''
+sloop_testing' "${prefix}framework" ''
 
 check_prunable 'prune: nothing to drop' \
-    'sloop_test
-sloop_test_framework' 'sloop_test_framework' ''
+    "sloop_test
+${prefix}framework" "${prefix}framework" ''
 
 # An empty protected list is how an upstream failure shows up here -- the main
 # worktree is always listed, so the only way to get one is a command that did
 # not run. Returning every test database would then delete all of them.
-if prunable_databases "$all_databases" '' > /dev/null 2>&1; then
+if prunable_databases "$all_databases" '' "$clone" > /dev/null 2>&1; then
     printf '  FAIL %s\n' 'prune: an empty protected list is refused'
     failed=$((failed + 1))
 else
@@ -419,33 +448,57 @@ else
     passed=$((passed + 1))
 fi
 
+# The clone id goes into a pattern, so anything other than what
+# integration_clone_id produces is refused rather than matched loosely. An empty
+# one would otherwise select every `sloop_test__*` name.
+for bad_clone in '' 'c0ffee0' 'c0ffee000' 'C0FFEE00' 'c0ff.e00'; do
+    if prunable_databases "$all_databases" "${prefix}framework" "$bad_clone" > /dev/null 2>&1; then
+        printf '  FAIL %s\n' "prune: a malformed clone id [$bad_clone] is refused"
+        failed=$((failed + 1))
+    else
+        printf '  ok   %s\n' "prune: a malformed clone id [$bad_clone] is refused"
+        passed=$((passed + 1))
+    fi
+done
+
 # A name that is exactly the prefix has nothing after it to identify a worktree,
 # so it is not something this gate created.
 check_prunable 'prune: the bare prefix is not a worktree database' \
-    'sloop_test_' 'sloop_test_framework' ''
+    "$prefix" "${prefix}framework" ''
 
-# Run integration_dbs_in_use against a stubbed `git worktree list`.
+# Run a function against a stubbed `git worktree list --porcelain -z`.
 #
-# $1 what the stub writes, $2 the stub's exit code
+# The stub writes $1 with every newline turned into a NUL, which is the -z form
+# of a listing written out line by line: each line ends in a NUL and a blank
+# line becomes the extra NUL that ends a record. $3 writes it through printf %b
+# instead, for a listing that needs a NUL and a newline side by side.
+#
+# $1 what the stub writes, $2 the stub's exit code, $3 'raw' for printf %b,
+# $4... the command to run
 with_worktrees() {
     # Named apart from anything the function under test declares: bash scopes
     # locals dynamically, so a `listing` here would be shadowed by the empty
     # `local listing` that integration_dbs_in_use declares before it calls the
     # stub, and the stub would write nothing.
-    local stub_listing="$1" stub_rc="$2"
+    local stub_listing="$1" stub_rc="$2" stub_form="$3"
+    shift 3
 
-    # Reached by name from inside integration_dbs_in_use, which shellcheck
+    # Reached by name from inside the functions under test, which shellcheck
     # cannot see (SC2329).
     # shellcheck disable=SC2329
     git() {
         if [ "$1" = 'worktree' ]; then
-            printf '%s' "$stub_listing"
+            if [ "$stub_form" = 'raw' ]; then
+                printf '%b' "$stub_listing"
+            else
+                printf '%s' "$stub_listing" | tr '\n' '\0'
+            fi
             return "$stub_rc"
         fi
         command git "$@"
     }
 
-    integration_dbs_in_use
+    "$@"
     local result=$?
 
     unset -f git
@@ -458,7 +511,7 @@ with_worktrees() {
 check_in_use() {
     local case_name="$1" want="$3" got
 
-    got=$(with_worktrees "$2" 0)
+    got=$(with_worktrees "$2" 0 lines integration_dbs_in_use "$clone")
 
     if [ "$got" = "$want" ]; then
         printf '  ok   %s\n' "$case_name"
@@ -494,22 +547,38 @@ branch refs/heads/feature/union
 # nothing, so every worktree's database was listed as unused -- including the one
 # the gate had just created for itself.
 check_in_use 'in use: one database per line' "$three_trees" \
-    'sloop_test_framework
-sloop_test_cte
-sloop_test_union'
+    "${prefix}framework
+${prefix}cte
+${prefix}union"
 
 check_in_use 'in use: the repository on its own' 'worktree /home/x/framework
 HEAD 50a13a621302be59f2809f2092053e69bfa2b531
 branch refs/heads/main
 
-' 'sloop_test_framework'
+' "${prefix}framework"
 
 # The porcelain format separates records with blank lines.
 check_in_use 'in use: blank lines are skipped' 'worktree /home/x/framework
 
 worktree /home/x/framework/.claude/worktrees/cte
-' 'sloop_test_framework
-sloop_test_cte'
+' "${prefix}framework
+${prefix}cte"
+
+# A path holding a newline. Read line by line it came apart into `/home/x/a` and
+# `b`, and neither name was the one that tree's own run derives from the whole
+# path, so its database went unprotected.
+newline_listing=$(with_worktrees 'worktree /home/x/framework\0\0worktree /home/x/a\nb\0\0' 0 raw \
+    integration_dbs_in_use "$clone")
+want_newline="${prefix}framework
+$(integration_db_name "$clone" $'a\nb')"
+if [ "$newline_listing" = "$want_newline" ]; then
+    printf '  ok   %s\n' 'in use: a path holding a newline stays one worktree'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: want [%s], got [%s]\n' \
+        'in use: a path holding a newline stays one worktree' "$want_newline" "$newline_listing"
+    failed=$((failed + 1))
+fi
 
 # Assert that a listing yields no databases and says so in its exit code.
 #
@@ -517,11 +586,11 @@ sloop_test_cte'
 # call site; the non-zero return is the function's own contract, and pinning it
 # here is what keeps the guard that produces it from being dropped as redundant.
 #
-# $1 case name, $2 stub output, $3 stub exit code
+# $1 case name, $2 stub output, $3 stub exit code, $4 clone id (default $clone)
 check_in_use_refused() {
     local case_name="$1" out rc
 
-    out=$(with_worktrees "$2" "$3")
+    out=$(with_worktrees "$2" "$3" lines integration_dbs_in_use "${4-$clone}")
     rc=$?
 
     if [ "$rc" -ne 0 ] && [ -z "$out" ]; then
@@ -546,8 +615,8 @@ HEAD 50a13a621302be59f2809f2092053e69bfa2b531
 branch refs/heads/feature/cte
 prunable gitdir file points to non-existent location
 
-' 'sloop_test_framework
-sloop_test_cte'
+' "${prefix}framework
+${prefix}cte"
 
 # A listing that cannot be read has to leave the caller with nothing, since an
 # empty protected list is what stops the deletion.
@@ -563,27 +632,76 @@ branch refs/heads/main
 check_in_use_refused 'in use: a partial listing that failed is refused' 'worktree /home/x/framework
 ' 1
 
+# Without a clone id there is no name to protect a tree under.
+check_in_use_refused 'in use: no clone id is refused' "$three_trees" 0 ''
+
+# Assert the clone id derived from a stubbed listing.
+#
+# $1 case name, $2 stub output, $3 expected clone id
+check_clone_id() {
+    local case_name="$1" want="$3" got
+
+    got=$(with_worktrees "$2" 0 lines integration_clone_id)
+
+    if [ "$got" = "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+# Every worktree of a clone lists the main worktree first, so the id is a digest
+# of that path wherever in the clone the gate runs.
+check_clone_id 'clone id: digest of the main worktree' "$three_trees" \
+    "$(short_digest '/home/x/framework')"
+
+check_clone_id 'clone id: another clone differs' 'worktree /home/y/framework
+HEAD 50a13a621302be59f2809f2092053e69bfa2b531
+branch refs/heads/main
+
+' "$(short_digest '/home/y/framework')"
+
+if [ "$(short_digest '/home/x/framework')" != "$(short_digest '/home/y/framework')" ]; then
+    printf '  ok   %s\n' 'clone id: two clones get different ids'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s\n' 'clone id: two clones get different ids'
+    failed=$((failed + 1))
+fi
+
+clone_out=$(with_worktrees '' 1 lines integration_clone_id)
+clone_rc=$?
+if [ "$clone_rc" -ne 0 ] && [ -z "$clone_out" ]; then
+    printf '  ok   %s\n' 'clone id: a failed listing gives none'
+    passed=$((passed + 1))
+else
+    printf '  FAIL %s: rc=%s [%s]\n' 'clone id: a failed listing gives none' "$clone_rc" "$clone_out"
+    failed=$((failed + 1))
+fi
+
 # The two halves wired together, which is the pair the deletion actually runs on.
 # Checking them apart is what let the concatenation through: the cases above hand
 # prunable_databases a list written by hand, in a shape its producer could not
 # yet write.
-in_use_now=$(with_worktrees "$three_trees" 0)
+in_use_now=$(with_worktrees "$three_trees" 0 lines integration_dbs_in_use "$clone")
 check_prunable 'prune: every live worktree survives the pair' \
-    'sloop_test
-sloop_test_framework
-sloop_test_cte
-sloop_test_union
-sloop_test_gone' "$in_use_now" 'sloop_test_gone'
+    "sloop_test
+${prefix}framework
+${prefix}cte
+${prefix}union
+${prefix}gone" "$in_use_now" "${prefix}gone"
 
 # The membership check the gate makes before it drops anything: the tree it is
 # running in has to appear in the list it is about to protect.
-if printf '%s\n' "$in_use_now" | grep -qxF -- "$(integration_db_name framework)"; then
+if printf '%s\n' "$in_use_now" | grep -qxF -- "$(integration_db_name "$clone" framework)"; then
     printf '  ok   %s\n' 'prune: the running tree is in its own protected list'
     passed=$((passed + 1))
 else
     printf '  FAIL %s: [%s] is missing from [%s]\n' \
         'prune: the running tree is in its own protected list' \
-        "$(integration_db_name framework)" "$in_use_now"
+        "$(integration_db_name "$clone" framework)" "$in_use_now"
     failed=$((failed + 1))
 fi
 
@@ -592,20 +710,20 @@ fi
 # `set -o pipefail` the resulting SIGPIPE read as "not protected". 3000 entries
 # is far past any real checkout; the point is that the size of the list cannot
 # decide the answer.
-many_protected=$(for i in $(seq 1 3000); do printf 'sloop_test_padding_%060d\n' "$i"; done)
-first_protected="sloop_test_padding_$(printf '%060d' 1)"
+many_protected=$(for i in $(seq 1 3000); do printf '%spadding_%040d\n' "$prefix" "$i"; done)
+first_protected="${prefix}padding_$(printf '%040d' 1)"
 
 check_prunable 'prune: a protected list past the pipe buffer still protects' \
     "$first_protected
-sloop_test_gone" "$many_protected" 'sloop_test_gone'
+${prefix}gone" "$many_protected" "${prefix}gone"
 
 # Names outside what integration_db_name can produce are not this gate's to drop.
 # A backtick in one would break the statement that drops it.
 check_prunable 'prune: names the gate cannot produce are left alone' \
-    'sloop_test_ok
-sloop_test_UPPER
-sloop_test_with-dash
-sloop_test_back`tick' 'sloop_test_framework' 'sloop_test_ok'
+    "${prefix}ok
+${prefix}UPPER
+${prefix}with-dash
+${prefix}back\`tick" "${prefix}framework" "${prefix}ok"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

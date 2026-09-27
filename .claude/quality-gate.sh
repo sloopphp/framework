@@ -29,14 +29,14 @@
 #   .claude/quality-gate.sh --all              # run everything
 #
 # Parallel sessions: several git worktrees share one database server, so the
-# Integration gates run against a database named after the worktree rather than
-# the fixed sloop_test. Without that, one session drops a table while another
+# Integration gates run against a database named after the clone and the worktree
+# rather than the fixed sloop_test. Without that, one session drops a table while another
 # reads it and both see failures that have nothing to do with their changes.
 # The run is also serialised per worktree where flock is installed, since two
 # gates in the same tree fight over the same caches and the same database.
 #
-# --with-integration also drops the sloop_test_* databases that no worktree in
-# `git worktree list` is named after.
+# --with-integration also drops this clone's sloop_test_* databases that no
+# worktree in `git worktree list` is named after.
 #
 # Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
@@ -48,49 +48,87 @@ script_path="$script_dir/$(basename "$0")"
 
 cd "$script_dir/.." || exit 1
 
-# The database is named after the worktree so that parallel sessions do not
-# share tables.
+# Eight characters of [a-z0-9_] digesting $1, or nothing when no hash command
+# is installed.
 #
-# $1 the worktree directory name
+# Whatever this writes on stdout ends up inside a database name, since callers
+# read it through a command substitution. cksum is the reason the output goes
+# through tr: it prints "<crc> <bytes>", which would put a space in the name.
+#
+# $1 the text to digest
+short_digest() {
+    local hasher
+    for hasher in sha256sum md5sum cksum; do
+        if command -v "$hasher" > /dev/null 2>&1; then
+            printf '%s' "$1" | "$hasher" | tr -c 'a-z0-9' '_' | cut -c1-8
+            return 0
+        fi
+    done
+}
+
+# The clone the gate is running in, as a digest of its main worktree's path.
+#
+# Every worktree of a clone lists the main worktree first, so each of them
+# arrives at the same answer, while two clones on one machine do not. Writes
+# nothing and returns 1 when no worktree record can be read or nothing can hash
+# the path; the caller then leaves the databases alone.
+#
+# Only the first record is needed, so a listing git fails partway through still
+# yields the id. That is safe because integration_dbs_in_use refuses such a
+# listing on its own, and nothing is dropped without that list.
+integration_clone_id() {
+    local field
+    while IFS= read -r -d '' field; do
+        if [[ $field == 'worktree '* ]]; then
+            local digest
+            digest=$(short_digest "${field#worktree }")
+            [ -n "$digest" ] || return 1
+            printf '%s' "$digest"
+            return 0
+        fi
+    done < <(git worktree list --porcelain -z 2> /dev/null)
+
+    return 1
+}
+
+# The database is named after the clone and the worktree so that parallel
+# sessions do not share tables, including sessions in another clone of the
+# repository: compose runs one server for the whole machine.
+#
+# $1 the clone id (integration_clone_id), $2 the worktree directory name
 integration_db_name() {
     # Anything outside [a-z0-9_] is not valid in an identifier unless the name
-    # is quoted at every use. The server caps an identifier at 64 characters and
-    # the prefix takes 11 of them, leaving 53.
-    local slug
-    slug=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
+    # is quoted at every use. The server caps an identifier at 64 characters,
+    # and `sloop_test_` with the clone id and its separator takes 20 of them,
+    # leaving 44.
+    local prefix="sloop_test_$1_" slug
+    slug=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
 
     # Plain truncation would put two worktrees whose names share a long prefix
     # on one database, which is the interference this whole thing is for. Past
     # the limit the tail becomes a digest of the full name instead.
-    if [ "${#slug}" -gt 53 ]; then
-        # Whatever this writes on stdout ends up inside the name, since the
-        # caller reads the function through a command substitution. Notices go
-        # to stderr, and a missing hash command has to leave the name alone.
-        local digest=''
-        local hasher
-        for hasher in sha256sum md5sum cksum; do
-            if command -v "$hasher" > /dev/null 2>&1; then
-                digest=$(printf '%s' "$1" | "$hasher" | tr -c 'a-z0-9' '_' | cut -c1-8)
-                break
-            fi
-        done
+    if [ "${#slug}" -gt 44 ]; then
+        local digest
+        digest=$(short_digest "$2")
 
         if [ -z "$digest" ]; then
             echo 'no hash command found; long worktree names may share a database' >&2
-            slug="${slug:0:53}"
+            slug="${slug:0:44}"
         else
-            slug="${slug:0:44}_$digest"
+            slug="${slug:0:35}_$digest"
         fi
     fi
 
-    printf 'sloop_test_%s' "$slug"
+    printf '%s%s' "$prefix" "$slug"
 }
 
-# Databases the worktrees that exist right now are using.
+# Databases the worktrees of this clone are using right now.
 #
 # Reads `git worktree list`, so a tree someone else is running the gate in is
 # named here whether or not its database exists yet. That is what keeps this
-# from deleting a database out from under a parallel session.
+# from deleting a database out from under a parallel session. The listing is
+# read NUL-separated, since a path can hold a newline and would otherwise be
+# split into two names, neither of them the one that tree uses.
 #
 # Writes nothing and returns 1 when the worktrees cannot be listed. The caller
 # reads this through a command substitution and branches on the output being
@@ -102,38 +140,47 @@ integration_db_name() {
 # keeps being protected. That is the safe direction, and filtering on `prunable`
 # would not be: the reason can be a mount that is briefly away, and dropping
 # those would take a running session's database with it.
+#
+# $1 the clone id (integration_clone_id)
 integration_dbs_in_use() {
-    local listing
-    listing=$(git worktree list --porcelain 2> /dev/null) || return 1
+    local clone="$1" listing
+    [ -n "$clone" ] || return 1
 
-    local paths
-    paths=$(printf '%s\n' "$listing" | sed -n 's/^worktree //p')
-    [ -n "$paths" ] || return 1
+    # Captured whole before it is read, so that a listing git wrote only part of
+    # before failing is refused rather than taken for every worktree there is.
+    listing=$(git worktree list --porcelain -z 2> /dev/null | tr '\0' '\1'; exit "${PIPESTATUS[0]}") || return 1
 
     # integration_db_name ends without a newline, so calling it bare here would
     # run the names together. Ending each line is what makes this a list; the
     # consumer matches whole lines, and a concatenated one would protect nothing.
-    local path
-    while IFS= read -r path; do
-        [ -n "$path" ] || continue
-        printf '%s\n' "$(integration_db_name "$(basename "$path")")"
-    done <<< "$paths"
+    local field found=0
+    while IFS= read -r -d $'\1' field; do
+        [[ $field == 'worktree '* ]] || continue
+        printf '%s\n' "$(integration_db_name "$clone" "$(basename "${field#worktree }")")"
+        found=1
+    done <<< "$listing"
+
+    [ "$found" -eq 1 ]
 }
 
-# The databases in $1 that no worktree in $2 is using.
+# The databases in $1 that no worktree in $2 is using, among this clone's own.
 #
-# Both arguments are newline-separated lists: $1 as the server reports them, $2
-# as integration_dbs_in_use writes them. Only names carrying the prefix and
-# something after it are considered, which leaves the server's own databases and
-# the `sloop_test` that compose creates alone -- the latter is not derived from a
-# worktree, so nothing would ever protect it.
+# Both lists are newline-separated: $1 as the server reports them, $2 as
+# integration_dbs_in_use writes them. Only names carrying this clone's prefix and
+# something after it are considered, which leaves alone the server's own
+# databases, the `sloop_test` that compose creates, the databases of other clones
+# (whose worktrees this clone cannot list) and names from before the clone id
+# was part of them (which could belong to any clone).
 #
 # $2 must not be empty. An empty protected list would mean every test database
 # is prunable, and the only way to get one is a failure upstream.
+#
+# $1 all databases, $2 the ones in use, $3 the clone id
 prunable_databases() {
-    local all="$1" protected="$2"
+    local all="$1" protected="$2" clone="$3"
 
     [ -n "$protected" ] || return 1
+    [[ $clone =~ ^[a-z0-9_]{8}$ ]] || return 1
 
     local name
     while IFS= read -r name; do
@@ -141,7 +188,7 @@ prunable_databases() {
         # prefix followed by [a-z0-9_] and nothing else. A looser test would put
         # names this gate never created on the drop list, and a backtick in one
         # of them would break the statement that drops it.
-        if [[ ! $name =~ ^sloop_test_[a-z0-9_]+$ ]]; then
+        if [[ ! $name =~ ^sloop_test_${clone}_[a-z0-9_]+$ ]]; then
             continue
         fi
 
@@ -195,7 +242,8 @@ elif ! flock -n 9; then
     exit 3
 fi
 
-db_name=$(integration_db_name "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")
+clone_id=$(integration_clone_id) || clone_id=''
+db_name=$(integration_db_name "${clone_id:-local}" "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")
 
 names=()
 codes=()
@@ -405,8 +453,10 @@ if [ "$with_integration" -eq 1 ]; then
         # list leaves the loop without a set to work from, and prunable_databases
         # refuses an empty protected list rather than treating every test
         # database as unused.
-        in_use=$(integration_dbs_in_use)
-        if [ -z "$in_use" ]; then
+        in_use=$(integration_dbs_in_use "$clone_id")
+        if [ -z "$clone_id" ]; then
+            printf '  (could not tell which clone this is; left the databases alone)\n'
+        elif [ -z "$in_use" ]; then
             printf '  (could not list the worktrees; left the databases alone)\n'
         elif ! grep -qxF -- "$db_name" <<< "$in_use"; then
             # The protected list and $db_name are built from two separate git
@@ -424,7 +474,7 @@ if [ "$with_integration" -eq 1 ]; then
                     continue
                 fi
 
-                stale=$(prunable_databases "$existing" "$in_use") || continue
+                stale=$(prunable_databases "$existing" "$in_use" "$clone_id") || continue
                 [ -n "$stale" ] || continue
 
                 drops=''
