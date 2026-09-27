@@ -26,6 +26,14 @@
         // semantics are preserved, so no test can distinguish them. Ignoring
         // them is the standard workflow (mutation testing cannot kill what
         // is not observable by tests).
+        "LessThan": {
+            // WindowFrame::offset line 86: `$offset < 0` -> `$offset <= 0`.
+            // The arm above it already takes 0, so no offset reaching this
+            // arm is 0 and both comparisons agree on every one of them.
+            "ignore": [
+                "Sloop\\Database\\Query\\WindowFrame::offset::86"
+            ]
+        },
         "LogicalAndSingleSubExprNegation": {
             // Container::resolveBinding line 142: the cached-singleton check
             // is a defensive layer. get() already returns early when the id

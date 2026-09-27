@@ -35,6 +35,28 @@ final class SelectWindowTest extends TransactionalIntegrationTestCase
         );
     }
 
+    public function testBothServersReadTheRowsAFrameNames(): void
+    {
+        // Counts rather than sums, because a sum comes back as a decimal string
+        // on one server and an int on the other; a count is an int on both.
+        $rows = $this->connection
+            ->select(
+                'id',
+                [Expression::count('id')->over()->orderBy('score')->rows(null, 0), 'upto'],
+                [Expression::count('id')->over()->orderBy('score')->range(-14, 0), 'near'],
+            )
+            ->from('users')
+            ->orderBy('id')
+            ->get();
+
+        // Scores are 10, 25 and 40. Every row up to this one counts 1, 2, 3; a
+        // score within 14 below this one finds only the row itself each time.
+        $this->assertSame(
+            [['id' => 1, 'upto' => 1, 'near' => 1], ['id' => 2, 'upto' => 2, 'near' => 1], ['id' => 3, 'upto' => 3, 'near' => 1]],
+            $rows,
+        );
+    }
+
     public function testBothServersNumberRowsWithinEachPartition(): void
     {
         $rows = $this->connection
