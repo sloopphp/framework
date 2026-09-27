@@ -24,8 +24,8 @@ use Sloop\Support\Arr;
  * Leaving out an entry keeps the keys of the rest: a form with three
  * `attachments[]` inputs and the middle one empty gives keys 0 and 2. A list()
  * rule counts positions from zero, so the third file is reported as
- * `attachments.1`. A shape() rule with named keys, such as `attachments[front]`,
- * reports each file under its own key.
+ * `attachments.1`. A shape() rule with named keys, such as
+ * `attachments[front]`, reports each file under its own key.
  *
  * @internal Used by Application when it builds the request from the globals.
  */
@@ -43,7 +43,8 @@ final class UploadedFiles
      *
      * A field named `photos[]` or `form[profile][avatar]` arrives with the
      * nesting inside each of name, type, tmp_name, error and size; the result
-     * puts it outside, so the file is at `photos[0]` or `form['profile']['avatar']`.
+     * puts it outside, so the file is at `photos[0]` or
+     * `form['profile']['avatar']`.
      *
      * @param  array<array-key, mixed> $files Array shaped like $_FILES
      * @return array<array-key, mixed> UploadedFileInterface leaves under the field names
