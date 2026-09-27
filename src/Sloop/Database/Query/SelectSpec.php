@@ -31,7 +31,7 @@ final readonly class SelectSpec
     /**
      * Columns to select; an empty list selects everything.
      *
-     * @var list<string|Expression|SelectedColumn|WindowExpression>
+     * @var list<string|Expression|SelectedColumn|WindowExpression|FunctionCall>
      */
     public array $columns;
 
@@ -129,9 +129,9 @@ final readonly class SelectSpec
      * read: the servers compute one after the rows are grouped and filtered, so
      * it has no meaning in GROUP BY or WHERE and is kept out of them by type.
      *
-     * @param  array<int|string, mixed>                                $columns Column names, Expressions, window calls, or SelectedColumn instances
-     * @return list<string|Expression|SelectedColumn|WindowExpression> Columns as a list
-     * @throws InvalidArgumentException                                When an element is none of those
+     * @param  array<int|string, mixed>                                             $columns Column names, Expressions, window calls, aggregates, or SelectedColumn instances
+     * @return list<string|Expression|SelectedColumn|WindowExpression|FunctionCall> Columns as a list
+     * @throws InvalidArgumentException                                             When an element is none of those
      */
     private static function toColumns(array $columns): array
     {
@@ -142,10 +142,11 @@ final readonly class SelectSpec
                 !\is_string($column)
                 && !$column instanceof Expression
                 && !$column instanceof WindowExpression
+                && !$column instanceof FunctionCall
                 && !$column instanceof SelectedColumn
             ) {
                 throw new InvalidArgumentException(
-                    'Columns must be a string, an Expression, a window call, or a SelectedColumn, got '
+                    'Columns must be a string, an Expression, a window call, an aggregate, or a SelectedColumn, got '
                     . get_debug_type($column) . ' at index ' . $index . '.',
                 );
             }

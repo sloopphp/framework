@@ -7,22 +7,23 @@ namespace Sloop\Database\Query;
 use InvalidArgumentException;
 
 /**
- * A function call waiting to be given a window.
+ * A function call, to be selected as an aggregate or given a window.
  *
- * The named factories on Expression return one of these, and `over()` turns it
+ * The named factories on Expression return one of these. `over()` turns it
  * into the WindowExpression a Grammar compiles. Splitting the call from its
  * window is what lets the two be written in the order they are read:
  * `Expression::sum('price')->over()->partitionBy('status')` names the function
  * first and describes the window after, where the factory form has to hold
  * both at once.
  *
- * Nothing else takes one of these. A call reaches a statement only through
- * `over()`, so a function written without a window is refused where it was
- * written rather than compiling to SQL that means something else.
+ * Without `over()` it may stand only in the select list, where it is an
+ * aggregate and is checked against the grammar's list of those. The functions
+ * that run only over a window are not on it, so one of them written without a
+ * window is refused where it was written rather than compiling to SQL that
+ * neither server accepts.
  *
  * What may stand as an argument is settled by the signatures of the factories
- * that build these, and checked again by WindowExpression when `over()` hands
- * the call on.
+ * that build these.
  *
  * @see Expression::fn() for the factory that names any function a Grammar writes
  * @see Expression::over() for building the same call and its window in one go
