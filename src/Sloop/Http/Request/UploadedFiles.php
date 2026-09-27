@@ -21,6 +21,12 @@ use Sloop\Support\Arr;
  * empty nested field stay, so `form[profile][avatar]` left empty gives
  * `['form' => ['profile' => []]]`.
  *
+ * Leaving out an entry keeps the keys of the rest: a form with three
+ * `attachments[]` inputs and the middle one empty gives keys 0 and 2. A list()
+ * rule counts positions from zero, so the third file is reported as
+ * `attachments.1`. A shape() rule with named keys, such as `attachments[front]`,
+ * reports each file under its own key.
+ *
  * @internal Used by Application when it builds the request from the globals.
  */
 final class UploadedFiles

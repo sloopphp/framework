@@ -22,6 +22,28 @@ final class FileRuleTest extends TestCase
     use ThrowsAssertions;
     use ValidatesOneField;
 
+    /** @var list<string> */
+    private array $tmpFiles = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tmpFiles as $path) {
+            unlink($path);
+        }
+    }
+
+    private function tmpFile(string $contents): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'sloop_file_rule_');
+        if ($path === false) {
+            self::fail('Could not create a temporary file.');
+        }
+        file_put_contents($path, $contents);
+        $this->tmpFiles[] = $path;
+
+        return $path;
+    }
+
     /**
      * A one-pixel PNG, small enough to inline and real enough for finfo.
      */
@@ -320,6 +342,41 @@ final class FileRuleTest extends TestCase
 
         $this->assertSame(['form' => ['f' => null]], $validator->validate([])->values());
         $this->assertSame(['form' => ['f' => null]], $validator->validate(['form' => ['f' => self::upload('', \UPLOAD_ERR_NO_FILE)]])->values());
+    }
+
+    public function testAListReportsAFileAfterAnEmptySlotAtItsPositionAmongTheFilesSent(): void
+    {
+        $input = UploadedFiles::fromGlobals([
+            'attachments' => [
+                'name'     => ['a.txt', '', 'b.txt'],
+                'type'     => ['text/plain', '', 'text/plain'],
+                'tmp_name' => [$this->tmpFile('hello'), '', $this->tmpFile((string) base64_decode(self::PNG, true))],
+                'error'    => [UPLOAD_ERR_OK, UPLOAD_ERR_NO_FILE, UPLOAD_ERR_OK],
+                'size'     => [5, 0, 70],
+            ],
+        ]);
+
+        $result = new Validator(['attachments' => Rule::list(Rule::file()->mimeTypes(['text/plain']))])->validate($input);
+
+        $this->assertSame(['attachments.1'], array_keys($result->errors()));
+    }
+
+    public function testAShapeReportsAFileAfterAnEmptySlotUnderItsOwnKey(): void
+    {
+        $input = UploadedFiles::fromGlobals([
+            'attachments' => [
+                'name'     => ['front' => 'a.txt', 'side' => '', 'back' => 'b.txt'],
+                'type'     => ['front' => 'text/plain', 'side' => '', 'back' => 'text/plain'],
+                'tmp_name' => ['front' => $this->tmpFile('hello'), 'side' => '', 'back' => $this->tmpFile((string) base64_decode(self::PNG, true))],
+                'error'    => ['front' => UPLOAD_ERR_OK, 'side' => UPLOAD_ERR_NO_FILE, 'back' => UPLOAD_ERR_OK],
+                'size'     => ['front' => 5, 'side' => 0, 'back' => 70],
+            ],
+        ]);
+        $text  = Rule::file()->mimeTypes(['text/plain']);
+
+        $result = new Validator(['attachments' => Rule::shape(['front' => $text, 'side' => $text, 'back' => $text])])->validate($input);
+
+        $this->assertSame(['attachments.back'], array_keys($result->errors()));
     }
 
     public function testAMultipleFileFieldLeftEmptyFailsMinCountOnTheList(): void
