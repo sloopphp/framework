@@ -23,4 +23,4 @@ if ! command -v gitleaks > /dev/null 2>&1; then
     exit 0
 fi
 
-exec gitleaks git --staged --no-banner --redact
+exec gitleaks git --staged --no-banner --redact --verbose
