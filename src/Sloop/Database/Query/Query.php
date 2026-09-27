@@ -83,20 +83,13 @@ abstract class Query
      * prepared statement, which is the boundary that keeps a value from being
      * read as SQL. Use toSql() and toBindings() for anything but looking.
      *
-     * Every `?` in the text is taken for a placeholder and paired with the
-     * next value. A `?` that is part of a column name, or one written inside a
-     * string literal in the SQL of an Expression, is indistinguishable from one
-     * here and shifts the values that follow it in the rendering. Reading the
-     * text at the point where it stops matching the statement is enough to see
-     * that has happened, and the statement itself is unaffected, since it is
-     * the bindings and not this text that reach the server.
-     *
-     * Telling the two apart needs the text to be parsed as SQL, and a parse
-     * that is wrong in a way the reader cannot see is worse than a rule stated
-     * plainly. Reading the backticks to find the names looks like the fix and
-     * is not: the SQL of an Expression can carry one that opens nothing, and
-     * from there every following value is written in the wrong place or not
-     * at all.
+     * A `?` inside a quoted name or a string literal is left as written, so
+     * a value is not written into it. When the marks found outside quotes do
+     * not number the values, which an unclosed quote in the SQL of an
+     * Expression causes, every `?` in the text is taken in order instead, and
+     * the rendering stops matching the statement from that point on. The
+     * statement itself is unaffected, since it is the bindings and not this
+     * text that reach the server.
      *
      * Quoting is the driver's, so this asks the route for a connection and
      * opens one if the pool has not connected yet. Which makes it the wrong
@@ -114,18 +107,23 @@ abstract class Query
     {
         $compiled   = $this->compile();
         $connection = $this->route->connection();
-        $rendered   = '';
+        $offsets    = $this->grammar->placeholderOffsets($compiled->sql);
 
-        foreach (explode('?', $compiled->sql) as $index => $segment) {
-            if ($index > 0) {
-                $rendered .= \array_key_exists($index - 1, $compiled->bindings)
-                    ? $connection->quoteLiteral($compiled->bindings[$index - 1])
-                    : '?';
-            }
-
-            $rendered .= $segment;
+        if (\count($offsets) !== \count($compiled->bindings)) {
+            $offsets = array_keys(str_split($compiled->sql), '?', true);
         }
 
-        return $rendered;
+        $rendered = '';
+        $cursor   = 0;
+
+        foreach ($offsets as $index => $offset) {
+            $rendered .= substr($compiled->sql, $cursor, $offset - $cursor);
+            $rendered .= \array_key_exists($index, $compiled->bindings)
+                ? $connection->quoteLiteral($compiled->bindings[$index])
+                : '?';
+            $cursor    = $offset + 1;
+        }
+
+        return $rendered . substr($compiled->sql, $cursor);
     }
 }

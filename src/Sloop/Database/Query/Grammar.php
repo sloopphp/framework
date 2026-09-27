@@ -41,6 +41,17 @@ class Grammar
     private const string PREFIX_PATTERN = '/\A[a-zA-Z0-9_]*\z/';
 
     /**
+     * A quoted name, a string literal, or a placeholder, whichever starts first.
+     *
+     * The quoted forms are matched whole so that a `?` inside them is consumed
+     * with them. The quantifiers are possessive: an unclosed quote fails to
+     * match at once instead of backtracking through the rest of the text.
+     *
+     * @var string
+     */
+    private const string PLACEHOLDER_PATTERN = '/`(?:[^`]++|``)*+`|\'(?:[^\'\\\\]++|\\\\.|\'\')*+\'|\?/s';
+
+    /**
      * Name the row being inserted is given when the alias form is written.
      *
      * Prefixed rather than named for what it is, because the alias shares a
@@ -494,6 +505,34 @@ class Grammar
         }
 
         return $this->quoteSegments($segments, \count($segments) - 2, allowStar: $allowEveryColumn);
+    }
+
+    /**
+     * Find the placeholders in compiled SQL, passing over quoted text.
+     *
+     * A `?` inside a backtick-quoted name or a single-quoted string literal is
+     * not a placeholder. A name continues past a doubled backtick, and a
+     * literal past a doubled quote or a backslash-escaped one. A quote that is
+     * never closed opens nothing and is read as an ordinary character.
+     *
+     * @internal Rendering for Query::toRawSql().
+     *
+     * @param  string    $sql Compiled SQL to scan
+     * @return list<int> Byte offset of each `?` that stands outside quoted text
+     */
+    public function placeholderOffsets(string $sql): array
+    {
+        preg_match_all(self::PLACEHOLDER_PATTERN, $sql, $matches, PREG_OFFSET_CAPTURE);
+
+        $offsets = [];
+
+        foreach ($matches[0] as [$token, $offset]) {
+            if ($token === '?') {
+                $offsets[] = $offset;
+            }
+        }
+
+        return $offsets;
     }
 
     /**
