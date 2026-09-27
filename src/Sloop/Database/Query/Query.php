@@ -83,11 +83,12 @@ abstract class Query
      * prepared statement, which is the boundary that keeps a value from being
      * read as SQL. Use toSql() and toBindings() for anything but looking.
      *
-     * A `?` inside a quoted name or a string literal is left as written, so
-     * a value is not written into it. When the marks found outside quotes do
-     * not number the values, which an unclosed quote in the SQL of an
-     * Expression causes, every `?` in the text is taken in order instead, and
-     * the rendering stops matching the statement from that point on. The
+     * A `?` inside a backtick-quoted name or a single-quoted string literal is
+     * left as written, so a value is not written into it. When the marks found
+     * outside those do not number the values, as happens when the SQL of an
+     * Expression has an unclosed quote or a `?` in a double-quoted string,
+     * every `?` in the text is taken in order instead, and the rendering stops
+     * matching the statement from that point on. The
      * statement itself is unaffected, since it is the bindings and not this
      * text that reach the server.
      *
