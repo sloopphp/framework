@@ -165,9 +165,15 @@ final class AggregateCallTest extends TestCase
 
     public function testAWindowOnlyFunctionIsRefusedInAPairToo(): void
     {
-        $this->assertThrows(
+        $e = $this->assertThrows(
             InvalidArgumentException::class,
             fn () => $this->connection->select([Expression::rowNumber(), 'rn'])->from('orders'),
+        );
+
+        $this->assertSame(
+            'This grammar writes no aggregate function called ROW_NUMBER.'
+            . ' Give it a window with over(), or add it by overriding aggregateFunctions().',
+            $e->getMessage(),
         );
     }
 

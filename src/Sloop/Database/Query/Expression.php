@@ -398,7 +398,7 @@ final readonly class Expression
     }
 
     /**
-     * Number of rows in the window, or of those where the column is not null.
+     * Number of rows it reads, or of those where the column is not null.
      *
      * Counting rows is the default, written as `COUNT(*)`; naming a column counts
      * the rows where it holds a value.
@@ -412,7 +412,7 @@ final readonly class Expression
     }
 
     /**
-     * Sum of the column over the window.
+     * Sum of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -423,7 +423,7 @@ final readonly class Expression
     }
 
     /**
-     * Average of the column over the window.
+     * Average of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -434,7 +434,7 @@ final readonly class Expression
     }
 
     /**
-     * Largest value of the column over the window.
+     * Largest value of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -445,7 +445,7 @@ final readonly class Expression
     }
 
     /**
-     * Smallest value of the column over the window.
+     * Smallest value of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -456,7 +456,7 @@ final readonly class Expression
     }
 
     /**
-     * Population standard deviation of the column over the window.
+     * Population standard deviation of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -467,7 +467,7 @@ final readonly class Expression
     }
 
     /**
-     * Population standard deviation of the column over the window; a synonym of STD.
+     * Population standard deviation of the column over the rows it reads; a synonym of STD.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -478,7 +478,7 @@ final readonly class Expression
     }
 
     /**
-     * Population standard deviation of the column over the window.
+     * Population standard deviation of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -489,7 +489,7 @@ final readonly class Expression
     }
 
     /**
-     * Sample standard deviation of the column over the window.
+     * Sample standard deviation of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -500,7 +500,7 @@ final readonly class Expression
     }
 
     /**
-     * Population variance of the column over the window.
+     * Population variance of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -511,7 +511,7 @@ final readonly class Expression
     }
 
     /**
-     * Sample variance of the column over the window.
+     * Sample variance of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -522,7 +522,7 @@ final readonly class Expression
     }
 
     /**
-     * Population variance of the column over the window; a synonym of VAR_POP.
+     * Population variance of the column over the rows it reads; a synonym of VAR_POP.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -533,7 +533,7 @@ final readonly class Expression
     }
 
     /**
-     * Bitwise AND of the column over the window.
+     * Bitwise AND of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -544,7 +544,7 @@ final readonly class Expression
     }
 
     /**
-     * Bitwise OR of the column over the window.
+     * Bitwise OR of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -555,7 +555,7 @@ final readonly class Expression
     }
 
     /**
-     * Bitwise XOR of the column over the window.
+     * Bitwise XOR of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -581,7 +581,7 @@ final readonly class Expression
     }
 
     /**
-     * Values of the column over the window, as a JSON array.
+     * Values of the column over the rows it reads, as a JSON array.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
@@ -592,7 +592,7 @@ final readonly class Expression
     }
 
     /**
-     * Keys and values of the two columns over the window, as a JSON object.
+     * Keys and values of the two columns over the rows it reads, as a JSON object.
      *
      * @param  string|self  $key   Column holding the keys of the object
      * @param  string|self  $value Column holding the values of the object
