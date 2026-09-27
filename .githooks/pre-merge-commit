@@ -1,0 +1,4 @@
+#!/bin/sh
+# A merge that completes without stopping records its commit without running
+# pre-commit, so what it brings in is scanned here instead.
+exec "$(dirname "$0")/scan-staged-secrets.sh"
