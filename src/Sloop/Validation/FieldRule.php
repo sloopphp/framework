@@ -391,7 +391,7 @@ abstract class FieldRule
     /**
      * Convert a non-empty raw value to the declared type.
      *
-     * @param  mixed          $value Raw value after sanitizing, for which isEmpty() returned false
+     * @param  mixed          $value Raw value that isEmpty() does not count as empty
      * @return T|TypeMismatch
      */
     abstract protected function coerce(mixed $value): mixed;

@@ -49,7 +49,7 @@ final class FileRuleTest extends TestCase
         return $path;
     }
 
-    private static function upload(string $body, int $error = \UPLOAD_ERR_OK, string $clientType = 'application/octet-stream'): UploadedFile
+    private static function upload(string $body, int $error = UPLOAD_ERR_OK, string $clientType = 'application/octet-stream'): UploadedFile
     {
         return new UploadedFile(Stream::create($body), \strlen($body), $error, 'upload.bin', $clientType);
     }
@@ -74,7 +74,7 @@ final class FileRuleTest extends TestCase
     public function testMissingUploadCountsAsEmptyRatherThanAsAFailure(): void
     {
         $result = new Validator(['v' => Rule::file()])
-            ->validate(['v' => self::upload('', \UPLOAD_ERR_NO_FILE)]);
+            ->validate(['v' => self::upload('', UPLOAD_ERR_NO_FILE)]);
 
         $this->assertFalse($result->failed());
         $this->assertNull($result->values()['v']);
@@ -84,7 +84,7 @@ final class FileRuleTest extends TestCase
     {
         $this->assertSame(
             ['required'],
-            self::failedRules(Rule::file()->required(), self::upload('', \UPLOAD_ERR_NO_FILE)),
+            self::failedRules(Rule::file()->required(), self::upload('', UPLOAD_ERR_NO_FILE)),
         );
     }
 
@@ -93,12 +93,12 @@ final class FileRuleTest extends TestCase
      */
     public static function uploadErrors(): iterable
     {
-        yield 'larger than upload_max_filesize' => [\UPLOAD_ERR_INI_SIZE];
-        yield 'larger than the form limit' => [\UPLOAD_ERR_FORM_SIZE];
-        yield 'partially written' => [\UPLOAD_ERR_PARTIAL];
-        yield 'no temporary directory' => [\UPLOAD_ERR_NO_TMP_DIR];
-        yield 'not written to disk' => [\UPLOAD_ERR_CANT_WRITE];
-        yield 'stopped by an extension' => [\UPLOAD_ERR_EXTENSION];
+        yield 'larger than upload_max_filesize' => [UPLOAD_ERR_INI_SIZE];
+        yield 'larger than the form limit' => [UPLOAD_ERR_FORM_SIZE];
+        yield 'partially written' => [UPLOAD_ERR_PARTIAL];
+        yield 'no temporary directory' => [UPLOAD_ERR_NO_TMP_DIR];
+        yield 'not written to disk' => [UPLOAD_ERR_CANT_WRITE];
+        yield 'stopped by an extension' => [UPLOAD_ERR_EXTENSION];
     }
 
     #[DataProvider('uploadErrors')]
@@ -109,7 +109,7 @@ final class FileRuleTest extends TestCase
 
     public function testUploadErrorIsReportedWithoutAnyRuleBeingDeclared(): void
     {
-        $error = self::onlyError(Rule::file(), self::upload('x', \UPLOAD_ERR_INI_SIZE));
+        $error = self::onlyError(Rule::file(), self::upload('x', UPLOAD_ERR_INI_SIZE));
 
         $this->assertSame('upload', $error->rule);
         $this->assertSame([], $error->params);
@@ -200,7 +200,7 @@ final class FileRuleTest extends TestCase
         $stream = Stream::create($pipe);
         self::assertFalse($stream->isSeekable(), 'A pipe is expected to be unseekable.');
 
-        $file = new UploadedFile($stream, 0, \UPLOAD_ERR_OK, 'upload.bin', 'image/png');
+        $file = new UploadedFile($stream, 0, UPLOAD_ERR_OK, 'upload.bin', 'image/png');
 
         try {
             $this->assertSame(['mimeTypes'], self::failedRules(Rule::file()->mimeTypes(['image/png']), $file));
@@ -215,7 +215,7 @@ final class FileRuleTest extends TestCase
         // PSR-7 allows a null size; the upload cannot be shown to fit, so it
         // does not pass rather than passing by default.
         $file = $this->createStub(UploadedFileInterface::class);
-        $file->method('getError')->willReturn(\UPLOAD_ERR_OK);
+        $file->method('getError')->willReturn(UPLOAD_ERR_OK);
         $file->method('getSize')->willReturn(null);
 
         $this->assertSame(['maxSize'], self::failedRules(Rule::file()->maxSize(10), $file));
@@ -328,7 +328,7 @@ final class FileRuleTest extends TestCase
     public function testAShapeDefaultNamingAnEmptyUploadForARequiredKeyIsRefused(): void
     {
         $declare = static fn (): mixed => Rule::shape(['f' => Rule::file()->required()])
-            ->default(['f' => self::upload('', \UPLOAD_ERR_NO_FILE)]);
+            ->default(['f' => self::upload('', UPLOAD_ERR_NO_FILE)]);
 
         $this->assertSame(
             'The default of shape() has no value for "f", which is required.',
@@ -338,10 +338,10 @@ final class FileRuleTest extends TestCase
 
     public function testAShapeDefaultNamingAnEmptyUploadGivesWhatValidatingWouldHaveGiven(): void
     {
-        $validator = new Validator(['form' => Rule::shape(['f' => Rule::file()])->default(['f' => self::upload('', \UPLOAD_ERR_NO_FILE)])]);
+        $validator = new Validator(['form' => Rule::shape(['f' => Rule::file()])->default(['f' => self::upload('', UPLOAD_ERR_NO_FILE)])]);
 
         $this->assertSame(['form' => ['f' => null]], $validator->validate([])->values());
-        $this->assertSame(['form' => ['f' => null]], $validator->validate(['form' => ['f' => self::upload('', \UPLOAD_ERR_NO_FILE)]])->values());
+        $this->assertSame(['form' => ['f' => null]], $validator->validate(['form' => ['f' => self::upload('', UPLOAD_ERR_NO_FILE)]])->values());
     }
 
     public function testAListReportsAFileAfterAnEmptySlotAtItsPositionAmongTheFilesSent(): void
@@ -381,7 +381,7 @@ final class FileRuleTest extends TestCase
 
     public function testAnEmptyUploadInsideAListIsANullElementThatTheCountRulesSee(): void
     {
-        $empty = self::upload('', \UPLOAD_ERR_NO_FILE);
+        $empty = self::upload('', UPLOAD_ERR_NO_FILE);
 
         $passing = new Validator(['p' => Rule::list(Rule::file())->minCount(1)])->validate(['p' => [$empty]]);
 

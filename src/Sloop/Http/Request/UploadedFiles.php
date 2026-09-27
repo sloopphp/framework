@@ -12,8 +12,8 @@ use Sloop\Support\Arr;
  * Conversion of $_FILES into the PSR-7 uploaded file tree.
  *
  * Each file keeps the path PHP wrote it to, so nothing is opened until the
- * file is read, and moveTo() moves it with move_uploaded_file() instead of
- * copying its contents.
+ * file is read, and moveTo() moves it with move_uploaded_file() (rename()
+ * under the CLI) instead of copying its contents.
  *
  * A browser sends an entry carrying UPLOAD_ERR_NO_FILE for a file field the
  * visitor left empty. That entry is left out: an empty top-level field is
@@ -107,7 +107,9 @@ final class UploadedFiles
     /**
      * Build the file of one leaf, or nothing for a field left empty.
      *
-     * A file without an error part reads as nothing having been uploaded.
+     * A file without an error part reads as nothing having been uploaded, and
+     * so does a successful upload without its path or its size: its size could
+     * not be checked against a limit.
      *
      * @param  array<array-key, mixed>    $spec The five parts of a single file
      * @return UploadedFileInterface|null
@@ -119,15 +121,32 @@ final class UploadedFiles
             return null;
         }
 
-        $name = $spec['name'] ?? null;
-        $type = $spec['type'] ?? null;
+        $tmpName = Arr::getString($spec, 'tmp_name');
+        $size    = $spec['size'] ?? null;
+        if ($error === \UPLOAD_ERR_OK && ($tmpName === '' || !\is_int($size))) {
+            return null;
+        }
 
         return new UploadedFile(
-            Arr::getString($spec, 'tmp_name'),
-            Arr::getInt($spec, 'size'),
+            $tmpName,
+            \is_int($size) ? $size : 0,
             $error,
-            \is_string($name) ? $name : null,
-            \is_string($type) ? $type : null,
+            self::clientPart($spec, 'name'),
+            self::clientPart($spec, 'type'),
         );
+    }
+
+    /**
+     * Read a part the client sent, such as the file name.
+     *
+     * @param  array<array-key, mixed> $spec The five parts of a single file
+     * @param  string                  $part Key of the part
+     * @return string|null
+     */
+    private static function clientPart(array $spec, string $part): ?string
+    {
+        $value = $spec[$part] ?? null;
+
+        return \is_string($value) ? $value : null;
     }
 }

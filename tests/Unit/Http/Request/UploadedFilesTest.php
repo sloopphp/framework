@@ -197,6 +197,13 @@ final class UploadedFilesTest extends TestCase
         $this->assertSame('big.png', $avatar->getClientFilename());
     }
 
+    public function testReadsAMissingSizeOfAFailedUploadAsZero(): void
+    {
+        $files = UploadedFiles::fromGlobals(['avatar' => ['name' => 'big.png', 'error' => UPLOAD_ERR_INI_SIZE]]);
+
+        $this->assertSame(0, $this->file($files['avatar'])->getSize());
+    }
+
     public function testReadsAMissingErrorPartAsNothingUploaded(): void
     {
         $files = UploadedFiles::fromGlobals(['avatar' => ['name' => 'me.png'], 'broken' => 'not a spec']);
@@ -204,14 +211,26 @@ final class UploadedFilesTest extends TestCase
         $this->assertSame([], $files);
     }
 
-    public function testReadsAMissingSizePartAsZero(): void
+    public function testLeavesOutAnUploadWithoutASizeOrAPath(): void
     {
         $tmp = $this->tmpFile('a', 'x');
 
-        $files = UploadedFiles::fromGlobals(['avatar' => ['tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK]]);
+        $files = UploadedFiles::fromGlobals([
+            'no_size' => ['tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK],
+            'no_path' => ['size' => 1, 'error' => UPLOAD_ERR_OK],
+        ]);
+
+        $this->assertSame([], $files);
+    }
+
+    public function testReadsMissingClientPartsAsNull(): void
+    {
+        $tmp = $this->tmpFile('a', 'x');
+
+        $files = UploadedFiles::fromGlobals(['avatar' => ['tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => 1]]);
 
         $avatar = $this->file($files['avatar']);
-        $this->assertSame(0, $avatar->getSize());
+        $this->assertSame(1, $avatar->getSize());
         $this->assertNull($avatar->getClientFilename());
         $this->assertNull($avatar->getClientMediaType());
     }
