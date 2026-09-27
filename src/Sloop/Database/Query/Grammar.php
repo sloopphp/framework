@@ -524,15 +524,9 @@ class Grammar
     {
         preg_match_all(self::PLACEHOLDER_PATTERN, $sql, $matches, PREG_OFFSET_CAPTURE);
 
-        $offsets = [];
+        $placeholders = array_filter($matches[0], static fn (array $match): bool => $match[0] === '?');
 
-        foreach ($matches[0] as [$token, $offset]) {
-            if ($token === '?') {
-                $offsets[] = $offset;
-            }
-        }
-
-        return $offsets;
+        return array_column($placeholders, 1);
     }
 
     /**
