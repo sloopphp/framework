@@ -47,9 +47,9 @@ use Sloop\Validation\ValidationMessages;
  * ## Deferred coverage (intentionally not tested in v0.1)
  *
  * - **`run(null)` → `createServerRequestFromGlobals()`, apart from uploads**:
- *   only `$_FILES` and `$_POST` are checked (see `runWithGlobals()`). The
- *   method, URI, headers, body and cookies taken from the globals are not,
- *   and `php://input` cannot be set from a test at all.
+ *   only the method, URI, `$_POST` and `$_FILES` are checked (see
+ *   `runWithGlobals()`). The headers, body and cookies taken from the globals
+ *   are not, and `php://input` cannot be set from a test at all.
  *
  * - **`send($response)`**: writes HTTP headers via `header()` and outputs
  *   the body via `echo`. Verification requires `@runInSeparateProcess` or
