@@ -16,9 +16,10 @@ use Sloop\Support\Arr;
  * copying its contents.
  *
  * A browser sends an entry carrying UPLOAD_ERR_NO_FILE for a file field the
- * visitor left empty. That entry is left out: an empty single field is absent
- * and an empty multiple field is an empty list, the same as a field that was
- * never in the form.
+ * visitor left empty. That entry is left out: an empty top-level field is
+ * absent and an empty multiple field is an empty list. The arrays around an
+ * empty nested field stay, so `form[profile][avatar]` left empty gives
+ * `['form' => ['profile' => []]]`.
  *
  * @internal Used by Application when it builds the request from the globals.
  */

@@ -171,6 +171,21 @@ final class UploadedFilesTest extends TestCase
         $this->assertSame('three', (string) $this->file($files['photos'][2])->getStream());
     }
 
+    public function testKeepsTheArraysAroundAnEmptyNestedField(): void
+    {
+        $files = UploadedFiles::fromGlobals([
+            'form' => [
+                'name'     => ['profile' => ['avatar' => '']],
+                'type'     => ['profile' => ['avatar' => '']],
+                'tmp_name' => ['profile' => ['avatar' => '']],
+                'error'    => ['profile' => ['avatar' => UPLOAD_ERR_NO_FILE]],
+                'size'     => ['profile' => ['avatar' => 0]],
+            ],
+        ]);
+
+        $this->assertSame(['form' => ['profile' => []]], $files);
+    }
+
     public function testKeepsAFieldThatFailedToUpload(): void
     {
         $files = UploadedFiles::fromGlobals([

@@ -111,10 +111,9 @@ final class ShapeRule extends ArrayRule
 
         $filled = [];
         foreach ($this->fields as $key => $rule) {
-            // The three ways of saying nothing are the same here as everywhere
-            // else in validation, so one test has to cover a missing key and a
-            // null alike: array_key_exists() would let the null through.
-            if (isset($value[$key]) && $value[$key] !== '') {
+            // A key's own rule says what counts as nothing, the same test
+            // validation runs, so a missing key reads as null and goes to it.
+            if (!$rule->isEmpty($value[$key] ?? null)) {
                 $filled[$key] = $rule->prepareDefault($value[$key]);
                 continue;
             }

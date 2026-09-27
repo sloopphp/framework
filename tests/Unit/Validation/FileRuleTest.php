@@ -303,6 +303,25 @@ final class FileRuleTest extends TestCase
         );
     }
 
+    public function testAShapeDefaultNamingAnEmptyUploadForARequiredKeyIsRefused(): void
+    {
+        $declare = static fn (): mixed => Rule::shape(['f' => Rule::file()->required()])
+            ->default(['f' => self::upload('', \UPLOAD_ERR_NO_FILE)]);
+
+        $this->assertSame(
+            'The default of shape() has no value for "f", which is required.',
+            $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage(),
+        );
+    }
+
+    public function testAShapeDefaultNamingAnEmptyUploadGivesWhatValidatingWouldHaveGiven(): void
+    {
+        $validator = new Validator(['form' => Rule::shape(['f' => Rule::file()])->default(['f' => self::upload('', \UPLOAD_ERR_NO_FILE)])]);
+
+        $this->assertSame(['form' => ['f' => null]], $validator->validate([])->values());
+        $this->assertSame(['form' => ['f' => null]], $validator->validate(['form' => ['f' => self::upload('', \UPLOAD_ERR_NO_FILE)]])->values());
+    }
+
     public function testAMultipleFileFieldLeftEmptyFailsMinCountOnTheList(): void
     {
         $input = UploadedFiles::fromGlobals([
