@@ -121,6 +121,18 @@ final class Rule
     }
 
     /**
+     * A field whose validated value is an uploaded file.
+     *
+     * Takes no sanitizers: there is no string to clean.
+     *
+     * @return FileRule
+     */
+    public static function file(): FileRule
+    {
+        return new FileRule();
+    }
+
+    /**
      * A field that must be an array, whatever it holds.
      *
      * The elements reach the caller untouched. Use list() to give them all one

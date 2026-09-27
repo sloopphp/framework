@@ -94,6 +94,21 @@ final class ListRule extends ArrayRule
     }
 
     /**
+     * Whether same() / different() can say anything about this field.
+     *
+     * A list of values no two inputs can share is one itself, so the element
+     * answers for the list.
+     *
+     * @internal Read by Validator when another field declares a comparison.
+     *
+     * @return bool
+     */
+    public function comparesByValue(): bool
+    {
+        return $this->element->comparesByValue();
+    }
+
+    /**
      * Validate every element, keeping the failures of all of them.
      *
      * Not reached when a rule on the number of elements has failed.

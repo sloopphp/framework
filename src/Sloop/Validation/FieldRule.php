@@ -17,14 +17,15 @@ use UnexpectedValueException;
  * variable is never changed by a later call on it.
  *
  * Processing order for one value: sanitize (only when the raw value is a
- * valid UTF-8 string), then the emptiness check (a missing key, null, and ''
- * all count as empty), then the type check, then the rules on the size of the
- * value, then what it holds, then every other declared rule. An empty value
- * runs no rule other than required() and yields the declared default; a value
- * of the wrong type or the wrong size stops before what it holds is read.
+ * valid UTF-8 string), then the emptiness check (a missing key, null and ''
+ * count as empty, and a subclass may add to that), then the type check, then
+ * the rules on the size of the value, then what it holds, then every other
+ * declared rule. An empty value runs no rule other than required() and yields
+ * the declared default; a value of the wrong type or the wrong size stops
+ * before what it holds is read.
  *
- * Every subclass declares default() with a native type and passes the value
- * on to withDefault().
+ * A subclass that can have a default declares default() with a native type
+ * and passes the value on to withDefault().
  *
  * @template T
  */
@@ -235,7 +236,7 @@ abstract class FieldRule
             $value = $this->sanitize($value);
         }
 
-        if ($value === null || $value === '') {
+        if ($this->isEmpty($value)) {
             if ($this->required) {
                 return new FieldOutcome(null, null, false, [new Failure('required', [], $this->requiredMessage)]);
             }
@@ -247,7 +248,10 @@ abstract class FieldRule
 
         $typed = $this->coerce($value);
         if ($typed instanceof TypeMismatch) {
-            return new FieldOutcome(null, null, false, [new Failure($this->typeRule(), $this->typeParams())]);
+            $rule   = $typed->rule ?? $this->typeRule();
+            $params = $typed->rule === null ? $this->typeParams() : $typed->params;
+
+            return new FieldOutcome(null, null, false, [new Failure($rule, $params)]);
         }
 
         // A value of the wrong size stops here, the way one of the wrong type does.
@@ -310,6 +314,22 @@ abstract class FieldRule
     }
 
     /**
+     * Whether same() / different() can say anything about this field.
+     *
+     * A type whose validated value is an object that no two inputs can share
+     * answers false, so that a comparison naming it is refused when it is
+     * declared rather than reporting the same verdict for every input.
+     *
+     * @internal Read by Validator when another field declares a comparison.
+     *
+     * @return bool
+     */
+    public function comparesByValue(): bool
+    {
+        return true;
+    }
+
+    /**
      * Prepare a value a container declares as the default of this field.
      *
      * Rule::decimal() does not override this:
@@ -337,6 +357,21 @@ abstract class FieldRule
     }
 
     /**
+     * Whether the value counts as nothing having been submitted.
+     *
+     * A missing key reaches evaluate() as null, and a form submits a field the
+     * visitor left alone as ''. A subclass widens this where its own transport
+     * has another way of saying the same thing.
+     *
+     * @param  mixed $value Raw value after sanitizing
+     * @return bool
+     */
+    protected function isEmpty(mixed $value): bool
+    {
+        return $value === null || $value === '';
+    }
+
+    /**
      * Validate what the value holds, for a type that holds other values.
      *
      * Runs after the type check and after the rules on the size of the value,
@@ -354,7 +389,7 @@ abstract class FieldRule
     /**
      * Convert a non-empty raw value to the declared type.
      *
-     * @param  mixed          $value Raw value after sanitizing; never null or ''
+     * @param  mixed          $value Raw value that isEmpty() rejected
      * @return T|TypeMismatch
      */
     abstract protected function coerce(mixed $value): mixed;

@@ -136,6 +136,27 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Whether same() / different() can say anything about this field.
+     *
+     * A shape holding a value no two inputs can share is one itself, so every
+     * declared key has to answer true for the shape to.
+     *
+     * @internal Read by Validator when another field declares a comparison.
+     *
+     * @return bool
+     */
+    public function comparesByValue(): bool
+    {
+        foreach ($this->fields as $field) {
+            if (!$field->comparesByValue()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Validate every declared key, keeping the failures of all of them.
      *
      * @param  array<array-key, mixed>                       $typed Value of the declared type
