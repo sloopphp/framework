@@ -101,6 +101,26 @@ final class SelectSubQueryTest extends TransactionalIntegrationTestCase
         $this->assertSame([], $ids);
     }
 
+    public function testWhereNotInOrNullKeepsTheRowsWhoseColumnIsNull(): void
+    {
+        // The left-hand trap: a null column is neither in nor out of the set,
+        // so NOT IN alone drops the two users who were never deleted.
+        $this->connection->statement('UPDATE users SET deleted_at = ? WHERE id = 1', ['2026-01-01 00:00:00']);
+
+        $notIn  = $this->connection->select('id')
+            ->from('users')
+            ->whereNotIn('deleted_at', ['2026-01-01 00:00:00'])
+            ->pluck('id');
+        $orNull = $this->connection->select('id')
+            ->from('users')
+            ->whereNotInOrNull('deleted_at', ['2026-01-01 00:00:00'])
+            ->orderBy('id')
+            ->pluck('id');
+
+        $this->assertSame([], $notIn);
+        $this->assertSame([2, 3], $orNull);
+    }
+
     public function testASubqueryWithNoMatchingRowsLeavesTheOuterStatementEmpty(): void
     {
         $ids = $this->connection->select('id')

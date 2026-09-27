@@ -352,6 +352,56 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
+     * Keep only rows whose column is none of the given values, or is null.
+     *
+     * A null column is not outside the set as far as NOT IN is concerned: the
+     * comparison is unknown, so whereNotIn() drops those rows. This writes
+     * `(column NOT IN (...) OR column IS NULL)` to keep them. The set is what
+     * whereNotIn() describes.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function whereNotInOrNull(string|Expression $column, array|Select $values): static
+    {
+        return $this->addExclusionOrNull(Conjunction::And, $column, $values);
+    }
+
+    /**
+     * Keep only rows whose column is none of the given values or is null, joined to the one before it with AND.
+     *
+     * Same as whereNotInOrNull(); spelled out for a chain that reads better
+     * with the conjunction named.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function andWhereNotInOrNull(string|Expression $column, array|Select $values): static
+    {
+        return $this->addExclusionOrNull(Conjunction::And, $column, $values);
+    }
+
+    /**
+     * Keep only rows whose column is none of the given values or is null, joined to the one before it with OR.
+     *
+     * The test is what whereNotInOrNull() describes, and stays in its own
+     * parentheses.
+     *
+     * @param  string|Expression               $column Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values Values making up the set, or a statement whose rows make it up; a written-out set must not be empty or hold null
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    public function orWhereNotInOrNull(string|Expression $column, array|Select $values): static
+    {
+        return $this->addExclusionOrNull(Conjunction::Or, $column, $values);
+    }
+
+    /**
      * Keep only rows for which the given statement returns at least one row.
      *
      * Nothing is compared, so the columns the statement selects do not matter;
@@ -1013,6 +1063,34 @@ abstract class BuilderWhere extends Builder
         );
 
         return $this;
+    }
+
+    /**
+     * Add a test that a column is outside a set or null, in its own parentheses.
+     *
+     * The set is checked before the parentheses open, so a set that is refused
+     * leaves no group open behind it.
+     *
+     * @param  Conjunction                     $conjunction How the test joins to what precedes it
+     * @param  string|Expression               $column      Column to test, or an expression standing in for one
+     * @param  array<int|string, mixed>|Select $values      Values making up the set, or a statement whose rows make it up
+     * @return static                          This builder
+     * @throws InvalidArgumentException        When the written-out set is empty, holds null, or holds a value that cannot be compared
+     */
+    private function addExclusionOrNull(Conjunction $conjunction, string|Expression $column, array|Select $values): static
+    {
+        $exclusion = new InCondition(
+            $column,
+            $values instanceof Select ? new SubQuery($values) : $values,
+            negated: true,
+            conjunction: Conjunction::And,
+        );
+
+        $this->openGroup($conjunction);
+        $this->conditions[] = $exclusion;
+        $this->addNullTest(Conjunction::Or, $column, negated: false);
+
+        return $this->closeGroup();
     }
 
     /**
