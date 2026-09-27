@@ -17,7 +17,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * built from the globals already leaves such a field out, but one built
  * elsewhere may still carry the entry a browser sends for a field left empty.
  * Inside a list such an entry is still an element: it reads as null and is
- * counted by minCount() and maxCount().
+ * counted by the rules on the number of elements.
  * Every other upload error fails the field on its own, whatever rules were
  * declared.
  *
