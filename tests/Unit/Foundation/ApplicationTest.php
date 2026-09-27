@@ -11,6 +11,7 @@ use Monolog\Logger;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
 use Sloop\Database\Config\ValidatedConfig;
@@ -45,10 +46,10 @@ use Sloop\Validation\ValidationMessages;
  *
  * ## Deferred coverage (intentionally not tested in v0.1)
  *
- * - **`run(null)` → `createServerRequestFromGlobals()`**: requires mutating
- *   `$_SERVER` / `$_GET` / `$_POST` superglobals with backup/restore. Test
- *   cost is high vs. value (the method is a thin wrapper around PSR-7
- *   construction). Will be covered by v0.2 integration test framework.
+ * - **`run(null)` → `createServerRequestFromGlobals()`, apart from uploads**:
+ *   only `$_FILES` and `$_POST` are checked (see `runWithGlobals()`). The
+ *   method, URI, headers, body and cookies taken from the globals are not,
+ *   and `php://input` cannot be set from a test at all.
  *
  * - **`send($response)`**: writes HTTP headers via `header()` and outputs
  *   the body via `echo`. Verification requires `@runInSeparateProcess` or
@@ -132,6 +133,31 @@ final class ApplicationTest extends TestCase
     private function createRequest(string $method = 'GET', string $uri = '/'): ServerRequest
     {
         return new ServerRequest($method, new Uri($uri));
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array<string, mixed> $post
+     * @param array<string, mixed> $files
+     */
+    private function runWithGlobals(array $server, array $post, array $files): ResponseInterface
+    {
+        $this->writeRoutes('<?php
+            $router->post("/upload", \Sloop\Tests\Unit\Foundation\Stub\UploadController::class, "store");
+        ');
+
+        $backup = [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES];
+        try {
+            $_SERVER = $server;
+            $_GET    = [];
+            $_POST   = $post;
+            $_COOKIE = [];
+            $_FILES  = $files;
+
+            return new Application($this->tmpDir)->run();
+        } finally {
+            [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES] = $backup;
+        }
     }
 
     /**
@@ -224,6 +250,40 @@ final class ApplicationTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('42', $data['id']);
+    }
+
+    public function testRequestFromGlobalsCarriesUploadedFiles(): void
+    {
+        $tmpFile = $this->tmpDir . '/upload.bin';
+        file_put_contents($tmpFile, 'avatar bytes');
+
+        $response = $this->runWithGlobals(
+            ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/upload'],
+            ['title' => 'profile'],
+            ['avatar' => ['name' => 'me.png', 'type' => 'image/png', 'tmp_name' => $tmpFile, 'error' => UPLOAD_ERR_OK, 'size' => 12]],
+        );
+        $data     = $this->decodeJsonBody($response)['data'];
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(
+            ['name' => 'me.png', 'error' => UPLOAD_ERR_OK, 'contents' => 'avatar bytes', 'title' => 'profile'],
+            $data,
+        );
+    }
+
+    public function testRequestFromGlobalsCarriesAnUnsentFileFieldAsNoFile(): void
+    {
+        $response = $this->runWithGlobals(
+            ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/upload'],
+            [],
+            ['avatar' => ['name' => '', 'type' => '', 'tmp_name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'size' => 0]],
+        );
+        $data     = $this->decodeJsonBody($response)['data'];
+
+        $this->assertSame(
+            ['name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'contents' => null, 'title' => null],
+            $data,
+        );
     }
 
     public function testContainerResolvesFormatterInterface(): void

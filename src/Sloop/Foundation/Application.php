@@ -26,6 +26,7 @@ use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
+use Sloop\Http\Request\UploadedFiles;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
@@ -647,6 +648,7 @@ final class Application implements RequestHandlerInterface
         return new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER)
             ->withQueryParams($_GET)
             ->withParsedBody($_POST)
-            ->withCookieParams($_COOKIE);
+            ->withCookieParams($_COOKIE)
+            ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES));
     }
 }
