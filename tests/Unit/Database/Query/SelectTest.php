@@ -2014,26 +2014,20 @@ final class SelectTest extends TestCase
     {
         $this->seedUsers();
 
-        $e = $this->assertThrowsInvalidArgument(
-            fn () => $this->connection->select()->from('users')->pluck('name', 'nickname'),
-        );
-        $this->assertSame(
-            'Column "nickname" holds null, which cannot key an array.',
-            $e->getMessage(),
-        );
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Column "nickname" holds null, which cannot key an array.');
+
+        $this->connection->select()->from('users')->pluck('name', 'nickname');
     }
 
     public function testPluckRefusesAKeyColumnHoldingAFloat(): void
     {
         $this->seedUsers();
 
-        $e = $this->assertThrowsInvalidArgument(
-            fn () => $this->connection->select()->from('users')->pluck('name', 'weight'),
-        );
-        $this->assertSame(
-            'Column "weight" holds float, which cannot key an array.',
-            $e->getMessage(),
-        );
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Column "weight" holds float, which cannot key an array.');
+
+        $this->connection->select()->from('users')->pluck('name', 'weight');
     }
 
     public function testPluckAcceptsAStringKeyColumn(): void

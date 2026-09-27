@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Integration\Database;
 
 use DateTimeImmutable;
-use RuntimeException;
+use InvalidArgumentException;
 use Sloop\Tests\Integration\Database\Stub\SelectedUser;
 use Sloop\Tests\Support\TransactionalIntegrationTestCase;
 
@@ -65,7 +65,7 @@ final class SelectHydrationTest extends TransactionalIntegrationTestCase
             ->where('id', 1)
             ->execute();
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/Row 0 has no column "score"/');
 
         $rows->asObject(SelectedUser::class);

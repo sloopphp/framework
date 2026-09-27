@@ -6,7 +6,6 @@ namespace Sloop\Tests\Unit\Database;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Sloop\Database\Result;
 use Sloop\Support\Collection;
 use Sloop\Tests\Unit\Database\Stub\HydratedAbstract;
@@ -16,6 +15,7 @@ use Sloop\Tests\Unit\Database\Stub\HydratedUser;
 use Sloop\Tests\Unit\Database\Stub\HydratedVariadic;
 use Sloop\Tests\Unit\Database\Stub\HydratedWithoutConstructor;
 use TypeError;
+use UnexpectedValueException;
 
 final class ResultTest extends TestCase
 {
@@ -153,7 +153,7 @@ final class ResultTest extends TestCase
         // into one entry.
         $result = new Result([['id' => null, 'name' => 'alice']]);
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains(
             'Column "id" must hold an int or string to be used as a key, got null.',
         );
@@ -166,7 +166,7 @@ final class ResultTest extends TestCase
         // A float key is truncated to int, so 1.5 and 1.9 would collide on 1.
         $result = new Result([['id' => 1.5, 'name' => 'alice']]);
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains(
             'Column "id" must hold an int or string to be used as a key, got float.',
         );
@@ -289,7 +289,7 @@ final class ResultTest extends TestCase
     {
         $result = new Result([['id' => 1, 'nickname' => 'alice']]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains(
             'Row 0 has no column "name" for ' . HydratedUser::class
                 . '::__construct(). Columns present: id, nickname.',
@@ -340,7 +340,7 @@ final class ResultTest extends TestCase
     {
         $result = new Result([['id' => 1, 'name' => 'alice'], ['id' => 2]]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains(
             'Row 1 has no column "name" for ' . HydratedUser::class
                 . '::__construct(). Columns present: id.',

@@ -10,9 +10,9 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use IteratorAggregate;
 use ReflectionClass;
-use RuntimeException;
 use Sloop\Support\Collection;
 use Traversable;
+use UnexpectedValueException;
 
 /**
  * Thin bridge over the rows fetched from a database query.
@@ -112,7 +112,8 @@ final readonly class Result implements IteratorAggregate, Countable
      * @param  string                                                                           $keyColumn Column whose value becomes the outer key
      * @param  bool                                                                             $removeKey Whether to drop the key column from each row
      * @return array<array-key, array<array-key, int|float|string|bool|DateTimeImmutable|null>> Rows keyed by the column value
-     * @throws InvalidArgumentException                                                         When the column is absent or its value cannot be an array key
+     * @throws InvalidArgumentException                                                         When the column is absent
+     * @throws UnexpectedValueException                                                         When the column's value cannot be an array key
      */
     public function asArrayBy(string $keyColumn, bool $removeKey = false): array
     {
@@ -139,7 +140,8 @@ final readonly class Result implements IteratorAggregate, Countable
      * @param  string                                                         $keyColumn   Column whose value becomes the key
      * @param  string                                                         $valueColumn Column whose value becomes the value
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Key column value to value column value
-     * @throws InvalidArgumentException                                       When either column is absent or the key cannot be an array key
+     * @throws InvalidArgumentException                                       When either column is absent
+     * @throws UnexpectedValueException                                       When the key column's value cannot be an array key
      */
     public function asMap(string $keyColumn, string $valueColumn): array
     {
@@ -166,7 +168,8 @@ final readonly class Result implements IteratorAggregate, Countable
      *
      * @param  string                                                                                 $column Column to group by
      * @return array<array-key, list<array<array-key, int|float|string|bool|DateTimeImmutable|null>>> Groups in first-seen order
-     * @throws InvalidArgumentException                                                               When the column is absent or its value cannot be an array key
+     * @throws InvalidArgumentException                                                               When the column is absent
+     * @throws UnexpectedValueException                                                               When the column's value cannot be an array key
      */
     public function groupBy(string $column): array
     {
@@ -198,8 +201,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * @template T of object
      * @param  class-string<T>          $class Class to hydrate each row into
      * @return list<T>                  One instance per row, in the result's order
-     * @throws InvalidArgumentException When the class cannot be hydrated into at all
-     * @throws RuntimeException         When a row has no column for a required parameter
+     * @throws InvalidArgumentException When the class cannot be hydrated into at all, or a row has no column for a required parameter
      */
     public function asObject(string $class): array
     {
@@ -218,7 +220,7 @@ final readonly class Result implements IteratorAggregate, Countable
                 }
 
                 if (!$isOptional) {
-                    throw new RuntimeException(
+                    throw new InvalidArgumentException(
                         'Row ' . $index . ' has no column "' . $name . '" for ' . $class
                             . '::__construct(). Columns present: '
                             . implode(', ', array_keys($row)) . '.',
@@ -312,7 +314,8 @@ final readonly class Result implements IteratorAggregate, Countable
      * @param  array<array-key, int|float|string|bool|DateTimeImmutable|null> $row    Row to read from
      * @param  string                                                         $column Column holding the key
      * @return int|string                                                     Value usable as an array key
-     * @throws InvalidArgumentException                                       When the column is absent or its value cannot be an array key
+     * @throws InvalidArgumentException                                       When the column is absent
+     * @throws UnexpectedValueException                                       When the column's value cannot be an array key
      */
     private function keyFor(array $row, string $column): int|string
     {
@@ -323,7 +326,7 @@ final readonly class Result implements IteratorAggregate, Countable
         $key = $row[$column];
 
         if (!\is_int($key) && !\is_string($key)) {
-            throw new InvalidArgumentException(
+            throw new UnexpectedValueException(
                 'Column "' . $column . '" must hold an int or string to be used as a key, got '
                     . get_debug_type($key) . '.',
             );

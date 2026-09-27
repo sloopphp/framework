@@ -1716,11 +1716,11 @@ class Select extends BuilderWhere
      * @param  string|null                                                    $keyColumn   Column whose values key them, or null for a list
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Values, keyed when a key column was given
      * @throws LogicException                                                 When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
-     * @throws InvalidArgumentException                                       When an identifier is malformed, the row window is inconsistent, or a key cannot be an array key
+     * @throws InvalidArgumentException                                       When an identifier is malformed, the row window is inconsistent, or the two columns come back under one name
      * @throws InvalidConfigException                                         When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                    When the connection cannot be obtained
      * @throws DatabaseException                                              When the statement fails
-     * @throws UnexpectedValueException                                       When the driver returns a value outside the types it contracts to
+     * @throws UnexpectedValueException                                       When the driver returns a value outside the types it contracts to, or the key column holds a value that cannot be an array key
      */
     public function pluck(string $valueColumn, ?string $keyColumn = null): array
     {
@@ -1752,7 +1752,7 @@ class Select extends BuilderWhere
             $key = $values[0];
 
             if (!\is_int($key) && !\is_string($key)) {
-                throw new InvalidArgumentException(
+                throw new UnexpectedValueException(
                     'Column "' . $keyColumn . '" holds ' . get_debug_type($key) . ', which cannot key an array.',
                 );
             }
