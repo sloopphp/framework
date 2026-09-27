@@ -173,7 +173,7 @@ class Grammar
      *
      * @param  SelectSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
-     * @throws LogicException           When a nested statement names no table, or left a group of conditions open
+     * @throws LogicException           When a nested statement names no table or left a group of conditions open, or a window's RANGE frame has an offset without exactly one sort term
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileSelect(SelectSpec $spec): CompiledSql
@@ -501,7 +501,7 @@ class Grammar
      *
      * @param  list<string|Expression|SelectedColumn|WindowExpression> $columns Columns to select; empty selects everything
      * @return CompiledSql                                             Select list and the bindings of anything in it that carries values
-     * @throws LogicException                                          When a statement in the list names no table, or left a group of conditions open
+     * @throws LogicException                                          When a statement in the list names no table or left a group of conditions open, or a window's RANGE frame has an offset without exactly one sort term
      * @throws InvalidArgumentException                                When an identifier is malformed
      */
     protected function compileColumns(array $columns): CompiledSql
@@ -536,7 +536,7 @@ class Grammar
      *
      * @param  SelectedColumn           $column What to select and the name to return it under
      * @return CompiledSql              The position as written, with the bindings of anything carrying values
-     * @throws LogicException           When a statement in the list names no table, or left a group of conditions open
+     * @throws LogicException           When a statement in the list names no table or left a group of conditions open, or a window's RANGE frame has an offset without exactly one sort term
      * @throws InvalidArgumentException When an identifier is malformed, or the grammar writes no such window call
      */
     protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
@@ -1297,6 +1297,7 @@ class Grammar
      * @param  list<Order>              $orders Sort terms in the order they were added
      * @return CompiledSql              ORDER BY clause led by a space, empty when there is nothing to sort by
      * @throws InvalidArgumentException When an identifier is malformed
+     * @throws LogicException           When a window sorted by has a RANGE frame with an offset and not exactly one sort term
      */
     protected function compileOrderBy(array $orders): CompiledSql
     {
@@ -1400,6 +1401,7 @@ class Grammar
      * @param  WindowExpression         $window Call to write
      * @return CompiledSql              The call with its OVER clause, and the bindings its arguments need
      * @throws InvalidArgumentException When the grammar writes no such call, or an identifier in it is malformed
+     * @throws LogicException           When a RANGE frame has an offset without exactly one sort term
      */
     protected function compileWindow(WindowExpression $window): CompiledSql
     {
@@ -1450,11 +1452,42 @@ class Grammar
             $bindings = array_merge($bindings, $orderBy->bindings);
         }
 
+        if ($window->frame !== null) {
+            $over[] = $this->compileFrame($window->frame, \count($window->orders));
+        }
+
         return new CompiledSql(
             $this->windowFunction($window->function)
                 . '(' . implode(', ', $arguments) . ') OVER (' . implode(' ', $over) . ')',
             $bindings,
         );
+    }
+
+    /**
+     * Compile the frame of a window.
+     *
+     * Always written in the BETWEEN form, which both servers accept for every
+     * pair of bounds. A RANGE offset is a distance along the sort key, so both
+     * servers refuse one unless the window sorts by exactly one term (MySQL
+     * 3587, MariaDB 4019). The terms can be added after the frame, which is why
+     * this is checked here rather than where the frame is set.
+     *
+     * @param  WindowFrame    $frame     Rows the function reads around the current one
+     * @param  int            $sortTerms Number of sort terms the window has
+     * @return string         The frame clause
+     * @throws LogicException When a RANGE offset has no single sort term to measure along
+     */
+    protected function compileFrame(WindowFrame $frame, int $sortTerms): string
+    {
+        if ($frame->unit === FrameUnit::Range && $frame->hasOffset() && $sortTerms !== 1) {
+            throw new LogicException(
+                'A RANGE frame with an offset measures it along exactly one sort term, and this window has '
+                . $sortTerms . '.',
+            );
+        }
+
+        return $frame->unit->value . ' BETWEEN ' . WindowFrame::bound($frame->start, true)
+            . ' AND ' . WindowFrame::bound($frame->end, false);
     }
 
     /**

@@ -59,6 +59,26 @@ final readonly class WindowExpression
     public array $orders;
 
     /**
+     * Rows the function reads around the current one, or null for the server's default.
+     *
+     * @var WindowFrame|null
+     */
+    public ?WindowFrame $frame;
+
+    /**
+     * Functions whose result does not depend on a frame, spelled as a Grammar writes them.
+     *
+     * MySQL ignores a frame on any of these and MariaDB refuses one on the
+     * ranking functions (4017), so a frame written for them is refused rather
+     * than sent to be dropped.
+     *
+     * @var list<string>
+     */
+    private const array FRAMELESS_FUNCTIONS = [
+        'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'PERCENT_RANK', 'CUME_DIST', 'NTILE', 'LAG', 'LEAD',
+    ];
+
+    /**
      * Describe one window function call.
      *
      * The arguments tell columns from values apart by type: a string names a
@@ -78,13 +98,15 @@ final readonly class WindowExpression
      * @param  array<int|string, mixed> $arguments  Arguments of the call, in written order
      * @param  array<int|string, mixed> $partitions Columns to divide the rows by
      * @param  array<int|string, mixed> $orders     Order instances deciding the order within a partition
-     * @throws InvalidArgumentException When the function name is empty, a list is not one, or an element cannot stand where it is
+     * @param  WindowFrame|null         $frame      Rows the function reads around the current one, or null for the server's default
+     * @throws InvalidArgumentException When the function name is empty, a list is not one, an element cannot stand where it is, or a frame is given to a function that does not read one
      */
     public function __construct(
         string $function,
         array $arguments = [],
         array $partitions = [],
         array $orders = [],
+        ?WindowFrame $frame = null,
     ) {
         $this->function = trim($function);
 
@@ -92,9 +114,16 @@ final readonly class WindowExpression
             throw new InvalidArgumentException('A window function call needs a function name.');
         }
 
+        if ($frame !== null && \in_array(strtoupper($this->function), self::FRAMELESS_FUNCTIONS, true)) {
+            throw new InvalidArgumentException(
+                strtoupper($this->function) . '() does not read a frame; MySQL ignores one and MariaDB refuses it.',
+            );
+        }
+
         $this->arguments  = self::toArguments($arguments);
         $this->partitions = self::toPartitions($partitions);
         $this->orders     = self::toOrders($orders);
+        $this->frame      = $frame;
     }
 
     /**
@@ -118,6 +147,7 @@ final readonly class WindowExpression
             $this->arguments,
             [...$this->partitions, ...$columns],
             $this->orders,
+            $this->frame,
         );
     }
 
@@ -162,7 +192,59 @@ final readonly class WindowExpression
             $this->arguments,
             $this->partitions,
             [...$this->orders, new Order($column, $read)],
+            $this->frame,
         );
+    }
+
+    /**
+     * Read the rows between these two offsets from the current row.
+     *
+     * An offset is negative to count back, positive to count forward, zero for
+     * the current row, and null to reach the edge of the partition on that
+     * side: rows(-3, 0) reads the three rows before this one and this one,
+     * rows(null, 0) everything up to this row. Calling this again replaces the
+     * frame, and a new window is returned.
+     *
+     * @param  int|null                 $start Where the frame starts
+     * @param  int|null                 $end   Where the frame ends
+     * @return self                     A window reading the rows between the two offsets
+     * @throws InvalidArgumentException When the start comes after the end, or the function does not read a frame
+     */
+    public function rows(?int $start, ?int $end): self
+    {
+        return $this->withFrame(new WindowFrame(FrameUnit::Rows, $start, $end));
+    }
+
+    /**
+     * Read the rows whose sort key lies within these distances of the current row's.
+     *
+     * The offsets read as rows() reads them, but measure along the sort key
+     * instead of counting rows, so rows tied with the current one are always
+     * in. A number other than zero needs exactly one sort term to measure
+     * along; that is checked when the statement is compiled, since the terms
+     * may be added after this. Calling this again replaces the frame, and a
+     * new window is returned.
+     *
+     * @param  int|null                 $start Where the frame starts
+     * @param  int|null                 $end   Where the frame ends
+     * @return self                     A window reading the rows within the two distances
+     * @throws InvalidArgumentException When the start comes after the end, or the function does not read a frame
+     */
+    public function range(?int $start, ?int $end): self
+    {
+        return $this->withFrame(new WindowFrame(FrameUnit::Range, $start, $end));
+    }
+
+    /**
+     * Return a copy of this window reading the given frame.
+     *
+     * @param  WindowFrame              $frame Rows the function reads around the current one
+     * @return self                     A window reading that frame
+     * @throws InvalidArgumentException When the function does not read a frame
+     */
+    private function withFrame(WindowFrame $frame): self
+    {
+        return new self($this->function, $this->arguments, $this->partitions, $this->orders, $frame);
     }
 
     /**
