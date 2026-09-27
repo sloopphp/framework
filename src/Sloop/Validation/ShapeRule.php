@@ -63,10 +63,10 @@ final class ShapeRule extends ArrayRule
      * field is what the caller reads, and a default carrying anything else
      * would break it without any rule having failed.
      *
-     * A key the default says nothing for — missing, null or '' — takes what an
-     * input without it would have taken, so that both ways of reaching a value
-     * give the same shape. A `false`, a `0` and a `'0'` say something and are
-     * kept. Emptiness is read the way validation reads it, which is before any
+     * A key the default says nothing for — missing, or empty as the key's own
+     * rule reads it — takes what an input without it would have taken, so that
+     * both ways of reaching a value give the same shape. A `false`, a `0` and a
+     * `'0'` say something and are kept. Emptiness is read the way validation reads it, which is before any
      * sanitizer has run: the default does not go through them, so a value that
      * only a sanitizer would empty (`'  '` under Sanitize::Trim) counts as a
      * value here.

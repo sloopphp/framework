@@ -121,7 +121,8 @@ abstract class FieldRule
     }
 
     /**
-     * Fail when the field is empty (missing, null, or '').
+     * Fail when the field is empty: missing, null or '', or what a type adds to
+     * that, such as an upload carrying UPLOAD_ERR_NO_FILE.
      *
      * @param  string|null               $message Message for this rule only
      * @return static

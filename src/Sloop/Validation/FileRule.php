@@ -16,6 +16,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * caught by required() rather than reported as a broken upload. The request
  * built from the globals already leaves such a field out, but one built
  * elsewhere may still carry the entry a browser sends for a field left empty.
+ * Inside a list such an entry is still an element: it reads as null and is
+ * counted by minCount() and maxCount().
  * Every other upload error fails the field on its own, whatever rules were
  * declared.
  *
@@ -45,6 +47,9 @@ final class FileRule extends FieldRule
 
     /**
      * Fail when the file is larger than the given number of bytes.
+     *
+     * This runs with the other rules rather than before them, so a file that
+     * is too large is still read by mimeTypes() and both failures are reported.
      *
      * @param  int                      $max     Largest accepted size in bytes
      * @param  string|null              $message Message for this rule only
@@ -78,6 +83,8 @@ final class FileRule extends FieldRule
      * sent: that header is written by the sender, so a script can claim to be
      * an image just by saying so. Only the start of the file is read, so a
      * type that the rest of the content would change is not caught here.
+     * Passing this does not make the file safe to store under the name the
+     * client sent or to serve back.
      *
      * @param  list<string>             $types   Accepted media types, such as `image/png`
      * @param  string|null              $message Message for this rule only
@@ -183,8 +190,8 @@ final class FileRule extends FieldRule
     /**
      * Read the media type from the first bytes of the file.
      *
-     * The stream is rewound afterwards so that the caller receives it as it
-     * arrived, and one that cannot be rewound is not read at all.
+     * The stream is rewound afterwards so that the caller reads it from the
+     * start, and one that cannot be rewound is not read at all.
      * finfo::buffer() rather than finfo::file(), because a PSR-7 upload need
      * not be backed by a path on disk.
      *
