@@ -1241,6 +1241,94 @@ final class SelectTest extends TestCase
         $this->assertSame(['alice', 'blocked'], $select->toBindings());
     }
 
+    public function testWhereNotInOrNullAlsoKeepsRowsWhoseColumnIsNull(): void
+    {
+        $select = $this->connection->select()->from('users')->whereNotInOrNull('nickname', ['al']);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE (`nickname` NOT IN (?) OR `nickname` IS NULL)',
+            $select->toSql(),
+        );
+        $this->assertSame(['al'], $select->toBindings());
+    }
+
+    public function testWhereNotInOrNullReturnsTheRowsANotInAloneWouldDrop(): void
+    {
+        $this->connection->statement(
+            'INSERT INTO users (id, name, status, nickname) VALUES'
+                . ' (1, \'alice\', \'active\', \'al\'),'
+                . ' (2, \'bob\', \'active\', \'bo\'),'
+                . ' (3, \'carol\', \'active\', NULL)',
+        );
+
+        $notIn  = $this->connection->select('id')->from('users')->whereNotIn('nickname', ['al'])->orderBy('id');
+        $orNull = $this->connection->select('id')->from('users')->whereNotInOrNull('nickname', ['al'])->orderBy('id');
+
+        $this->assertSame([['id' => 2]], $notIn->execute()->asArray());
+        $this->assertSame([['id' => 2], ['id' => 3]], $orNull->execute()->asArray());
+    }
+
+    public function testWhereNotInOrNullKeepsTheAlternativeInsideItsParenthesesAfterAnotherCondition(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('status', 'active')
+            ->whereNotInOrNull('nickname', ['al']);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `status` = ? AND (`nickname` NOT IN (?) OR `nickname` IS NULL)',
+            $select->toSql(),
+        );
+        $this->assertSame(['active', 'al'], $select->toBindings());
+    }
+
+    public function testOrWhereNotInOrNullJoinsTheGroupToWhatPrecedesItWithOr(): void
+    {
+        $select = $this->connection->select()
+            ->from('users')
+            ->where('name', 'alice')
+            ->orWhereNotInOrNull('nickname', ['al']);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE `name` = ? OR (`nickname` NOT IN (?) OR `nickname` IS NULL)',
+            $select->toSql(),
+        );
+        $this->assertSame(['alice', 'al'], $select->toBindings());
+    }
+
+    public function testAndWhereNotInOrNullIsTheSameStatementAsWhereNotInOrNull(): void
+    {
+        $named    = $this->connection->select()->from('users')->where('name', 'alice')->whereNotInOrNull('nickname', ['al']);
+        $spelling = $this->connection->select()->from('users')->where('name', 'alice')->andWhereNotInOrNull('nickname', ['al']);
+
+        $this->assertSame($named->toSql(), $spelling->toSql());
+        $this->assertSame($named->toBindings(), $spelling->toBindings());
+    }
+
+    public function testWhereNotInOrNullTakesAStatementForTheSet(): void
+    {
+        $blocked = $this->connection->select('nickname')->from('users')->where('status', 'blocked');
+        $select  = $this->connection->select()->from('users')->whereNotInOrNull('nickname', $blocked);
+
+        $this->assertSame(
+            'SELECT * FROM `users` WHERE (`nickname` NOT IN (SELECT `nickname` FROM `users` WHERE `status` = ?) OR `nickname` IS NULL)',
+            $select->toSql(),
+        );
+        $this->assertSame(['blocked'], $select->toBindings());
+    }
+
+    public function testWhereNotInOrNullRefusingItsSetLeavesNoGroupOpen(): void
+    {
+        $select = $this->connection->select()->from('users')->where('status', 'active');
+
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn () => $select->whereNotInOrNull('nickname', ['al', null]),
+        );
+        $this->assertStringContainsString('makes NOT IN match no rows at all', $e->getMessage());
+        $this->assertSame('SELECT * FROM `users` WHERE `status` = ?', $select->toSql());
+    }
+
     public function testAndWhereNotInIsTheSameStatementAsWhereNotIn(): void
     {
         $named    = $this->connection->select()->from('users')->where('name', 'alice')->whereNotIn('status', ['blocked']);
