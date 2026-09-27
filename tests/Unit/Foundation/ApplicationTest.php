@@ -271,7 +271,7 @@ final class ApplicationTest extends TestCase
         );
     }
 
-    public function testRequestFromGlobalsCarriesAnUnsentFileFieldAsNoFile(): void
+    public function testRequestFromGlobalsLeavesOutAFileFieldLeftEmpty(): void
     {
         $response = $this->runWithGlobals(
             ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/upload'],
@@ -281,7 +281,7 @@ final class ApplicationTest extends TestCase
         $data     = $this->decodeJsonBody($response)['data'];
 
         $this->assertSame(
-            ['name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'contents' => null, 'title' => null],
+            ['name' => null, 'error' => null, 'contents' => null, 'title' => null],
             $data,
         );
     }

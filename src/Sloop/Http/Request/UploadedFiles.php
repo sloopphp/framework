@@ -15,6 +15,11 @@ use Sloop\Support\Arr;
  * file is read, and moveTo() moves it with move_uploaded_file() instead of
  * copying its contents.
  *
+ * A browser sends an entry carrying UPLOAD_ERR_NO_FILE for a file field the
+ * visitor left empty. That entry is left out: an empty single field is absent
+ * and an empty multiple field is an empty list, the same as a field that was
+ * never in the form.
+ *
  * @internal Used by Application when it builds the request from the globals.
  */
 final class UploadedFiles
@@ -40,8 +45,9 @@ final class UploadedFiles
     {
         $converted = [];
         foreach ($files as $field => $spec) {
-            if (\is_array($spec)) {
-                $converted[$field] = self::fromSpec($spec);
+            $file = \is_array($spec) ? self::fromSpec($spec) : null;
+            if ($file !== null) {
+                $converted[$field] = $file;
             }
         }
 
@@ -51,10 +57,10 @@ final class UploadedFiles
     /**
      * Convert one field, descending while its parts hold arrays.
      *
-     * @param  array<array-key, mixed>                       $spec The five parts of the field, each a value or an array of them
-     * @return UploadedFileInterface|array<array-key, mixed>
+     * @param  array<array-key, mixed>                            $spec The five parts of the field, each a value or an array of them
+     * @return UploadedFileInterface|array<array-key, mixed>|null Null for a field left empty
      */
-    private static function fromSpec(array $spec): UploadedFileInterface|array
+    private static function fromSpec(array $spec): UploadedFileInterface|array|null
     {
         $tmpName = $spec['tmp_name'] ?? null;
         if (!\is_array($tmpName)) {
@@ -63,7 +69,10 @@ final class UploadedFiles
 
         $converted = [];
         foreach (array_keys($tmpName) as $key) {
-            $converted[$key] = self::fromSpec(self::entry($spec, $key));
+            $file = self::fromSpec(self::entry($spec, $key));
+            if ($file !== null) {
+                $converted[$key] = $file;
+            }
         }
 
         return $converted;
@@ -88,22 +97,27 @@ final class UploadedFiles
     }
 
     /**
-     * Build the file of one leaf.
+     * Build the file of one leaf, or nothing for a field left empty.
      *
      * A file without an error part reads as nothing having been uploaded.
      *
-     * @param  array<array-key, mixed> $spec The five parts of a single file
-     * @return UploadedFileInterface
+     * @param  array<array-key, mixed>    $spec The five parts of a single file
+     * @return UploadedFileInterface|null
      */
-    private static function file(array $spec): UploadedFileInterface
+    private static function file(array $spec): ?UploadedFileInterface
     {
+        $error = Arr::getInt($spec, 'error', \UPLOAD_ERR_NO_FILE);
+        if ($error === \UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+
         $name = $spec['name'] ?? null;
         $type = $spec['type'] ?? null;
 
         return new UploadedFile(
             Arr::getString($spec, 'tmp_name'),
             Arr::getInt($spec, 'size'),
-            Arr::getInt($spec, 'error', \UPLOAD_ERR_NO_FILE),
+            $error,
             \is_string($name) ? $name : null,
             \is_string($type) ? $type : null,
         );

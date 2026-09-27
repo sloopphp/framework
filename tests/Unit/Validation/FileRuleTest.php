@@ -11,6 +11,7 @@ use Nyholm\Psr7\UploadedFile;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UploadedFileInterface;
+use Sloop\Http\Request\UploadedFiles;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
@@ -300,6 +301,30 @@ final class FileRuleTest extends TestCase
             'Field "uploads" compares with "name", but its own value no two inputs can share.',
             $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage(),
         );
+    }
+
+    public function testAMultipleFileFieldLeftEmptyFailsMinCountOnTheList(): void
+    {
+        $input = UploadedFiles::fromGlobals([
+            'photos' => ['name' => [''], 'type' => [''], 'tmp_name' => [''], 'error' => [UPLOAD_ERR_NO_FILE], 'size' => [0]],
+        ]);
+
+        $result = new Validator(['photos' => Rule::list(Rule::file())->minCount(1)])->validate($input);
+
+        $this->assertTrue($result->failed());
+        $this->assertSame(['photos'], array_keys($result->errors()));
+    }
+
+    public function testASingleFileFieldLeftEmptyFailsRequired(): void
+    {
+        $input = UploadedFiles::fromGlobals([
+            'avatar' => ['name' => '', 'type' => '', 'tmp_name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'size' => 0],
+        ]);
+
+        $result = new Validator(['avatar' => Rule::file()->required()])->validate($input);
+
+        $this->assertTrue($result->failed());
+        $this->assertSame(['avatar'], array_keys($result->errors()));
     }
 
     public function testAListOfStringsIsStillComparedByValue(): void

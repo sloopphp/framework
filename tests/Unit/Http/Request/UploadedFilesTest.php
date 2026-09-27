@@ -52,7 +52,7 @@ final class UploadedFilesTest extends TestCase
 
         $files = UploadedFiles::fromGlobals([
             'avatar' => ['name' => 'me.png', 'type' => 'image/png', 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => 6],
-            'resume' => ['name' => '', 'type' => '', 'tmp_name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'size' => 0],
+            'resume' => ['name' => 'cv.pdf', 'type' => 'application/pdf', 'tmp_name' => '', 'error' => UPLOAD_ERR_INI_SIZE, 'size' => 0],
         ]);
 
         $this->assertSame(['avatar', 'resume'], array_keys($files));
@@ -127,24 +127,75 @@ final class UploadedFilesTest extends TestCase
         $this->assertSame('x.txt', $this->file($files['doc']['tmp_name'])->getClientFilename());
     }
 
-    public function testCarriesTheUploadErrorOfAFieldLeftEmpty(): void
+    public function testLeavesOutAFieldLeftEmpty(): void
     {
         $files = UploadedFiles::fromGlobals([
             'avatar' => ['name' => '', 'type' => '', 'tmp_name' => '', 'error' => UPLOAD_ERR_NO_FILE, 'size' => 0],
         ]);
 
-        $avatar = $this->file($files['avatar']);
-        $this->assertSame(UPLOAD_ERR_NO_FILE, $avatar->getError());
-        $this->assertSame(0, $avatar->getSize());
+        $this->assertSame([], $files);
     }
 
-    public function testReadsAPartMissingFromTheSpecAsNothingUploaded(): void
+    public function testAListFieldLeftEmptyBecomesAnEmptyList(): void
     {
-        $files = UploadedFiles::fromGlobals(['avatar' => ['name' => ['x' => 'me.png']], 'broken' => 'not a spec']);
+        $files = UploadedFiles::fromGlobals([
+            'photos' => [
+                'name'     => [''],
+                'type'     => [''],
+                'tmp_name' => [''],
+                'error'    => [UPLOAD_ERR_NO_FILE],
+                'size'     => [0],
+            ],
+        ]);
 
-        $this->assertSame(['avatar'], array_keys($files));
+        $this->assertSame(['photos' => []], $files);
+    }
+
+    public function testLeavesOutOnlyTheEmptyEntriesOfAListField(): void
+    {
+        $first = $this->tmpFile('a', 'one');
+        $third = $this->tmpFile('c', 'three');
+
+        $files = UploadedFiles::fromGlobals([
+            'photos' => [
+                'name'     => ['1.png', '', '3.png'],
+                'type'     => ['image/png', '', 'image/png'],
+                'tmp_name' => [$first, '', $third],
+                'error'    => [UPLOAD_ERR_OK, UPLOAD_ERR_NO_FILE, UPLOAD_ERR_OK],
+                'size'     => [3, 0, 5],
+            ],
+        ]);
+
+        $this->assertIsArray($files['photos']);
+        $this->assertSame([0, 2], array_keys($files['photos']));
+        $this->assertSame('three', (string) $this->file($files['photos'][2])->getStream());
+    }
+
+    public function testKeepsAFieldThatFailedToUpload(): void
+    {
+        $files = UploadedFiles::fromGlobals([
+            'avatar' => ['name' => 'big.png', 'type' => 'image/png', 'tmp_name' => '', 'error' => UPLOAD_ERR_INI_SIZE, 'size' => 0],
+        ]);
+
         $avatar = $this->file($files['avatar']);
-        $this->assertSame(UPLOAD_ERR_NO_FILE, $avatar->getError());
+        $this->assertSame(UPLOAD_ERR_INI_SIZE, $avatar->getError());
+        $this->assertSame('big.png', $avatar->getClientFilename());
+    }
+
+    public function testReadsAMissingErrorPartAsNothingUploaded(): void
+    {
+        $files = UploadedFiles::fromGlobals(['avatar' => ['name' => 'me.png'], 'broken' => 'not a spec']);
+
+        $this->assertSame([], $files);
+    }
+
+    public function testReadsAMissingSizePartAsZero(): void
+    {
+        $tmp = $this->tmpFile('a', 'x');
+
+        $files = UploadedFiles::fromGlobals(['avatar' => ['tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK]]);
+
+        $avatar = $this->file($files['avatar']);
         $this->assertSame(0, $avatar->getSize());
         $this->assertNull($avatar->getClientFilename());
         $this->assertNull($avatar->getClientMediaType());
