@@ -317,10 +317,11 @@ abstract class FieldRule
      * Whether same() / different() can say anything about this field.
      *
      * A type whose validated value is an object that no two inputs can share
-     * answers false, so that a comparison naming it is refused when it is
-     * declared rather than reporting the same verdict for every input.
+     * answers false, so that a comparison naming it, or declared on it, is
+     * refused when it is declared rather than reporting the same verdict for
+     * every input.
      *
-     * @internal Read by Validator when another field declares a comparison.
+     * @internal Read by Validator for both sides of a declared comparison.
      *
      * @return bool
      */

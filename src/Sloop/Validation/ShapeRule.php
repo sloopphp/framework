@@ -141,7 +141,7 @@ final class ShapeRule extends ArrayRule
      * A shape holding a value no two inputs can share is one itself, so every
      * declared key has to answer true for the shape to.
      *
-     * @internal Read by Validator when another field declares a comparison.
+     * @internal Read by Validator for both sides of a declared comparison.
      *
      * @return bool
      */

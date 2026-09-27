@@ -90,7 +90,7 @@ final class UploadedFiles
     /**
      * Build the file of one leaf.
      *
-     * A part PHP did not supply reads as nothing having been uploaded.
+     * A file without an error part reads as nothing having been uploaded.
      *
      * @param  array<array-key, mixed> $spec The five parts of a single file
      * @return UploadedFileInterface

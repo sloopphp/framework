@@ -99,7 +99,7 @@ final class ListRule extends ArrayRule
      * A list of values no two inputs can share is one itself, so the element
      * answers for the list.
      *
-     * @internal Read by Validator when another field declares a comparison.
+     * @internal Read by Validator for both sides of a declared comparison.
      *
      * @return bool
      */

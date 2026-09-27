@@ -33,12 +33,17 @@ final readonly class Validator
      * Create a validator.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
-     * @throws InvalidArgumentException                  When a same() / different() rule names a field that has no rule, or one whose value cannot be compared
+     * @throws InvalidArgumentException                  When a same() / different() rule names a field that has no rule, or either side's value cannot be compared
      */
     public function __construct(array $rules)
     {
         foreach ($rules as $field => $rule) {
             foreach ($rule->comparisons() as $comparison) {
+                if (!$rule->comparesByValue()) {
+                    throw new InvalidArgumentException(
+                        'Field "' . $field . '" compares with "' . $comparison->other . '", but its own value no two inputs can share.',
+                    );
+                }
                 if (!\array_key_exists($comparison->other, $rules)) {
                     throw new InvalidArgumentException(
                         'Field "' . $field . '" compares with "' . $comparison->other . '", which has no rule.',
@@ -61,7 +66,7 @@ final readonly class Validator
      * @param  string                     $field Field name
      * @param  FieldRule<covariant mixed> $rule  Rules of the field
      * @return self
-     * @throws InvalidArgumentException   When the field already has rules, or a comparison names a field that has no rule or one whose value cannot be compared
+     * @throws InvalidArgumentException   When the field already has rules, or a comparison names a field that has no rule, or either side's value cannot be compared
      */
     public function with(string $field, FieldRule $rule): self
     {

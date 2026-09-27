@@ -271,6 +271,37 @@ final class FileRuleTest extends TestCase
         );
     }
 
+    /**
+     * @param FieldRule<covariant mixed> $container
+     */
+    #[DataProvider('containersHoldingAFile')]
+    public function testAContainerHoldingAFileCannotDeclareSame(FieldRule $container): void
+    {
+        $declare = static fn (): mixed => new Validator([
+            'uploads' => $container->same('name'),
+            'name'    => Rule::list(Rule::string()),
+        ]);
+
+        $this->assertSame(
+            'Field "uploads" compares with "name", but its own value no two inputs can share.',
+            $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage(),
+        );
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $container
+     */
+    #[DataProvider('containersHoldingAFile')]
+    public function testAContainerHoldingAFileCannotDeclareDifferent(FieldRule $container): void
+    {
+        $declare = static fn (): mixed => new Validator(['name' => Rule::string()])->with('uploads', $container->different('name'));
+
+        $this->assertSame(
+            'Field "uploads" compares with "name", but its own value no two inputs can share.',
+            $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage(),
+        );
+    }
+
     public function testAListOfStringsIsStillComparedByValue(): void
     {
         $validator = new Validator([

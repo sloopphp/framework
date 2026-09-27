@@ -129,7 +129,7 @@ final class FileRule extends FieldRule
     /**
      * Nothing can be compared with a file field, in either direction.
      *
-     * @internal Read by Validator when another field declares a comparison.
+     * @internal Read by Validator for both sides of a declared comparison.
      *
      * @return bool
      */
