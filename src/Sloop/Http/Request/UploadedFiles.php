@@ -46,8 +46,9 @@ final class UploadedFiles
      * puts it outside, so the file is at `photos[0]` or
      * `form['profile']['avatar']`.
      *
-     * @param  array<array-key, mixed> $files Array shaped like $_FILES
-     * @return array<array-key, mixed> UploadedFileInterface leaves under the field names
+     * @param  array<array-key, mixed>   $files Array shaped like $_FILES
+     * @return array<array-key, mixed>   UploadedFileInterface leaves under the field names
+     * @throws \InvalidArgumentException When an entry carries an error code PHP does not define
      */
     public static function fromGlobals(array $files): array
     {
@@ -67,6 +68,7 @@ final class UploadedFiles
      *
      * @param  array<array-key, mixed>                            $spec The five parts of the field, each a value or an array of them
      * @return UploadedFileInterface|array<array-key, mixed>|null Null for a field left empty
+     * @throws \InvalidArgumentException                          When an entry carries an error code PHP does not define
      */
     private static function fromSpec(array $spec): UploadedFileInterface|array|null
     {
@@ -113,6 +115,7 @@ final class UploadedFiles
      *
      * @param  array<array-key, mixed>    $spec The five parts of a single file
      * @return UploadedFileInterface|null
+     * @throws \InvalidArgumentException  When an entry carries an error code PHP does not define
      */
     private static function file(array $spec): ?UploadedFileInterface
     {
