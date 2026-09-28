@@ -1316,8 +1316,10 @@ class Select extends BuilderWhere
         ?WherePart $alsoWhere,
         ?Order $thenBy,
     ): CompiledSql {
-        // The WITH clause stays on the outer statement for the reason
-        // compileOverUnion() gives.
+        // The WITH clause is written once, on the outer statement. A name it
+        // introduces is in reach of the grouped statement from there, and left
+        // on the inner one as well the clause and its values would be written
+        // twice.
         $grouped               = clone $this;
         $grouped->orders       = [];
         $grouped->limit        = null;

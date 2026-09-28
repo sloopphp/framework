@@ -463,6 +463,24 @@ final class SelectGroupTest extends TestCase
         );
     }
 
+    public function testAWithClauseIsWrittenOnceOutsideTheTableAGroupedStatementIsReadAs(): void
+    {
+        $handler = $this->attachLogger();
+
+        $count = $this->connection->select('user_id')
+            ->with('recent', $this->connection->select('user_id')->from('orders')->where('id', '>', 1))
+            ->from('recent')
+            ->groupBy('user_id')
+            ->count();
+
+        $this->assertSame(2, $count);
+        $this->assertSame(
+            'WITH `recent` AS (SELECT `user_id` FROM `orders` WHERE `id` > ?)'
+                . ' SELECT COUNT(*) FROM (SELECT `user_id` FROM `recent` GROUP BY `user_id`) AS `sloop_groups`',
+            $this->loggedSql($handler),
+        );
+    }
+
     public function testCountOfAStatementWithOnlyAHavingClauseCountsTheRowsItReturns(): void
     {
         $select = $this->connection->select(Expression::of('COUNT(*) AS n'))
