@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Sloop\Tests\Integration\Database;
 
 use DateTimeImmutable;
-use LogicException;
+use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Query\Expression;
+use Sloop\Database\Result;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Support\TransactionalIntegrationTestCase;
 
 final class SelectGroupTest extends TransactionalIntegrationTestCase
 {
     use ThrowsAssertions;
+
+    /** @var list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> */
+    private array $walked = [];
 
     protected function setUp(): void
     {
@@ -224,14 +228,86 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         $this->assertStringContainsString('title', $thrown->getMessage());
     }
 
-    public function testCountIsRefusedRatherThanAnsweringWithTheFirstGroup(): void
+    public function testCountCountsTheGroupsRatherThanAnsweringWithTheFirstOne(): void
     {
-        $select = $this->connection->select('user_id')->from('posts')->groupBy('user_id');
+        // Written beside the GROUP BY, COUNT(*) would answer 3 — the size of
+        // the first group — where the statement returns 3 groups over 5 rows.
+        // The second statement tells the two apart: 1 group, whose size is 3.
+        $grouped = $this->connection->select('user_id')->from('posts')->groupBy('user_id');
 
-        // Left to run, the server would answer 3 — the size of the first group —
-        // where the statement matches 3 groups over 5 rows.
-        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->count());
+        $this->assertSame(3, $grouped->count());
+        $this->assertSame(1, (clone $grouped)->having(Expression::of('COUNT(*)'), '>', 1)->count());
+    }
 
-        $this->assertStringContainsString('this one groups them', $thrown->getMessage());
+    public function testCountOfAStatementWithOnlyAHavingClauseCountsTheRowsItReturns(): void
+    {
+        // Over plain columns both servers read a HAVING with no GROUP BY row
+        // by row; over an aggregate select list, as one group. count() answers
+        // with what get() returns in either case.
+        $rows = $this->connection->select('user_id')->from('posts')->having('user_id', '>', 1);
+        $one  = $this->connection->select(Expression::of('COUNT(*) AS n'))->from('posts')->having(Expression::of('COUNT(*)'), '>', 4);
+
+        $this->assertSame(2, \count($rows->get()));
+        $this->assertSame(2, $rows->count());
+        $this->assertSame(1, $one->count());
+    }
+
+    public function testPaginateCountsTheGroupsForItsTotal(): void
+    {
+        $page = $this->connection->select('user_id', Expression::of('COUNT(*) AS n'))
+            ->from('posts')
+            ->groupBy('user_id')
+            ->orderBy('user_id')
+            ->paginate(2, 2);
+
+        $this->assertSame(3, $page->total);
+        $this->assertSame(2, $page->lastPage);
+        $this->assertSame('3', self::column($page->items->asArray(), 'user_id'));
+    }
+
+    public function testAnAggregateFoldsTheValuesOfTheGroupsRatherThanReadingTheFirstOne(): void
+    {
+        $grouped = $this->connection->select('user_id', [Expression::count(), 'written'])
+            ->from('posts')
+            ->groupBy('user_id');
+
+        $this->assertSame('5', $grouped->sum('written'));
+        $this->assertSame(1, $grouped->min('written'));
+        $this->assertSame(3, $grouped->max('written'));
+        $this->assertSame(3, $grouped->max('user_id'));
+    }
+
+    public function testChunkByIdWalksTheGroupsByAColumnTheyReturn(): void
+    {
+        $this->connection->select('user_id', [Expression::count(), 'written'])
+            ->from('posts')
+            ->groupBy('user_id')
+            ->chunkById(2, function (Result $batch): bool {
+                $this->walked = [...$this->walked, ...$batch->asArray()];
+
+                // The walk ends on its own after two batches; the bound keeps a
+                // cursor that stops narrowing from reading the same batch forever.
+                return \count($this->walked) < 6;
+            }, 'user_id');
+
+        $this->assertSame('1,2,3', self::column($this->walked, 'user_id'));
+        $this->assertSame('3,1,1', self::column($this->walked, 'written'));
+    }
+
+    public function testAGroupedStatementReturningOneNameTwiceIsRefusedByTheServerWhenCounted(): void
+    {
+        // The grouped rows are read as a table, and a table cannot have two
+        // columns of one name. get() is not read that way, so it goes through.
+        $select = $this->connection->select('users.id', 'posts.id')
+            ->from('users')
+            ->join('posts')
+            ->on('posts.user_id', '=', 'users.id')
+            ->groupBy('users.id', 'posts.id');
+
+        $this->assertCount(5, $select->get());
+
+        $thrown = $this->assertThrows(DatabaseException::class, static fn () => $select->count());
+
+        $this->assertStringContainsString('1060', $thrown->getMessage());
     }
 }

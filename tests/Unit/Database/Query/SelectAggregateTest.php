@@ -256,29 +256,67 @@ final class SelectAggregateTest extends TestCase
         $this->assertSame('SELECT `id` FROM `orders` WHERE `status` = ? LIMIT 2', $select->toSql());
     }
 
-    #[DataProvider('aggregateMethodNames')]
-    public function testAggregateIsRefusedWhileTheStatementGroups(string $method): void
+    #[DataProvider('aggregateMethods')]
+    public function testAggregateReadsAGroupedStatementAsATable(string $method, string $function): void
     {
-        $select = $this->select()->groupBy('user_id');
+        $handler = $this->attachLogger();
 
-        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->{$method}('amount'));
+        $this->connection->select('status', [Expression::sum('amount'), 'total'])
+            ->from('orders')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->limit(1)
+            ->{$method}('total');
 
         $this->assertSame(
-            $method . '() reads one value over the rows a statement matches, but this one groups them, so'
-            . ' the server would answer with one value per group and the first of those would be read as'
-            . ' the whole. Aggregate the rows of get(), or read the groups with execute().',
+            'SELECT ' . $function . '(`total`) FROM (SELECT `status`, SUM(`amount`) AS `total` FROM `orders`'
+                . ' GROUP BY `status`) AS `sloop_groups`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testAggregateOverAGroupedStatementFoldsTheValuesOfItsGroups(): void
+    {
+        $select = $this->connection->select('status', [Expression::sum('amount'), 'total'])
+            ->from('orders')
+            ->groupBy('status');
+
+        $this->assertSame(390, $select->sum('total'));
+        $this->assertSame(40, $select->min('total'));
+        $this->assertSame(350, $select->max('total'));
+    }
+
+    public function testAggregateOverAStatementWithOnlyAHavingClauseFoldsTheRowsItReturns(): void
+    {
+        $select = $this->connection->select([Expression::sum('amount'), 'total'])
+            ->from('orders')
+            ->havingRaw('COUNT(*) > 1');
+
+        $this->assertSame(390, $select->max('total'));
+    }
+
+    #[DataProvider('aggregateMethodNames')]
+    public function testAggregateRefusesAColumnNamedWithItsTableOnAGroupedStatement(string $method): void
+    {
+        $select = $this->connection->select('orders.status')->from('orders')->groupBy('orders.status');
+
+        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->{$method}('orders.amount'));
+
+        $this->assertSame(
+            $method . '() reads a grouped statement as a table of its own, whose rows belong to no table, so'
+                . ' "orders.amount" cannot be found there. Name the column alone, or by the name given with'
+                . ' [$column, $name].',
             $thrown->getMessage(),
         );
     }
 
-    #[DataProvider('aggregateMethodNames')]
-    public function testAggregateIsRefusedWhileTheStatementOnlyHasAHavingClause(string $method): void
+    public function testAggregateTakesAnExpressionOverAGroupedStatementAsWritten(): void
     {
-        $select = $this->select()->having(Expression::of('COUNT(*)'), '>', 1);
+        $select = $this->connection->select('status', [Expression::sum('amount'), 'total'])
+            ->from('orders')
+            ->groupBy('status');
 
-        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->{$method}('amount'));
-
-        $this->assertStringContainsString('but this one groups them', $thrown->getMessage());
+        $this->assertSame(780, $select->sum(Expression::of('`total` * ?', [2])));
     }
 
     #[DataProvider('aggregateMethodNames')]

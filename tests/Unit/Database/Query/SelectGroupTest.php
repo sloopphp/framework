@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database\Query;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
 use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
+use Sloop\Database\LoggingOptions;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Result;
@@ -23,6 +27,9 @@ final class SelectGroupTest extends TestCase
 
     /** @var list<int> */
     private array $batchSizes = [];
+
+    /** @var list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> */
+    private array $walked = [];
 
     protected function setUp(): void
     {
@@ -42,6 +49,28 @@ final class SelectGroupTest extends TestCase
     private function select(): Select
     {
         return $this->connection->select('user_id')->from('orders');
+    }
+
+    private function attachLogger(): TestHandler
+    {
+        $handler = new TestHandler();
+        $this->connection->setLogger(new Logger('database', [$handler]), new LoggingOptions(logAllQueries: true));
+
+        return $handler;
+    }
+
+    private function loggedSql(TestHandler $handler): string
+    {
+        $records = $handler->getRecords();
+        $this->assertNotSame([], $records, 'the connection logged no query');
+
+        $last = end($records);
+        $this->assertNotFalse($last);
+
+        $sql = $last->context['sql'] ?? null;
+        $this->assertIsString($sql);
+
+        return $sql;
     }
 
     public function testGroupByWritesTheClause(): void
@@ -383,71 +412,146 @@ final class SelectGroupTest extends TestCase
         $this->assertSame([2, 1], $this->batchSizes);
     }
 
-    public function testCountIsRefusedWhileTheStatementGroups(): void
+    public function testCountReadsAGroupedStatementAsATableAndCountsItsRows(): void
     {
-        $select = $this->select()->groupBy('user_id');
+        $handler = $this->attachLogger();
 
-        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->count());
+        $count = $this->connection->select('status')->from('orders')->groupBy('status')->count();
+
+        $this->assertSame(2, $count);
+        $this->assertSame(
+            'SELECT COUNT(*) FROM (SELECT `status` FROM `orders` GROUP BY `status`) AS `sloop_groups`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testCountOfAGroupedStatementDropsItsSortAndRowWindow(): void
+    {
+        $handler = $this->attachLogger();
+
+        $count = $this->connection->select('status')
+            ->from('orders')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->limit(1)
+            ->offset(1)
+            ->count();
+
+        $this->assertSame(2, $count);
+        $this->assertSame(
+            'SELECT COUNT(*) FROM (SELECT `status` FROM `orders` GROUP BY `status`) AS `sloop_groups`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testCountOfAGroupedStatementKeepsItsConditionsAndHavingInside(): void
+    {
+        $handler = $this->attachLogger();
+
+        $count = $this->connection->select('user_id')
+            ->from('orders')
+            ->where('status', 'paid')
+            ->groupBy('user_id')
+            ->having('user_id', '>', 10)
+            ->count();
+
+        $this->assertSame(1, $count);
+        $this->assertSame(
+            'SELECT COUNT(*) FROM (SELECT `user_id` FROM `orders` WHERE `status` = ? GROUP BY `user_id`'
+                . ' HAVING `user_id` > ?) AS `sloop_groups`',
+            $this->loggedSql($handler),
+        );
+    }
+
+    public function testCountOfAStatementWithOnlyAHavingClauseCountsTheRowsItReturns(): void
+    {
+        $select = $this->connection->select(Expression::of('COUNT(*) AS n'))
+            ->from('orders')
+            ->havingRaw('COUNT(*) > 1');
+
+        $this->assertSame(\count($select->get()), $select->count());
+        $this->assertSame(1, $select->count());
+    }
+
+    public function testCountLeavesAGroupedBuilderAsItWas(): void
+    {
+        $select = $this->connection->select('status')->from('orders')->groupBy('status')->orderBy('status')->limit(1);
+
+        $select->count();
 
         $this->assertSame(
-            'count() counts the rows a statement matches, but this one groups them, so the server would'
-            . ' answer with one count per group and the first of those would be read as the whole.'
-            . ' Count the rows of get(), or read the groups and count those.',
-            $thrown->getMessage(),
+            'SELECT `status` FROM `orders` GROUP BY `status` ORDER BY `status` ASC LIMIT 1',
+            $select->toSql(),
         );
     }
 
-    public function testPaginateIsRefusedWhileTheStatementGroups(): void
+    public function testPaginateCountsTheGroupsForItsTotal(): void
     {
-        $select = $this->select()->groupBy('user_id');
+        $page = $this->connection->select('status')
+            ->from('orders')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->paginate(1, 2);
 
-        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->paginate(10, 1));
+        $this->assertSame(2, $page->total);
+        $this->assertSame([['status' => 'paid']], $page->items->asArray());
+    }
 
-        $this->assertStringContainsString(
-            'paginate() counts the rows a statement matches, but this one groups them',
-            $thrown->getMessage(),
+    public function testChunkByIdWalksTheRowsAGroupedStatementReturns(): void
+    {
+        $handler = $this->attachLogger();
+
+        $this->connection->select('status', Expression::of('COUNT(*) AS n'))
+            ->from('orders')
+            ->groupBy('status')
+            ->chunkById(1, function (Result $batch): bool {
+                $this->walked = [...$this->walked, ...$batch->asArray()];
+
+                // Bounded for the reason the empty-group walk above gives.
+                return \count($this->walked) < 4;
+            }, 'status');
+
+        $this->assertSame([['status' => 'open', 'n' => 1], ['status' => 'paid', 'n' => 2]], $this->walked);
+        $this->assertSame(
+            'SELECT * FROM (SELECT `status`, COUNT(*) AS n FROM `orders` GROUP BY `status`) AS `sloop_groups`'
+                . ' WHERE `status` > ? ORDER BY `status` ASC LIMIT 1',
+            $this->loggedSql($handler),
         );
     }
 
-    public function testCountIsRefusedWhileTheStatementOnlyHasAHavingClause(): void
+    public function testTheOtherShortcutsReadAGroupedStatementDirectly(): void
     {
-        $select = $this->select()->having(Expression::of('COUNT(*)'), '>', 5);
+        // Only the shortcuts that fold or walk the rows read a grouped
+        // statement as a table. The others keep writing it as it is, so a
+        // column named with its table still reaches the column it names.
+        $handler = $this->attachLogger();
+        $select  = $this->connection->select('orders.status')->from('orders')->groupBy('orders.status')->orderBy('orders.status');
 
-        $thrown = $this->assertThrows(LogicException::class, static fn () => $select->count());
-
-        $this->assertStringContainsString(
-            'count() counts the rows a statement matches, but this one groups them',
-            $thrown->getMessage(),
+        $this->assertSame(['open', 'paid'], $select->pluck('orders.status'));
+        $this->assertSame(
+            'SELECT `orders`.`status` FROM `orders` GROUP BY `orders`.`status` ORDER BY `orders`.`status` ASC',
+            $this->loggedSql($handler),
         );
+        $this->assertSame('open', $select->value('orders.status'));
+        $this->assertTrue($select->exists());
+        $this->assertSame([['status' => 'open']], $select->limit(1)->get());
     }
 
-    public function testChunkByIdIsRefusedWhileTheStatementGroups(): void
+    public function testChunkByIdRefusesAColumnNamedWithItsTableOnAGroupedStatement(): void
     {
-        $select = $this->select()->groupBy('user_id');
+        $select = $this->connection->select('orders.status')->from('orders')->groupBy('orders.status');
 
         $thrown = $this->assertThrows(
             LogicException::class,
-            static fn () => $select->chunkById(2, static fn (): bool => true, 'user_id'),
+            static fn () => $select->chunkById(1, static fn (): bool => true, 'orders.status'),
         );
 
         $this->assertSame(
-            'chunkById() carries its place between batches as a condition, which the server reads before it'
-            . ' groups the rows, so a group split across a batch boundary comes back twice and grouping'
-            . ' by more than one term drops whole groups. Walk a grouped statement with chunk().',
+            'chunkById() reads a grouped statement as a table of its own, whose rows belong to no table, so'
+                . ' "orders.status" cannot be found there. Name the column alone, or by the name given with'
+                . ' [$column, $name].',
             $thrown->getMessage(),
         );
-    }
-
-    public function testChunkByIdIsRefusedWhileTheStatementOnlyHasAHavingClause(): void
-    {
-        $select = $this->select()->having(Expression::of('COUNT(*)'), '>', 5);
-
-        $thrown = $this->assertThrows(
-            LogicException::class,
-            static fn () => $select->chunkById(2, static fn (): bool => true),
-        );
-
-        $this->assertStringContainsString('Walk a grouped statement with chunk().', $thrown->getMessage());
     }
 
     public function testGroupByComesAfterTheWhereClauseAndBeforeTheOrderBy(): void

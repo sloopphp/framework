@@ -341,4 +341,53 @@ final class SelectLockTest extends IntegrationTestCase
         $this->assertSame('5', $select->sum('id'));
         $this->assertSame(2, $select->min('id'));
     }
+
+    public function testACountOfAGroupedStatementHoldsTheRowsTheGroupsAreMadeOf(): void
+    {
+        // The grouped statement is read as a table, and the lock goes inside
+        // with it: both servers hold the rows the inner statement reads, and
+        // neither holds anything for a lock written on the outer one.
+        $this->reader->begin();
+
+        $this->assertSame(
+            3,
+            $this->reader->select('label')->from(self::TABLE)->groupBy('label')->forUpdate()->count(),
+        );
+
+        $this->holder->begin();
+
+        $this->expectException($this->holder->dialect() === Dialect::MySQL
+            ? LockNotAvailableException::class
+            : LockWaitTimeoutException::class);
+
+        $this->holder->select('id')->from(self::TABLE)->where('id', 2)->forUpdate(noWait: true)->get();
+    }
+
+    #[DataProvider('provideAggregateMethods')]
+    public function testAnAggregateOfAGroupedStatementUnderANoWaitLockReportsTheFailure(string $method): void
+    {
+        // Read as a table, the grouped statement still aborts on the held row,
+        // on both servers, rather than folding the groups it reached first.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $this->expectException($this->reader->dialect() === Dialect::MySQL
+            ? LockNotAvailableException::class
+            : LockWaitTimeoutException::class);
+
+        $this->reader->select('id')->from(self::TABLE)->groupBy('id')->forUpdate(noWait: true)->{$method}('id');
+    }
+
+    public function testACountOfAGroupedStatementUnderSkipLockedCountsTheGroupsItCouldForm(): void
+    {
+        // A group whose rows are all held is not formed at all, so it is left
+        // out of the count with nothing in the answer saying so.
+        $this->holdRow(1);
+        $this->reader->begin();
+
+        $select = $this->reader->select('label')->from(self::TABLE)->groupBy('label')->forUpdate(skipLocked: true);
+
+        $this->assertSame(2, $select->count());
+        $this->assertSame('three', $select->min('label'));
+    }
 }

@@ -422,6 +422,25 @@ final class SelectUnionTest extends TestCase
         $this->assertSame('blocked', $max);
     }
 
+    public function testAnAggregateOfACombinedStatementLeavesAColumnNamedWithItsTableToTheServer(): void
+    {
+        $this->results = [[['MAX(`users`.`status`)' => 'blocked']]];
+
+        $this->connection->select('status')
+            ->from('users')
+            ->groupBy('status')
+            ->union($this->connection->select('status')->from('admins'))
+            ->max('users.status');
+
+        $this->assertSame(
+            [
+                'SELECT MAX(`users`.`status`) FROM ((SELECT `status` FROM `users` GROUP BY `status`)'
+                    . ' UNION (SELECT `status` FROM `admins`)) AS `sloop_union`',
+            ],
+            $this->prepared,
+        );
+    }
+
     public function testValueReadsOneColumnOfTheCombinedRowsInTheirSort(): void
     {
         $this->results = [[['name' => 'carol']]];
