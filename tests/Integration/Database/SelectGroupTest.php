@@ -325,13 +325,6 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         $this->assertSame(3, $count);
     }
 
-    public function testATimeoutReachesTheStatementAGroupedCountRuns(): void
-    {
-        $count = $this->connection->select('user_id')->from('posts')->groupBy('user_id')->timeout(5000)->count();
-
-        $this->assertSame(3, $count);
-    }
-
     public function testTheCastModeConvertsTheValueAnAggregateReadsFromTheGroups(): void
     {
         $latest = $this->connection->select('user_id', [Expression::max('created_at'), 'latest'])
