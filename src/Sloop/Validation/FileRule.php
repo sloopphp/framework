@@ -13,13 +13,13 @@ use Psr\Http\Message\UploadedFileInterface;
  * Rules for a field whose validated value is an uploaded file.
  *
  * An upload carrying UPLOAD_ERR_NO_FILE counts as an empty field and is
- * caught by required() rather than reported as a broken upload. The request
- * built from the globals already leaves such a field out, but one built
- * elsewhere may still carry the entry a browser sends for a field left empty.
- * Inside a list such an entry is still an element: it reads as null and is
- * counted by the rules on the number of elements.
- * Every other upload error fails the field on its own, whatever rules were
- * declared.
+ * caught by required() rather than reported as a broken upload. Every other
+ * upload error fails the field on its own, whatever rules were declared.
+ *
+ * The request built from the globals already leaves such an entry out, but
+ * one built elsewhere may still carry the entry a browser sends for a field
+ * left empty. Inside a list such an entry is still an element: it reads as
+ * null and is counted by the rules on the number of elements.
  *
  * Sanitizers do not apply here: there is no string to clean.
  *

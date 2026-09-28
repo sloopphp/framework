@@ -41,7 +41,7 @@ final readonly class Validator
             foreach ($rule->comparisons() as $comparison) {
                 if (!$rule->comparesByValue()) {
                     throw new InvalidArgumentException(
-                        'Field "' . $field . '" compares with "' . $comparison->other . '", but its own value no two inputs can share.',
+                        'Field "' . $field . '" compares with "' . $comparison->other . '", but no two inputs can share its own value.',
                     );
                 }
                 if (!\array_key_exists($comparison->other, $rules)) {

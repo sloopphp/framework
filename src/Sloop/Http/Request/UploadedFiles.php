@@ -108,8 +108,8 @@ final class UploadedFiles
      * Build the file of one leaf, or nothing for a field left empty.
      *
      * A file without an error part reads as nothing having been uploaded, and
-     * so does a successful upload without its path or its size: its size could
-     * not be checked against a limit.
+     * so does a successful upload without its path or its size: it could not
+     * be read, or its size checked against a limit.
      *
      * @param  array<array-key, mixed>    $spec The five parts of a single file
      * @return UploadedFileInterface|null

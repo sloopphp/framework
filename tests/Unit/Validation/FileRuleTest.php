@@ -306,7 +306,7 @@ final class FileRuleTest extends TestCase
         ]);
 
         $this->assertSame(
-            'Field "uploads" compares with "name", but its own value no two inputs can share.',
+            'Field "uploads" compares with "name", but no two inputs can share its own value.',
             $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage(),
         );
     }
@@ -320,7 +320,7 @@ final class FileRuleTest extends TestCase
         $declare = static fn (): mixed => new Validator(['name' => Rule::string()])->with('uploads', $container->different('name'));
 
         $this->assertSame(
-            'Field "uploads" compares with "name", but its own value no two inputs can share.',
+            'Field "uploads" compares with "name", but no two inputs can share its own value.',
             $this->assertThrows(InvalidArgumentException::class, $declare)->getMessage(),
         );
     }

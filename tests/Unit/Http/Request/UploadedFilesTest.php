@@ -211,6 +211,15 @@ final class UploadedFilesTest extends TestCase
         $this->assertSame([], $files);
     }
 
+    public function testKeepsASuccessfulUploadOfAnEmptyFile(): void
+    {
+        $tmp = $this->tmpFile('a', '');
+
+        $files = UploadedFiles::fromGlobals(['avatar' => ['tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => 0]]);
+
+        $this->assertSame(0, $this->file($files['avatar'])->getSize());
+    }
+
     public function testLeavesOutAnUploadWithoutASizeOrAPath(): void
     {
         $tmp = $this->tmpFile('a', 'x');
