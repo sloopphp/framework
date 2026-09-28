@@ -228,7 +228,7 @@ abstract class FieldRule
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @return FieldOutcome
      * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
-     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
+     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running, or a file's stream cannot be read
      */
     public function evaluate(mixed $raw): FieldOutcome
     {
