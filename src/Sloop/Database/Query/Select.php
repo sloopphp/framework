@@ -599,8 +599,10 @@ class Select extends BuilderWhere
      * plain string is read as a column, and the server takes only one it was
      * told to group by.
      *
-     * Without a GROUP BY the rows form a single group, which both servers
-     * accept, so this can narrow an aggregate taken over the whole table.
+     * Without a GROUP BY both servers accept the clause. Over an aggregate
+     * select list the rows form a single group, so this can narrow an
+     * aggregate taken over the whole table; over plain columns both servers
+     * read it row by row.
      *
      * @param  string|Expression                                $column   Column or aggregate to compare
      * @param  string|int|float|bool|Expression|ColumnName|null $operator Operator when a value follows, otherwise the value itself
