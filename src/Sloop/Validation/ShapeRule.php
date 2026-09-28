@@ -30,7 +30,7 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, FieldRule<covariant mixed>>                $fields          Rules of each key, named (PHP turns a numeric key into an int, which is refused here)
      * @param  list<ArraySanitize|Closure(array<array-key, mixed>): mixed> $arraySanitizers Applied in order once the value is an array
-     * @throws InvalidArgumentException                                    When no key is declared, a key is not a name, or a comparison names a key that has no rule, or either side's value cannot be compared
+     * @throws InvalidArgumentException                                    When no key is declared, a key is not a name, a comparison names a key that has no rule, or either side's value cannot be compared
      */
     public function __construct(
         /** @var array<array-key, FieldRule<covariant mixed>> */

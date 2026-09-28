@@ -16,7 +16,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * caught by required() rather than reported as a broken upload. Every other
  * upload error fails the field on its own, whatever rules were declared.
  *
- * The request built from the globals already leaves such an entry out, but
+ * The request built from the globals already leaves a NO_FILE entry out, but
  * one built elsewhere may still carry the entry a browser sends for a field
  * left empty. Inside a list such an entry is still an element: it reads as
  * null and is counted by the rules on the number of elements.
