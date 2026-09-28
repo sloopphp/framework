@@ -197,6 +197,7 @@ final class FileRule extends FieldRule
      *
      * @param  UploadedFileInterface $file File to inspect
      * @return string|null
+     * @throws \RuntimeException     When the stream cannot be opened, rewound or read
      */
     private static function sniff(UploadedFileInterface $file): ?string
     {
