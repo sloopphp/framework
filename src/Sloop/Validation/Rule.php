@@ -121,6 +121,18 @@ final class Rule
     }
 
     /**
+     * A field whose validated value is an uploaded file.
+     *
+     * Takes no sanitizers: there is no string to clean.
+     *
+     * @return FileRule
+     */
+    public static function file(): FileRule
+    {
+        return new FileRule();
+    }
+
+    /**
      * A field that must be an array, whatever it holds.
      *
      * The elements reach the caller untouched. Use list() to give them all one
@@ -160,7 +172,7 @@ final class Rule
      * @param  array<array-key, FieldRule<covariant mixed>>                              $fields        Rules of each key, named (a numeric key is refused)
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
      * @return ShapeRule
-     * @throws \InvalidArgumentException                                                 When no key is declared, a key is not a name, or a comparison names a key that has no rule
+     * @throws \InvalidArgumentException                                                 When no key is declared, a key is not a name, a comparison names a key that has no rule, or either side's value cannot be compared
      */
     public static function shape(array $fields, ArraySanitize|Closure ...$sanitizers): ShapeRule
     {

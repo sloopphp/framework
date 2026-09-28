@@ -33,15 +33,25 @@ final readonly class Validator
      * Create a validator.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
-     * @throws InvalidArgumentException                  When a same() / different() rule names a field that has no rule
+     * @throws InvalidArgumentException                  When a same() / different() rule names a field that has no rule, or either side's value cannot be compared
      */
     public function __construct(array $rules)
     {
         foreach ($rules as $field => $rule) {
             foreach ($rule->comparisons() as $comparison) {
+                if (!$rule->comparesByValue()) {
+                    throw new InvalidArgumentException(
+                        'Field "' . $field . '" compares with "' . $comparison->other . '", but no two inputs can share its own value.',
+                    );
+                }
                 if (!\array_key_exists($comparison->other, $rules)) {
                     throw new InvalidArgumentException(
                         'Field "' . $field . '" compares with "' . $comparison->other . '", which has no rule.',
+                    );
+                }
+                if (!$rules[$comparison->other]->comparesByValue()) {
+                    throw new InvalidArgumentException(
+                        'Field "' . $field . '" compares with "' . $comparison->other . '", whose value no two inputs can share.',
                     );
                 }
             }
@@ -56,7 +66,7 @@ final readonly class Validator
      * @param  string                     $field Field name
      * @param  FieldRule<covariant mixed> $rule  Rules of the field
      * @return self
-     * @throws InvalidArgumentException   When the field already has rules, or a comparison names a field that has no rule
+     * @throws InvalidArgumentException   When the field already has rules, or a comparison names a field that has no rule, or either side's value cannot be compared
      */
     public function with(string $field, FieldRule $rule): self
     {
@@ -74,7 +84,7 @@ final readonly class Validator
      *
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
-     * @throws \RuntimeException         When a message pattern cannot be formatted, or PCRE aborts while a sanitizer is running
+     * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, or a file's stream cannot be read
      * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
      */
     public function validate(array $data): ValidationResult
@@ -132,7 +142,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>                                          $data Input
      * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
      * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
-     * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running
+     * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, or a file's stream cannot be read
      */
     public function evaluateFields(array $data): array
     {

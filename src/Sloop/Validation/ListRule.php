@@ -94,6 +94,21 @@ final class ListRule extends ArrayRule
     }
 
     /**
+     * Whether same() / different() can say anything about this field.
+     *
+     * A list of values no two inputs can share is one itself, so the element
+     * answers for the list.
+     *
+     * @internal Read by Validator for both sides of a declared comparison.
+     *
+     * @return bool
+     */
+    public function comparesByValue(): bool
+    {
+        return $this->element->comparesByValue();
+    }
+
+    /**
      * Validate every element, keeping the failures of all of them.
      *
      * Not reached when a rule on the number of elements has failed.
@@ -101,7 +116,7 @@ final class ListRule extends ArrayRule
      * @param  array<array-key, mixed>                       $typed Value of the declared type
      * @return array{list<Failure>, array<array-key, mixed>}
      * @throws \UnexpectedValueException                     When a sanitizer closure returns the wrong type
-     * @throws \RuntimeException                             When PCRE aborts while a sanitizer is running
+     * @throws \RuntimeException                             When PCRE aborts while a sanitizer is running, or a file's stream cannot be read
      */
     protected function validateChildren(mixed $typed): array
     {

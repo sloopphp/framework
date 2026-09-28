@@ -356,7 +356,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::152",
+                "Sloop\\Foundation\\Application::dispatchRoute::153",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.
@@ -407,6 +407,35 @@
                 // Pinned to the line: the condition list beside it is killed
                 // by the same mutator.
                 "Sloop\\Database\\Query\\Select::compileOverUnion::1270"
+            ]
+        },
+        "Identical": {
+            // Application::createServerRequestFromGlobals reads the body from
+            // php://input, which a PHPUnit process cannot fill: it is always ''
+            // there, so every change to how an empty or unreadable body is
+            // turned into null gives the same request. Pinned to the line: the
+            // uploaded files built in the same method are checked by
+            // ApplicationTest.
+            "ignore": [
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+            ]
+        },
+        "LogicalOrNegation": {
+            // Same line as the Identical entry above.
+            "ignore": [
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+            ]
+        },
+        "LogicalOrAllSubExprNegation": {
+            // Same line as the Identical entry above.
+            "ignore": [
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+            ]
+        },
+        "Ternary": {
+            // Same line as the Identical entry above.
+            "ignore": [
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
             ]
         }
     },

@@ -26,6 +26,7 @@ use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
+use Sloop\Http\Request\UploadedFiles;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
@@ -170,6 +171,8 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
+     * @throws \InvalidArgumentException   When no request is given and the one built from the globals is malformed
+     * @throws \RuntimeException           When the response formatter cannot be resolved while rendering an error
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
     {
@@ -635,6 +638,7 @@ final class Application implements RequestHandlerInterface
      * Create a PSR-7 ServerRequest from PHP globals.
      *
      * @return ServerRequestInterface
+     * @throws \InvalidArgumentException When the URI or a header value cannot be parsed, or an uploaded file carries an error code PHP does not define
      */
     private function createServerRequestFromGlobals(): ServerRequestInterface
     {
@@ -647,6 +651,7 @@ final class Application implements RequestHandlerInterface
         return new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER)
             ->withQueryParams($_GET)
             ->withParsedBody($_POST)
-            ->withCookieParams($_COOKIE);
+            ->withCookieParams($_COOKIE)
+            ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES));
     }
 }

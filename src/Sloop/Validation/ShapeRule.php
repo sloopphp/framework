@@ -30,7 +30,7 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, FieldRule<covariant mixed>>                $fields          Rules of each key, named (PHP turns a numeric key into an int, which is refused here)
      * @param  list<ArraySanitize|Closure(array<array-key, mixed>): mixed> $arraySanitizers Applied in order once the value is an array
-     * @throws InvalidArgumentException                                    When no key is declared, a key is not a name, or a comparison names a key that has no rule
+     * @throws InvalidArgumentException                                    When no key is declared, a key is not a name, a comparison names a key that has no rule, or either side's value cannot be compared
      */
     public function __construct(
         /** @var array<array-key, FieldRule<covariant mixed>> */
@@ -63,13 +63,13 @@ final class ShapeRule extends ArrayRule
      * field is what the caller reads, and a default carrying anything else
      * would break it without any rule having failed.
      *
-     * A key the default says nothing for — missing, null or '' — takes what an
-     * input without it would have taken, so that both ways of reaching a value
-     * give the same shape. A `false`, a `0` and a `'0'` say something and are
-     * kept. Emptiness is read the way validation reads it, which is before any
-     * sanitizer has run: the default does not go through them, so a value that
-     * only a sanitizer would empty (`'  '` under Sanitize::Trim) counts as a
-     * value here.
+     * A key the default says nothing for — missing, or empty as the key's own
+     * rule reads it — takes what an input without it would have taken, so that
+     * both ways of reaching a value give the same shape. A `false`, a `0` and a
+     * `'0'` say something and are kept. Emptiness is read the way validation
+     * reads it, which is before any sanitizer has run: the default does not go
+     * through them, so a value that only a sanitizer would empty (`'  '` under
+     * Sanitize::Trim) counts as a value here.
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
@@ -111,10 +111,9 @@ final class ShapeRule extends ArrayRule
 
         $filled = [];
         foreach ($this->fields as $key => $rule) {
-            // The three ways of saying nothing are the same here as everywhere
-            // else in validation, so one test has to cover a missing key and a
-            // null alike: array_key_exists() would let the null through.
-            if (isset($value[$key]) && $value[$key] !== '') {
+            // A key's own rule says what counts as nothing, the same test
+            // validation runs, so a missing key reads as null and goes to it.
+            if (!$rule->isEmpty($value[$key] ?? null)) {
                 $filled[$key] = $rule->prepareDefault($value[$key]);
                 continue;
             }
@@ -136,11 +135,32 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Whether same() / different() can say anything about this field.
+     *
+     * A shape holding a value no two inputs can share is one itself, so every
+     * declared key has to answer true for the shape to.
+     *
+     * @internal Read by Validator for both sides of a declared comparison.
+     *
+     * @return bool
+     */
+    public function comparesByValue(): bool
+    {
+        foreach ($this->fields as $field) {
+            if (!$field->comparesByValue()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Validate every declared key, keeping the failures of all of them.
      *
      * @param  array<array-key, mixed>                       $typed Value of the declared type
      * @return array{list<Failure>, array<array-key, mixed>}
-     * @throws \RuntimeException                             When PCRE aborts while a sanitizer is running
+     * @throws \RuntimeException                             When PCRE aborts while a sanitizer is running, or a file's stream cannot be read
      * @throws \UnexpectedValueException                     When a sanitizer closure returns the wrong type
      */
     protected function validateChildren(mixed $typed): array
