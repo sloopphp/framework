@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Integration\Database;
 
 use DateTimeImmutable;
+use Sloop\Database\CastMode;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Result;
@@ -309,5 +310,36 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         $thrown = $this->assertThrows(DatabaseException::class, static fn () => $select->count());
 
         $this->assertStringContainsString('1060', $thrown->getMessage());
+    }
+
+    public function testAGroupedStatementReadingANameFromAWithClauseIsCounted(): void
+    {
+        // The WITH clause is written on the outer statement, and the grouped
+        // statement inside the parentheses reads the name it introduces.
+        $count = $this->connection->select('user_id')
+            ->with('published', $this->connection->select('user_id')->from('posts')->where('published', 1))
+            ->from('published')
+            ->groupBy('user_id')
+            ->count();
+
+        $this->assertSame(3, $count);
+    }
+
+    public function testATimeoutReachesTheStatementAGroupedCountRuns(): void
+    {
+        $count = $this->connection->select('user_id')->from('posts')->groupBy('user_id')->timeout(5000)->count();
+
+        $this->assertSame(3, $count);
+    }
+
+    public function testTheCastModeConvertsTheValueAnAggregateReadsFromTheGroups(): void
+    {
+        $latest = $this->connection->select('user_id', [Expression::max('created_at'), 'latest'])
+            ->from('posts')
+            ->groupBy('user_id')
+            ->castMode(CastMode::Datetime)
+            ->max('latest');
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $latest);
     }
 }

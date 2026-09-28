@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Integration\Database;
 
+use DateTimeImmutable;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Sloop\Database\Connection;
@@ -11,6 +12,7 @@ use Sloop\Database\Dialect;
 use Sloop\Database\Exception\LockNotAvailableException;
 use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Query\Select;
+use Sloop\Database\Result;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 // Two sessions are needed to see a lock at all, and the rows have to be
@@ -26,6 +28,9 @@ final class SelectLockTest extends IntegrationTestCase
     private Connection $reader;
 
     private int $attempts = 0;
+
+    /** @var list<int|float|string|bool|DateTimeImmutable|null> */
+    private array $walked = [];
 
     public static function setUpBeforeClass(): void
     {
@@ -361,6 +366,49 @@ final class SelectLockTest extends IntegrationTestCase
             : LockWaitTimeoutException::class);
 
         $this->holder->select('id')->from(self::TABLE)->where('id', 2)->forUpdate(noWait: true)->get();
+    }
+
+    public function testACountOfAGroupedStatementUnderASharedLockHoldsTheRowsAgainstAWrite(): void
+    {
+        $this->holder->begin();
+
+        $this->assertSame(
+            3,
+            $this->holder->select('label')->from(self::TABLE)->groupBy('label')->sharedLock()->count(),
+        );
+
+        $this->reader->begin();
+
+        $this->expectException(LockWaitTimeoutException::class);
+
+        $this->reader->statement('UPDATE ' . self::TABLE . ' SET label = ? WHERE id = 2', ['written']);
+    }
+
+    public function testChunkByIdWalksALockedGroupedStatementAndHoldsItsRows(): void
+    {
+        $this->reader->begin();
+
+        $this->reader->select('label')->from(self::TABLE)->groupBy('label')->forUpdate()->chunkById(
+            2,
+            function (Result $batch): bool {
+                $this->walked = [...$this->walked, ...array_column($batch->asArray(), 'label')];
+
+                // The walk ends on its own after two batches; the bound keeps a
+                // cursor that stops narrowing from reading the same batch forever.
+                return \count($this->walked) < 6;
+            },
+            'label',
+        );
+
+        $this->assertSame(['one', 'three', 'two'], $this->walked);
+
+        $this->holder->begin();
+
+        $this->expectException($this->holder->dialect() === Dialect::MySQL
+            ? LockNotAvailableException::class
+            : LockWaitTimeoutException::class);
+
+        $this->holder->select('id')->from(self::TABLE)->where('id', 3)->forUpdate(noWait: true)->get();
     }
 
     #[DataProvider('provideAggregateMethods')]
