@@ -165,6 +165,38 @@ class Grammar
     ];
 
     /**
+     * Function calls that may stand in the select list without a window, as aggregates.
+     *
+     * Fixed for the same reason the window functions are: the name reaches the
+     * SQL as spelled here. These are the aggregates MySQL documents, which are
+     * the window list's aggregates and GROUP_CONCAT(). The functions that only
+     * run over a window -- ROW_NUMBER(), LAG() and the rest -- are left out,
+     * since without OVER they are not calls either server accepts.
+     *
+     * @var list<string>
+     */
+    private const array AGGREGATE_FUNCTIONS = [
+        'AVG',
+        'BIT_AND',
+        'BIT_OR',
+        'BIT_XOR',
+        'COUNT',
+        'GROUP_CONCAT',
+        'JSON_ARRAYAGG',
+        'JSON_OBJECTAGG',
+        'MAX',
+        'MIN',
+        'STD',
+        'STDDEV',
+        'STDDEV_POP',
+        'STDDEV_SAMP',
+        'SUM',
+        'VAR_POP',
+        'VAR_SAMP',
+        'VARIANCE',
+    ];
+
+    /**
      * Build a grammar for a connection.
      *
      * @param  string                   $prefix Prepended to every table name; empty for none
@@ -532,10 +564,10 @@ class Grammar
     /**
      * Compile the select list.
      *
-     * @param  list<string|Expression|SelectedColumn|WindowExpression> $columns Columns to select; empty selects everything
-     * @return CompiledSql                                             Select list and the bindings of anything in it that carries values
-     * @throws LogicException                                          When a statement in the list names no table or left a group of conditions open, or a window's RANGE frame has an offset without exactly one sort term
-     * @throws InvalidArgumentException                                When an identifier is malformed
+     * @param  list<string|Expression|SelectedColumn|WindowExpression|FunctionCall> $columns Columns to select; empty selects everything
+     * @return CompiledSql                                                          Select list and the bindings of anything in it that carries values
+     * @throws LogicException                                                       When a statement in the list names no table or left a group of conditions open, or a window's RANGE frame has an offset without exactly one sort term
+     * @throws InvalidArgumentException                                             When an identifier is malformed, or the grammar writes no such window call or aggregate
      */
     protected function compileColumns(array $columns): CompiledSql
     {
@@ -550,6 +582,7 @@ class Grammar
             $compiled = match (true) {
                 $column instanceof SelectedColumn   => $this->compileSelectedColumn($column),
                 $column instanceof WindowExpression => $this->compileWindow($column),
+                $column instanceof FunctionCall     => $this->compileAggregate($column),
                 default                             => $this->compileColumnReference($column, allowEveryColumn: true),
             };
             $parts[]  = $compiled->sql;
@@ -570,7 +603,7 @@ class Grammar
      * @param  SelectedColumn           $column What to select and the name to return it under
      * @return CompiledSql              The position as written, with the bindings of anything carrying values
      * @throws LogicException           When a statement in the list names no table or left a group of conditions open, or a window's RANGE frame has an offset without exactly one sort term
-     * @throws InvalidArgumentException When an identifier is malformed, or the grammar writes no such window call
+     * @throws InvalidArgumentException When an identifier is malformed, or the grammar writes no such window call or aggregate
      */
     protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
     {
@@ -582,9 +615,11 @@ class Grammar
             return new CompiledSql('(' . $inner->sql . ')' . $name, $inner->bindings);
         }
 
-        $compiled = $column->source instanceof WindowExpression
-            ? $this->compileWindow($column->source)
-            : $this->compileColumnReference($column->source);
+        $compiled = match (true) {
+            $column->source instanceof WindowExpression => $this->compileWindow($column->source),
+            $column->source instanceof FunctionCall     => $this->compileAggregate($column->source),
+            default                                     => $this->compileColumnReference($column->source),
+        };
 
         return new CompiledSql($compiled->sql . $name, $compiled->bindings);
     }
@@ -992,6 +1027,44 @@ class Grammar
         throw new InvalidArgumentException(
             'This grammar writes no window function called ' . $function
             . '. Add it by overriding windowFunctions().',
+        );
+    }
+
+    /**
+     * Name the calls this grammar writes as aggregates in the select list.
+     *
+     * A subclass extends the set by overriding this, as with windowFunctions().
+     *
+     * @return list<string> Function names, upper case
+     */
+    protected function aggregateFunctions(): array
+    {
+        return self::AGGREGATE_FUNCTIONS;
+    }
+
+    /**
+     * Read the name of an aggregate, refusing one this grammar does not write.
+     *
+     * A builder calls this when a call is handed to its select list, so a name
+     * this grammar cannot write there says so at the line that named it.
+     *
+     * @param  string                   $function Name of the call, in any case
+     * @return string                   The name in the spelling this grammar writes
+     * @throws InvalidArgumentException When this grammar writes no such aggregate
+     */
+    public function aggregateFunction(string $function): string
+    {
+        $wanted = strtoupper($function);
+
+        foreach ($this->aggregateFunctions() as $known) {
+            if ($known === $wanted) {
+                return $known;
+            }
+        }
+
+        throw new InvalidArgumentException(
+            'This grammar writes no aggregate function called ' . $wanted
+            . '. Give it a window with over(), or add it by overriding aggregateFunctions().',
         );
     }
 
@@ -1438,27 +1511,8 @@ class Grammar
      */
     protected function compileWindow(WindowExpression $window): CompiledSql
     {
-        $arguments = [];
-        $bindings  = [];
-        $single    = \count($window->arguments) === 1;
-
-        foreach ($window->arguments as $argument) {
-            if (\is_string($argument)) {
-                $arguments[] = $this->quoteIdentifier($argument, allowEveryColumn: $single);
-
-                continue;
-            }
-
-            if ($argument instanceof Expression) {
-                $arguments[] = $argument->sql();
-                $bindings    = array_merge($bindings, $argument->bindings());
-
-                continue;
-            }
-
-            $arguments[] = '?';
-            $bindings[]  = $argument;
-        }
+        $call     = $this->compileArguments($window->arguments);
+        $bindings = $call->bindings;
 
         $over = [];
 
@@ -1491,7 +1545,7 @@ class Grammar
 
         return new CompiledSql(
             $this->windowFunction($window->function)
-                . '(' . implode(', ', $arguments) . ') OVER (' . implode(' ', $over) . ')',
+                . '(' . $call->sql . ') OVER (' . implode(' ', $over) . ')',
             $bindings,
         );
     }
@@ -1521,6 +1575,61 @@ class Grammar
 
         return $frame->unit->value . ' BETWEEN ' . WindowFrame::bound($frame->start, true)
             . ' AND ' . WindowFrame::bound($frame->end, false);
+    }
+
+    /**
+     * Compile a function call standing in the select list as an aggregate.
+     *
+     * @param  FunctionCall             $call Call to write
+     * @return CompiledSql              The call, and the bindings its arguments need
+     * @throws InvalidArgumentException When the grammar writes no such aggregate, or an identifier in it is malformed
+     */
+    protected function compileAggregate(FunctionCall $call): CompiledSql
+    {
+        $arguments = $this->compileArguments($call->arguments);
+
+        return new CompiledSql(
+            $this->aggregateFunction($call->function) . '(' . $arguments->sql . ')',
+            $arguments->bindings,
+        );
+    }
+
+    /**
+     * Compile the arguments of a function call, read by type.
+     *
+     * A string names a column and is quoted, an Expression is written as it
+     * stands, and anything else is bound. `*` names every column only when it
+     * is the sole argument, which is where COUNT(*) puts it.
+     *
+     * @param  array<int|string, string|Expression|int|float|bool|null> $arguments Arguments in written order; keys are ignored
+     * @return CompiledSql                                              The arguments separated by commas, and their bindings
+     * @throws InvalidArgumentException                                 When an identifier is malformed
+     */
+    protected function compileArguments(array $arguments): CompiledSql
+    {
+        $written  = [];
+        $bindings = [];
+        $single   = \count($arguments) === 1;
+
+        foreach ($arguments as $argument) {
+            if (\is_string($argument)) {
+                $written[] = $this->quoteIdentifier($argument, allowEveryColumn: $single);
+
+                continue;
+            }
+
+            if ($argument instanceof Expression) {
+                $written[] = $argument->sql();
+                $bindings  = array_merge($bindings, $argument->bindings());
+
+                continue;
+            }
+
+            $written[]  = '?';
+            $bindings[] = $argument;
+        }
+
+        return new CompiledSql(implode(', ', $written), $bindings);
     }
 
     /**

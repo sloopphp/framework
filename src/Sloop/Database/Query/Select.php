@@ -54,7 +54,7 @@ class Select extends BuilderWhere
      * call produced. SelectSpec discards them when the statement is compiled,
      * so they never reach the SQL.
      *
-     * @var array<array-key, string|Expression|SelectedColumn|WindowExpression>
+     * @var array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>
      */
     private array $columns;
 
@@ -183,22 +183,22 @@ class Select extends BuilderWhere
      *
      * A column may be given as a pair of what to select and the name to return
      * it under, written `[$column, $name]`. What stands in the first place may
-     * be a column name, an expression, a statement returning one value, or a
-     * window call.
+     * be a column name, an expression, a statement returning one value, a
+     * window call, or a function call standing as an aggregate.
      *
-     * A window call is checked against the grammar here rather than once the
-     * statement is compiled, so a function this grammar does not write says so
-     * at the line that named it.
+     * A window call and an aggregate are checked against the grammar here
+     * rather than once the statement is compiled, so a function this grammar
+     * does not write says so at the line that named it.
      *
-     * @param  ConnectionRoute                                                  $route      Route asked for a connection when the statement runs
-     * @param  Grammar                                                          $grammar    Grammar that turns the collected parts into SQL
-     * @param  string|Expression|WindowExpression|array<int|string, mixed>|self ...$columns Columns to select, each on its own or paired with a name; none selects every column
-     * @throws InvalidArgumentException                                         When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, what it selects cannot be selected, or the grammar writes no such window function
+     * @param  ConnectionRoute                                                               $route      Route asked for a connection when the statement runs
+     * @param  Grammar                                                                       $grammar    Grammar that turns the collected parts into SQL
+     * @param  string|Expression|WindowExpression|FunctionCall|array<int|string, mixed>|self ...$columns Columns to select, each on its own or paired with a name; none selects every column
+     * @throws InvalidArgumentException                                                      When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, what it selects cannot be selected, or the grammar writes no such window function or aggregate
      */
     public function __construct(
         ConnectionRoute $route,
         Grammar $grammar,
-        string|Expression|WindowExpression|array|self ...$columns,
+        string|Expression|WindowExpression|FunctionCall|array|self ...$columns,
     ) {
         parent::__construct($route, $grammar);
 
@@ -209,6 +209,10 @@ class Select extends BuilderWhere
 
             if ($selected instanceof WindowExpression) {
                 $grammar->windowFunction($selected->function);
+            }
+
+            if ($selected instanceof FunctionCall) {
+                $grammar->aggregateFunction($selected->function);
             }
         }
     }
@@ -221,13 +225,13 @@ class Select extends BuilderWhere
      * whole statement, so what the caller reads the rows by would change with
      * every edit to it.
      *
-     * @param  string|Expression|WindowExpression|array<int|string, mixed>|self $column What to select, on its own or paired with the name to return it under
-     * @return string|Expression|SelectedColumn|WindowExpression                The column, or the pair as one value
-     * @throws InvalidArgumentException                                         When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, or what it selects cannot be selected
+     * @param  string|Expression|WindowExpression|FunctionCall|array<int|string, mixed>|self $column What to select, on its own or paired with the name to return it under
+     * @return string|Expression|SelectedColumn|WindowExpression|FunctionCall                The column, or the pair as one value
+     * @throws InvalidArgumentException                                                      When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, or what it selects cannot be selected
      */
     private static function toColumn(
-        string|Expression|WindowExpression|array|self $column,
-    ): string|Expression|SelectedColumn|WindowExpression {
+        string|Expression|WindowExpression|FunctionCall|array|self $column,
+    ): string|Expression|SelectedColumn|WindowExpression|FunctionCall {
         if ($column instanceof self) {
             throw new InvalidArgumentException(
                 'A statement in the select list needs a name, because the server would return it under its own text;'
@@ -265,10 +269,11 @@ class Select extends BuilderWhere
             !\is_string($source)
             && !$source instanceof Expression
             && !$source instanceof WindowExpression
+            && !$source instanceof FunctionCall
             && !$source instanceof self
         ) {
             throw new InvalidArgumentException(
-                'A named column selects a column name, an Expression, a window call, or a statement, got '
+                'A named column selects a column name, an Expression, a window call, an aggregate, or a statement, got '
                 . get_debug_type($source) . '.',
             );
         }
@@ -1099,14 +1104,14 @@ class Select extends BuilderWhere
      * The parentheses that avoid that are dropped again when the builder holds
      * no conditions, since an empty pair is not valid SQL.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression>|null $columns   Columns to read, or null for the ones the builder selects
-     * @param  int|null                                                                 $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                                 $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                           $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns   Columns to read, or null for the ones the builder selects
+     * @param  int|null                                                                              $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                              $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                                        $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                                                            $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                           When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
-     * @throws InvalidArgumentException                                                 When an identifier is malformed or the row window is inconsistent
+     * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws InvalidArgumentException                                                              When an identifier is malformed or the row window is inconsistent
      */
     private function compileReading(
         ?array $columns,
@@ -1232,14 +1237,14 @@ class Select extends BuilderWhere
      * statement wrote as `users.id` or `UPPER(name) AS n` could not be named
      * there as it was written.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression>|null $columns   Columns to read from the combined rows, or null for every one of them
-     * @param  int|null                                                                 $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                                 $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                           $alsoWhere Condition on the combined rows, or null for none
-     * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns   Columns to read from the combined rows, or null for every one of them
+     * @param  int|null                                                                              $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                              $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                                        $alsoWhere Condition on the combined rows, or null for none
+     * @param  Order|null                                                                            $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                           When the statement holds a lock, a statement sorts inside its parentheses without a limit, a statement carries a WITH clause it cannot carry, or one added names no table or left a group of conditions open
-     * @throws InvalidArgumentException                                                 When an identifier is malformed or a row window is inconsistent
+     * @throws LogicException                                                                        When the statement holds a lock, a statement sorts inside its parentheses without a limit, a statement carries a WITH clause it cannot carry, or one added names no table or left a group of conditions open
+     * @throws InvalidArgumentException                                                              When an identifier is malformed or a row window is inconsistent
      */
     private function compileOverUnion(
         ?array $columns,
@@ -1372,18 +1377,18 @@ class Select extends BuilderWhere
     /**
      * Run a statement that reads the given columns and row count.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression>|null $columns   Columns to read, or null for the ones the builder selects
-     * @param  int|null                                                                 $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                                 $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                           $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                                                               $thenBy    Sort term to add after the builder's own, or null for none
-     * @return Result                                                                   Rows the statement read
-     * @throws LogicException                                                           When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
-     * @throws InvalidArgumentException                                                 When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                                                   When the pool name is not defined or its config is malformed
-     * @throws DatabaseConnectionException                                              When the connection cannot be obtained
-     * @throws DatabaseException                                                        When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
-     * @throws UnexpectedValueException                                                 When the driver returns a value outside the types it contracts to
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns   Columns to read, or null for the ones the builder selects
+     * @param  int|null                                                                              $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                              $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                                        $alsoWhere Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                                                            $thenBy    Sort term to add after the builder's own, or null for none
+     * @return Result                                                                                Rows the statement read
+     * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws InvalidArgumentException                                                              When an identifier is malformed or the row window is inconsistent
+     * @throws InvalidConfigException                                                                When the pool name is not defined or its config is malformed
+     * @throws DatabaseConnectionException                                                           When the connection cannot be obtained
+     * @throws DatabaseException                                                                     When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
+     * @throws UnexpectedValueException                                                              When the driver returns a value outside the types it contracts to
      */
     private function runReading(
         ?array $columns,

@@ -21,6 +21,7 @@ use Sloop\Database\Exception\ExceptionFactory;
 use Sloop\Database\Exception\LockWaitTimeoutException;
 use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
+use Sloop\Database\Query\FunctionCall;
 use Sloop\Database\Query\Grammar;
 use Sloop\Database\Query\Insert;
 use Sloop\Database\Query\Select;
@@ -168,11 +169,11 @@ final class Connection
      * A column may be given as a pair of what to select and the name to return
      * it under, written `[$column, $name]`.
      *
-     * @param  string|Expression|WindowExpression|array<int|string, mixed>|Select ...$columns Columns to select, each on its own or paired with a name; none selects every column
-     * @return Select                                                             Builder for the statement
-     * @throws InvalidArgumentException                                           When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, what it selects cannot be selected, or the grammar writes no such window function
+     * @param  string|Expression|WindowExpression|FunctionCall|array<int|string, mixed>|Select ...$columns Columns to select, each on its own or paired with a name; none selects every column
+     * @return Select                                                                          Builder for the statement
+     * @throws InvalidArgumentException                                                        When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, what it selects cannot be selected, or the grammar writes no such window function or aggregate
      */
-    public function select(string|Expression|WindowExpression|array|Select ...$columns): Select
+    public function select(string|Expression|WindowExpression|FunctionCall|array|Select ...$columns): Select
     {
         return new Select(new FixedConnectionRoute($this), $this->grammar, ...$columns);
     }

@@ -214,8 +214,8 @@ final readonly class Expression
      *
      * The named factories below cover the calls MySQL and MariaDB document. This
      * is the way to reach one a subclass added by overriding
-     * `Grammar::windowFunctions()`, and the way to write a call whose arguments
-     * this class gives no shape for.
+     * `Grammar::windowFunctions()` or `Grammar::aggregateFunctions()`, and the
+     * way to write a call whose arguments this class gives no shape for.
      *
      * Arguments tell columns from values apart by type: a string names a column
      * and is quoted, an Expression is written as it stands, and anything else is
@@ -223,7 +223,7 @@ final readonly class Expression
      *
      * @param  string                          $function     Name of the function, in any case
      * @param  string|self|int|float|bool|null ...$arguments Arguments of the call, in written order
-     * @return FunctionCall                    The call, awaiting the window it runs over
+     * @return FunctionCall                    The call, to select as an aggregate or give a window with over()
      * @throws InvalidArgumentException        When the function name is empty
      */
     public static function fn(string $function, string|self|int|float|bool|null ...$arguments): FunctionCall
@@ -398,13 +398,13 @@ final readonly class Expression
     }
 
     /**
-     * Number of rows in the window, or of those where the column is not null.
+     * Number of rows it reads, or of those where the column is not null.
      *
      * Counting rows is the default, written as `COUNT(*)`; naming a column counts
      * the rows where it holds a value.
      *
      * @param  string|self  $column Column to count the values of, or '*' to count rows
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function count(string|self $column = '*'): FunctionCall
     {
@@ -412,10 +412,10 @@ final readonly class Expression
     }
 
     /**
-     * Sum of the column over the window.
+     * Sum of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function sum(string|self $column): FunctionCall
     {
@@ -423,10 +423,10 @@ final readonly class Expression
     }
 
     /**
-     * Average of the column over the window.
+     * Average of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function avg(string|self $column): FunctionCall
     {
@@ -434,10 +434,10 @@ final readonly class Expression
     }
 
     /**
-     * Largest value of the column over the window.
+     * Largest value of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function max(string|self $column): FunctionCall
     {
@@ -445,10 +445,10 @@ final readonly class Expression
     }
 
     /**
-     * Smallest value of the column over the window.
+     * Smallest value of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function min(string|self $column): FunctionCall
     {
@@ -456,10 +456,10 @@ final readonly class Expression
     }
 
     /**
-     * Population standard deviation of the column over the window.
+     * Population standard deviation of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function std(string|self $column): FunctionCall
     {
@@ -467,10 +467,10 @@ final readonly class Expression
     }
 
     /**
-     * Population standard deviation of the column over the window; a synonym of STD.
+     * Population standard deviation of the column over the rows it reads; a synonym of STD.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function stddev(string|self $column): FunctionCall
     {
@@ -478,10 +478,10 @@ final readonly class Expression
     }
 
     /**
-     * Population standard deviation of the column over the window.
+     * Population standard deviation of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function stddevPop(string|self $column): FunctionCall
     {
@@ -489,10 +489,10 @@ final readonly class Expression
     }
 
     /**
-     * Sample standard deviation of the column over the window.
+     * Sample standard deviation of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function stddevSamp(string|self $column): FunctionCall
     {
@@ -500,10 +500,10 @@ final readonly class Expression
     }
 
     /**
-     * Population variance of the column over the window.
+     * Population variance of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function varPop(string|self $column): FunctionCall
     {
@@ -511,10 +511,10 @@ final readonly class Expression
     }
 
     /**
-     * Sample variance of the column over the window.
+     * Sample variance of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function varSamp(string|self $column): FunctionCall
     {
@@ -522,10 +522,10 @@ final readonly class Expression
     }
 
     /**
-     * Population variance of the column over the window; a synonym of VAR_POP.
+     * Population variance of the column over the rows it reads; a synonym of VAR_POP.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function variance(string|self $column): FunctionCall
     {
@@ -533,10 +533,10 @@ final readonly class Expression
     }
 
     /**
-     * Bitwise AND of the column over the window.
+     * Bitwise AND of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function bitAnd(string|self $column): FunctionCall
     {
@@ -544,10 +544,10 @@ final readonly class Expression
     }
 
     /**
-     * Bitwise OR of the column over the window.
+     * Bitwise OR of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function bitOr(string|self $column): FunctionCall
     {
@@ -555,10 +555,10 @@ final readonly class Expression
     }
 
     /**
-     * Bitwise XOR of the column over the window.
+     * Bitwise XOR of the column over the rows it reads.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function bitXor(string|self $column): FunctionCall
     {
@@ -566,10 +566,25 @@ final readonly class Expression
     }
 
     /**
-     * Values of the column over the window, as a JSON array.
+     * Values of the column joined into one string, as an aggregate.
+     *
+     * The values are joined with commas in no particular order. GROUP_CONCAT()
+     * takes no window on either server, so this is for the select list only;
+     * over() on it is refused.
      *
      * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate
+     */
+    public static function groupConcat(string|self $column): FunctionCall
+    {
+        return new FunctionCall('GROUP_CONCAT', [$column]);
+    }
+
+    /**
+     * Values of the column over the rows it reads, as a JSON array.
+     *
+     * @param  string|self  $column Column to read, or an expression producing the value
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function jsonArrayAgg(string|self $column): FunctionCall
     {
@@ -577,11 +592,11 @@ final readonly class Expression
     }
 
     /**
-     * Keys and values of the two columns over the window, as a JSON object.
+     * Keys and values of the two columns over the rows it reads, as a JSON object.
      *
      * @param  string|self  $key   Column holding the keys of the object
      * @param  string|self  $value Column holding the values of the object
-     * @return FunctionCall The call, awaiting the window it runs over
+     * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
     public static function jsonObjectAgg(string|self $key, string|self $value): FunctionCall
     {

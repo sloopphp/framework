@@ -67,6 +67,29 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         return implode(',', $values);
     }
 
+    public function testBothServersReadAnAggregateCallPerGroup(): void
+    {
+        // COUNT comes back as an int on both servers; MAX of an INT column too.
+        // GROUP_CONCAT is ordered here so that the string does not depend on
+        // which row each server happens to read first.
+        $rows = $this->connection
+            ->select(
+                'status',
+                [Expression::count(), 'members'],
+                [Expression::max('score'), 'best'],
+                [Expression::groupConcat(Expression::of('`name` ORDER BY `name`')), 'names'],
+            )
+            ->from('users')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->get();
+
+        $this->assertSame([
+            ['status' => 'active', 'members' => 3, 'best' => 40, 'names' => 'alice,bob,dave'],
+            ['status' => 'blocked', 'members' => 1, 'best' => 30, 'names' => 'carol'],
+        ], $rows);
+    }
+
     public function testGroupByFoldsTheRowsIntoOneRowPerValue(): void
     {
         $rows = $this->connection->select('user_id', Expression::of('COUNT(*) AS posts_written'))
