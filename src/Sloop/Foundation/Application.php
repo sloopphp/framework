@@ -171,6 +171,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
+     * @throws \InvalidArgumentException   When no request is given and the one built from the globals is malformed
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
     {
@@ -636,6 +637,7 @@ final class Application implements RequestHandlerInterface
      * Create a PSR-7 ServerRequest from PHP globals.
      *
      * @return ServerRequestInterface
+     * @throws \InvalidArgumentException When the URI cannot be parsed or an uploaded file carries an error code PHP does not define
      */
     private function createServerRequestFromGlobals(): ServerRequestInterface
     {

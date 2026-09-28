@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Http\Request;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
@@ -256,6 +257,14 @@ final class UploadedFilesTest extends TestCase
 
         $this->assertFileDoesNotExist($tmp);
         $this->assertSame('moved', file_get_contents($target));
+    }
+
+    public function testRefusesAnErrorCodePhpDoesNotDefine(): void
+    {
+        $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): array => UploadedFiles::fromGlobals(['avatar' => ['tmp_name' => '', 'error' => 5, 'size' => 0]]),
+        );
     }
 
     public function testAnUnreadableTemporaryFileFailsWhenReadRatherThanReadingAsEmpty(): void
