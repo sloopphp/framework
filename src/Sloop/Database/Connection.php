@@ -720,6 +720,27 @@ final class Connection
     }
 
     /**
+     * WITH clause leading a statement, up to where the statement it leads begins.
+     *
+     * Each definition is a name, an optional column list and a body, and a
+     * body is read as a balanced run of parentheses. A parenthesis inside a
+     * quoted name or a string literal is not counted, so it cannot end a body
+     * early and leave the rest of the definition to be read as the statement.
+     *
+     * @var string
+     */
+    private const string WITH_CLAUSE = <<<'REGEX'
+        /\A WITH \s+ (?: RECURSIVE \s+ )?
+            (?&definition) (?: \s* , \s* (?&definition) )* \s*
+            (?(DEFINE)
+                (?<definition> (?&name) \s* (?: (?&group) \s* )? AS \s* (?&group) )
+                (?<name> `(?:[^`]|``)++` | [A-Za-z0-9_$]++ )
+                (?<group> \( (?: [^()`'"]++ | `(?:[^`]|``)*+` | '(?:[^'\\]|\\.|'')*+' | "(?:[^"\\]|\\.|"")*+" | (?&group) )*+ \) )
+            )
+        /xs
+        REGEX;
+
+    /**
      * The shape both servers write a DATE, DATETIME or TIMESTAMP in.
      *
      * Anchored at both ends. Matching a shape rather than rejecting a list of
@@ -1393,10 +1414,16 @@ final class Connection
      * and takes the limit there as well: on both servers it cuts short a
      * statement whose slow part is in a later SELECT.
      *
+     * A statement opening with a WITH clause takes the limit on the SELECT
+     * that follows the clause. MySQL ignores the hint written inside one of
+     * the clause's definitions, and applies it to the whole statement,
+     * definitions included, when it is written on that SELECT. MariaDB's
+     * prefix scopes the whole statement either way.
+     *
      * @param  string                   $sql       SQL of the statement to limit
      * @param  int                      $timeoutMs Milliseconds the statement may run for
      * @return string                   The statement carrying the limit
-     * @throws InvalidArgumentException When the timeout is not positive, or the statement does not open with SELECT
+     * @throws InvalidArgumentException When the timeout is not positive, or the statement does not open with SELECT, alone or after a WITH clause
      * @throws DatabaseException        When dialect detection fails
      */
     private function withStatementTimeout(string $sql, int $timeoutMs): string
@@ -1407,17 +1434,21 @@ final class Connection
             );
         }
 
+        $at        = preg_match(self::WITH_CLAUSE, $sql, $clause) === 1 ? \strlen($clause[0]) : 0;
+        $statement = substr($sql, $at);
+
         $opening = match (true) {
-            str_starts_with($sql, 'SELECT ')  => 'SELECT ',
-            str_starts_with($sql, '(SELECT ') => '(SELECT ',
-            default                           => throw new InvalidArgumentException(
-                'A statement timeout is written into the SELECT it limits, so the statement has to open with it.',
+            str_starts_with($statement, 'SELECT ')  => 'SELECT ',
+            str_starts_with($statement, '(SELECT ') => '(SELECT ',
+            default                                 => throw new InvalidArgumentException(
+                'A statement timeout is written into the SELECT it limits, so the statement has to open with it,'
+                . ' or with a WITH clause followed by it.',
             ),
         };
 
         return match ($this->dialect()) {
-            Dialect::MySQL => $opening . '/*+ MAX_EXECUTION_TIME(' . $timeoutMs . ') */ '
-                . substr($sql, \strlen($opening)),
+            Dialect::MySQL => substr($sql, 0, $at) . $opening . '/*+ MAX_EXECUTION_TIME(' . $timeoutMs . ') */ '
+                . substr($statement, \strlen($opening)),
             Dialect::MariaDB => 'SET STATEMENT max_statement_time = '
                 . \sprintf('%.3F', $timeoutMs / 1000) . ' FOR ' . $sql,
         };

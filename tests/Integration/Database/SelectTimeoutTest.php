@@ -167,6 +167,54 @@ final class SelectTimeoutTest extends IntegrationTestCase
         $this->assertStoppedEarly((microtime(true) - $started) * 1000);
     }
 
+    public function testTimeoutStopsAStatementWhoseSlowPartIsInItsWithClause(): void
+    {
+        // The limit is written on the statement after the clause, and the
+        // slow work sits in a statement the clause names.
+        $select = $this->connection
+            ->select('id')
+            ->with(
+                'slow',
+                $this->connection
+                    ->select('id')
+                    ->from(self::TABLE)
+                    ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0'),
+            )
+            ->from('slow')
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
+    public function testTimeoutStopsAStatementLedByAWithClauseWhoseSlowPartFollowsIt(): void
+    {
+        $select = $this->connection
+            ->select('id')
+            ->with('rows', $this->connection->select('id')->from(self::TABLE))
+            ->from('rows')
+            ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0')
+            ->limit(1)
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
     public function testTimeoutStillStopsAStatementThatTakesALock(): void
     {
         // Measured rather than assumed: a lock clause changes what the server

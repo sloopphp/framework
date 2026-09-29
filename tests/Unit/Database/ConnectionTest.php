@@ -1237,6 +1237,64 @@ final class ConnectionTest extends TestCase
         $this->assertSame([$expectedSql], $prepared->getArrayCopy());
     }
 
+    /**
+     * @return array<string, array{0: string, 1: string, 2: string}>
+     */
+    public static function withClauseStatementTimeoutProvider(): array
+    {
+        return [
+            'MySQL writes the hint into the SELECT after the clause' => [
+                '8.0.37',
+                'WITH `t` AS (SELECT `id` FROM `users`) SELECT `id` FROM `t`',
+                'WITH `t` AS (SELECT `id` FROM `users`) SELECT /*+ MAX_EXECUTION_TIME(400) */ `id` FROM `t`',
+            ],
+            'MariaDB scopes a SET to the whole statement' => [
+                '10.11.11-MariaDB',
+                'WITH `t` AS (SELECT `id` FROM `users`) SELECT `id` FROM `t`',
+                'SET STATEMENT max_statement_time = 0.400 FOR WITH `t` AS (SELECT `id` FROM `users`) SELECT `id` FROM `t`',
+            ],
+            // A parenthesis inside a quoted name or a string literal does not
+            // close the body it sits in.
+            'MySQL steps over recursive, listed and quoted definitions' => [
+                '8.0.37',
+                'WITH RECURSIVE `a` (`n`) AS (SELECT 1 UNION ALL SELECT `n` + 1 FROM `a` WHERE `n` < 3),'
+                    . ' `b` AS (SELECT \')\' AS `p`, `x)` FROM `c`) SELECT `n` FROM `a`',
+                'WITH RECURSIVE `a` (`n`) AS (SELECT 1 UNION ALL SELECT `n` + 1 FROM `a` WHERE `n` < 3),'
+                    . ' `b` AS (SELECT \')\' AS `p`, `x)` FROM `c`) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`',
+            ],
+            'MySQL writes the hint into the first statement of a combined one after the clause' => [
+                '8.0.37',
+                'WITH `t` AS (SELECT 1 AS `id`) (SELECT `id` FROM `t`) UNION (SELECT `id` FROM `admins`)',
+                'WITH `t` AS (SELECT 1 AS `id`) (SELECT /*+ MAX_EXECUTION_TIME(400) */ `id` FROM `t`) UNION (SELECT `id` FROM `admins`)',
+            ],
+        ];
+    }
+
+    #[DataProvider('withClauseStatementTimeoutProvider')]
+    public function testStatementTimeoutReachesTheSelectAfterAWithClause(
+        string $versionString,
+        string $sql,
+        string $expectedSql,
+    ): void {
+        $pdo = $this->createStub(PDO::class);
+        $this->scriptVersionQuery($pdo, $versionString);
+
+        /** @var ArrayObject<int, string> $prepared */
+        $prepared = new ArrayObject();
+        $pdo->method('prepare')->willReturnCallback(
+            function (string $sql) use ($prepared): PDOStatement {
+                $prepared->append($sql);
+
+                return $this->scriptedSelectStatement();
+            },
+        );
+
+        $connection = new Connection($pdo, 'test');
+        $connection->query($sql, [], 400);
+
+        $this->assertSame([$expectedSql], $prepared->getArrayCopy());
+    }
+
     public function testStatementTimeoutLeavesTheStatementAloneWhenNotGiven(): void
     {
         // Passing no timeout has to reach the server as the statement that was
@@ -1291,7 +1349,20 @@ final class ConnectionTest extends TestCase
         );
     }
 
-    public function testStatementTimeoutRejectsAStatementThatDoesNotOpenWithSelect(): void
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function statementWithoutASelectToLimitProvider(): array
+    {
+        return [
+            'no SELECT at all'                 => ['SHOW TABLES'],
+            'a WITH clause leading an UPDATE' => ['WITH `t` AS (SELECT 1 AS `id`) UPDATE `users` SET `name` = \'x\''],
+            'a WITH clause left unclosed'     => ['WITH `t` AS (SELECT 1 SELECT `id` FROM `t`'],
+        ];
+    }
+
+    #[DataProvider('statementWithoutASelectToLimitProvider')]
+    public function testStatementTimeoutRejectsAStatementWithNoSelectToCarryIt(string $sql): void
     {
         // Refused here rather than on the server, so the same call is refused
         // on both flavors instead of only on the one that cannot parse it.
@@ -1302,10 +1373,11 @@ final class ConnectionTest extends TestCase
 
         $e = $this->assertThrows(
             InvalidArgumentException::class,
-            static fn () => $connection->query('WITH t AS (SELECT 1) SELECT * FROM t', [], 400),
+            static fn () => $connection->query($sql, [], 400),
         );
         $this->assertSame(
-            'A statement timeout is written into the SELECT it limits, so the statement has to open with it.',
+            'A statement timeout is written into the SELECT it limits, so the statement has to open with it,'
+                . ' or with a WITH clause followed by it.',
             $e->getMessage(),
         );
     }
