@@ -69,6 +69,12 @@
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
+            "method": "",
+            "mutator": "FalseValue",
+            "diff": "-        bool $overGroups = false,\n+        bool $overGroups = true,"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
             "mutator": "Identical",
             "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return $columns !== null && $alsoWhere === null && $thenBy === null"
@@ -88,14 +94,38 @@
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
+            "mutator": "LogicalAnd",
+            "diff": "-        if ($overGroups && $this->groupsRows()) {\n+        if ($overGroups || $this->groupsRows()) {"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Select.php",
+            "method": "Select::compileReading",
             "mutator": "LogicalAndAllSubExprNegation",
             "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return !($columns === null) && !($alsoWhere === null) && !($thenBy === null)"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",
             "method": "Select::compileReading",
+            "mutator": "LogicalAndAllSubExprNegation",
+            "diff": "-        if ($overGroups && $this->groupsRows()) {\n+        if (!$overGroups && !$this->groupsRows()) {"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Select.php",
+            "method": "Select::compileReading",
             "mutator": "LogicalAndNegation",
             "diff": "-            return $columns === null && $alsoWhere === null && $thenBy === null\n+            return !($columns === null && $alsoWhere === null && $thenBy === null)"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Select.php",
+            "method": "Select::compileReading",
+            "mutator": "LogicalAndNegation",
+            "diff": "-        if ($overGroups && $this->groupsRows()) {\n+        if (!($overGroups && $this->groupsRows())) {"
+        },
+        {
+            "file": "src/Sloop/Database/Query/Select.php",
+            "method": "Select::compileReading",
+            "mutator": "LogicalAndSingleSubExprNegation",
+            "diff": "-        if ($overGroups && $this->groupsRows()) {\n+        if (!$overGroups && $this->groupsRows()) {"
         },
         {
             "file": "src/Sloop/Database/Query/Select.php",

@@ -7,6 +7,7 @@ namespace Sloop\Tests\Unit\Database\Query;
 use LogicException;
 use PDO;
 use PDOStatement;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\Query\Expression;
@@ -420,6 +421,52 @@ final class SelectUnionTest extends TestCase
             ->max('status');
 
         $this->assertSame('blocked', $max);
+    }
+
+    /**
+     * @return array<string, array{string, callable(Select): mixed}>
+     */
+    public static function shortcutsReadingAColumnOfTheCombinedRows(): array
+    {
+        return [
+            'value'           => ['value', static fn (Select $select): mixed => $select->value('users.id')],
+            'pluck'           => ['pluck', static fn (Select $select): mixed => $select->pluck('users.id')],
+            'pluck key'       => ['pluck', static fn (Select $select): mixed => $select->pluck('id', 'users.id')],
+            'sum'             => ['sum', static fn (Select $select): mixed => $select->sum('users.id')],
+            'max'             => ['max', static fn (Select $select): mixed => $select->max('users.id')],
+            'chunkById'       => ['chunkById', static fn (Select $select): mixed => $select->chunkById(1, static fn (): bool => true, 'users.id')],
+        ];
+    }
+
+    #[DataProvider('shortcutsReadingAColumnOfTheCombinedRows')]
+    public function testAShortcutRefusesAColumnNamedWithItsTableOverTheCombinedRows(string $method, callable $read): void
+    {
+        $select = $this->users()->union($this->admins());
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $read($select));
+
+        $this->assertSame(
+            $method . '() reads the combined rows as a table of their own, whose rows belong to no table, so'
+                . ' "users.id" cannot be found there. Name the column alone, or by the name given with'
+                . ' [$column, $name].',
+            $e->getMessage(),
+        );
+        $this->assertSame([], $this->prepared);
+    }
+
+    public function testACombinedStatementWhoseFirstStatementGroupsIsRefusedAsCombinedRows(): void
+    {
+        // The union is what the shortcut reads from outside, so the refusal
+        // names the combined rows even though the first statement groups.
+        $select = $this->connection->select('status')
+            ->from('users')
+            ->groupBy('status')
+            ->union($this->connection->select('status')->from('admins'));
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $select->max('users.status'));
+
+        $this->assertStringStartsWith('max() reads the combined rows as a table of their own', $e->getMessage());
+        $this->assertSame([], $this->prepared);
     }
 
     public function testValueReadsOneColumnOfTheCombinedRowsInTheirSort(): void

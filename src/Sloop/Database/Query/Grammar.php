@@ -853,8 +853,9 @@ class Grammar
      * HAVING narrows what the grouping produced, and reads as a WHERE clause
      * does, so it goes through compileConditionList() under its own keyword.
      *
-     * It is written whether or not the statement groups: with no GROUP BY the
-     * rows form a single group, which both servers accept.
+     * It is written whether or not the statement groups, and both servers
+     * accept it with no GROUP BY: over an aggregate select list the rows then
+     * form a single group, and over plain columns they are read row by row.
      *
      * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @return CompiledSql              HAVING clause led by a space, empty when there are no conditions

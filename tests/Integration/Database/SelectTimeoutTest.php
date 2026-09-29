@@ -144,6 +144,29 @@ final class SelectTimeoutTest extends IntegrationTestCase
         $this->assertStoppedEarly((microtime(true) - $started) * 1000);
     }
 
+    public function testTimeoutStopsTheCountOfAGroupedStatement(): void
+    {
+        // count() reads a grouped statement as a table of its own, so the
+        // slow work sits inside the parentheses and the limit is written on
+        // the statement reading them.
+        $select = $this->connection
+            ->select('id')
+            ->from(self::TABLE)
+            ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0')
+            ->groupBy('id')
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->count();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
     public function testTimeoutStillStopsAStatementThatTakesALock(): void
     {
         // Measured rather than assumed: a lock clause changes what the server

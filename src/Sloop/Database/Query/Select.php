@@ -44,6 +44,13 @@ class Select extends BuilderWhere
     private const string UNION_ALIAS = 'sloop_union';
 
     /**
+     * Name a grouped statement's rows are read under when a shortcut folds them.
+     *
+     * @var string
+     */
+    private const string GROUPS_ALIAS = 'sloop_groups';
+
+    /**
      * Columns to select; empty selects every column.
      *
      * A column paired with a name to return it under arrives here as the one
@@ -592,8 +599,10 @@ class Select extends BuilderWhere
      * plain string is read as a column, and the server takes only one it was
      * told to group by.
      *
-     * Without a GROUP BY the rows form a single group, which both servers
-     * accept, so this can narrow an aggregate taken over the whole table.
+     * Without a GROUP BY both servers accept the clause. Over an aggregate
+     * select list the rows form a single group, so this can narrow an
+     * aggregate taken over the whole table; over plain columns both servers
+     * read it row by row.
      *
      * @param  string|Expression                                $column   Column or aggregate to compare
      * @param  string|int|float|bool|Expression|ColumnName|null $operator Operator when a value follows, otherwise the value itself
@@ -1104,11 +1113,12 @@ class Select extends BuilderWhere
      * The parentheses that avoid that are dropped again when the builder holds
      * no conditions, since an empty pair is not valid SQL.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns   Columns to read, or null for the ones the builder selects
-     * @param  int|null                                                                              $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                                              $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                                        $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                                                                            $thenBy    Sort term to add after the builder's own, or null for none
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns    Columns to read, or null for the ones the builder selects
+     * @param  int|null                                                                              $limit      Most rows to read, or null for all of them
+     * @param  int|null                                                                              $offset     Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                                        $alsoWhere  Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                                                            $thenBy     Sort term to add after the builder's own, or null for none
+     * @param  bool                                                                                  $overGroups Whether a statement that groups its rows is read as a table of its own
      * @return CompiledSql
      * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                                              When an identifier is malformed or the row window is inconsistent
@@ -1119,6 +1129,7 @@ class Select extends BuilderWhere
         ?int $offset,
         ?WherePart $alsoWhere = null,
         ?Order $thenBy = null,
+        bool $overGroups = false,
     ): CompiledSql {
         // Held rather than read again at the end: the guards below are methods,
         // and calling one declared on this class rather than inherited loses
@@ -1136,6 +1147,10 @@ class Select extends BuilderWhere
             return $columns === null && $alsoWhere === null && $thenBy === null
                 ? $this->compileUnion($from, $limit, $offset)
                 : $this->compileOverUnion($columns, $limit, $offset, $alsoWhere, $thenBy);
+        }
+
+        if ($overGroups && $this->groupsRows()) {
+            return $this->compileOverGroups($columns, $limit, $offset, $alsoWhere, $thenBy);
         }
 
         $conditions = $alsoWhere === null ? $this->conditions : [
@@ -1275,6 +1290,95 @@ class Select extends BuilderWhere
     }
 
     /**
+     * Write a statement reading the rows of this grouped one as a table of its own.
+     *
+     * A call written beside a GROUP BY is taken once per group, and a cursor
+     * written as a condition is read before the rows are grouped, so neither
+     * can be put on the grouped statement itself. Reading its rows from outside
+     * gives each shortcut the rows execute() returns, one per group.
+     *
+     * The sort and the row window are left out of the inner statement, as
+     * count() leaves them out of a statement it counts directly. The lock stays
+     * inside: both servers hold the rows the inner statement reads, and neither
+     * holds anything for a lock written on the outer one.
+     *
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns   Columns to read from the grouped rows, or null for every one of them
+     * @param  int|null                                                                              $limit     Most rows to read, or null for all of them
+     * @param  int|null                                                                              $offset    Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                                        $alsoWhere Condition on the grouped rows, or null for none
+     * @param  Order|null                                                                            $thenBy    Sort term for the grouped rows, or null for none
+     * @return CompiledSql
+     * @throws LogicException                                                                        When a statement named in a WITH clause carries one of its own
+     * @throws InvalidArgumentException                                                              When an identifier is malformed or the row window is inconsistent
+     */
+    private function compileOverGroups(
+        ?array $columns,
+        ?int $limit,
+        ?int $offset,
+        ?WherePart $alsoWhere,
+        ?Order $thenBy,
+    ): CompiledSql {
+        // The WITH clause is written once, on the outer statement. A name it
+        // introduces is in reach of the grouped statement from there, and left
+        // on the inner one as well the clause and its values would be written
+        // twice.
+        $grouped               = clone $this;
+        $grouped->orders       = [];
+        $grouped->limit        = null;
+        $grouped->offset       = null;
+        $grouped->commonTables = [];
+
+        return $this->grammar->compileSelect(new SelectSpec(
+            from:         new TableSource(new SubQuery($grouped), self::GROUPS_ALIAS),
+            columns:      $columns ?? [],
+            conditions:   $alsoWhere === null ? [] : [$alsoWhere],
+            orders:       $thenBy === null ? [] : [$thenBy],
+            limit:        $limit,
+            offset:       $offset,
+            commonTables: $this->toCommonTables(),
+        ));
+    }
+
+    /**
+     * Refuse a column named by its table where a shortcut reads the rows from outside.
+     *
+     * Combined rows, and grouped rows a shortcut folds or walks, are read as a
+     * table of their own. They belong to no table there, so a column is found
+     * among them only by the name it comes back under. Both servers refuse the
+     * table in front with 1054.
+     *
+     * @param  string         $method     Name of the method being asked for
+     * @param  string         $column     Column the shortcut reads
+     * @param  bool           $overGroups Whether the shortcut reads a grouped statement as a table of its own
+     * @return void
+     * @throws LogicException When the rows are read from outside and the column has a table in front
+     */
+    private function requireReadableFromOutside(string $method, string $column, bool $overGroups): void
+    {
+        if (!str_contains($column, '.')) {
+            return;
+        }
+
+        if ($this->unions !== []) {
+            throw new LogicException(
+                $method . '() reads the combined rows as a table of their own, whose rows belong to no table, so "'
+                    . $column . '" cannot be found there. Name the column alone, or by the name given with'
+                    . ' [$column, $name].',
+            );
+        }
+
+        if (!$overGroups || !$this->groupsRows()) {
+            return;
+        }
+
+        throw new LogicException(
+            $method . '() reads a grouped statement as a table of its own, whose rows belong to no table, so "'
+                . $column . '" cannot be found there. Name the column alone, or by the name given with'
+                . ' [$column, $name].',
+        );
+    }
+
+    /**
      * Refuse a sort of the combined rows that names a column by its table.
      *
      * The combined rows belong to no table, so a column is found among them
@@ -1377,11 +1481,12 @@ class Select extends BuilderWhere
     /**
      * Run a statement that reads the given columns and row count.
      *
-     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns   Columns to read, or null for the ones the builder selects
-     * @param  int|null                                                                              $limit     Most rows to read, or null for all of them
-     * @param  int|null                                                                              $offset    Rows to skip first, or null to start at the top
-     * @param  WherePart|null                                                                        $alsoWhere Condition to require alongside the builder's own, or null for none
-     * @param  Order|null                                                                            $thenBy    Sort term to add after the builder's own, or null for none
+     * @param  array<array-key, string|Expression|SelectedColumn|WindowExpression|FunctionCall>|null $columns    Columns to read, or null for the ones the builder selects
+     * @param  int|null                                                                              $limit      Most rows to read, or null for all of them
+     * @param  int|null                                                                              $offset     Rows to skip first, or null to start at the top
+     * @param  WherePart|null                                                                        $alsoWhere  Condition to require alongside the builder's own, or null for none
+     * @param  Order|null                                                                            $thenBy     Sort term to add after the builder's own, or null for none
+     * @param  bool                                                                                  $overGroups Whether a statement that groups its rows is read as a table of its own
      * @return Result                                                                                Rows the statement read
      * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                                              When an identifier is malformed or the row window is inconsistent
@@ -1396,8 +1501,9 @@ class Select extends BuilderWhere
         ?int $offset,
         ?WherePart $alsoWhere = null,
         ?Order $thenBy = null,
+        bool $overGroups = false,
     ): Result {
-        $compiled = $this->compileReading($columns, $limit, $offset, $alsoWhere, $thenBy);
+        $compiled = $this->compileReading($columns, $limit, $offset, $alsoWhere, $thenBy, $overGroups);
 
         return $this->route->connection()->query($compiled->sql, $compiled->bindings, $this->timeoutMs, $this->castMode);
     }
@@ -1454,7 +1560,7 @@ class Select extends BuilderWhere
      *
      * @param  string                                       $column Column to read
      * @return int|float|string|bool|DateTimeImmutable|null Its value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1463,6 +1569,8 @@ class Select extends BuilderWhere
      */
     public function value(string $column): int|float|string|bool|DateTimeImmutable|null
     {
+        $this->requireReadableFromOutside('value', $column, false);
+
         $row = $this->runReading([$column], 1, $this->offset)->first();
 
         // The select list held one column, so the row holds one value. Reading
@@ -1501,6 +1609,12 @@ class Select extends BuilderWhere
      * all. Counting what the conditions match is the only reading of count()
      * the window can serve.
      *
+     * A statement that groups its rows is read as a table of its own, so what
+     * comes back is the number of groups: the rows execute() would return,
+     * with the sort and the row window dropped for the reason above. Written
+     * beside the GROUP BY, COUNT(*) would be taken once per group, and the
+     * first of those counts would be read as the whole.
+     *
      * A NOWAIT lock is refused rather than counted; requireCountableLock()
      * says why. The other locks are left alone: a plain FOR UPDATE waits and
      * then reports the wait, and SKIP LOCKED counts what it could take.
@@ -1516,9 +1630,8 @@ class Select extends BuilderWhere
     public function count(): int
     {
         $this->requireCountableLock('count');
-        $this->requireUngrouped('count');
 
-        $row = $this->runReading([Expression::of('COUNT(*)')], null, null)->first();
+        $row = $this->runReading([Expression::of('COUNT(*)')], null, null, overGroups: true)->first();
 
         $count = array_values($row ?? [])[0] ?? null;
 
@@ -1590,7 +1703,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to add up: a column name, or an expression to total
      * @return int|float|string|bool|DateTimeImmutable|null The total, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1611,7 +1724,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to average: a column name, or an expression to average
      * @return int|float|string|bool|DateTimeImmutable|null The average, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1632,7 +1745,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to take the smallest of: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null The smallest value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1651,7 +1764,7 @@ class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to take the largest of: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null The largest value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1671,6 +1784,12 @@ class Select extends BuilderWhere
      * reason count() drops it: LIMIT and OFFSET would apply to the single row
      * the call produces, so an offset would throw away the only answer.
      *
+     * A statement that groups its rows is read as a table of its own, so the
+     * call folds the rows execute() would return, one per group, and the
+     * column is one of the names those rows come back under. Written beside
+     * the GROUP BY, the call would be taken once per group, and the value for
+     * the first group would be read as the whole.
+     *
      * The lock is left alone. Under NOWAIT an aggregate reports the failure
      * rather than answering short — that swallowing is COUNT keeping its own
      * tally, as requireCountableLock() describes — so there is nothing here to
@@ -1683,7 +1802,7 @@ class Select extends BuilderWhere
      * @param  string                                       $method   Name of the method being asked for
      * @param  string|Expression                            $column   What to aggregate: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null Value the call produced, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
      * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1695,13 +1814,15 @@ class Select extends BuilderWhere
         string $method,
         string|Expression $column,
     ): int|float|string|bool|DateTimeImmutable|null {
-        $this->requireUngroupedAggregate($method);
+        if (\is_string($column)) {
+            $this->requireReadableFromOutside($method, $column, true);
+        }
 
         $call = $column instanceof Expression
             ? Expression::of($function . '(' . $column->sql() . ')', $column->bindings())
             : Expression::of($function . '(' . $this->grammar->quoteIdentifier($column) . ')');
 
-        $row = $this->runReading([$call], null, null)->first();
+        $row = $this->runReading([$call], null, null, overGroups: true)->first();
 
         // The select list held one call, so the row holds one value. Reading it
         // by position rather than by name keeps this working for a call written
@@ -1720,7 +1841,7 @@ class Select extends BuilderWhere
      * @param  string                                                         $valueColumn Column whose values are returned
      * @param  string|null                                                    $keyColumn   Column whose values key them, or null for a list
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Values, keyed when a key column was given
-     * @throws LogicException                                                 When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                                                 When no table has been named, a group of conditions was left open, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                       When an identifier is malformed, the row window is inconsistent, or the two columns come back under one name
      * @throws InvalidConfigException                                         When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                    When the connection cannot be obtained
@@ -1729,6 +1850,12 @@ class Select extends BuilderWhere
      */
     public function pluck(string $valueColumn, ?string $keyColumn = null): array
     {
+        $this->requireReadableFromOutside('pluck', $valueColumn, false);
+
+        if ($keyColumn !== null) {
+            $this->requireReadableFromOutside('pluck', $keyColumn, false);
+        }
+
         $columns = $keyColumn === null ? [$valueColumn] : [$keyColumn, $valueColumn];
         $rows    = $this->runReading($columns, $this->limit, $this->offset)->asArray();
 
@@ -1777,6 +1904,9 @@ class Select extends BuilderWhere
      * not the other; Paginator says what that means for the page numbers it
      * works out.
      *
+     * For a statement that groups its rows, the page holds groups and the
+     * total counts them, as count() describes.
+     *
      * @param  int                         $perPage Most rows the page carries
      * @param  int                         $page    1-based number of the page to read
      * @return Paginator                   The page, with the size of the set it came from
@@ -1803,7 +1933,6 @@ class Select extends BuilderWhere
         // would otherwise take its locks and only then be told the count cannot
         // be had, leaving the caller holding rows for a statement that failed.
         $this->requireCountableLock('paginate');
-        $this->requireUngrouped('paginate');
 
         $items = $this->runReading(null, $perPage, ($page - 1) * $perPage);
 
@@ -1878,11 +2007,14 @@ class Select extends BuilderWhere
      * complete: rows sharing the value the batch ended on are above nothing and
      * are stepped over. A primary key is the usual choice, and is the default.
      *
-     * A statement that groups its rows is refused: the cursor is a condition,
-     * which the server reads before it groups, so it cuts the rows going into
-     * the groups rather than the groups themselves. requireWalkableByCursor()
-     * says what that does to the answer. Walk a grouped statement with
-     * chunk().
+     * A statement that groups its rows is read as a table of its own, and the
+     * cursor walks the rows that come back, one per group. Written on the
+     * grouped statement itself, the cursor would be a condition read before
+     * the rows are grouped, and would cut the rows going into the groups
+     * instead. The rule above then applies to the groups: over several
+     * grouping terms, walking one of them steps over every group sharing the
+     * value a batch ended on, so walk a column that is distinct per group, or
+     * walk with chunk().
      *
      * The callback is given the batch and its 0-based number, and returning
      * false from it stops the walk.
@@ -1891,7 +2023,7 @@ class Select extends BuilderWhere
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, the statement groups its rows, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1902,7 +2034,7 @@ class Select extends BuilderWhere
     {
         $this->requireNoRowWindow('chunkById');
         $this->requireBatchSize($size);
-        $this->requireWalkableByCursor();
+        $this->requireReadableFromOutside('chunkById', $column, true);
 
         if ($this->orders !== []) {
             throw new LogicException(
@@ -1922,6 +2054,7 @@ class Select extends BuilderWhere
                 null,
                 $above === null ? null : $this->grammar->comparison($column, '>', $above),
                 new Order($column),
+                overGroups: true,
             );
 
             $rows = $batch->asArray();
@@ -2180,135 +2313,24 @@ class Select extends BuilderWhere
     }
 
     /**
-     * Refuse to count a statement whose rows are folded into groups.
-     *
-     * COUNT(*) beside a GROUP BY is taken per group, so the server answers with
-     * one row for each of them and the first of those rows holds the size of
-     * the first group — not the number of groups, and not the number of rows
-     * the statement matches. Nothing in that answer says it is one of many, so
-     * a caller reading it is told a smaller number with nothing to say it is
-     * the wrong one.
-     *
-     * Counting the groups means wrapping the grouped statement in one that
-     * counts its rows, which is a subquery and waits for the builder to be able
-     * to write one.
-     *
-     * A HAVING clause with no GROUP BY folds the rows into a single group,
-     * which has the same effect on the count, so it is refused here as well.
-     *
-     * @param  string         $method Name of the method being asked for
-     * @return void
-     * @throws LogicException When the statement folds its rows into groups
-     */
-    private function requireUngrouped(string $method): void
-    {
-        if (!$this->groupsRows()) {
-            return;
-        }
-
-        throw new LogicException(
-            $method . '() counts the rows a statement matches, but this one groups them, so the server would'
-                . ' answer with one count per group and the first of those would be read as the whole.'
-                . ' Count the rows of get(), or read the groups and count those.',
-        );
-    }
-
-    /**
-     * Refuse an aggregate over a statement whose rows are folded into groups.
-     *
-     * A GROUP BY makes the server take the call once per group and answer with
-     * one row for each of them, so reading the first of those rows gives the
-     * value for the first group rather than for everything the statement
-     * matches. Nothing in that answer says it is one of many.
-     *
-     * Aggregating per group is what execute() is for: it reads every row the
-     * grouped statement produces, and a HAVING clause narrows which groups
-     * reach it.
-     *
-     * A HAVING clause with no GROUP BY folds the rows into a single group. That
-     * one group covers every matching row, so the value would be right, but it
-     * is right by accident: adding a grouping term later changes the answer
-     * without changing the call. It is refused here for that reason, the same
-     * way count() refuses it.
-     *
-     * @param  string         $method Name of the method being asked for
-     * @return void
-     * @throws LogicException When the statement folds its rows into groups
-     */
-    private function requireUngroupedAggregate(string $method): void
-    {
-        if (!$this->groupsRows()) {
-            return;
-        }
-
-        throw new LogicException(
-            $method . '() reads one value over the rows a statement matches, but this one groups them, so'
-                . ' the server would answer with one value per group and the first of those would be read'
-                . ' as the whole. Aggregate the rows of get(), or read the groups with execute().',
-        );
-    }
-
-    /**
-     * Refuse to walk a statement whose rows are folded into groups by a cursor.
-     *
-     * chunkById() carries its place between batches as a condition on the
-     * column it walks, and a condition is read before the rows are grouped.
-     * The cursor therefore cuts the rows going into the groups rather than the
-     * groups themselves, and a group whose rows fall on both sides of the cut
-     * is read twice.
-     *
-     * Walking by a grouping term does not save it. With more than one term the
-     * cursor moves past every group sharing the value it stopped at, so a
-     * batch boundary inside such a run drops the rest of them: over the groups
-     * (a=1,b=1) (a=1,b=2) (a=2,b=1), walking `a` a batch at a time reads two
-     * groups where a batch of two reads all three. Which groups come back
-     * depends on the batch size, and nothing in the answer says any are
-     * missing.
-     *
-     * MySQL refuses the usual shape of this outright, because walking a column
-     * outside the grouping puts it in the ORDER BY as well and its sql_mode
-     * carries ONLY_FULL_GROUP_BY. MariaDB's does not, so there it runs and
-     * answers with the duplicates.
-     *
-     * chunk() walks a grouped statement correctly: it cuts with LIMIT and
-     * OFFSET, which the server applies to the groups.
-     *
-     * @return void
-     * @throws LogicException When the statement folds its rows into groups
-     */
-    private function requireWalkableByCursor(): void
-    {
-        if (!$this->groupsRows()) {
-            return;
-        }
-
-        throw new LogicException(
-            'chunkById() carries its place between batches as a condition, which the server reads before it'
-                . ' groups the rows, so a group split across a batch boundary comes back twice and grouping'
-                . ' by more than one term drops whole groups. Walk a grouped statement with chunk().',
-        );
-    }
-
-    /**
      * Tell whether this statement folds its rows into groups.
      *
-     * A HAVING clause with no GROUP BY folds them into a single group, so it
-     * counts here as well. A parenthesis with nothing in it does not: it is
-     * dropped before the clause is written, as requireWhereUnderStrictMode()
-     * reads the WHERE clause.
+     * A HAVING clause with no GROUP BY counts here as well. Over an aggregate
+     * select list it folds the rows into a single group; over plain columns
+     * both servers read it row by row. Reading the rows from outside answers
+     * for either, so which one applies does not have to be told apart. A
+     * parenthesis with nothing in it does not count: it is dropped before the
+     * clause is written, as requireWhereUnderStrictMode() reads the WHERE
+     * clause.
      *
-     * A statement combined with others does not count either: the shortcuts
-     * read the combined rows as a table of their own, so what they count and
-     * walk are the rows the union returns, grouped or not.
+     * Only asked of a statement combined with no other: the callers take the
+     * union path first, which already reads the combined rows as a table of
+     * their own whether the first statement groups or not.
      *
      * @return bool True when the rows reach the caller as groups
      */
     private function groupsRows(): bool
     {
-        if ($this->unions !== []) {
-            return false;
-        }
-
         if ($this->groupings !== []) {
             return true;
         }
