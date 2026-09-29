@@ -1,0 +1,4 @@
+#!/bin/sh
+# The work is in a .sh file so that shellcheck, which selects scripts by that
+# extension, reads it.
+exec "$(dirname "$0")/check-commit-message.sh" "$1"

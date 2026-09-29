@@ -192,6 +192,38 @@ jobs:
       - name: Scan commits for secrets
         run: '"${RUNNER_TEMP}/gitleaks" git --no-banner --redact .'
 
+  commit-messages:
+    name: Commit Messages
+    runs-on: ubuntu-latest
+    # A push to main carries the merge commit GitHub writes, which the check
+    # lets through anyway; what needs checking is what a pull request adds.
+    if: github.event_name == 'pull_request'
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The same check as .githooks/commit-msg, run here for clones that have
+      # not enabled the hooks and for commits made with --no-verify.
+      - name: Check commit messages
+        run: |
+          # Taken apart from the loop: a failure inside $(...) in the for list
+          # would leave the loop empty and the job green.
+          shas=$(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}") || exit 1
+          status=0
+          for sha in $shas; do
+            git log -1 --format=%B "$sha" > "${RUNNER_TEMP}/message"
+            if ! .githooks/check-commit-message.sh "${RUNNER_TEMP}/message"; then
+              echo "  in ${sha}"
+              status=1
+            fi
+          done
+          exit "$status"
+
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
