@@ -50,8 +50,10 @@ final class Request
     /**
      * Get a parsed body parameter.
      *
-     * The parsed body holds the JSON body when the request was sent with a
-     * JSON content type, and the form values otherwise.
+     * For a request Sloop builds from the globals, the parsed body holds the
+     * JSON body when the request was sent with a JSON content type, and the
+     * form values otherwise. A request built elsewhere holds whatever its
+     * builder put there.
      *
      * @param  string $key     Parameter name
      * @param  mixed  $default Default value if not found
@@ -90,7 +92,8 @@ final class Request
      * Get a value from the parsed body using dot notation.
      *
      * Meant for a request sent with a JSON content type, whose parsed body is
-     * the JSON body; for a form it reads the form values.
+     * the JSON body when Sloop builds the request from the globals; for a form
+     * it reads the form values.
      *
      * @param  string|null $key     Dot-notation key (null returns entire body)
      * @param  mixed       $default Default value if not found

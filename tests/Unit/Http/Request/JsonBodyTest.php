@@ -12,16 +12,14 @@ use Sloop\Http\Request\JsonBody;
 
 final class JsonBodyTest extends TestCase
 {
-    private function request(?string $contentType, ?string $body, mixed $parsedBody = ['form' => 'value']): ServerRequestInterface
+    /**
+     * @param array<string, string> $parsedBody
+     */
+    private function request(?string $contentType, ?string $body, array $parsedBody = ['form' => 'value'], string $method = 'POST'): ServerRequestInterface
     {
         $headers = $contentType === null ? [] : ['Content-Type' => $contentType];
 
-        $request = new ServerRequest('POST', '/', $headers, $body);
-        if (\is_array($parsedBody) || $parsedBody === null) {
-            $request = $request->withParsedBody($parsedBody);
-        }
-
-        return $request;
+        return new ServerRequest($method, '/', $headers, $body)->withParsedBody($parsedBody);
     }
 
     /**
@@ -82,6 +80,27 @@ final class JsonBodyTest extends TestCase
         $this->assertSame($original, $request);
         $this->assertSame(['form' => 'value'], $request->getParsedBody());
         $this->assertFalse(JsonBody::isMalformed($request));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function methods(): array
+    {
+        return [
+            'GET'    => ['GET'],
+            'PUT'    => ['PUT'],
+            'PATCH'  => ['PATCH'],
+            'DELETE' => ['DELETE'],
+        ];
+    }
+
+    #[DataProvider('methods')]
+    public function testParsesTheBodyWhateverTheMethod(string $method): void
+    {
+        $request = JsonBody::parse($this->request('application/json', '{"a":1}', method: $method));
+
+        $this->assertSame(['a' => 1], $request->getParsedBody());
     }
 
     public function testJsonReplacesTheFormValues(): void

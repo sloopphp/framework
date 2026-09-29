@@ -90,7 +90,7 @@
                 // reads only the part before it. A limit of 3 instead of 2 only
                 // splits the parameters it then ignores, so the media type read
                 // is the same. The limit stays to leave the parameters unsplit.
-                "Sloop\\Http\\Request\\JsonBody::isJson::103",
+                "Sloop\\Http\\Request\\JsonBody::isJson::107",
                 // StringRule::length falls back to 0 when grapheme_strlen()
                 // returns false or null, which it does only for invalid UTF-8.
                 // Rule::string() rejects invalid UTF-8 before any length rule
