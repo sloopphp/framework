@@ -1270,6 +1270,13 @@ final class ConnectionTest extends TestCase
                 "WITH `a` AS (SELECT 1 -- ) SELECT\n) SELECT `n` FROM `a`",
                 "WITH `a` AS (SELECT 1 -- ) SELECT\n) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`",
             ],
+            // The whitespace after the dashes may be the line break itself,
+            // which ends the comment there.
+            'MySQL steps over a line comment ending right after its dashes' => [
+                '8.0.37',
+                "WITH `a` AS (SELECT 1 AS `n` --\n) SELECT `n` FROM `a`",
+                "WITH `a` AS (SELECT 1 AS `n` --\n) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`",
+            ],
             'MySQL steps over a hash comment in a definition' => [
                 '8.0.37',
                 "WITH `a` AS (SELECT 1 # ) SELECT\n) SELECT `n` FROM `a`",
@@ -1326,8 +1333,8 @@ final class ConnectionTest extends TestCase
             static fn () => $connection->query('WITH `a` AS (SELECT ' . $nested . ') SELECT 1 FROM `a`', [], 400),
         );
         $this->assertSame(
-            'A statement timeout could not be written: the WITH clause leading the statement is nested too deeply'
-                . ' to find the SELECT after it.',
+            'A statement timeout could not be written: the WITH clause leading the statement is too large or nested'
+                . ' too deeply to find the SELECT after it.',
             $e->getMessage(),
         );
     }

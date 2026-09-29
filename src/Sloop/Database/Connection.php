@@ -738,7 +738,7 @@ final class Connection
                 (?<definition> (?&name) \s* (?: (?&group) \s* )? AS \s* (?&group) )
                 (?<name> `(?:[^`]|``)++` | [A-Za-z0-9_$]++ )
                 (?<group> \( (?: [^()`'"\#/-]++ | `(?:[^`]|``)*+` | '(?:[^'\\]|\\.|'')*+' | "(?:[^"\\]|\\.|"")*+"
-                    | \#[^\n]*+ | --\s[^\n]*+ | /\*(?:[^*]|\*(?!/))*+\*/ | [\#/-] | (?&group) )*+ \) )
+                    | \#[^\n]*+ | --(?=\s)[^\n]*+ | /\*(?:[^*]|\*(?!/))*+\*/ | [\#/-] | (?&group) )*+ \) )
             )
         ~xs
         REGEX;
@@ -1426,7 +1426,7 @@ final class Connection
      * @param  string                   $sql       SQL of the statement to limit
      * @param  int                      $timeoutMs Milliseconds the statement may run for
      * @return string                   The statement carrying the limit
-     * @throws InvalidArgumentException When the timeout is not positive, or the statement does not open with SELECT, alone or after a WITH clause
+     * @throws InvalidArgumentException When the timeout is not positive, the statement does not open with SELECT, alone or after a WITH clause, or its WITH clause cannot be read
      * @throws DatabaseException        When dialect detection fails
      */
     private function withStatementTimeout(string $sql, int $timeoutMs): string
@@ -1441,8 +1441,8 @@ final class Connection
 
         if ($matched === false) {
             throw new InvalidArgumentException(
-                'A statement timeout could not be written: the WITH clause leading the statement is nested too deeply'
-                . ' to find the SELECT after it.',
+                'A statement timeout could not be written: the WITH clause leading the statement is too large or nested'
+                . ' too deeply to find the SELECT after it.',
             );
         }
 
