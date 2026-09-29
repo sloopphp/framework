@@ -724,20 +724,23 @@ final class Connection
      *
      * Each definition is a name, an optional column list and a body, and a
      * body is read as a balanced run of parentheses. A parenthesis inside a
-     * quoted name or a string literal is not counted, so it cannot end a body
-     * early and leave the rest of the definition to be read as the statement.
+     * quoted name, a string literal or a comment is not counted, so it cannot
+     * end a body early and leave the rest of the definition to be read as the
+     * statement. A comment matters most: the hint written after a parenthesis
+     * a comment closed would land inside that comment and limit nothing.
      *
      * @var string
      */
     private const string WITH_CLAUSE = <<<'REGEX'
-        /\A WITH \s+ (?: RECURSIVE \s+ )?
+        ~\A WITH \s+ (?: RECURSIVE \s+ )?
             (?&definition) (?: \s* , \s* (?&definition) )* \s*
             (?(DEFINE)
                 (?<definition> (?&name) \s* (?: (?&group) \s* )? AS \s* (?&group) )
                 (?<name> `(?:[^`]|``)++` | [A-Za-z0-9_$]++ )
-                (?<group> \( (?: [^()`'"]++ | `(?:[^`]|``)*+` | '(?:[^'\\]|\\.|'')*+' | "(?:[^"\\]|\\.|"")*+" | (?&group) )*+ \) )
+                (?<group> \( (?: [^()`'"\#/-]++ | `(?:[^`]|``)*+` | '(?:[^'\\]|\\.|'')*+' | "(?:[^"\\]|\\.|"")*+"
+                    | \#[^\n]*+ | --\s[^\n]*+ | /\*(?:[^*]|\*(?!/))*+\*/ | [\#/-] | (?&group) )*+ \) )
             )
-        /xs
+        ~xs
         REGEX;
 
     /**
@@ -1434,7 +1437,16 @@ final class Connection
             );
         }
 
-        $at        = preg_match(self::WITH_CLAUSE, $sql, $clause) === 1 ? \strlen($clause[0]) : 0;
+        $matched = preg_match(self::WITH_CLAUSE, $sql, $clause);
+
+        if ($matched === false) {
+            throw new InvalidArgumentException(
+                'A statement timeout could not be written: the WITH clause leading the statement is nested too deeply'
+                . ' to find the SELECT after it.',
+            );
+        }
+
+        $at        = $matched === 1 ? \strlen($clause[0]) : 0;
         $statement = substr($sql, $at);
 
         $opening = match (true) {

@@ -1262,6 +1262,24 @@ final class ConnectionTest extends TestCase
                 'WITH RECURSIVE `a` (`n`) AS (SELECT 1 UNION ALL SELECT `n` + 1 FROM `a` WHERE `n` < 3),'
                     . ' `b` AS (SELECT \')\' AS `p`, `x)` FROM `c`) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`',
             ],
+            // A parenthesis inside a comment does not close the body either;
+            // counting it would put the hint inside the comment, where it
+            // limits nothing.
+            'MySQL steps over a line comment in a definition' => [
+                '8.0.37',
+                "WITH `a` AS (SELECT 1 -- ) SELECT\n) SELECT `n` FROM `a`",
+                "WITH `a` AS (SELECT 1 -- ) SELECT\n) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`",
+            ],
+            'MySQL steps over a hash comment in a definition' => [
+                '8.0.37',
+                "WITH `a` AS (SELECT 1 # ) SELECT\n) SELECT `n` FROM `a`",
+                "WITH `a` AS (SELECT 1 # ) SELECT\n) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`",
+            ],
+            'MySQL steps over a block comment in a definition' => [
+                '8.0.37',
+                'WITH `a` AS (SELECT 1 /* ) SELECT */ - 1) SELECT `n` FROM `a`',
+                'WITH `a` AS (SELECT 1 /* ) SELECT */ - 1) SELECT /*+ MAX_EXECUTION_TIME(400) */ `n` FROM `a`',
+            ],
             'MySQL writes the hint into the first statement of a combined one after the clause' => [
                 '8.0.37',
                 'WITH `t` AS (SELECT 1 AS `id`) (SELECT `id` FROM `t`) UNION (SELECT `id` FROM `admins`)',
@@ -1293,6 +1311,25 @@ final class ConnectionTest extends TestCase
         $connection->query($sql, [], 400);
 
         $this->assertSame([$expectedSql], $prepared->getArrayCopy());
+    }
+
+    public function testStatementTimeoutSaysSoWhenAWithClauseIsTooDeepToRead(): void
+    {
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects($this->never())->method('prepare');
+
+        $connection = new Connection($pdo, 'test');
+        $nested     = str_repeat('(', 50000) . '1' . str_repeat(')', 50000);
+
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => $connection->query('WITH `a` AS (SELECT ' . $nested . ') SELECT 1 FROM `a`', [], 400),
+        );
+        $this->assertSame(
+            'A statement timeout could not be written: the WITH clause leading the statement is nested too deeply'
+                . ' to find the SELECT after it.',
+            $e->getMessage(),
+        );
     }
 
     public function testStatementTimeoutLeavesTheStatementAloneWhenNotGiven(): void
