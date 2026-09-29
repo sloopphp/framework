@@ -26,6 +26,7 @@ use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
+use Sloop\Http\Request\JsonBody;
 use Sloop\Http\Request\UploadedFiles;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
@@ -105,7 +106,9 @@ final class Application implements RequestHandlerInterface
      * This is also the error boundary: exceptions from route middleware and
      * controllers are converted into error responses here, so the error
      * response still flows back through the global middleware stack and
-     * receives its headers (traceparent, CORS, ...).
+     * receives its headers (traceparent, CORS, ...). A request whose JSON body
+     * could not be parsed is answered with a 400 here, before routing, for the
+     * same reason.
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
@@ -113,6 +116,12 @@ final class Application implements RequestHandlerInterface
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
+        if (JsonBody::isMalformed($request)) {
+            return $this->renderException(
+                new DomainException('The request body is not valid JSON.', HttpStatus::BadRequest),
+            );
+        }
+
         try {
             return $this->dispatchRoute($request);
         } catch (\Throwable $e) {
@@ -637,6 +646,10 @@ final class Application implements RequestHandlerInterface
     /**
      * Create a PSR-7 ServerRequest from PHP globals.
      *
+     * A body sent with a JSON content type replaces the form values, since PHP
+     * puts only form bodies in $_POST; one that is not a JSON object or array
+     * is marked, and handle() answers it with a 400.
+     *
      * @return ServerRequestInterface
      * @throws \InvalidArgumentException When the URI or a header value cannot be parsed, or an uploaded file carries an error code PHP does not define
      */
@@ -648,10 +661,12 @@ final class Application implements RequestHandlerInterface
         $rawBody = file_get_contents('php://input');
         $body    = $rawBody === false || $rawBody === '' ? null : $rawBody;
 
-        return new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER)
-            ->withQueryParams($_GET)
-            ->withParsedBody($_POST)
-            ->withCookieParams($_COOKIE)
-            ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES));
+        return JsonBody::parse(
+            new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER)
+                ->withQueryParams($_GET)
+                ->withParsedBody($_POST)
+                ->withCookieParams($_COOKIE)
+                ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES)),
+        );
     }
 }
