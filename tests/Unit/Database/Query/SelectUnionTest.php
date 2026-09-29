@@ -454,6 +454,21 @@ final class SelectUnionTest extends TestCase
         $this->assertSame([], $this->prepared);
     }
 
+    public function testACombinedStatementWhoseFirstStatementGroupsIsRefusedAsCombinedRows(): void
+    {
+        // The union is what the shortcut reads from outside, so the refusal
+        // names the combined rows even though the first statement groups.
+        $select = $this->connection->select('status')
+            ->from('users')
+            ->groupBy('status')
+            ->union($this->connection->select('status')->from('admins'));
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $select->max('users.status'));
+
+        $this->assertStringStartsWith('max() reads the combined rows as a table of their own', $e->getMessage());
+        $this->assertSame([], $this->prepared);
+    }
+
     public function testValueReadsOneColumnOfTheCombinedRowsInTheirSort(): void
     {
         $this->results = [[['name' => 'carol']]];
