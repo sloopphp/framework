@@ -555,6 +555,16 @@ final class SelectGroupTest extends TestCase
         $this->assertSame([['status' => 'open']], $select->limit(1)->get());
     }
 
+    public function testPluckKeysAGroupedStatementByAColumnNamedWithItsTable(): void
+    {
+        $plucked = $this->connection->select('orders.user_id', 'orders.status')
+            ->from('orders')
+            ->groupBy('orders.user_id', 'orders.status')
+            ->pluck('orders.status', 'orders.user_id');
+
+        $this->assertSame([10 => 'paid', 20 => 'paid', 30 => 'open'], $plucked);
+    }
+
     public function testChunkByIdRefusesAColumnNamedWithItsTableOnAGroupedStatement(): void
     {
         $select = $this->connection->select('orders.status')->from('orders')->groupBy('orders.status');

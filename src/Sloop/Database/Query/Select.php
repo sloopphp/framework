@@ -1340,20 +1340,34 @@ class Select extends BuilderWhere
     }
 
     /**
-     * Refuse a column named by its table where a grouped statement is read as a table.
+     * Refuse a column named by its table where a shortcut reads the rows from outside.
      *
-     * The grouped rows belong to no table once they are read from outside, so
-     * a column is found among them only by the name it comes back under. Both
-     * servers refuse the table in front with 1054.
+     * Combined rows, and grouped rows a shortcut folds or walks, are read as a
+     * table of their own. They belong to no table there, so a column is found
+     * among them only by the name it comes back under. Both servers refuse the
+     * table in front with 1054.
      *
-     * @param  string         $method Name of the method being asked for
-     * @param  string         $column Column the shortcut reads from the grouped rows
+     * @param  string         $method     Name of the method being asked for
+     * @param  string         $column     Column the shortcut reads
+     * @param  bool           $overGroups Whether the shortcut reads a grouped statement as a table of its own
      * @return void
-     * @throws LogicException When the statement groups its rows and the column has a table in front
+     * @throws LogicException When the rows are read from outside and the column has a table in front
      */
-    private function requireReadableOverGroups(string $method, string $column): void
+    private function requireReadableFromOutside(string $method, string $column, bool $overGroups): void
     {
-        if (!str_contains($column, '.') || !$this->groupsRows()) {
+        if (!str_contains($column, '.')) {
+            return;
+        }
+
+        if ($this->unions !== []) {
+            throw new LogicException(
+                $method . '() reads the combined rows as a table of their own, whose rows belong to no table, so "'
+                    . $column . '" cannot be found there. Name the column alone, or by the name given with'
+                    . ' [$column, $name].',
+            );
+        }
+
+        if (!$overGroups || !$this->groupsRows()) {
             return;
         }
 
@@ -1555,6 +1569,8 @@ class Select extends BuilderWhere
      */
     public function value(string $column): int|float|string|bool|DateTimeImmutable|null
     {
+        $this->requireReadableFromOutside('value', $column, false);
+
         $row = $this->runReading([$column], 1, $this->offset)->first();
 
         // The select list held one column, so the row holds one value. Reading
@@ -1799,7 +1815,7 @@ class Select extends BuilderWhere
         string|Expression $column,
     ): int|float|string|bool|DateTimeImmutable|null {
         if (\is_string($column)) {
-            $this->requireReadableOverGroups($method, $column);
+            $this->requireReadableFromOutside($method, $column, true);
         }
 
         $call = $column instanceof Expression
@@ -1834,6 +1850,12 @@ class Select extends BuilderWhere
      */
     public function pluck(string $valueColumn, ?string $keyColumn = null): array
     {
+        $this->requireReadableFromOutside('pluck', $valueColumn, false);
+
+        if ($keyColumn !== null) {
+            $this->requireReadableFromOutside('pluck', $keyColumn, false);
+        }
+
         $columns = $keyColumn === null ? [$valueColumn] : [$keyColumn, $valueColumn];
         $rows    = $this->runReading($columns, $this->limit, $this->offset)->asArray();
 
@@ -2012,7 +2034,7 @@ class Select extends BuilderWhere
     {
         $this->requireNoRowWindow('chunkById');
         $this->requireBatchSize($size);
-        $this->requireReadableOverGroups('chunkById', $column);
+        $this->requireReadableFromOutside('chunkById', $column, true);
 
         if ($this->orders !== []) {
             throw new LogicException(
@@ -2301,18 +2323,14 @@ class Select extends BuilderWhere
      * clause is written, as requireWhereUnderStrictMode() reads the WHERE
      * clause.
      *
-     * A statement combined with others does not count either: the shortcuts
-     * already read the combined rows as a table of their own, so a column is
-     * looked for among them the way compileOverUnion() leaves it to be.
+     * Only asked of a statement combined with no other: the callers take the
+     * union path first, which already reads the combined rows as a table of
+     * their own whether the first statement groups or not.
      *
      * @return bool True when the rows reach the caller as groups
      */
     private function groupsRows(): bool
     {
-        if ($this->unions !== []) {
-            return false;
-        }
-
         if ($this->groupings !== []) {
             return true;
         }
