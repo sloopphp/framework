@@ -7,7 +7,7 @@
 #                              style or ci
 #   <type>(<scope>): summary   such as fix(tests): ...
 # Subjects git writes itself are let through: Merge ..., Revert "...",
-# fixup! / squash! / amend!.
+# Reapply "..." (a revert of a revert), fixup! / squash! / amend!.
 #
 # Used by .githooks/commit-msg with the path git passes it, and by CI with a
 # file holding one commit's message. Lines starting with # are ignored, as git
@@ -38,7 +38,7 @@ if [[ "$subject" =~ ^(feat|fix|docs|refactor|test|chore|style|ci)(\([^\)]+\))?:\
     exit 0
 fi
 
-if [[ "$subject" =~ ^(Merge\ |Revert\ \"|fixup!\ |squash!\ |amend!\ ) ]]; then
+if [[ "$subject" =~ ^(Merge\ |Revert\ \"|Reapply\ \"|fixup!\ |squash!\ |amend!\ ) ]]; then
     exit 0
 fi
 
