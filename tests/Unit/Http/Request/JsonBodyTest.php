@@ -172,16 +172,21 @@ final class JsonBodyTest extends TestCase
 
     public function testReadsNestingUpToTheDepthLimit(): void
     {
-        $request = JsonBody::parse($this->request('application/json', str_repeat('[', 511) . str_repeat(']', 511)));
+        $body    = str_repeat('[', 511) . str_repeat(']', 511);
+        $request = JsonBody::parse($this->request('application/json', $body));
 
         $this->assertFalse(JsonBody::isMalformed($request));
+        $this->assertSame($body, json_encode($request->getParsedBody(), \JSON_THROW_ON_ERROR, 512));
     }
 
     public function testReadsAnIntegerBeyondTheIntRangeAsAString(): void
     {
-        $request = JsonBody::parse($this->request('application/json', '{"id":9223372036854775808,"small":42,"price":1.5}'));
+        $request = JsonBody::parse($this->request('application/json', '{"id":9223372036854775808,"low":-9223372036854775809,"small":42,"price":1.5}'));
 
-        $this->assertSame(['id' => '9223372036854775808', 'small' => 42, 'price' => 1.5], $request->getParsedBody());
+        $this->assertSame(
+            ['id' => '9223372036854775808', 'low' => '-9223372036854775809', 'small' => 42, 'price' => 1.5],
+            $request->getParsedBody(),
+        );
     }
 
     public function testReadsTheWholeBodyWhateverThePositionOfItsStream(): void
