@@ -12,6 +12,7 @@ use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
 use Sloop\Database\Config\ValidatedConfig;
@@ -29,6 +30,7 @@ use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
+use Sloop\Http\Request\JsonBody;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
@@ -50,7 +52,10 @@ use Sloop\Validation\ValidationMessages;
  *   only the method, URI, `$_POST` and `$_FILES` are checked (see
  *   `runWithGlobals()`). The headers, query parameters, server parameters,
  *   body and cookies taken from the globals are not, and `php://input`
- *   cannot be set from a test at all.
+ *   cannot be set from a test at all. `getallheaders()` does not exist under
+ *   the CLI either, so the tests here pass `run()` / `handle()` a request
+ *   the test itself put through `JsonBody::parse()`, and `JsonBodyTest`
+ *   covers the parsing itself.
  *
  * - **`send($response)`**: writes HTTP headers via `header()` and outputs
  *   the body via `echo`. Verification requires `@runInSeparateProcess` or
@@ -159,6 +164,17 @@ final class ApplicationTest extends TestCase
         } finally {
             [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES] = $backup;
         }
+    }
+
+    private function jsonRequest(string $body): ServerRequestInterface
+    {
+        $this->writeRoutes('<?php
+            $router->post("/users", \Sloop\Tests\Unit\Foundation\Stub\JsonEchoController::class, "store");
+        ');
+
+        return JsonBody::parse(
+            new ServerRequest('POST', new Uri('/users'), ['Content-Type' => 'application/json'], $body),
+        );
     }
 
     /**
@@ -1069,6 +1085,47 @@ final class ApplicationTest extends TestCase
 
         $this->assertSame(500, $response->getStatusCode());
         $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testJsonBodyReachesTheController(): void
+    {
+        $request = $this->jsonRequest('{"name":"Alice"}');
+
+        $response = new Application($this->tmpDir)->run($request);
+        $data     = $this->decodeJsonBody($response)['data'];
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(['json' => 'Alice', 'post' => 'Alice', 'input' => 'Alice'], $data);
+    }
+
+    public function testMalformedJsonBodyIsA400ThatPassesBackThroughGlobalMiddleware(): void
+    {
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
+        );
+        $request = $this->jsonRequest('{"name":');
+
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
+
+        $response = $app->run($request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request body is not valid JSON.', (string) $response->getBody());
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testMalformedJsonBodyIsA400EvenWithoutAMatchingRoute(): void
+    {
+        $request = JsonBody::parse(
+            new ServerRequest('POST', new Uri('/nowhere'), ['Content-Type' => 'application/json'], '"x"'),
+        );
+
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
+
+        $this->assertSame(400, $app->handle($request)->getStatusCode());
     }
 
     public function testRouteMiddlewareRequestMutationIsVisibleToController(): void

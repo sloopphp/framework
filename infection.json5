@@ -86,6 +86,14 @@
                 // compared against a live answer; only the negative path (a
                 // domain under .invalid) is tested.
                 "Sloop\\Validation\\StringRule::email::169",
+                // JsonBody::isJson splits the Content-Type at the first ";" and
+                // reads only the part before it. A limit of 3 instead of 2 only
+                // splits the parameters it then ignores, so the media type read
+                // is the same. The limit stays to leave the parameters unsplit.
+                // The pin also covers the index [0] -> [1] on the same line,
+                // which JsonBodyTest does kill; a line pin cannot separate the
+                // two, so that mutant is no longer counted.
+                "Sloop\\Http\\Request\\JsonBody::isJson::107",
                 // StringRule::length falls back to 0 when grapheme_strlen()
                 // returns false or null, which it does only for invalid UTF-8.
                 // Rule::string() rejects invalid UTF-8 before any length rule
@@ -356,7 +364,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::153",
+                "Sloop\\Foundation\\Application::dispatchRoute::162",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.
@@ -417,25 +425,25 @@
             // uploaded files built in the same method are checked by
             // ApplicationTest.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::662"
             ]
         },
         "LogicalOrNegation": {
             // Same line as the Identical entry above.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::662"
             ]
         },
         "LogicalOrAllSubExprNegation": {
             // Same line as the Identical entry above.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::662"
             ]
         },
         "Ternary": {
             // Same line as the Identical entry above.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::649"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::662"
             ]
         }
     },
