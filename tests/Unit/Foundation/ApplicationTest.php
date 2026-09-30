@@ -53,8 +53,8 @@ use Sloop\Validation\ValidationMessages;
  *   `runWithGlobals()`). The headers, query parameters, server parameters,
  *   body and cookies taken from the globals are not, and `php://input`
  *   cannot be set from a test at all. `getallheaders()` does not exist under
- *   the CLI either, so the JSON body parsing is reached here only through a
- *   request passed to `run()` (see `jsonRequest()`), and `JsonBodyTest`
+ *   the CLI either, so the tests here pass `run()` / `handle()` a request
+ *   the test itself put through `JsonBody::parse()`, and `JsonBodyTest`
  *   covers the parsing itself.
  *
  * - **`send($response)`**: writes HTTP headers via `header()` and outputs
