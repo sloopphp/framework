@@ -6,6 +6,7 @@ namespace Sloop\Tests\Integration\Database;
 
 use Sloop\Database\Connection;
 use Sloop\Database\Exception\QueryException;
+use Sloop\Database\Query\Expression;
 use Sloop\Tests\Support\IntegrationTestCase;
 
 // What these tests watch is the clock. A limit that took effect shows up as a
@@ -160,6 +161,111 @@ final class SelectTimeoutTest extends IntegrationTestCase
 
         try {
             $select->count();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
+    public function testTimeoutStopsAStatementWhoseSlowPartIsInItsWithClause(): void
+    {
+        // The limit is written on the statement after the clause, and the
+        // slow work sits in a statement the clause names.
+        $select = $this->connection
+            ->select('id')
+            ->with(
+                'slow',
+                $this->connection
+                    ->select('id')
+                    ->from(self::TABLE)
+                    ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0'),
+            )
+            ->from('slow')
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
+    public function testTimeoutStopsAStatementLedByAWithClauseWhoseSlowPartFollowsIt(): void
+    {
+        $select = $this->connection
+            ->select('id')
+            ->with('rows', $this->connection->select('id')->from(self::TABLE))
+            ->from('rows')
+            ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0')
+            ->limit(1)
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
+    public function testTimeoutStopsARecursiveWithClauseWhoseSlowPartIsItsFirstStatement(): void
+    {
+        $select = $this->connection
+            ->select('n')
+            ->withRecursive(
+                'counter',
+                $this->connection
+                    ->select(Expression::of('1 AS n'))
+                    ->from(self::TABLE)
+                    ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0')
+                    ->unionAll($this->connection->select(Expression::of('n + 1'))->from('counter')->where('n', '<', 3)),
+            )
+            ->from('counter')
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
+        } catch (QueryException) {
+            // As in runSlowStatement().
+        }
+
+        $this->assertStoppedEarly((microtime(true) - $started) * 1000);
+    }
+
+    public function testTimeoutStopsACombinedStatementLedByAWithClause(): void
+    {
+        // The statement after the clause opens with a parenthesis, so the
+        // limit is written into its first SELECT; the slow work is in the
+        // second one.
+        $select = $this->connection
+            ->select('id')
+            ->with('rows', $this->connection->select('id')->from(self::TABLE))
+            ->from('rows')
+            ->where('id', 1)
+            ->unionAll(
+                $this->connection
+                    ->select('id')
+                    ->from('rows')
+                    ->whereRaw('BENCHMARK(' . self::ROUNDS . ', SHA2(RAND(), 512)) = 0')
+                    ->orderBy('id')
+                    ->limit(1),
+            )
+            ->timeout(self::LIMIT_MS);
+
+        $started = microtime(true);
+
+        try {
+            $select->execute();
         } catch (QueryException) {
             // As in runSlowStatement().
         }
