@@ -1587,6 +1587,10 @@ class Grammar
      * placeholder after SEPARATOR, and a quoted literal would read differently
      * depending on whether the session's SQL mode treats backslashes as escapes.
      *
+     * A subclass that replaces this writes the DISTINCT, the sort terms and the
+     * separator itself; nothing else reads them, so leaving any out drops it
+     * from the statement without a word.
+     *
      * @param  FunctionCall             $call Call to write
      * @return CompiledSql              The call, and the bindings its arguments and sort terms need
      * @throws InvalidArgumentException When the grammar writes no such aggregate, or an identifier in it is malformed

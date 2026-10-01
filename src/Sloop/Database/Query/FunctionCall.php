@@ -41,6 +41,13 @@ final readonly class FunctionCall
     public string $function;
 
     /**
+     * Sort terms the call reads its values in, written inside its parentheses.
+     *
+     * @var list<Order>
+     */
+    public array $orders;
+
+    /**
      * Describe one function call.
      *
      * The arguments tell columns from values apart by type, the same way
@@ -52,21 +59,22 @@ final readonly class FunctionCall
      * WindowExpression, which reads the arguments in written order.
      *
      * DISTINCT reads the values of a column, so a call written DISTINCT that
-     * has `*` among its arguments is refused here; both servers reject
-     * `COUNT(DISTINCT *)`.
+     * names every column among its arguments -- `*` or `table.*` -- is refused
+     * here; both servers reject `COUNT(DISTINCT *)`. An Expression is written
+     * as it stands and is not read for one.
      *
      * @param  string                                                   $function  Name of the function, in any case
      * @param  array<int|string, string|Expression|int|float|bool|null> $arguments Arguments of the call, in written order
      * @param  bool                                                     $distinct  Whether the call reads each distinct value once
-     * @param  list<Order>                                              $orders    Sort terms the call reads its values in, written inside the parentheses
+     * @param  array<int|string, mixed>                                 $orders    Order instances the call reads its values in, written inside the parentheses
      * @param  string|null                                              $separator Text joining the values, or null to write none and leave the server's comma
-     * @throws InvalidArgumentException                                 When the function name is empty, or a DISTINCT call is given `*`
+     * @throws InvalidArgumentException                                 When the function name is empty, a sort term is not an Order, or a DISTINCT call names every column
      */
     public function __construct(
         string $function,
         public array $arguments = [],
         public bool $distinct = false,
-        public array $orders = [],
+        array $orders = [],
         public ?string $separator = null,
     ) {
         $this->function = trim($function);
@@ -75,11 +83,17 @@ final readonly class FunctionCall
             throw new InvalidArgumentException('A function call needs a function name.');
         }
 
-        if ($distinct && \in_array('*', $arguments, true)) {
-            throw new InvalidArgumentException(
-                'DISTINCT reads the values of a column, so it takes no *. Name the column to read the distinct values of.',
-            );
+        if ($distinct) {
+            foreach ($arguments as $argument) {
+                if (\is_string($argument) && ($argument === '*' || str_ends_with($argument, '.*'))) {
+                    throw new InvalidArgumentException(
+                        'DISTINCT reads the values of a column, so it takes no *. Name the column to read the distinct values of.',
+                    );
+                }
+            }
         }
+
+        $this->orders = ClauseParts::toOrders($orders);
     }
 
     /**

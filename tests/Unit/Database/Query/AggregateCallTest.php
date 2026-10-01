@@ -180,6 +180,27 @@ final class AggregateCallTest extends TestCase
         );
     }
 
+    public function testDistinctOverEveryColumnOfATableIsRefused(): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Expression::sum('orders.*', distinct: true));
+
+        $this->assertStringStartsWith('DISTINCT reads the values of a column, so it takes no *.', $e->getMessage());
+    }
+
+    public function testAColumnEndingInAStarIsNotMistakenForEveryColumn(): void
+    {
+        $call = Expression::count('total*', distinct: true);
+
+        $this->assertTrue($call->distinct);
+    }
+
+    public function testASortTermThatIsNotAnOrderIsRefusedWhereTheCallIsBuilt(): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => new FunctionCall('GROUP_CONCAT', ['status'], orders: ['status']));
+
+        $this->assertSame('Orders must be an Order, got string at index 0.', $e->getMessage());
+    }
+
     public function testADistinctCallTakesNoWindow(): void
     {
         $e = $this->assertThrows(LogicException::class, static fn () => Expression::count('user_id', distinct: true)->over());

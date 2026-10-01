@@ -407,7 +407,7 @@ final readonly class Expression
      * @param  string|self              $column   Column to count the values of, or '*' to count rows
      * @param  bool                     $distinct Whether to count each distinct value once; the call then takes no window
      * @return FunctionCall             The call, to select as an aggregate or give a window with over()
-     * @throws InvalidArgumentException When $distinct is given with '*'
+     * @throws InvalidArgumentException When $distinct is given with '*' or 'table.*'
      */
     public static function count(string|self $column = '*', bool $distinct = false): FunctionCall
     {
@@ -417,9 +417,10 @@ final readonly class Expression
     /**
      * Sum of the column over the rows it reads.
      *
-     * @param  string|self  $column   Column to read, or an expression producing the value
-     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
-     * @return FunctionCall The call, to select as an aggregate or give a window with over()
+     * @param  string|self              $column   Column to read, or an expression producing the value
+     * @param  bool                     $distinct Whether to read each distinct value once; the call then takes no window
+     * @return FunctionCall             The call, to select as an aggregate or give a window with over()
+     * @throws InvalidArgumentException When $distinct is given with '*' or 'table.*'
      */
     public static function sum(string|self $column, bool $distinct = false): FunctionCall
     {
@@ -429,9 +430,10 @@ final readonly class Expression
     /**
      * Average of the column over the rows it reads.
      *
-     * @param  string|self  $column   Column to read, or an expression producing the value
-     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
-     * @return FunctionCall The call, to select as an aggregate or give a window with over()
+     * @param  string|self              $column   Column to read, or an expression producing the value
+     * @param  bool                     $distinct Whether to read each distinct value once; the call then takes no window
+     * @return FunctionCall             The call, to select as an aggregate or give a window with over()
+     * @throws InvalidArgumentException When $distinct is given with '*' or 'table.*'
      */
     public static function avg(string|self $column, bool $distinct = false): FunctionCall
     {
@@ -441,9 +443,10 @@ final readonly class Expression
     /**
      * Largest value of the column over the rows it reads.
      *
-     * @param  string|self  $column   Column to read, or an expression producing the value
-     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
-     * @return FunctionCall The call, to select as an aggregate or give a window with over()
+     * @param  string|self              $column   Column to read, or an expression producing the value
+     * @param  bool                     $distinct Whether to read each distinct value once; the call then takes no window
+     * @return FunctionCall             The call, to select as an aggregate or give a window with over()
+     * @throws InvalidArgumentException When $distinct is given with '*' or 'table.*'
      */
     public static function max(string|self $column, bool $distinct = false): FunctionCall
     {
@@ -453,9 +456,10 @@ final readonly class Expression
     /**
      * Smallest value of the column over the rows it reads.
      *
-     * @param  string|self  $column   Column to read, or an expression producing the value
-     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
-     * @return FunctionCall The call, to select as an aggregate or give a window with over()
+     * @param  string|self              $column   Column to read, or an expression producing the value
+     * @param  bool                     $distinct Whether to read each distinct value once; the call then takes no window
+     * @return FunctionCall             The call, to select as an aggregate or give a window with over()
+     * @throws InvalidArgumentException When $distinct is given with '*' or 'table.*'
      */
     public static function min(string|self $column, bool $distinct = false): FunctionCall
     {
@@ -592,7 +596,7 @@ final readonly class Expression
      * @param  array<int|string, mixed> $orders    Sort terms the values are joined in, as column or column => direction
      * @param  string|null              $separator Text joining the values, or null for the servers' comma
      * @return FunctionCall             The call, to select as an aggregate
-     * @throws InvalidArgumentException When a sort term cannot stand where it is, or a direction names none
+     * @throws InvalidArgumentException When a sort term cannot stand where it is, a direction names none, or $distinct is given with '*' or 'table.*'
      */
     public static function groupConcat(
         string|self $column,
