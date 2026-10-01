@@ -23,8 +23,10 @@ script_dir=$(cd "$(dirname "$0")" && pwd) || exit 1
 # definitions.
 eval "$(sed -n '/^gate_count() {/,/^}/p' "$script_dir/quality-gate.sh")"
 eval "$(sed -n '/^run_actionlint() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^gate_process_alive() {/,/^}/p' "$script_dir/quality-gate.sh")"
+eval "$(sed -n '/^stale_gate_servers() {/,/^}/p' "$script_dir/quality-gate.sh")"
 
-for fn in gate_count run_actionlint; do
+for fn in gate_count run_actionlint gate_process_alive stale_gate_servers; do
     if ! declare -f "$fn" > /dev/null; then
         echo "$fn could not be loaded from quality-gate.sh" >&2
         exit 1
@@ -185,6 +187,79 @@ check_actionlint 'actionlint: the shellcheck rule ran' 0 \
     'verbose: Collected 1 YAML files
 verbose: Rule "pyflakes" was disabled: exec: "pyflakes": executable file not found in $PATH
 verbose: Found total 0 errors in 0 ms for .github/workflows/ci.yml'
+
+# Assert a yes/no answer.
+#
+# $1 case name, $2 expected ('yes' / 'no'), $3... the command to run
+check_answer() {
+    local case_name="$1" want="$2" got='no'
+    shift 2
+    if "$@"; then
+        got='yes'
+    fi
+
+    if [ "$got" = "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+# A process that has exited: started, waited for, so its pid is free.
+sleep 0 &
+gone_pid=$!
+wait "$gone_pid"
+
+check_answer 'process alive: this test' 'yes' gate_process_alive "$$"
+check_answer 'process alive: an exited process' 'no' gate_process_alive "$gone_pid"
+# Anything that is not a pid counts as running, so its server is kept.
+check_answer 'process alive: not a number' 'yes' gate_process_alive 'abc'
+check_answer 'process alive: empty' 'yes' gate_process_alive ''
+
+# The sweep decides which servers a run may remove, so a mistake here removes a
+# server a parallel run is using. gate_process_alive is replaced by a stub that
+# treats only the pids in $alive_pids as running, so the cases are about the
+# reading of the label, not about which processes happen to exist.
+#
+# $1 case name, $2 the docker ps lines, $3 expected ids (newline-separated)
+check_sweep() {
+    local case_name="$1" lines="$2" want="$3" got
+    got=$(
+        # Called by stale_gate_servers, which the linter does not follow (SC2329).
+        # shellcheck disable=SC2329
+        gate_process_alive() { [[ " $alive_pids " == *" $1 "* ]]; }
+        printf '%s\n' "$lines" | stale_gate_servers 'here'
+    )
+
+    if [ "$got" = "$want" ]; then
+        printf '  ok   %s\n' "$case_name"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL %s: want [%s], got [%s]\n' "$case_name" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+alive_pids='100 200'
+
+check_sweep 'sweep: a run that is gone' 'aaa here 300' 'aaa'
+check_sweep 'sweep: a run that is still going' 'aaa here 100' ''
+check_sweep 'sweep: another host' 'aaa there 300' ''
+check_sweep 'sweep: a label without a pid' 'aaa here' ''
+check_sweep 'sweep: no label value' 'aaa' ''
+check_sweep 'sweep: empty lines' '
+
+' ''
+check_sweep 'sweep: a pid that is not a number' 'aaa here x1' ''
+check_sweep 'sweep: a host name with a space' 'aaa my host 300' ''
+check_sweep 'sweep: only the gone ones among several' 'aaa here 100
+bbb here 300
+ccc there 400
+ddd here 200
+eee here 500' 'bbb
+eee'
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

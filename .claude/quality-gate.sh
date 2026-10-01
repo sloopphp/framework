@@ -88,8 +88,9 @@ gate_process_alive() {
 #
 # Reads "<container id> <label value>" lines on stdin, as `docker ps` writes
 # them below, and prints the ids to remove. A line from another host, or one
-# whose label does not have the "<host> <pid>" shape, is left alone: this gate
-# did not start it, or cannot tell whether its owner is still running.
+# whose label does not have the "<host> <pid>" shape with a numeric pid, is left
+# alone: this gate did not start it, or cannot tell whether its owner is still
+# running.
 #
 # $1 this host's name
 stale_gate_servers() {
@@ -100,6 +101,7 @@ stale_gate_servers() {
         owner_pid=${owner##* }
         [ "$owner_host" = "$host" ] || continue
         [ "$owner_host" != "$owner" ] || continue
+        [[ $owner_pid =~ ^[0-9]+$ ]] || continue
         if ! gate_process_alive "$owner_pid"; then
             printf '%s\n' "$id"
         fi
@@ -234,15 +236,21 @@ if [ "$with_integration" -eq 1 ]; then
         fi
 
         for spec in "$mysql_image MYSQL" "$mariadb_image MARIADB"; do
-            # Captured rather than discarded: the reason docker gives (no daemon,
-            # image not found, out of memory) is the only useful thing to show.
-            started=$(start_gate_server "${spec% *}" "${spec#* }" 2>&1)
+            # stdout carries the id and nothing else; stderr is kept apart because
+            # docker writes the progress of an image pull there, and the id has to
+            # be recognised even then. An id that comes back is registered whatever
+            # stderr says, so the EXIT trap removes every server that did start.
+            # stderr is shown only when no id came back: the reason docker gives
+            # (no daemon, out of memory) is then the only useful thing to show.
+            run_err=$(mktemp) || exit 1
+            started=$(start_gate_server "${spec% *}" "${spec#* }" 2> "$run_err")
             if [[ $started =~ ^[0-9a-f]{64}$ ]]; then
                 gate_servers+=("$started")
             else
-                gate_server_error="could not start ${spec% *}: $started"
-                break
+                gate_server_error="could not start ${spec% *}: $(cat "$run_err")"
             fi
+            rm -f "$run_err"
+            [ -z "$gate_server_error" ] || break
         done
     fi
 fi
@@ -455,10 +463,15 @@ if [ "$with_integration" -eq 1 ]; then
     fi
 
     if [ "$integration_ready" -eq 1 ]; then
+        # Every connection setting is passed, not only the port: env inherits the
+        # caller's environment, and a DB_NAME or DB_USER exported in the shell
+        # would otherwise reach the tests and point them at something else.
         printf '\n  (integration servers: MySQL on %s, MariaDB on %s)\n' "${ports[0]}" "${ports[1]}"
         run_gate 'Integration (MySQL)' env DB_HOST=127.0.0.1 DB_PORT="${ports[0]}" \
+            DB_NAME=sloop_test DB_USER=sloop DB_PASS=secret \
             vendor/bin/phpunit --testsuite=Integration
         run_gate 'Integration (MariaDB)' env DB_HOST=127.0.0.1 DB_PORT="${ports[1]}" \
+            DB_NAME=sloop_test DB_USER=sloop DB_PASS=secret \
             vendor/bin/phpunit --testsuite=Integration
     else
         names+=('Integration')
