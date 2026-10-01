@@ -53,7 +53,9 @@ final class ListRule extends ArrayRule
      * An element that is empty as the element rule reads it takes what an
      * empty element of an input would have taken, so that both ways of reaching
      * a value give the same list: the element's own default, or null. A
-     * `false`, a `0` and a `'0'` say something and are kept.
+     * `false`, a `0` and a `'0'` say something and are kept. The default does
+     * not go through the element's sanitizers, so a value only a sanitizer would
+     * empty (`'  '` under Sanitize::Trim) counts as a value here.
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
