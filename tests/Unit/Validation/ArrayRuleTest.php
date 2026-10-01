@@ -533,6 +533,48 @@ final class ArrayRuleTest extends TestCase
         );
     }
 
+    /**
+     * @return iterable<string, array{mixed}>
+     */
+    public static function elementsSayingNothing(): iterable
+    {
+        yield 'element set to null' => [null];
+        yield 'element set to the empty string' => [''];
+    }
+
+    #[DataProvider('elementsSayingNothing')]
+    public function testADefaultSayingNothingForARequiredElementIsRefused(mixed $element): void
+    {
+        $this->assertSame(
+            'The default of list() has no value at position 1, which is required.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::list(Rule::int()->required())->default([1, $element]),
+            )->getMessage(),
+        );
+    }
+
+    #[DataProvider('elementsSayingNothing')]
+    public function testADefaultSayingNothingForAnElementGivesWhatValidatingWouldHaveGiven(mixed $element): void
+    {
+        $viaDefault = self::valueOf(Rule::list(Rule::int()->default(5))->default([$element, 1]), null);
+        $viaInput   = self::valueOf(Rule::list(Rule::int()->default(5)), [$element, 1]);
+
+        $this->assertSame($viaInput, $viaDefault);
+        $this->assertSame([5, 1], $viaDefault);
+    }
+
+    public function testAnEmptyElementOfADefaultStaysNullWhenTheElementDeclaresNoDefault(): void
+    {
+        $this->assertSame([null, 1], self::valueOf(Rule::list(Rule::int())->default([null, 1]), null));
+    }
+
+    public function testTheDefaultOfAListKeepsTheElementsThatOnlyLookEmpty(): void
+    {
+        $this->assertSame([0], self::valueOf(Rule::list(Rule::int()->default(5))->default([0]), null));
+        $this->assertSame([false], self::valueOf(Rule::list(Rule::bool()->required())->default([false]), null));
+    }
+
     public function testTheDefaultOfAShapeFillsInTheKeysItLeavesOut(): void
     {
         $rule = Rule::shape(['a' => Rule::int(), 'b' => Rule::int()])->default(['a' => 1]);

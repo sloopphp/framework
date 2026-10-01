@@ -64,12 +64,12 @@ final class ShapeRule extends ArrayRule
      * would break it without any rule having failed.
      *
      * A key the default says nothing for — missing, or empty as the key's own
-     * rule reads it — takes what an input without it would have taken, so that
-     * both ways of reaching a value give the same shape. A `false`, a `0` and a
-     * `'0'` say something and are kept. Emptiness is read the way validation
-     * reads it, which is before any sanitizer has run: the default does not go
-     * through them, so a value that only a sanitizer would empty (`'  '` under
-     * Sanitize::Trim) counts as a value here.
+     * rule reads it — takes what an input without it would have taken. A
+     * `false`, a `0` and a `'0'` say something and are kept as written.
+     * Emptiness is read the way validation reads it, which is before any
+     * sanitizer has run: the default does not go through them, so a value that
+     * only a sanitizer would empty (`'  '` under Sanitize::Trim) counts as a
+     * value here.
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
@@ -119,8 +119,7 @@ final class ShapeRule extends ArrayRule
             }
 
             // A key the default says nothing for takes what it would have taken
-            // had the field come in without it, so that the two ways of reaching
-            // a value give the same shape. A required key has no such value:
+            // had the field come in without it. A required key has no such value:
             // every input without it fails, so there is nothing to fill with.
             $outcome = $rule->evaluate(null);
             if ($outcome->failures !== []) {

@@ -50,9 +50,16 @@ final class ListRule extends ArrayRule
      * caller reads, and a default that is not one would break it without any
      * rule having failed.
      *
+     * An element that is empty as the element rule reads it takes what an
+     * empty element of an input would have taken: the element's own default,
+     * or null. A `false`, a `0` and a `'0'` say something and are kept as
+     * written. The default does not go through the element's sanitizers, so a
+     * value only a sanitizer would empty (`'  '` under Sanitize::Trim) counts
+     * as a value here.
+     *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
-     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule refuses at declaration
+     * @throws InvalidArgumentException When $value is not a list, holds an empty element where the element is required, or holds a value the element rule refuses at declaration
      * @throws \LogicException          When the field is required or a default has already been declared
      */
     public function default(array $value): static
@@ -77,7 +84,7 @@ final class ListRule extends ArrayRule
      *
      * @param  array<array-key, mixed>  $value Default as the caller declared it
      * @return list<mixed>
-     * @throws InvalidArgumentException When $value is not a list, or holds a value the element rule refuses at declaration
+     * @throws InvalidArgumentException When $value is not a list, holds an empty element where the element is required, or holds a value the element rule refuses at declaration
      */
     private function prepareElements(array $value): array
     {
@@ -86,8 +93,22 @@ final class ListRule extends ArrayRule
         }
 
         $prepared = [];
-        foreach ($value as $item) {
-            $prepared[] = $this->element->prepareDefault($item);
+        foreach ($value as $position => $item) {
+            if (!$this->element->isEmpty($item)) {
+                $prepared[] = $this->element->prepareDefault($item);
+                continue;
+            }
+
+            // An empty element takes what it would have taken in an input, as
+            // a key a shape's default says nothing for does. A required element
+            // has no such value: every input holding it empty fails.
+            $outcome = $this->element->evaluate(null);
+            if ($outcome->failures !== []) {
+                throw new InvalidArgumentException(
+                    'The default of list() has no value at position ' . $position . ', which is required.',
+                );
+            }
+            $prepared[] = $outcome->value;
         }
 
         return $prepared;
