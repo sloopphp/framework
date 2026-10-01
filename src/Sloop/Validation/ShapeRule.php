@@ -119,8 +119,7 @@ final class ShapeRule extends ArrayRule
             }
 
             // A key the default says nothing for takes what it would have taken
-            // had the field come in without it, so that the two ways of reaching
-            // a value give the same shape. A required key has no such value:
+            // had the field come in without it. A required key has no such value:
             // every input without it fails, so there is nothing to fill with.
             $outcome = $rule->evaluate(null);
             if ($outcome->failures !== []) {
