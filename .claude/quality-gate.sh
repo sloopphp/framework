@@ -25,18 +25,22 @@
 # Usage:
 #   .claude/quality-gate.sh                    # run static checks and tests (a few seconds)
 #   .claude/quality-gate.sh --with-mutation    # also run infection (about 1 minute)
-#   .claude/quality-gate.sh --with-integration # also run Integration (needs docker compose up -d)
+#   .claude/quality-gate.sh --with-integration # also run Integration (needs docker)
 #   .claude/quality-gate.sh --all              # run everything
 #
-# Parallel sessions: several git worktrees share one database server, so the
-# Integration gates run against a database named after the clone and the worktree
-# rather than the fixed sloop_test. Without that, one session drops a table while another
-# reads it and both see failures that have nothing to do with their changes.
-# The run is also serialised per worktree where flock is installed, since two
-# gates in the same tree fight over the same caches and the same database.
+# Parallel sessions: --with-integration starts its own MySQL and MariaDB for
+# the run, with the data on tmpfs and a port the system picks, and removes them
+# when the run ends. Nothing is shared between runs, so one session cannot drop a
+# table, restart a server or wipe a data volume out from under another. The
+# servers are started before the other gates and waited for just before
+# Integration, so their boot overlaps the static checks.
 #
-# --with-integration also drops this clone's sloop_test_* databases that no
-# worktree in `git worktree list` is named after.
+# The containers carry a label naming the run's host and process. A run killed
+# too hard to clean up (kill -9) leaves them behind; the next run removes those
+# whose process is gone and leaves everything else alone.
+#
+# The run is serialised per worktree where flock is installed, since two gates
+# in the same tree fight over the same caches.
 #
 # Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
 
@@ -48,159 +52,120 @@ script_path="$script_dir/$(basename "$0")"
 
 cd "$script_dir/.." || exit 1
 
-# Eight characters of [a-z0-9_] digesting $1, or nothing when no hash command
-# is installed.
+# Images the Integration servers run, the same versions CI tests against.
+mysql_image='mysql:8.0'
+mariadb_image='mariadb:10.11'
+
+# Label put on every server this gate starts. The value is "<host> <pid>" of the
+# run that owns it, which is what lets a later run tell a leftover from a server
+# a parallel run is still using.
+gate_label='sloop.quality-gate.owner'
+
+# Whether process $1 on this host is still running.
 #
-# Whatever this writes on stdout ends up inside a database name, since callers
-# read it through a command substitution. cksum is the reason the output goes
-# through tr: it prints "<crc> <bytes>", which would put a space in the name.
+# Errs toward "running": a server left up a little longer costs memory, while
+# one removed under a live run fails that run's tests for nothing. kill -0 alone
+# would not do, since it also fails for a process owned by another user.
 #
-# $1 the text to digest
-short_digest() {
-    local hasher
-    for hasher in sha256sum md5sum cksum; do
-        if command -v "$hasher" > /dev/null 2>&1; then
-            printf '%s' "$1" | "$hasher" | tr -c 'a-z0-9' '_' | cut -c1-8
-            return 0
+# $1 the process id
+gate_process_alive() {
+    [[ $1 =~ ^[0-9]+$ ]] || return 0
+
+    if [ -d /proc/self ]; then
+        [ -d "/proc/$1" ]
+        return
+    fi
+
+    local err
+    err=$(LC_ALL=C kill -0 "$1" 2>&1) && return 0
+    case "$err" in
+        *'No such process'*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# The servers left behind by runs on this host whose process is gone.
+#
+# Reads "<container id> <label value>" lines on stdin, as `docker ps` writes
+# them below, and prints the ids to remove. A line from another host, or one
+# whose label does not have the "<host> <pid>" shape, is left alone: this gate
+# did not start it, or cannot tell whether its owner is still running.
+#
+# $1 this host's name
+stale_gate_servers() {
+    local host="$1" id owner owner_host owner_pid
+    while read -r id owner; do
+        [ -n "$id" ] || continue
+        owner_host=${owner% *}
+        owner_pid=${owner##* }
+        [ "$owner_host" = "$host" ] || continue
+        [ "$owner_host" != "$owner" ] || continue
+        if ! gate_process_alive "$owner_pid"; then
+            printf '%s\n' "$id"
         fi
     done
 }
 
-# The clone the gate is running in, as a digest of its main worktree's path.
+# Remove the servers this run started. Called only from the EXIT trap, which
+# the linter does not follow (SC2329).
+# shellcheck disable=SC2329
+remove_gate_servers() {
+    if [ "${#gate_servers[@]}" -gt 0 ]; then
+        docker rm -f "${gate_servers[@]}" > /dev/null 2>&1
+    fi
+}
+
+# Start one Integration server and print its container id.
 #
-# Every worktree of a clone lists the main worktree first, so each of them
-# arrives at the same answer, while two clones on one machine do not. Writes
-# nothing and returns 1 when no worktree record can be read or nothing can hash
-# the path; the caller then leaves the databases alone.
+# Not --rm: a server that dies while starting would take its log with it, and
+# the log is what says why. The EXIT trap and the sweep of leftovers remove it.
 #
-# Only the first record is needed, so a listing git fails partway through still
-# yields the id. That is safe because integration_dbs_in_use refuses such a
-# listing on its own, and nothing is dropped without that list.
-integration_clone_id() {
-    local field
-    while IFS= read -r -d '' field; do
-        if [[ $field == 'worktree '* ]]; then
-            local digest
-            digest=$(short_digest "${field#worktree }")
-            [ -n "$digest" ] || return 1
-            printf '%s' "$digest"
+# The data directory is tmpfs: the schema is rebuilt by the tests on every run,
+# so nothing on it is worth keeping, and a server that cannot be damaged by an
+# unclean shutdown is one less thing to recover. The port is bound to loopback
+# and picked by the system, so parallel runs never ask for the same one.
+#
+# $1 image, $2 the prefix of the image's environment variables (MYSQL / MARIADB)
+start_gate_server() {
+    docker run -d \
+        --label "$gate_label=$(hostname) $$" \
+        --tmpfs /var/lib/mysql \
+        -p 127.0.0.1::3306 \
+        -e "$2_ROOT_PASSWORD=root" \
+        -e "$2_DATABASE=sloop_test" \
+        -e "$2_USER=sloop" \
+        -e "$2_PASSWORD=secret" \
+        "$1"
+}
+
+# The host port of server $1, or nothing when it has none.
+#
+# $1 container id
+gate_server_port() {
+    docker port "$1" 3306/tcp 2> /dev/null | sed -n 's/^127\.0\.0\.1:\([0-9][0-9]*\)$/\1/p' | head -n 1
+}
+
+# Wait until server $1 accepts the test user over TCP, for at most $2 seconds.
+#
+# TCP rather than the socket: both images bring up a temporary server without
+# networking while they create the database and the user, and the socket answers
+# then, before the user exists. Gives up early when the container has stopped,
+# which is how a server that fails to start shows itself.
+#
+# $1 container id, $2 seconds
+wait_for_gate_server() {
+    local deadline=$((SECONDS + $2))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if docker exec "$1" mysql -h127.0.0.1 -usloop -psecret sloop_test \
+            -e 'SELECT 1' > /dev/null 2>&1; then
             return 0
         fi
-    done < <(git worktree list --porcelain -z 2> /dev/null)
-
+        if [ "$(docker inspect -f '{{.State.Running}}' "$1" 2> /dev/null)" != 'true' ]; then
+            return 1
+        fi
+        sleep 1
+    done
     return 1
-}
-
-# The database is named after the clone and the worktree so that parallel
-# sessions do not share tables, including sessions in another clone of the
-# repository: compose runs one server for the whole machine.
-#
-# $1 the clone id (integration_clone_id), $2 the worktree directory name
-integration_db_name() {
-    # Anything outside [a-z0-9_] is not valid in an identifier unless the name
-    # is quoted at every use. The server caps an identifier at 64 characters,
-    # and `sloop_test_` with the clone id and its separator takes 20 of them,
-    # leaving 44.
-    local prefix="sloop_test_$1_" slug
-    slug=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')
-
-    # Plain truncation would put two worktrees whose names share a long prefix
-    # on one database, which is the interference this whole thing is for. Past
-    # the limit the tail becomes a digest of the full name instead.
-    if [ "${#slug}" -gt 44 ]; then
-        local digest
-        digest=$(short_digest "$2")
-
-        if [ -z "$digest" ]; then
-            echo 'no hash command found; long worktree names may share a database' >&2
-            slug="${slug:0:44}"
-        else
-            slug="${slug:0:35}_$digest"
-        fi
-    fi
-
-    printf '%s%s' "$prefix" "$slug"
-}
-
-# Databases the worktrees of this clone are using right now.
-#
-# Reads `git worktree list`, so a tree someone else is running the gate in is
-# named here whether or not its database exists yet. That is what keeps this
-# from deleting a database out from under a parallel session. The listing is
-# read NUL-separated, since a path can hold a newline and would otherwise be
-# split into two names, neither of them the one that tree uses.
-#
-# Writes nothing and returns 1 when the worktrees cannot be listed. The caller
-# reads this through a command substitution and branches on the output being
-# empty, so both halves have to hold: an empty result is what stops the deletion,
-# and the return code is the contract this function is tested against.
-#
-# A tree removed with `rm -rf` rather than `git worktree remove` stays in the
-# listing with a `prunable` line until `git worktree prune` runs, so its database
-# keeps being protected. That is the safe direction, and filtering on `prunable`
-# would not be: the reason can be a mount that is briefly away, and dropping
-# those would take a running session's database with it.
-#
-# $1 the clone id (integration_clone_id)
-integration_dbs_in_use() {
-    local clone="$1" listing
-    [ -n "$clone" ] || return 1
-
-    # Captured whole before it is read, so that a listing git wrote only part of
-    # before failing is refused rather than taken for every worktree there is.
-    listing=$(git worktree list --porcelain -z 2> /dev/null | tr '\0' '\1'; exit "${PIPESTATUS[0]}") || return 1
-
-    # integration_db_name ends without a newline, so calling it bare here would
-    # run the names together. Ending each line is what makes this a list; the
-    # consumer matches whole lines, and a concatenated one would protect nothing.
-    local field found=0
-    while IFS= read -r -d $'\1' field; do
-        [[ $field == 'worktree '* ]] || continue
-        printf '%s\n' "$(integration_db_name "$clone" "$(basename "${field#worktree }")")"
-        found=1
-    done <<< "$listing"
-
-    [ "$found" -eq 1 ]
-}
-
-# The databases in $1 that no worktree in $2 is using, among this clone's own.
-#
-# Both lists are newline-separated: $1 as the server reports them, $2 as
-# integration_dbs_in_use writes them. Only names carrying this clone's prefix and
-# something after it are considered, which leaves alone the server's own
-# databases, the `sloop_test` that compose creates, the databases of other clones
-# (whose worktrees this clone cannot list) and names from before the clone id
-# was part of them (which could belong to any clone).
-#
-# $2 must not be empty. An empty protected list would mean every test database
-# is prunable, and the only way to get one is a failure upstream.
-#
-# $1 all databases, $2 the ones in use, $3 the clone id
-prunable_databases() {
-    local all="$1" protected="$2" clone="$3"
-
-    [ -n "$protected" ] || return 1
-    [[ $clone =~ ^[a-z0-9_]{8}$ ]] || return 1
-
-    local name
-    while IFS= read -r name; do
-        # Matched against what integration_db_name can produce, which is the
-        # prefix followed by [a-z0-9_] and nothing else. A looser test would put
-        # names this gate never created on the drop list, and a backtick in one
-        # of them would break the statement that drops it.
-        if [[ ! $name =~ ^sloop_test_${clone}_[a-z0-9_]+$ ]]; then
-            continue
-        fi
-
-        # A here-string rather than a pipe: under `set -o pipefail` grep -q exits
-        # at its first match, and a writer still holding data takes SIGPIPE, so
-        # the pipeline reports 141 and a protected name reads as unprotected.
-        if grep -qxF -- "$name" <<< "$protected"; then
-            continue
-        fi
-
-        printf '%s\n' "$name"
-    done <<< "$all"
 }
 
 # Skip colors when stdout is not a terminal (redirect to a log, CI, etc.).
@@ -242,8 +207,45 @@ elif ! flock -n 9; then
     exit 3
 fi
 
-clone_id=$(integration_clone_id) || clone_id=''
-db_name=$(integration_db_name "${clone_id:-local}" "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")
+# Start the Integration servers now and wait for them later, so that their boot
+# overlaps the static checks instead of adding to the run.
+gate_servers=()
+gate_server_error=''
+if [ "$with_integration" -eq 1 ]; then
+    # The signal traps turn an interrupt into an exit so that the EXIT trap runs
+    # for it too; only kill -9 skips it, and the next run's sweep below picks
+    # that up.
+    trap remove_gate_servers EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    if ! command -v docker > /dev/null 2>&1; then
+        gate_server_error='docker is not installed'
+    else
+        leftovers=$(docker ps -a --filter "label=$gate_label" \
+            --format "{{.ID}} {{.Label \"$gate_label\"}}" 2> /dev/null \
+            | stale_gate_servers "$(hostname)")
+        if [ -n "$leftovers" ]; then
+            # Word splitting is wanted: one id per word.
+            # shellcheck disable=SC2086
+            docker rm -f $leftovers > /dev/null 2>&1
+            printf '\n  (removed %s server(s) left by a run that is gone)\n' \
+                "$(printf '%s\n' "$leftovers" | wc -l | tr -d ' ')"
+        fi
+
+        for spec in "$mysql_image MYSQL" "$mariadb_image MARIADB"; do
+            # Captured rather than discarded: the reason docker gives (no daemon,
+            # image not found, out of memory) is the only useful thing to show.
+            started=$(start_gate_server "${spec% *}" "${spec#* }" 2>&1)
+            if [[ $started =~ ^[0-9a-f]{64}$ ]]; then
+                gate_servers+=("$started")
+            else
+                gate_server_error="could not start ${spec% *}: $started"
+                break
+            fi
+        done
+    fi
+fi
 
 names=()
 codes=()
@@ -282,7 +284,7 @@ gate_count() {
             # Progress line ends with "156 / 156 (100%)".
             sed -n 's|.*[^0-9]\([0-9][0-9]*\) / \([0-9][0-9]*\) (100%).*|\2|p' "$plain" | tail -n 1
             ;;
-        'PHPUnit' | 'Integration (3306)' | 'Integration (3307)')
+        'PHPUnit' | 'Integration (MySQL)' | 'Integration (MariaDB)')
             # "OK (1307 tests, 3332 assertions)" when green, "Tests: 1307, ..." when not.
             sed -n -e 's/.*OK (\([0-9][0-9]*\) tests\?,.*/\1/p' \
                    -e 's/^Tests: \([0-9][0-9]*\),.*/\1/p' "$plain" | tail -n 1
@@ -434,76 +436,29 @@ else
 fi
 
 if [ "$with_integration" -eq 1 ]; then
-    # Create the worktree's database on both engines before the tests connect.
-    # The sloop user cannot create databases, so this goes through root.
     integration_ready=1
-    for service in mysql mariadb; do
-        # Captured rather than discarded: a guessed cause ("run docker compose
-        # up -d") is wrong for every failure that is not a stopped container,
-        # and it would be the only thing left on screen.
-        prep=$(mktemp) || exit 1
-        if ! docker compose exec -T "$service" mysql -uroot -proot \
-            -e "CREATE DATABASE IF NOT EXISTS \`$db_name\`;
-                GRANT ALL PRIVILEGES ON \`$db_name\`.* TO 'sloop'@'%';" > "$prep" 2>&1; then
-            printf '\n  (could not prepare %s on %s)\n' "$db_name" "$service"
-            cat "$prep"
-            integration_ready=0
-        fi
-        rm -f "$prep"
-    done
+    if [ -n "$gate_server_error" ]; then
+        printf '\n  (%s)\n' "$gate_server_error"
+        integration_ready=0
+    else
+        ports=()
+        for id in "${gate_servers[@]}"; do
+            port=$(gate_server_port "$id")
+            if [ -z "$port" ] || ! wait_for_gate_server "$id" 180; then
+                printf '\n  (server %s did not become ready; its last log lines:)\n' "${id:0:12}"
+                docker logs --tail 20 "$id" 2>&1
+                integration_ready=0
+                break
+            fi
+            ports+=("$port")
+        done
+    fi
 
     if [ "$integration_ready" -eq 1 ]; then
-        printf '\n  (integration database: %s)\n' "$db_name"
-
-        # Drop the databases of worktrees that are gone. Every step here can
-        # fail into "delete nothing": an unreadable worktree list or database
-        # list leaves the loop without a set to work from, and prunable_databases
-        # refuses an empty protected list rather than treating every test
-        # database as unused.
-        in_use=$(integration_dbs_in_use "$clone_id")
-        if [ -z "$clone_id" ]; then
-            printf '  (could not tell which clone this is; left the databases alone)\n'
-        elif [ -z "$in_use" ]; then
-            printf '  (could not list the worktrees; left the databases alone)\n'
-        elif ! grep -qxF -- "$db_name" <<< "$in_use"; then
-            # The protected list and $db_name are built from two separate git
-            # calls, so this is where a disagreement between them surfaces. It
-            # is also the shape the first version of this failed in: the list
-            # came out concatenated and protected nothing, which this catches
-            # before anything is dropped.
-            printf '  (this tree is missing from the protected list; left the databases alone)\n'
-        else
-            for service in mysql mariadb; do
-                existing=$(docker compose exec -T "$service" mysql -uroot -proot \
-                    -N -e 'SHOW DATABASES' 2> /dev/null) || existing=''
-                if [ -z "$existing" ]; then
-                    printf '  (%s: could not list the databases; left them alone)\n' "$service"
-                    continue
-                fi
-
-                stale=$(prunable_databases "$existing" "$in_use" "$clone_id") || continue
-                [ -n "$stale" ] || continue
-
-                drops=''
-                while IFS= read -r stale_db; do
-                    [ -n "$stale_db" ] || continue
-                    drops="${drops}DROP DATABASE IF EXISTS \`${stale_db}\`;"
-                done <<< "$stale"
-
-                if docker compose exec -T "$service" mysql -uroot -proot \
-                    -e "$drops" > /dev/null 2>&1; then
-                    printf '  (%s: dropped %s unused database(s): %s)\n' \
-                        "$service" "$(printf '%s\n' "$stale" | wc -l | tr -d ' ')" \
-                        "$(printf '%s' "$stale" | tr '\n' ' ')"
-                else
-                    printf '  (%s: could not drop the unused databases)\n' "$service"
-                fi
-            done
-        fi
-
-        run_gate 'Integration (3306)' env DB_NAME="$db_name" \
+        printf '\n  (integration servers: MySQL on %s, MariaDB on %s)\n' "${ports[0]}" "${ports[1]}"
+        run_gate 'Integration (MySQL)' env DB_HOST=127.0.0.1 DB_PORT="${ports[0]}" \
             vendor/bin/phpunit --testsuite=Integration
-        run_gate 'Integration (3307)' env DB_NAME="$db_name" DB_PORT=3307 \
+        run_gate 'Integration (MariaDB)' env DB_HOST=127.0.0.1 DB_PORT="${ports[1]}" \
             vendor/bin/phpunit --testsuite=Integration
     else
         names+=('Integration')
