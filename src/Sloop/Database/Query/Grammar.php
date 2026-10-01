@@ -1590,7 +1590,6 @@ class Grammar
      * @param  FunctionCall             $call Call to write
      * @return CompiledSql              The call, and the bindings its arguments and sort terms need
      * @throws InvalidArgumentException When the grammar writes no such aggregate, or an identifier in it is malformed
-     * @throws LogicException           When a window sorted by has a RANGE frame with an offset and not exactly one sort term
      */
     protected function compileAggregate(FunctionCall $call): CompiledSql
     {

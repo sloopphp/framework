@@ -175,7 +175,7 @@ final class AggregateCallTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Expression::count(distinct: true));
 
         $this->assertSame(
-            'DISTINCT reads the values of a column, so it takes no *. Name the column to count the distinct values of.',
+            'DISTINCT reads the values of a column, so it takes no *. Name the column to read the distinct values of.',
             $e->getMessage(),
         );
     }
@@ -190,14 +190,21 @@ final class AggregateCallTest extends TestCase
         );
     }
 
-    public function testAGroupConcatWithASortOrderOrSeparatorTakesNoWindow(): void
+    /**
+     * @return array<string, array{FunctionCall}>
+     */
+    public static function groupConcatWithoutWindowProvider(): array
     {
-        foreach ([
-            Expression::groupConcat('status', orders: ['status']),
-            Expression::groupConcat('status', separator: '|'),
-        ] as $call) {
-            $this->assertThrows(LogicException::class, static fn () => $call->over());
-        }
+        return [
+            'a sort order' => [Expression::groupConcat('status', orders: ['status'])],
+            'a separator'  => [Expression::groupConcat('status', separator: '|')],
+        ];
+    }
+
+    #[DataProvider('groupConcatWithoutWindowProvider')]
+    public function testAGroupConcatWithASortOrderOrSeparatorTakesNoWindow(FunctionCall $call): void
+    {
+        $this->assertThrows(LogicException::class, static fn () => $call->over());
     }
 
     public function testGroupConcatSortsItsValuesAndJoinsThemWithTheSeparator(): void

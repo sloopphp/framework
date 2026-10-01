@@ -97,9 +97,9 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
 
     public function testBothServersReadADistinctAggregateOnceEachValue(): void
     {
-        // The five posts are written by users 1, 1, 1, 2 and 3, and two of
-        // them are published as 1 and one as 0. SUM comes back as a DECIMAL,
-        // read as a string on both servers.
+        // The five posts are written by users 1, 1, 1, 2 and 3, and are
+        // published as 1 or 0. SUM comes back as a DECIMAL, read as a string
+        // on both servers.
         $rows = $this->connection
             ->select(
                 [Expression::count('user_id', distinct: true), 'authors'],

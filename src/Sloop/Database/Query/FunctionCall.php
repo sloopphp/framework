@@ -77,7 +77,7 @@ final readonly class FunctionCall
 
         if ($distinct && \in_array('*', $arguments, true)) {
             throw new InvalidArgumentException(
-                'DISTINCT reads the values of a column, so it takes no *. Name the column to count the distinct values of.',
+                'DISTINCT reads the values of a column, so it takes no *. Name the column to read the distinct values of.',
             );
         }
     }
