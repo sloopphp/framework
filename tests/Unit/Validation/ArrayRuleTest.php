@@ -564,6 +564,24 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame([5, 1], $viaDefault);
     }
 
+    public function testAListInsideTheDefaultOfAShapeFillsItsEmptyElements(): void
+    {
+        $rule = Rule::shape(['l' => Rule::list(Rule::int()->default(7))])->default(['l' => [1, null]]);
+
+        $this->assertSame(['l' => [1, 7]], self::valueOf($rule, null));
+    }
+
+    public function testAListInsideTheDefaultOfAShapeRefusesAnEmptyRequiredElement(): void
+    {
+        $this->assertSame(
+            'The default of list() has no value at position 1, which is required.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::shape(['l' => Rule::list(Rule::int()->required())])->default(['l' => [1, null]]),
+            )->getMessage(),
+        );
+    }
+
     public function testAnEmptyElementOfADefaultStaysNullWhenTheElementDeclaresNoDefault(): void
     {
         $this->assertSame([null, 1], self::valueOf(Rule::list(Rule::int())->default([null, 1]), null));
