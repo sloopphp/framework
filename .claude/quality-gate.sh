@@ -251,10 +251,12 @@ counts=()
 
 # Gates whose output carries no count, with the reason shown at the end of the run.
 excluded_note='PHPStan, Rector and composer audit report no count (verified with -v,
-       --error-format=json and --format=json). shellcheck reports none either;
-       the number of files comes from git ls-files, which is an input-side
-       number and would only show that work existed. Mutation baseline runs its
-       own check: it rejects an Infection report whose totalMutantsCount is 0.'
+       --error-format=json and --format=json). composer validate reports
+       none either (verified with -v; it has no --format). shellcheck reports
+       none either; the number of files comes from git ls-files, which is an
+       input-side number and would only show that work existed. Mutation
+       baseline runs its own check: it rejects an Infection report whose
+       totalMutantsCount is 0.'
 
 # Print how many items a gate inspected, or nothing when the tool reports no count.
 #
@@ -344,6 +346,11 @@ run_gate 'PHPStan'      vendor/bin/phpstan analyse --no-progress
 run_gate 'PHPUnit'      vendor/bin/phpunit --exclude-testsuite=Integration
 run_gate 'Rector'       vendor/bin/rector process --dry-run --no-progress-bar
 run_gate 'composer audit' composer audit
+# A composer.lock that no longer matches composer.json installs what the lock
+# says, not what composer.json declares, and nothing else here notices: a
+# reordered require leaves a stale content-hash, an added extension a stale
+# platform. --strict also fails on the warnings it would otherwise only print.
+run_gate 'composer validate' composer validate --strict
 run_gate 'composer deps'  vendor/bin/composer-dependency-analyser
 
 # typos is installed per environment, not via composer; skip when absent.

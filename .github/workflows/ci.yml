@@ -255,6 +255,10 @@ jobs:
       - name: Audit dependencies
         run: composer audit
 
+      # A composer.lock out of step with composer.json installs what the lock says.
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
       # Using extensions or packages not declared in composer.json breaks only in
       # the user's environment. Conversely, requiring unused dependencies forces
       # unnecessary installs on users.
