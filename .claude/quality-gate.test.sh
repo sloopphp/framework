@@ -223,14 +223,15 @@ check_answer 'process alive: empty' 'yes' gate_process_alive ''
 # treats only the pids in $alive_pids as running, so the cases are about the
 # reading of the label, not about which processes happen to exist.
 #
-# $1 case name, $2 the docker ps lines, $3 expected ids (newline-separated)
+# $1 case name, $2 the docker ps lines, $3 expected ids (newline-separated),
+# $4 this host's name (default 'here')
 check_sweep() {
-    local case_name="$1" lines="$2" want="$3" got
+    local case_name="$1" lines="$2" want="$3" host="${4:-here}" got
     got=$(
         # Called by stale_gate_servers, which the linter does not follow (SC2329).
         # shellcheck disable=SC2329
         gate_process_alive() { [[ " $alive_pids " == *" $1 "* ]]; }
-        printf '%s\n' "$lines" | stale_gate_servers 'here'
+        printf '%s\n' "$lines" | stale_gate_servers "$host"
     )
 
     if [ "$got" = "$want" ]; then
@@ -253,7 +254,8 @@ check_sweep 'sweep: empty lines' '
 
 ' ''
 check_sweep 'sweep: a pid that is not a number' 'aaa here x1' ''
-check_sweep 'sweep: a host name with a space' 'aaa my host 300' ''
+check_sweep 'sweep: a host name with a space' 'aaa my host 300' 'aaa' 'my host'
+check_sweep 'sweep: a host name that only starts the same' 'aaa my host 300' '' 'my'
 check_sweep 'sweep: only the gone ones among several' 'aaa here 100
 bbb here 300
 ccc there 400
