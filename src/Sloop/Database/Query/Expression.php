@@ -401,58 +401,65 @@ final readonly class Expression
      * Number of rows it reads, or of those where the column is not null.
      *
      * Counting rows is the default, written as `COUNT(*)`; naming a column counts
-     * the rows where it holds a value.
+     * the rows where it holds a value. With $distinct it counts the distinct
+     * values instead, which needs a column: `COUNT(DISTINCT *)` is refused.
      *
-     * @param  string|self  $column Column to count the values of, or '*' to count rows
-     * @return FunctionCall The call, to select as an aggregate or give a window with over()
+     * @param  string|self              $column   Column to count the values of, or '*' to count rows
+     * @param  bool                     $distinct Whether to count each distinct value once; the call then takes no window
+     * @return FunctionCall             The call, to select as an aggregate or give a window with over()
+     * @throws InvalidArgumentException When $distinct is given with '*'
      */
-    public static function count(string|self $column = '*'): FunctionCall
+    public static function count(string|self $column = '*', bool $distinct = false): FunctionCall
     {
-        return new FunctionCall('COUNT', [$column]);
+        return new FunctionCall('COUNT', [$column], $distinct);
     }
 
     /**
      * Sum of the column over the rows it reads.
      *
-     * @param  string|self  $column Column to read, or an expression producing the value
+     * @param  string|self  $column   Column to read, or an expression producing the value
+     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
-    public static function sum(string|self $column): FunctionCall
+    public static function sum(string|self $column, bool $distinct = false): FunctionCall
     {
-        return new FunctionCall('SUM', [$column]);
+        return new FunctionCall('SUM', [$column], $distinct);
     }
 
     /**
      * Average of the column over the rows it reads.
      *
-     * @param  string|self  $column Column to read, or an expression producing the value
+     * @param  string|self  $column   Column to read, or an expression producing the value
+     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
-    public static function avg(string|self $column): FunctionCall
+    public static function avg(string|self $column, bool $distinct = false): FunctionCall
     {
-        return new FunctionCall('AVG', [$column]);
+        return new FunctionCall('AVG', [$column], $distinct);
     }
 
     /**
      * Largest value of the column over the rows it reads.
      *
-     * @param  string|self  $column Column to read, or an expression producing the value
+     * @param  string|self  $column   Column to read, or an expression producing the value
+     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
-    public static function max(string|self $column): FunctionCall
+    public static function max(string|self $column, bool $distinct = false): FunctionCall
     {
-        return new FunctionCall('MAX', [$column]);
+        return new FunctionCall('MAX', [$column], $distinct);
     }
 
     /**
      * Smallest value of the column over the rows it reads.
      *
-     * @param  string|self  $column Column to read, or an expression producing the value
+     * @param  string|self  $column   Column to read, or an expression producing the value
+     * @param  bool         $distinct Whether to read each distinct value once; the call then takes no window
      * @return FunctionCall The call, to select as an aggregate or give a window with over()
      */
-    public static function min(string|self $column): FunctionCall
+    public static function min(string|self $column, bool $distinct = false): FunctionCall
     {
-        return new FunctionCall('MIN', [$column]);
+        return new FunctionCall('MIN', [$column], $distinct);
     }
 
     /**
@@ -568,16 +575,32 @@ final readonly class Expression
     /**
      * Values of the column joined into one string, as an aggregate.
      *
-     * The values are joined with commas in no particular order. GROUP_CONCAT()
-     * takes no window on either server, so this is for the select list only;
-     * over() on it is refused.
+     * Without $orders the values come in no particular order, and without
+     * $separator they are joined with commas. GROUP_CONCAT() takes no window on
+     * either server, so this is for the select list only; over() on it is
+     * refused.
      *
-     * @param  string|self  $column Column to read, or an expression producing the value
-     * @return FunctionCall The call, to select as an aggregate
+     * $orders is read the way the sort terms of a window are: a column name for
+     * each term, with a direction where a string key gives one, or an
+     * Expression standing as a term of its own. The separator is written into
+     * the SQL as hexadecimal bytes rather than bound, since neither server takes
+     * a placeholder there; written that way it reads the same whatever the
+     * session's SQL mode makes of backslashes.
+     *
+     * @param  string|self              $column    Column to read, or an expression producing the value
+     * @param  bool                     $distinct  Whether to join each distinct value once
+     * @param  array<int|string, mixed> $orders    Sort terms the values are joined in, as column or column => direction
+     * @param  string|null              $separator Text joining the values, or null for the servers' comma
+     * @return FunctionCall             The call, to select as an aggregate
+     * @throws InvalidArgumentException When a sort term cannot stand where it is, or a direction names none
      */
-    public static function groupConcat(string|self $column): FunctionCall
-    {
-        return new FunctionCall('GROUP_CONCAT', [$column]);
+    public static function groupConcat(
+        string|self $column,
+        bool $distinct = false,
+        array $orders = [],
+        ?string $separator = null,
+    ): FunctionCall {
+        return new FunctionCall('GROUP_CONCAT', [$column], $distinct, self::toOrders($orders), $separator);
     }
 
     /**

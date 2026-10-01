@@ -1581,17 +1581,27 @@ class Grammar
     /**
      * Compile a function call standing in the select list as an aggregate.
      *
+     * DISTINCT leads the arguments, and the sort terms and separator follow
+     * them inside the parentheses, the order both servers read GROUP_CONCAT in.
+     * The separator is written as hexadecimal bytes: neither server takes a
+     * placeholder after SEPARATOR, and a quoted literal would read differently
+     * depending on whether the session's SQL mode treats backslashes as escapes.
+     *
      * @param  FunctionCall             $call Call to write
-     * @return CompiledSql              The call, and the bindings its arguments need
+     * @return CompiledSql              The call, and the bindings its arguments and sort terms need
      * @throws InvalidArgumentException When the grammar writes no such aggregate, or an identifier in it is malformed
+     * @throws LogicException           When a window sorted by has a RANGE frame with an offset and not exactly one sort term
      */
     protected function compileAggregate(FunctionCall $call): CompiledSql
     {
+        $function  = $this->aggregateFunction($call->function);
         $arguments = $this->compileArguments($call->arguments);
+        $orderBy   = $this->compileOrderBy($call->orders);
+        $separator = $call->separator === null ? '' : " SEPARATOR X'" . bin2hex($call->separator) . "'";
 
         return new CompiledSql(
-            $this->aggregateFunction($call->function) . '(' . $arguments->sql . ')',
-            $arguments->bindings,
+            $function . '(' . ($call->distinct ? 'DISTINCT ' : '') . $arguments->sql . $orderBy->sql . $separator . ')',
+            array_merge($arguments->bindings, $orderBy->bindings),
         );
     }
 

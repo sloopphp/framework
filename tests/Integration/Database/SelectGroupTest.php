@@ -95,6 +95,42 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         ], $rows);
     }
 
+    public function testBothServersReadADistinctAggregateOnceEachValue(): void
+    {
+        // The five posts are written by users 1, 1, 1, 2 and 3, and two of
+        // them are published as 1 and one as 0. SUM comes back as a DECIMAL,
+        // read as a string on both servers.
+        $rows = $this->connection
+            ->select(
+                [Expression::count('user_id', distinct: true), 'authors'],
+                [Expression::sum('user_id', distinct: true), 'author_sum'],
+                [Expression::count('published', distinct: true), 'states'],
+            )
+            ->from('posts')
+            ->get();
+
+        $this->assertSame([['authors' => 3, 'author_sum' => '6', 'states' => 2]], $rows);
+    }
+
+    public function testBothServersJoinTheValuesOfAGroupConcatInOrderWithTheSeparator(): void
+    {
+        $rows = $this->connection
+            ->select(
+                'status',
+                [Expression::groupConcat('name', orders: ['name' => 'DESC'], separator: "・'\\"), 'names'],
+                [Expression::groupConcat('status', distinct: true, separator: ''), 'once'],
+            )
+            ->from('users')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->get();
+
+        $this->assertSame([
+            ['status' => 'active', 'names' => "dave・'\\bob・'\\alice", 'once' => 'active'],
+            ['status' => 'blocked', 'names' => 'carol', 'once' => 'blocked'],
+        ], $rows);
+    }
+
     public function testGroupByFoldsTheRowsIntoOneRowPerValue(): void
     {
         $rows = $this->connection->select('user_id', Expression::of('COUNT(*) AS posts_written'))

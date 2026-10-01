@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Query;
 
 use InvalidArgumentException;
+use LogicException;
 use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -125,6 +126,156 @@ final class AggregateCallTest extends TestCase
             'This grammar writes no window function called GROUP_CONCAT. Add it by overriding windowFunctions().',
             $e->getMessage(),
         );
+    }
+
+    /**
+     * @return array<string, array{FunctionCall, string}>
+     */
+    public static function distinctProvider(): array
+    {
+        return [
+            'COUNT'        => [Expression::count('user_id', distinct: true), 'COUNT(DISTINCT `user_id`)'],
+            'SUM'          => [Expression::sum('amount', distinct: true), 'SUM(DISTINCT `amount`)'],
+            'AVG'          => [Expression::avg('amount', distinct: true), 'AVG(DISTINCT `amount`)'],
+            'MIN'          => [Expression::min('amount', distinct: true), 'MIN(DISTINCT `amount`)'],
+            'MAX'          => [Expression::max('amount', distinct: true), 'MAX(DISTINCT `amount`)'],
+            'GROUP_CONCAT' => [Expression::groupConcat('status', distinct: true), 'GROUP_CONCAT(DISTINCT `status`)'],
+        ];
+    }
+
+    #[DataProvider('distinctProvider')]
+    public function testAnAggregateWrittenDistinctReadsEachValueOnce(FunctionCall $call, string $expected): void
+    {
+        $compiled = $this->connection->select($call)->from('orders')->compile();
+
+        $this->assertSame('SELECT ' . $expected . ' FROM `orders`', $compiled->sql);
+    }
+
+    public function testAnAggregateIsNotDistinctUnlessAsked(): void
+    {
+        $call = Expression::count('user_id');
+
+        $this->assertFalse($call->distinct);
+        $this->assertSame('SELECT COUNT(`user_id`) FROM `orders`', $this->connection->select($call)->from('orders')->compile()->sql);
+    }
+
+    public function testDistinctReadsTheRowsOnceEachValue(): void
+    {
+        $rows = $this->connection
+            ->select([Expression::count('user_id', distinct: true), 'users'], [Expression::sum('amount', distinct: true), 'total'])
+            ->from('orders')
+            ->execute()
+            ->asArray();
+
+        $this->assertSame([['users' => 2, 'total' => 390]], $rows);
+    }
+
+    public function testCountingDistinctRowsIsRefused(): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Expression::count(distinct: true));
+
+        $this->assertSame(
+            'DISTINCT reads the values of a column, so it takes no *. Name the column to count the distinct values of.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testADistinctCallTakesNoWindow(): void
+    {
+        $e = $this->assertThrows(LogicException::class, static fn () => Expression::count('user_id', distinct: true)->over());
+
+        $this->assertSame(
+            'A call written with DISTINCT, an ORDER BY, or a SEPARATOR takes no window; neither server accepts one.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testAGroupConcatWithASortOrderOrSeparatorTakesNoWindow(): void
+    {
+        foreach ([
+            Expression::groupConcat('status', orders: ['status']),
+            Expression::groupConcat('status', separator: '|'),
+        ] as $call) {
+            $this->assertThrows(LogicException::class, static fn () => $call->over());
+        }
+    }
+
+    public function testGroupConcatSortsItsValuesAndJoinsThemWithTheSeparator(): void
+    {
+        $compiled = $this->connection
+            ->select(Expression::groupConcat('status', distinct: true, orders: ['status' => 'DESC', 'id'], separator: '|'))
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame(
+            "SELECT GROUP_CONCAT(DISTINCT `status` ORDER BY `status` DESC, `id` ASC SEPARATOR X'7c') FROM `orders`",
+            $compiled->sql,
+        );
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testGroupConcatWritesNoSeparatorWhenNoneIsGiven(): void
+    {
+        $call = Expression::groupConcat('status', orders: ['status']);
+
+        $this->assertNull($call->separator);
+        $this->assertSame(
+            'SELECT GROUP_CONCAT(`status` ORDER BY `status` ASC) FROM `orders`',
+            $this->connection->select($call)->from('orders')->compile()->sql,
+        );
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function separatorProvider(): array
+    {
+        return [
+            'a quote'          => ["'", "X'27'"],
+            'a backslash'      => ['\\', "X'5c'"],
+            'several bytes'    => ['・', "X'e383bb'"],
+            'an empty string'  => ['', "X''"],
+            'a comma'          => [',', "X'2c'"],
+        ];
+    }
+
+    #[DataProvider('separatorProvider')]
+    public function testTheSeparatorIsWrittenAsHexadecimalBytes(string $separator, string $expected): void
+    {
+        $compiled = $this->connection->select(Expression::groupConcat('status', separator: $separator))->from('orders')->compile();
+
+        $this->assertSame('SELECT GROUP_CONCAT(`status` SEPARATOR ' . $expected . ') FROM `orders`', $compiled->sql);
+        $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testTheBindingsOfTheSortTermsComeAfterTheOnesOfTheArgument(): void
+    {
+        $compiled = $this->connection
+            ->select(Expression::groupConcat(Expression::of('`status` + ?', [1]), orders: [Expression::of('`amount` * ?', [2])]))
+            ->from('orders')
+            ->compile();
+
+        $this->assertSame('SELECT GROUP_CONCAT(`status` + ? ORDER BY `amount` * ?) FROM `orders`', $compiled->sql);
+        $this->assertSame([1, 2], $compiled->bindings);
+    }
+
+    public function testTheTablePrefixReachesTheSortTermsOfAGroupConcat(): void
+    {
+        $compiled = new Grammar('p_')->compileSelect(new SelectSpec('orders', [
+            Expression::groupConcat('orders.status', orders: ['orders.id' => 'DESC']),
+        ]));
+
+        $this->assertSame(
+            'SELECT GROUP_CONCAT(`p_orders`.`status` ORDER BY `p_orders`.`id` DESC) FROM `p_orders`',
+            $compiled->sql,
+        );
+    }
+
+    public function testASortTermOfAGroupConcatIsReadLikeOneOfAWindow(): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Expression::groupConcat('status', orders: ['DESC']));
+
+        $this->assertStringStartsWith('A sort direction stands where a column is named', $e->getMessage());
     }
 
     public function testTheNameIsWrittenInTheGrammarsSpelling(): void
