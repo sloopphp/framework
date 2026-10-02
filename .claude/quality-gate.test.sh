@@ -249,8 +249,8 @@ check_sweep 'sweep: a run that is gone' 'aaa here 300' 'aaa'
 check_sweep 'sweep: a run that is still going' 'aaa here 100' ''
 check_sweep 'sweep: another host' 'aaa there 300' ''
 check_sweep 'sweep: a label without a pid' 'aaa here' ''
-# A one-word label equal to this host's name: only the host check rejects it,
-# since the word also passes as a pid.
+# A one-word label equal to this host's name: the word matches the host and
+# also passes as a pid, so only the one-word check rejects it.
 check_sweep 'sweep: a label that is a single number' 'aaa 300' '' '300'
 check_sweep 'sweep: no label value' 'aaa' ''
 check_sweep 'sweep: empty lines' '
