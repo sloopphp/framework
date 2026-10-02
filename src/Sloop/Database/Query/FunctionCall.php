@@ -25,9 +25,9 @@ use LogicException;
  *
  * What may stand as an argument, and which calls may be written DISTINCT or
  * with a sort order and separator, is settled by the signatures of the
- * factories that build these. One constructed directly is held as given, and
- * a Grammar refuses a combination neither server accepts when it writes the
- * call. A call carrying any of those three is an aggregate only: neither
+ * factories that build these. One constructed directly is checked here only
+ * for what needs no Grammar to tell, and a Grammar refuses a combination
+ * neither server accepts when it writes the call. A call carrying any of those three is an aggregate only: neither
  * server gives one a window.
  *
  * @see Expression::fn() for the factory that names any function a Grammar writes

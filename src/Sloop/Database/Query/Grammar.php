@@ -1603,9 +1603,10 @@ class Grammar
      * charset either server offers ends a multi-byte character in a quote, so
      * with backslashes kept out, doubling the quotes is all it takes.
      *
-     * Both servers refuse DISTINCT on an aggregate outside
-     * DISTINCT_AGGREGATES, and a sort order or separator on anything but GROUP_CONCAT (1064),
-     * so those are refused here rather than sent. The named factories cannot
+     * DISTINCT outside DISTINCT_AGGREGATES and a sort order or separator on
+     * anything but GROUP_CONCAT are refused here rather than sent: both
+     * servers reject them (1064), bar JSON_ARRAYAGG(DISTINCT), which MySQL
+     * alone rejects and so is not offered either. The named factories cannot
      * build them; a FunctionCall constructed directly can.
      *
      * A subclass that replaces this writes the DISTINCT, the sort terms and the

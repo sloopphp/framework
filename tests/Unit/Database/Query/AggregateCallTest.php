@@ -202,7 +202,7 @@ final class AggregateCallTest extends TestCase
         $this->assertSame('Orders must be an Order, got string at index 0.', $e->getMessage());
     }
 
-    public function testDistinctOnAnAggregateEitherServerRefusesItOnIsRefused(): void
+    public function testDistinctOnAnAggregateOutsideTheSixIsRefused(): void
     {
         $e = $this->assertThrows(
             InvalidArgumentException::class,
