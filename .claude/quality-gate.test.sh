@@ -135,6 +135,9 @@ check 'rector: reports no count' 'Rector' '' \
 check 'composer audit: reports no count' 'composer audit' '' \
     'No security vulnerability advisories found.'
 
+check 'composer validate: reports no count' 'composer validate' '' \
+    './composer.json is valid'
+
 check 'unknown gate: reports no count' 'Some New Gate' '' \
     'whatever the tool printed'
 

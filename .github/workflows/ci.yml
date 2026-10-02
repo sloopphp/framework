@@ -261,6 +261,10 @@ jobs:
       - name: Check dependency declarations
         run: vendor/bin/composer-dependency-analyser
 
+      # A composer.lock out of step with composer.json installs what the lock says.
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
   rector:
     name: Rector (PHP version migration)
     runs-on: ubuntu-latest
