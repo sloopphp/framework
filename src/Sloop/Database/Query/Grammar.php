@@ -197,6 +197,17 @@ class Grammar
     ];
 
     /**
+     * Aggregates both servers accept DISTINCT on.
+     *
+     * The others in the aggregate list -- the STD, VAR and BIT families and
+     * JSON_OBJECTAGG() -- are refused with DISTINCT by both (1064), and
+     * JSON_ARRAYAGG() by MySQL alone.
+     *
+     * @var list<string>
+     */
+    private const array DISTINCT_AGGREGATES = ['AVG', 'COUNT', 'GROUP_CONCAT', 'MAX', 'MIN', 'SUM'];
+
+    /**
      * Build a grammar for a connection.
      *
      * @param  string                   $prefix Prepended to every table name; empty for none
@@ -1588,9 +1599,14 @@ class Grammar
      * the connection's charset and converted to the column's, the way a value
      * compared with the column would be, which a hexadecimal literal is not.
      * FunctionCall refuses a backslash in it, the one character whose meaning
-     * depends on whether the session's SQL mode treats it as an escape; the
-     * charsets a connection may use never end a multi-byte character in a
-     * quote or a backslash, so doubling the quotes is all it takes.
+     * depends on whether the session's SQL mode treats it as an escape. No
+     * charset either server offers ends a multi-byte character in a quote, so
+     * with backslashes kept out, doubling the quotes is all it takes.
+     *
+     * Both servers refuse DISTINCT on an aggregate outside
+     * DISTINCT_AGGREGATES, and a sort order or separator on anything but GROUP_CONCAT (1064),
+     * so those are refused here rather than sent. The named factories cannot
+     * build them; a FunctionCall constructed directly can.
      *
      * A subclass that replaces this writes the DISTINCT, the sort terms and the
      * separator itself; nothing else reads them, so leaving any out drops it
@@ -1598,11 +1614,20 @@ class Grammar
      *
      * @param  FunctionCall             $call Call to write
      * @return CompiledSql              The call, and the bindings its arguments and sort terms need
-     * @throws InvalidArgumentException When the grammar writes no such aggregate, or an identifier in it is malformed
+     * @throws InvalidArgumentException When the grammar writes no such aggregate, an identifier in it is malformed, or it carries DISTINCT, a sort order or a separator the function does not take
      */
     protected function compileAggregate(FunctionCall $call): CompiledSql
     {
-        $function  = $this->aggregateFunction($call->function);
+        $function = $this->aggregateFunction($call->function);
+
+        if ($call->distinct && !\in_array($function, self::DISTINCT_AGGREGATES, true)) {
+            throw new InvalidArgumentException($function . '() is not one of the aggregates both servers accept DISTINCT on.');
+        }
+
+        if (($call->orders !== [] || $call->separator !== null) && $function !== 'GROUP_CONCAT') {
+            throw new InvalidArgumentException('Only GROUP_CONCAT() takes a sort order or a separator, got ' . $function . '().');
+        }
+
         $arguments = $this->compileArguments($call->arguments);
         $orderBy   = $this->compileOrderBy($call->orders);
         $separator = $call->separator === null ? '' : " SEPARATOR '" . str_replace("'", "''", $call->separator) . "'";

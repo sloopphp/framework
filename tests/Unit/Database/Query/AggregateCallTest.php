@@ -15,6 +15,7 @@ use Sloop\Database\Query\CompiledSql;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\FunctionCall;
 use Sloop\Database\Query\Grammar;
+use Sloop\Database\Query\Order;
 use Sloop\Database\Query\SelectedColumn;
 use Sloop\Database\Query\SelectSpec;
 use Sloop\Tests\Support\ThrowsAssertions;
@@ -199,6 +200,35 @@ final class AggregateCallTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => new FunctionCall('GROUP_CONCAT', ['status'], orders: ['status']));
 
         $this->assertSame('Orders must be an Order, got string at index 0.', $e->getMessage());
+    }
+
+    public function testDistinctOnAnAggregateEitherServerRefusesItOnIsRefused(): void
+    {
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            fn () => $this->connection->select(new FunctionCall('STD', ['amount'], distinct: true))->from('orders')->compile(),
+        );
+
+        $this->assertSame('STD() is not one of the aggregates both servers accept DISTINCT on.', $e->getMessage());
+    }
+
+    /**
+     * @return array<string, array{FunctionCall, string}>
+     */
+    public static function sortOrSeparatorOutsideGroupConcatProvider(): array
+    {
+        return [
+            'a sort order' => [new FunctionCall('COUNT', ['amount'], orders: [new Order('amount')]), 'COUNT'],
+            'a separator'  => [new FunctionCall('SUM', ['amount'], separator: ','), 'SUM'],
+        ];
+    }
+
+    #[DataProvider('sortOrSeparatorOutsideGroupConcatProvider')]
+    public function testOnlyGroupConcatTakesASortOrderOrSeparator(FunctionCall $call, string $name): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, fn () => $this->connection->select($call)->from('orders')->compile());
+
+        $this->assertSame('Only GROUP_CONCAT() takes a sort order or a separator, got ' . $name . '().', $e->getMessage());
     }
 
     public function testADistinctCallTakesNoWindow(): void
