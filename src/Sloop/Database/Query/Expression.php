@@ -587,16 +587,17 @@ final readonly class Expression
      * $orders is read the way the sort terms of a window are: a column name for
      * each term, with a direction where a string key gives one, or an
      * Expression standing as a term of its own. The separator is written into
-     * the SQL as hexadecimal bytes rather than bound, since neither server takes
-     * a placeholder there; written that way it reads the same whatever the
-     * session's SQL mode makes of backslashes.
+     * the SQL as a quoted literal rather than bound, since neither server takes
+     * a placeholder there; it is converted to the column's charset the way a
+     * value is. A backslash in it is refused, since the session's SQL mode
+     * decides whether a literal reads it as an escape.
      *
      * @param  string|self              $column    Column to read, or an expression producing the value
      * @param  bool                     $distinct  Whether to join each distinct value once
      * @param  array<int|string, mixed> $orders    Sort terms the values are joined in, as column or column => direction
      * @param  string|null              $separator Text joining the values, or null for the servers' comma
      * @return FunctionCall             The call, to select as an aggregate
-     * @throws InvalidArgumentException When a sort term cannot stand where it is, a direction names none, or $distinct is given with '*' or 'table.*'
+     * @throws InvalidArgumentException When a sort term cannot stand where it is, a direction names none, $distinct is given with '*' or 'table.*', or $separator holds a backslash
      */
     public static function groupConcat(
         string|self $column,

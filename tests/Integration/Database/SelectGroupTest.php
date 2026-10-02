@@ -117,7 +117,7 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         $rows = $this->connection
             ->select(
                 'status',
-                [Expression::groupConcat('name', orders: ['name' => 'DESC'], separator: "・'\\"), 'names'],
+                [Expression::groupConcat('name', orders: ['name' => 'DESC'], separator: "・'"), 'names'],
                 [Expression::groupConcat('status', distinct: true, separator: ''), 'once'],
             )
             ->from('users')
@@ -126,9 +126,23 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
             ->get();
 
         $this->assertSame([
-            ['status' => 'active', 'names' => "dave・'\\bob・'\\alice", 'once' => 'active'],
+            ['status' => 'active', 'names' => "dave・'bob・'alice", 'once' => 'active'],
             ['status' => 'blocked', 'names' => 'carol', 'once' => 'blocked'],
         ], $rows);
+    }
+
+    public function testBothServersConvertTheSeparatorToTheCharsetOfWhatItJoins(): void
+    {
+        // The values are latin1 here and the connection utf8mb4. A separator
+        // written as hexadecimal bytes would be read as latin1 as it stands and
+        // come back as "Ã©"; a quoted literal is converted like any value.
+        $rows = $this->connection
+            ->select([Expression::groupConcat(Expression::of('CONVERT(`name` USING latin1)'), orders: [Expression::of('`name`')], separator: 'é'), 'names'])
+            ->from('users')
+            ->where('status', 'active')
+            ->get();
+
+        $this->assertSame([['names' => 'aliceébobédave']], $rows);
     }
 
     public function testGroupByFoldsTheRowsIntoOneRowPerValue(): void

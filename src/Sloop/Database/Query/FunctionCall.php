@@ -63,12 +63,16 @@ final readonly class FunctionCall
      * here; both servers reject `COUNT(DISTINCT *)`. An Expression is written
      * as it stands and is not read for one.
      *
+     * A separator may not hold a backslash: it is written into the SQL as a
+     * quoted literal, where a backslash is an escape or an ordinary character
+     * depending on the session's SQL mode.
+     *
      * @param  string                                                   $function  Name of the function, in any case
      * @param  array<int|string, string|Expression|int|float|bool|null> $arguments Arguments of the call, in written order
      * @param  bool                                                     $distinct  Whether the call reads each distinct value once
      * @param  array<int|string, mixed>                                 $orders    Order instances the call reads its values in, written inside the parentheses
      * @param  string|null                                              $separator Text joining the values, or null to write none and leave the server's comma
-     * @throws InvalidArgumentException                                 When the function name is empty, a sort term is not an Order, or a DISTINCT call names every column
+     * @throws InvalidArgumentException                                 When the function name is empty, a sort term is not an Order, a DISTINCT call names every column, or the separator holds a backslash
      */
     public function __construct(
         string $function,
@@ -91,6 +95,12 @@ final readonly class FunctionCall
                     );
                 }
             }
+        }
+
+        if ($separator !== null && str_contains($separator, '\\')) {
+            throw new InvalidArgumentException(
+                'A separator may not hold a backslash; it reads as an escape or as itself depending on the SQL mode.',
+            );
         }
 
         $this->orders = ClauseParts::toOrders($orders);

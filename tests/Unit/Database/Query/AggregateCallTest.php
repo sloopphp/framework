@@ -236,7 +236,7 @@ final class AggregateCallTest extends TestCase
             ->compile();
 
         $this->assertSame(
-            "SELECT GROUP_CONCAT(DISTINCT `status` ORDER BY `status` DESC, `id` ASC SEPARATOR X'7c') FROM `orders`",
+            "SELECT GROUP_CONCAT(DISTINCT `status` ORDER BY `status` DESC, `id` ASC SEPARATOR '|') FROM `orders`",
             $compiled->sql,
         );
         $this->assertSame([], $compiled->bindings);
@@ -259,21 +259,42 @@ final class AggregateCallTest extends TestCase
     public static function separatorProvider(): array
     {
         return [
-            'a quote'          => ["'", "X'27'"],
-            'a backslash'      => ['\\', "X'5c'"],
-            'several bytes'    => ['・', "X'e383bb'"],
-            'an empty string'  => ['', "X''"],
-            'a comma'          => [',', "X'2c'"],
+            'a quote'         => ["'", "''''"],
+            'two quotes'      => ["a''b", "'a''''b'"],
+            'several bytes'   => ['・', "'・'"],
+            'an empty string' => ['', "''"],
+            'a question mark' => ['?', "'?'"],
         ];
     }
 
     #[DataProvider('separatorProvider')]
-    public function testTheSeparatorIsWrittenAsHexadecimalBytes(string $separator, string $expected): void
+    public function testTheSeparatorIsWrittenAsAQuotedLiteral(string $separator, string $expected): void
     {
         $compiled = $this->connection->select(Expression::groupConcat('status', separator: $separator))->from('orders')->compile();
 
         $this->assertSame('SELECT GROUP_CONCAT(`status` SEPARATOR ' . $expected . ') FROM `orders`', $compiled->sql);
         $this->assertSame([], $compiled->bindings);
+    }
+
+    public function testASeparatorHoldingABackslashIsRefused(): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Expression::groupConcat('status', separator: 'a\\b'));
+
+        $this->assertSame(
+            'A separator may not hold a backslash; it reads as an escape or as itself depending on the SQL mode.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testAQuestionMarkInTheSeparatorIsNotReadAsAPlaceholder(): void
+    {
+        $raw = $this->connection
+            ->select(Expression::groupConcat('status', separator: "'?"))
+            ->from('orders')
+            ->where('user_id', 10)
+            ->toRawSql();
+
+        $this->assertSame("SELECT GROUP_CONCAT(`status` SEPARATOR '''?') FROM `orders` WHERE `user_id` = '10'", $raw);
     }
 
     public function testTheBindingsOfTheSortTermsComeAfterTheOnesOfTheArgument(): void

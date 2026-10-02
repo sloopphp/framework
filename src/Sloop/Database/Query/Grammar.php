@@ -1583,9 +1583,14 @@ class Grammar
      *
      * DISTINCT leads the arguments, and the sort terms and separator follow
      * them inside the parentheses, the order both servers read GROUP_CONCAT in.
-     * The separator is written as hexadecimal bytes: neither server takes a
-     * placeholder after SEPARATOR, and a quoted literal would read differently
-     * depending on whether the session's SQL mode treats backslashes as escapes.
+     * The separator is written as a quoted literal with its quotes doubled:
+     * neither server takes a placeholder after SEPARATOR. A literal is read in
+     * the connection's charset and converted to the column's, the way a value
+     * compared with the column would be, which a hexadecimal literal is not.
+     * FunctionCall refuses a backslash in it, the one character whose meaning
+     * depends on whether the session's SQL mode treats it as an escape; the
+     * charsets a connection may use never end a multi-byte character in a
+     * quote or a backslash, so doubling the quotes is all it takes.
      *
      * A subclass that replaces this writes the DISTINCT, the sort terms and the
      * separator itself; nothing else reads them, so leaving any out drops it
@@ -1600,7 +1605,7 @@ class Grammar
         $function  = $this->aggregateFunction($call->function);
         $arguments = $this->compileArguments($call->arguments);
         $orderBy   = $this->compileOrderBy($call->orders);
-        $separator = $call->separator === null ? '' : " SEPARATOR X'" . bin2hex($call->separator) . "'";
+        $separator = $call->separator === null ? '' : " SEPARATOR '" . str_replace("'", "''", $call->separator) . "'";
 
         return new CompiledSql(
             $function . '(' . ($call->distinct ? 'DISTINCT ' : '') . $arguments->sql . $orderBy->sql . $separator . ')',
