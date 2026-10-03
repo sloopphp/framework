@@ -30,6 +30,7 @@ use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
+use Sloop\Http\Request\FormBody;
 use Sloop\Http\Request\JsonBody;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Log\Log;
@@ -54,8 +55,11 @@ use Sloop\Validation\ValidationMessages;
  *   body and cookies taken from the globals are not, and `php://input`
  *   cannot be set from a test at all. `getallheaders()` does not exist under
  *   the CLI either, so the tests here pass `run()` / `handle()` a request
- *   the test itself put through `JsonBody::parse()`, and `JsonBodyTest`
- *   covers the parsing itself.
+ *   the test itself put through `JsonBody::parse()` or `FormBody::parse()`,
+ *   and `JsonBodyTest` / `FormBodyTest` cover the parsing itself.
+ *   `request_parse_body()` reads php://input as well, so the order of the
+ *   two reads in `createServerRequestFromGlobals()` is checked only by hand
+ *   on the built-in server.
  *
  * - **`send($response)`**: writes HTTP headers via `header()` and outputs
  *   the body via `echo`. Verification requires `@runInSeparateProcess` or
@@ -1126,6 +1130,29 @@ final class ApplicationTest extends TestCase
         $this->captureLog($app);
 
         $this->assertSame(400, $app->handle($request)->getStatusCode());
+    }
+
+    public function testFormBodyPhpRefusedToReadIsA400ThatPassesBackThroughGlobalMiddleware(): void
+    {
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
+        );
+        $request = FormBody::parse(
+            new ServerRequest('PUT', new Uri('/nowhere'), ['Content-Type' => 'multipart/form-data']),
+            static function (): never {
+                throw new \RequestParseBodyException('Missing boundary in multipart/form-data POST data');
+            },
+        );
+
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
+
+        $response = $app->run($request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request body could not be read as form data.', (string) $response->getBody());
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
     }
 
     public function testRouteMiddlewareRequestMutationIsVisibleToController(): void
