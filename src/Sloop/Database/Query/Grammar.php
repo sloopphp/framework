@@ -1600,7 +1600,7 @@ class Grammar
      * compared with the column would be, which a hexadecimal literal is not.
      * FunctionCall refuses a backslash in it, the one character whose meaning
      * depends on whether the session's SQL mode treats it as an escape. No
-     * charset either server offers ends a multi-byte character in a quote, so
+     * charset a connection may use ends a multi-byte character in a quote, so
      * with backslashes kept out, doubling the quotes is all it takes.
      *
      * DISTINCT outside DISTINCT_AGGREGATES and a sort order or separator on
