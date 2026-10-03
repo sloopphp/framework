@@ -138,6 +138,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function chars(array $sets, ?string $message = null): self
     {
@@ -169,6 +170,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function notChars(array $sets, ?string $message = null): self
     {
@@ -206,6 +208,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function minCharClasses(int $min, array $sets, ?string $message = null): self
     {
@@ -343,6 +346,7 @@ final class StringRule extends FieldRule
      * @param  string                                                         $rule Rule name for the message
      * @return array{string, list<string>, list<string>, array<string, true>}
      * @throws InvalidArgumentException                                       When a listed string is empty or not valid UTF-8
+     * @throws RuntimeException                                               When ICU cannot split a listed string into grapheme clusters
      */
     private static function readSets(array $sets, string $rule): array
     {
@@ -377,6 +381,7 @@ final class StringRule extends FieldRule
      * @param  string|null         $pattern  Pattern matching a cluster made only of allowed code points, or null when no Chars case was given
      * @param  array<string, true> $clusters Listed grapheme clusters in NFC
      * @return bool
+     * @throws RuntimeException    When ICU cannot split the value
      */
     private static function eachClusterAllowed(string $value, ?string $pattern, array $clusters): bool
     {
@@ -398,6 +403,7 @@ final class StringRule extends FieldRule
      * @param  string                    $value Valid UTF-8 string
      * @param  list<array<string, true>> $kinds Each kind's grapheme clusters in NFC
      * @return int
+     * @throws RuntimeException          When ICU cannot split the value
      */
     private static function countListedKinds(string $value, array $kinds): int
     {
@@ -423,6 +429,7 @@ final class StringRule extends FieldRule
      *
      * @param  string              $value Valid UTF-8 string
      * @return array<string, true>
+     * @throws RuntimeException    When ICU cannot split the value
      */
     private static function clusterSet(string $value): array
     {

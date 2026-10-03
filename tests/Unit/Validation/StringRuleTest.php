@@ -470,7 +470,10 @@ final class StringRuleTest extends TestCase
         ini_set('pcre.jit', '0');
         ini_set('pcre.backtrack_limit', '1');
         try {
-            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Letter]), str_repeat('-', 50000)));
+            // A pattern no other test builds: PHP caches each compiled pattern with
+            // its JIT code, and a cached JIT pattern ignores pcre.jit=0 and the
+            // backtrack limit, so a shared pattern would let PCRE succeed here.
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Letter, Chars::Tabs]), str_repeat('-', 50000)));
         } finally {
             ini_set('pcre.jit', (string) $jit);
             ini_set('pcre.backtrack_limit', (string) $backtrack);

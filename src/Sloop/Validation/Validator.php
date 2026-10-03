@@ -84,7 +84,7 @@ final readonly class Validator
      *
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
-     * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, or a file's stream cannot be read
+     * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters
      * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
      */
     public function validate(array $data): ValidationResult
@@ -142,7 +142,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>                                          $data Input
      * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
      * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
-     * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, or a file's stream cannot be read
+     * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters
      */
     public function evaluateFields(array $data): array
     {
