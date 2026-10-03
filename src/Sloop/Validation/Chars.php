@@ -28,7 +28,8 @@ enum Chars: string
      *
      * Katakana lists the ranges of the Katakana script (PCRE2 10.47) other
      * than the half-width forms U+FF66-FF9D: a character class has no way to
-     * subtract those from `\p{sc=Katakana}`. HankakuKatakana is the whole
+     * subtract those from `\p{sc=Katakana}`. The list is fixed: characters a
+     * later Unicode version adds to the script are not included. HankakuKatakana is the whole
      * half-width block U+FF65-FF9F, its middle dot, prolonged sound mark and
      * sound marks included.
      *

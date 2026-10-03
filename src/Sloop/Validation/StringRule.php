@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use Generator;
 use InvalidArgumentException;
 use Normalizer;
+use RuntimeException;
 
 /**
  * Rules for a field whose validated value is a string.
@@ -158,8 +160,10 @@ final class StringRule extends FieldRule
      * A Chars case matches any code point of the value. A string in $sets lists
      * characters to reject, matched as whole grapheme clusters in NFC: a listed
      * `l` does not match `l̃` (l followed by a combining tilde). Use a Chars case
-     * to reject a code point wherever it appears. Chars::Emoji used here also
-     * rejects `©` `™` `®` and the zero width joiner (see Chars::Emoji).
+     * to reject a code point wherever it appears. Listed "\r" and "\n" do not
+     * match a CR LF pair, which is one grapheme cluster; use Chars::Newlines.
+     * Chars::Emoji used here also rejects `©` `™` `®` and the zero width
+     * joiner (see Chars::Emoji).
      *
      * @param  list<Chars|string>       $sets    Rejected character sets and listed characters
      * @param  string|null              $message Message for this rule only
@@ -174,7 +178,7 @@ final class StringRule extends FieldRule
         $pattern = '/[' . $class . ']/u';
 
         return $this->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $clusters): bool {
-            if ($class !== '' && preg_match($pattern, $value) === 1) {
+            if ($class !== '' && preg_match($pattern, $value) !== 0) {
                 return false;
             }
 
@@ -201,7 +205,7 @@ final class StringRule extends FieldRule
      * @param  list<Chars|string>       $sets    The kinds to count
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, or the message template is malformed
      */
     public function minCharClasses(int $min, array $sets, ?string $message = null): self
     {
@@ -213,17 +217,24 @@ final class StringRule extends FieldRule
             throw new InvalidArgumentException('minCharClasses() needs a minimum of at most ' . \count($sets) . ' (the number of sets given), got ' . $min . '.');
         }
         [, $names, $listed] = self::readSets($sets, 'minCharClasses');
-
-        $kinds = [];
-        foreach ($sets as $set) {
-            $kinds[] = $set instanceof Chars ? '/[' . $set->pattern() . ']/u' : self::clusterSet($set);
+        if (\count(array_unique($names)) !== \count($names) || \count(array_unique($listed)) !== \count($listed)) {
+            throw new InvalidArgumentException('minCharClasses() needs each set at most once.');
         }
 
-        return $this->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $kinds): bool {
-            $present = self::clusterSet($value);
-            $used    = 0;
-            foreach ($kinds as $kind) {
-                if (\is_string($kind) ? preg_match($kind, $value) === 1 : array_intersect_key($kind, $present) !== []) {
+        $patterns    = [];
+        $listedKinds = [];
+        foreach ($sets as $set) {
+            if ($set instanceof Chars) {
+                $patterns[] = '/[' . $set->pattern() . ']/u';
+            } else {
+                $listedKinds[] = self::clusterSet($set);
+            }
+        }
+
+        return $this->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
+            $used = self::countListedKinds($value, $listedKinds);
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $value) === 1) {
                     ++$used;
                 }
             }
@@ -382,6 +393,32 @@ final class StringRule extends FieldRule
     }
 
     /**
+     * How many of the listed kinds have a grapheme cluster in the value.
+     *
+     * @param  string                    $value Valid UTF-8 string
+     * @param  list<array<string, true>> $kinds Each kind's grapheme clusters in NFC
+     * @return int
+     */
+    private static function countListedKinds(string $value, array $kinds): int
+    {
+        if ($kinds === []) {
+            return 0;
+        }
+
+        $found = [];
+        foreach (self::clusters($value) as $cluster) {
+            $key = self::nfc($cluster);
+            foreach ($kinds as $i => $kind) {
+                if (isset($kind[$key])) {
+                    $found[$i] = true;
+                }
+            }
+        }
+
+        return \count($found);
+    }
+
+    /**
      * The grapheme clusters of a valid UTF-8 string, each in NFC, as set keys.
      *
      * @param  string              $value Valid UTF-8 string
@@ -398,26 +435,29 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Split a valid UTF-8 string into grapheme clusters.
+     * The grapheme clusters of a valid UTF-8 string, one at a time.
      *
-     * @param  string       $value Valid UTF-8 string
-     * @return list<string>
+     * Splitting one cluster per call keeps the memory flat; an array of every
+     * cluster costs about 64 bytes per character, which a long value turns
+     * into a fatal memory error before any rule has failed.
+     *
+     * @param  string                              $value Valid UTF-8 string
+     * @return Generator<int, string, mixed, void>
+     * @throws RuntimeException                    When ICU cannot split the value
      */
-    private static function clusters(string $value): array
+    private static function clusters(string $value): Generator
     {
-        $split = grapheme_str_split($value);
-        if (!\is_array($split)) {
-            return [];
-        }
-
-        $clusters = [];
-        foreach ($split as $cluster) {
-            if (\is_string($cluster)) {
-                $clusters[] = $cluster;
+        $length = \strlen($value);
+        $offset = 0;
+        while ($offset < $length) {
+            $cluster = grapheme_extract($value, 1, \GRAPHEME_EXTR_COUNT, $offset, $next);
+            if (!\is_string($cluster) || $cluster === '' || !\is_int($next)) {
+                throw new RuntimeException('Could not split the value into grapheme clusters.');
             }
-        }
+            $offset = $next;
 
-        return $clusters;
+            yield $cluster;
+        }
     }
 
     /**

@@ -423,6 +423,21 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notChars'], self::failedRules($rule, '☀'));
     }
 
+    public function testNotCharsEmojiAlsoRejectsTextSymbolsAndTheZeroWidthJoiner(): void
+    {
+        $rule = Rule::string()->notChars([Chars::Emoji]);
+
+        $this->assertSame(['notChars'], self::failedRules($rule, 'Acme©'));
+        $this->assertSame(['notChars'], self::failedRules($rule, 'Brand™'));
+        $this->assertSame(['notChars'], self::failedRules($rule, "\u{0DC1}\u{0DCA}\u{200D}\u{0DBB}\u{0DD3}"));
+    }
+
+    public function testNotCharsListedNewlinesDoNotMatchCrlf(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(["\r", "\n"]), "a\r\nb"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Newlines]), "a\r\nb"));
+    }
+
     public function testNotCharsSupplementaryMatchesWhatUtf8mb3CannotStore(): void
     {
         $rule = Rule::string()->notChars([Chars::Supplementary]);
@@ -446,6 +461,37 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{00E9}"]), "cafe\u{0301}"));
         $this->assertSame([], self::failedRules(Rule::string()->notChars(['l']), "l\u{0303}"));
         $this->assertSame([], self::failedRules(Rule::string()->notChars(['👍🏻']), '👍'));
+    }
+
+    public function testNotCharsFailsWhenPcreGivesUp(): void
+    {
+        $jit       = \ini_get('pcre.jit');
+        $backtrack = \ini_get('pcre.backtrack_limit');
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Letter]), str_repeat('-', 50000)));
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+            ini_set('pcre.backtrack_limit', (string) $backtrack);
+        }
+    }
+
+    public function testListedCharacterRulesKeepMemoryFlatOnALongValue(): void
+    {
+        $value = str_repeat('a', 1_000_000);
+        $rules = [
+            Rule::string()->chars([Chars::Numeric, 'a']),
+            Rule::string()->notChars(['"']),
+            Rule::string()->minCharClasses(2, [Chars::Numeric, 'a']),
+        ];
+
+        foreach ($rules as $rule) {
+            memory_reset_peak_usage();
+            $before = memory_get_usage();
+            self::failedRules($rule, $value);
+            $this->assertLessThan(16 * 1024 * 1024, memory_get_peak_usage() - $before);
+        }
     }
 
     public function testNotCharsError(): void
@@ -533,6 +579,42 @@ final class StringRuleTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(1, []));
 
         $this->assertSame('minCharClasses() needs at least one value.', $e->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{list<Chars|string>}>
+     */
+    public static function duplicatedCharClasses(): iterable
+    {
+        yield 'same case' => [[Chars::Alpha, Chars::Alpha]];
+        yield 'same listed string' => [['ab', Chars::Numeric, 'ab']];
+    }
+
+    /**
+     * @param list<Chars|string> $sets
+     */
+    #[DataProvider('duplicatedCharClasses')]
+    public function testMinCharClassesRejectsASetGivenTwice(array $sets): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(2, $sets));
+
+        $this->assertSame('minCharClasses() needs each set at most once.', $e->getMessage());
+    }
+
+    public function testMinCharClassesTellsACaseFromAListedStringWithTheSameSpelling(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->minCharClasses(2, [Chars::Alpha, 'alpha']), 'Zl'));
+    }
+
+    public function testMinCharClassesRejectsInvalidUtf8ListedCharacters(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(1, ["\xFF"]));
+
+        $this->assertSame('minCharClasses() needs listed characters in valid UTF-8.', $e->getMessage());
     }
 
     public function testMinCharClassesRejectsAnEmptyListedString(): void
