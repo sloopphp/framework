@@ -11,8 +11,10 @@ use Sloop\Database\Connection;
  * Base class for integration tests that need a live MySQL/MariaDB connection.
  *
  * Connection parameters come from the DB_HOST / DB_PORT / DB_NAME / DB_USER /
- * DB_PASS environment variables, falling back to the defaults defined in
- * framework/compose.yaml (MySQL on 127.0.0.1:3306, sloop/secret credentials).
+ * DB_PASS environment variables, falling back to 127.0.0.1:3306, the sloop_test
+ * database and sloop/secret. `.claude/quality-gate.sh --with-integration` starts
+ * a server per run and passes all five variables, the port being the one that
+ * differs from the defaults.
  *
  * Future additions (per-test begin/rollback, fixture helpers) belong here so
  * every concrete integration test inherits them.
