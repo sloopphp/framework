@@ -265,7 +265,9 @@ if [ "$with_integration" -eq 1 ]; then
     # do the same on every bash this runs under. Only kill -9 skips it, and the
     # next run's sweep below picks that up. TERM is not trapped: a trap would
     # wait for the gate in the foreground (Infection, up to minutes) before
-    # cleaning up.
+    # cleaning up. Untrapped, the servers go at once, but a TERM sent to this
+    # script alone still leaves that foreground gate running to its end, with
+    # the worktree lock it inherited; signal the process group to stop both.
     trap remove_gate_servers EXIT
     trap 'exit 130' INT
 

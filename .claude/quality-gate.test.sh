@@ -259,7 +259,6 @@ check_sweep 'sweep: another PID namespace' "$id_a here ns2 1000 300" ''
 # Another user's process can be hidden from /proc, so absent does not mean gone.
 check_sweep 'sweep: another user' "$id_a here ns1 1001 300" ''
 check_sweep 'sweep: a label without a pid' "$id_a here ns1 1000" ''
-check_sweep 'sweep: a label of three words' "$id_a ns1 1000 300" ''
 # Three words that match this run's namespace, uid and a gone pid, with a host
 # of 'ns1': only the word count check rejects it.
 check_sweep 'sweep: a label one word short' "$id_a ns1 1000 300" '' 'ns1'
