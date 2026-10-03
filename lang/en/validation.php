@@ -29,6 +29,8 @@ return [
     'in'            => 'The selected {label} is invalid.',
     'notIn'         => 'The selected {label} is invalid.',
     'chars'         => 'The {label} field contains characters that are not allowed.',
+    'notChars'      => 'The {label} field contains characters that are not allowed.',
+    'minCharClasses' => 'The {label} field must contain at least {min} kinds of characters.',
     'email'         => 'The {label} field must be a valid email address.',
     'url'           => 'The {label} field must be a valid URL.',
     'ip'            => 'The {label} field must be a valid IP address.',
