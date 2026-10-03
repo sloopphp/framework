@@ -113,11 +113,14 @@ final class EnvTest extends TestCase
         putenv('SLOOP_TEST_VAR=original');
         Env::enableImmutable();
 
-        $this->assertSame('original', Env::get('SLOOP_TEST_VAR'));
+        $beforeChange = Env::get('SLOOP_TEST_VAR');
 
         putenv('SLOOP_TEST_VAR=changed');
 
-        $this->assertSame('original', Env::get('SLOOP_TEST_VAR'));
+        $afterChange = Env::get('SLOOP_TEST_VAR');
+
+        $this->assertSame('original', $beforeChange);
+        $this->assertSame('original', $afterChange);
     }
 
     public function testMutableModeDoesNotCacheValues(): void

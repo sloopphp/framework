@@ -67,14 +67,6 @@
             ]
         },
         "IncrementInteger": {
-            // Str::randomHex computes the byte count as `intdiv($length + 1, 2)`
-            // so that odd-length requests round up. Changing the `+ 1` to `+ 2`
-            // simply asks for one extra byte that substr() then trims off,
-            // leaving the visible output unchanged (equivalent mutant).
-            // \Random\Randomizer is a final core class whose state machine
-            // produces deterministic leading bytes, so a larger getBytes()
-            // call yields the same hex prefix. No black-box test can observe
-            // the difference, so the mutation cannot be killed.
             "ignore": [
                 // DecimalLiteral::compare returns -1 or 1 when the signs differ.
                 // Every caller reads only the sign of the result (>= 0, <= 0,
@@ -103,7 +95,6 @@
                 // Rule::string() rejects invalid UTF-8 before any length rule
                 // runs, so the fallback value is never read.
                 "Sloop\\Validation\\StringRule::length",
-                "Sloop\\Support\\Str::randomHex",
                 // Connection::sleepBackoff / logQuerySuccess convert seconds to
                 // milliseconds with a literal 1000. Shifting it to 1001 changes
                 // a sleep duration or an elapsed-time reading by a tenth of a
@@ -128,9 +119,6 @@
             ]
         },
         "DecrementInteger": {
-            // Str::randomHex: same root cause as IncrementInteger above.
-            // Changing the divisor from 2 to 1 just asks for more bytes that
-            // are then trimmed by substr(), leaving the output unchanged.
             // Str::random: getInt(0, $charsLen - 1) → getInt(-1, $charsLen - 1)
             // expands the range so -1 may surface; PHP's $chars[-1] resolves
             // to the last character ('9'), so the result keeps the same
@@ -144,7 +132,6 @@
                 // StringRule::email::169 and StringRule::length: see IncrementInteger.
                 "Sloop\\Validation\\StringRule::email::169",
                 "Sloop\\Validation\\StringRule::length",
-                "Sloop\\Support\\Str::randomHex",
                 "Sloop\\Support\\Str::random",
                 // Same millisecond-conversion literal as IncrementInteger above,
                 // in the opposite direction (1000 → 999).

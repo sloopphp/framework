@@ -74,7 +74,7 @@ final class RandomReplicaSelectorTest extends TestCase
 
         // Single-element calls always pick 0; the selector keeps no state from the previous call.
         $this->assertSame(0, $selector->pick([$this->makeConfig('r1.example')]));
-        $this->assertSame(0, $selector->pick([$this->makeConfig('r1.example')]));
+        $this->assertSame(0, $selector->pick([$this->makeConfig('r2.example')]));
 
         $picked = $selector->pick([
             $this->makeConfig('r1.example'),

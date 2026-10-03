@@ -146,10 +146,7 @@ final class Str
             return '';
         }
 
-        $randomizer = new Randomizer();
-        $bytes      = $randomizer->getBytes(intdiv($length + 1, 2));
-
-        return substr(bin2hex($bytes), 0, $length);
+        return new Randomizer()->getBytesFromString('0123456789abcdef', $length);
     }
 
     /**
