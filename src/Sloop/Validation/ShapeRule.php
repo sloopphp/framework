@@ -159,7 +159,7 @@ final class ShapeRule extends ArrayRule
      *
      * @param  array<array-key, mixed>                       $typed Value of the declared type
      * @return array{list<Failure>, array<array-key, mixed>}
-     * @throws \RuntimeException                             When PCRE aborts while a sanitizer is running, or a file's stream cannot be read
+     * @throws \RuntimeException                             When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters
      * @throws \UnexpectedValueException                     When a sanitizer closure returns the wrong type
      */
     protected function validateChildren(mixed $typed): array

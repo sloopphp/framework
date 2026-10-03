@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use Generator;
 use InvalidArgumentException;
+use Normalizer;
+use RuntimeException;
 
 /**
  * Rules for a field whose validated value is a string.
@@ -126,24 +129,121 @@ final class StringRule extends FieldRule
     /**
      * Fail unless every character of the value belongs to one of the given sets.
      *
-     * @param  list<Chars>              $sets    Allowed character sets; the value may mix characters from all of them
+     * A string in $sets lists characters to allow, split into grapheme
+     * clusters: a character of the value passes when it equals one of them
+     * (both compared in NFC, so a decomposed `é` matches a listed `é`) or when
+     * every code point of it is in one of the Chars cases.
+     *
+     * @param  list<Chars|string>       $sets    Allowed character sets and listed characters; the value may mix characters from all of them
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function chars(array $sets, ?string $message = null): self
     {
         self::assertNotEmpty($sets, 'chars');
+        [$class, $names, $listed, $clusters] = self::readSets($sets, 'chars');
 
-        $class = '';
-        $names = [];
-        foreach ($sets as $set) {
-            $class  .= $set->pattern();
-            $names[] = $set->value;
-        }
         $pattern = '/\A[' . $class . ']+\z/u';
+        if ($clusters === []) {
+            $passes = static fn (string $value): bool => preg_match($pattern, $value) === 1;
+        } else {
+            $passes = static fn (string $value): bool => self::eachClusterAllowed($value, $class === '' ? null : $pattern, $clusters);
+        }
 
-        return $this->withCheck('chars', ['chars' => $names], static fn (string $value): bool => preg_match($pattern, $value) === 1, $message);
+        return $this->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message);
+    }
+
+    /**
+     * Fail when any character of the value belongs to one of the given sets.
+     *
+     * A Chars case matches any code point of the value. A string in $sets lists
+     * characters to reject, matched as whole grapheme clusters in NFC: a listed
+     * `l` does not match `l̃` (l followed by a combining tilde). Use a Chars case
+     * to reject a code point wherever it appears. Listed "\r" and "\n" do not
+     * match a CR LF pair, which is one grapheme cluster; use Chars::Newlines.
+     * Chars::Emoji used here also rejects `©` `™` `®` and the zero width
+     * joiner (see Chars::Emoji).
+     *
+     * @param  list<Chars|string>       $sets    Rejected character sets and listed characters
+     * @param  string|null              $message Message for this rule only
+     * @return self
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
+     */
+    public function notChars(array $sets, ?string $message = null): self
+    {
+        self::assertNotEmpty($sets, 'notChars');
+        [$class, $names, $listed, $clusters] = self::readSets($sets, 'notChars');
+
+        $pattern = '/[' . $class . ']/u';
+
+        return $this->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $clusters): bool {
+            if ($class !== '' && preg_match($pattern, $value) !== 0) {
+                return false;
+            }
+
+            foreach ($clusters === [] ? [] : self::clusters($value) as $cluster) {
+                if (isset($clusters[self::nfc($cluster)])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }, $message);
+    }
+
+    /**
+     * Fail unless the value has characters from at least the given number of sets.
+     *
+     * Each element of $sets is one kind: a Chars case counts when any code
+     * point of the value is in it, and a string counts once when any grapheme
+     * cluster of the value equals one of its characters (compared in NFC).
+     * Overlapping sets count independently: with [Chars::Alpha,
+     * Chars::Uppercase], `ABC` uses both.
+     *
+     * @param  int                      $min     Minimum number of kinds the value must use
+     * @param  list<Chars|string>       $sets    The kinds to count
+     * @param  string|null              $message Message for this rule only
+     * @return self
+     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
+     */
+    public function minCharClasses(int $min, array $sets, ?string $message = null): self
+    {
+        self::assertNotEmpty($sets, 'minCharClasses');
+        if ($min < 1) {
+            throw new InvalidArgumentException('minCharClasses() needs a minimum of at least 1, got ' . $min . '.');
+        }
+        if ($min > \count($sets)) {
+            throw new InvalidArgumentException('minCharClasses() needs a minimum of at most ' . \count($sets) . ' (the number of sets given), got ' . $min . '.');
+        }
+        [, $names, $listed] = self::readSets($sets, 'minCharClasses');
+        if (\count(array_unique($names)) !== \count($names) || \count(array_unique($listed)) !== \count($listed)) {
+            throw new InvalidArgumentException('minCharClasses() needs each set at most once.');
+        }
+
+        $patterns    = [];
+        $listedKinds = [];
+        foreach ($sets as $set) {
+            if ($set instanceof Chars) {
+                $patterns[] = '/[' . $set->pattern() . ']/u';
+            } else {
+                $listedKinds[] = self::clusterSet($set);
+            }
+        }
+
+        return $this->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
+            $used = self::countListedKinds($value, $listedKinds);
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $value) === 1) {
+                    ++$used;
+                }
+            }
+
+            return $used >= $min;
+        }, $message);
     }
 
     /**
@@ -237,6 +337,147 @@ final class StringRule extends FieldRule
         $length = grapheme_strlen($value);
 
         return \is_int($length) ? $length : 0;
+    }
+
+    /**
+     * Split character sets into a character class and the listed characters.
+     *
+     * @param  list<Chars|string>                                             $sets Chars cases and listed characters
+     * @param  string                                                         $rule Rule name for the message
+     * @return array{string, list<string>, list<string>, array<string, true>}
+     * @throws InvalidArgumentException                                       When a listed string is empty or not valid UTF-8
+     * @throws RuntimeException                                               When ICU cannot split a listed string into grapheme clusters
+     */
+    private static function readSets(array $sets, string $rule): array
+    {
+        $class    = '';
+        $names    = [];
+        $listed   = [];
+        $clusters = [];
+        foreach ($sets as $set) {
+            if ($set instanceof Chars) {
+                $class  .= $set->pattern();
+                $names[] = $set->value;
+
+                continue;
+            }
+            if ($set === '') {
+                throw new InvalidArgumentException($rule . '() needs at least one character in each listed string.');
+            }
+            if (!mb_check_encoding($set, 'UTF-8')) {
+                throw new InvalidArgumentException($rule . '() needs listed characters in valid UTF-8.');
+            }
+            $listed[]  = $set;
+            $clusters += self::clusterSet($set);
+        }
+
+        return [$class, $names, $listed, $clusters];
+    }
+
+    /**
+     * Whether every grapheme cluster of the value is listed or made only of allowed code points.
+     *
+     * @param  string              $value    Valid UTF-8 string
+     * @param  string|null         $pattern  Pattern matching a cluster made only of allowed code points, or null when no Chars case was given
+     * @param  array<string, true> $clusters Listed grapheme clusters in NFC
+     * @return bool
+     * @throws RuntimeException    When ICU cannot split the value
+     */
+    private static function eachClusterAllowed(string $value, ?string $pattern, array $clusters): bool
+    {
+        foreach (self::clusters($value) as $cluster) {
+            if (isset($clusters[self::nfc($cluster)])) {
+                continue;
+            }
+            if ($pattern === null || preg_match($pattern, $cluster) !== 1) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * How many of the listed kinds have a grapheme cluster in the value.
+     *
+     * @param  string                    $value Valid UTF-8 string
+     * @param  list<array<string, true>> $kinds Each kind's grapheme clusters in NFC
+     * @return int
+     * @throws RuntimeException          When ICU cannot split the value
+     */
+    private static function countListedKinds(string $value, array $kinds): int
+    {
+        if ($kinds === []) {
+            return 0;
+        }
+
+        $found = [];
+        foreach (self::clusters($value) as $cluster) {
+            $key = self::nfc($cluster);
+            foreach ($kinds as $i => $kind) {
+                if (isset($kind[$key])) {
+                    $found[$i] = true;
+                }
+            }
+        }
+
+        return \count($found);
+    }
+
+    /**
+     * The grapheme clusters of a valid UTF-8 string, each in NFC, as set keys.
+     *
+     * @param  string              $value Valid UTF-8 string
+     * @return array<string, true>
+     * @throws RuntimeException    When ICU cannot split the value
+     */
+    private static function clusterSet(string $value): array
+    {
+        $set = [];
+        foreach (self::clusters($value) as $cluster) {
+            $set[self::nfc($cluster)] = true;
+        }
+
+        return $set;
+    }
+
+    /**
+     * The grapheme clusters of a valid UTF-8 string, one at a time.
+     *
+     * Splitting one cluster per call keeps the memory flat; an array of every
+     * cluster costs about 64 bytes per character, which a long value turns
+     * into a fatal memory error before any rule has failed.
+     *
+     * @param  string                              $value Valid UTF-8 string
+     * @return Generator<int, string, mixed, void>
+     * @throws RuntimeException                    When ICU cannot split the value
+     */
+    private static function clusters(string $value): Generator
+    {
+        $length = \strlen($value);
+        $offset = 0;
+        while ($offset < $length) {
+            $cluster = grapheme_extract($value, 1, \GRAPHEME_EXTR_COUNT, $offset, $next);
+            if (!\is_string($cluster) || $cluster === '' || !\is_int($next)) {
+                throw new RuntimeException('Could not split the value into grapheme clusters.');
+            }
+            $offset = $next;
+
+            yield $cluster;
+        }
+    }
+
+    /**
+     * A valid UTF-8 string in Normalization Form C.
+     *
+     * @param  string $value Valid UTF-8 string
+     * @return string
+     */
+    private static function nfc(string $value): string
+    {
+        $normalized = Normalizer::normalize($value);
+
+        return \is_string($normalized) ? $normalized : $value;
     }
 
     /**

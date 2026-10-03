@@ -214,6 +214,7 @@ final class StringRuleTest extends TestCase
         yield 'in' => ['in'];
         yield 'notIn' => ['notIn'];
         yield 'chars' => ['chars'];
+        yield 'notChars' => ['notChars'];
         yield 'url' => ['url'];
     }
 
@@ -252,11 +253,17 @@ final class StringRuleTest extends TestCase
         yield 'at' => [Chars::At, ['@'], ['a']];
         yield 'letter' => [Chars::Letter, ['José', 'Müller', 'あア漢'], ['a1', 'a b']];
         yield 'hiragana' => [Chars::Hiragana, ['ひらがなー', "か\u{3099}", 'か゛'], ['カ', '漢', 'a', '・', '〜', '、']];
-        yield 'katakana' => [Chars::Katakana, ['カタカナー', 'ｶﾀｶﾅ', 'ｶﾞｰ', 'ﾃﾞｰﾀ', 'ヴ', 'ジョン・スミス', 'ｼﾞｮﾝ･ｽﾐｽ'], ['ひ', '漢', '「」', '、', 'ｰ｡']];
+        yield 'katakana' => [Chars::Katakana, ['カタカナー', "カ\u{3099}", 'ヴ', 'ヷヺ', 'ㇰ', 'ジョン・スミス'], ['ひ', '漢', '「」', '、', 'ｶ', 'ｰ', 'ﾞ', '･']];
+        yield 'hankaku katakana' => [Chars::HankakuKatakana, ['ｶﾀｶﾅ', 'ｶﾞｰ', 'ﾃﾞｰﾀ', 'ｼﾞｮﾝ･ｽﾐｽ', 'ｦﾝ'], ['カ', 'ー', '・', '｡', '｢']];
         yield 'kanji' => [Chars::Kanji, ['漢字々〇'], ['ひ', 'カ', '、', '。', '「', '〆']];
-        yield 'zenkaku symbols' => [Chars::ZenkakuSymbols, ["、。「」\u{3000}・゠！＃（）＝￥"], ['!', 'Ａ', '１', '･']];
+        yield 'zenkaku symbols' => [Chars::ZenkakuSymbols, ['、。「」・゠！＃（）＝￥'], ['!', 'Ａ', '１', '･', "\u{3000}"]];
+        yield 'zenkaku alpha' => [Chars::ZenkakuAlpha, ['ＡＺａｚ'], ['A', 'z', '０', '＠']];
+        yield 'zenkaku numeric' => [Chars::ZenkakuNumeric, ['０１８９'], ['0', 'Ａ', '①']];
+        yield 'zenkaku space' => [Chars::ZenkakuSpace, ["\u{3000}"], [' ', '、']];
         yield 'emoji' => [Chars::Emoji, ['😀', '👍🏽', '👨‍👩‍👧', '🇯🇵', '❤️'], ['a', '1']];
         yield 'hex' => [Chars::Hex, ['09afAF'], ['g', 'G']];
+        yield 'symbols' => [Chars::Symbols, ['!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'], ['a', '0', ' ', '！', '・']];
+        yield 'supplementary' => [Chars::Supplementary, ['𠮷𩸽', '😀', "\u{10000}\u{10FFFF}"], ['☀', '漢', 'a', "\u{FFFF}"]];
     }
 
     /**
@@ -321,9 +328,305 @@ final class StringRuleTest extends TestCase
     public function testCharsErrorListsTheSetNames(): void
     {
         self::assertErrorSame(
-            new ValidationError('chars', ['chars' => ['alpha', 'zenkaku_symbols']], 'The v field contains characters that are not allowed.'),
+            new ValidationError('chars', ['chars' => ['alpha', 'zenkaku_symbols'], 'listed' => []], 'The v field contains characters that are not allowed.'),
             self::onlyError(Rule::string()->chars([Chars::Alpha, Chars::ZenkakuSymbols]), '1'),
         );
+    }
+
+    public function testCharsAcceptsListedCharactersAlongsideTheSets(): void
+    {
+        $rule = Rule::string()->chars([Chars::Alpha, '#*']);
+
+        $this->assertSame([], self::failedRules($rule, 'a#b*'));
+        $this->assertSame([], self::failedRules($rule, '##'));
+        $this->assertSame(['chars'], self::failedRules($rule, 'a!'));
+    }
+
+    public function testCharsAcceptsTheCharactersOfEveryListedString(): void
+    {
+        $rule = Rule::string()->chars(['ab', '#']);
+
+        $this->assertSame([], self::failedRules($rule, 'a#b'));
+        $this->assertSame(['chars'], self::failedRules($rule, 'a#c'));
+    }
+
+    public function testCharsWithOnlyListedCharacters(): void
+    {
+        $rule = Rule::string()->chars(['abc']);
+
+        $this->assertSame([], self::failedRules($rule, 'cab'));
+        $this->assertSame(['chars'], self::failedRules($rule, 'abx'));
+    }
+
+    public function testCharsMatchesAListedCharacterAsAWholeGraphemeCluster(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->chars(['👨‍👩‍👧']), '👨‍👩‍👧👨‍👩‍👧'));
+        $this->assertSame(['chars'], self::failedRules(Rule::string()->chars(['👨‍👩‍👧']), '👨👩'));
+        $this->assertSame(['chars'], self::failedRules(Rule::string()->chars(['👍🏻']), '👍'));
+        $this->assertSame(['chars'], self::failedRules(Rule::string()->chars(['a']), "a\u{0301}"));
+    }
+
+    public function testCharsComparesListedCharactersInNfc(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->chars([Chars::Alpha, "\u{00E9}"]), "e\u{0301}"));
+        $this->assertSame([], self::failedRules(Rule::string()->chars(["e\u{0301}"]), "\u{00E9}"));
+        $this->assertSame('ce' . "\u{0301}", self::valueOf(Rule::string()->chars([Chars::Alpha, "\u{00E9}"]), "ce\u{0301}"));
+    }
+
+    public function testCharsErrorSeparatesTheSetsFromTheListedCharacters(): void
+    {
+        self::assertErrorSame(
+            new ValidationError('chars', ['chars' => ['numeric'], 'listed' => ['alpha', '#']], 'The v field contains characters that are not allowed.'),
+            self::onlyError(Rule::string()->chars([Chars::Numeric, 'alpha', '#']), 'x'),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function charListRules(): iterable
+    {
+        yield 'chars' => ['chars'];
+        yield 'notChars' => ['notChars'];
+    }
+
+    #[DataProvider('charListRules')]
+    public function testEmptyListedCharactersThrow(string $method): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->{$method}([Chars::Alpha, '']));
+
+        $this->assertSame($method . '() needs at least one character in each listed string.', $e->getMessage());
+    }
+
+    #[DataProvider('charListRules')]
+    public function testInvalidUtf8ListedCharactersThrow(string $method): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->{$method}(["\xFF"]));
+
+        $this->assertSame($method . '() needs listed characters in valid UTF-8.', $e->getMessage());
+    }
+
+    // ---------------------------------------------------------------
+    // notChars
+    // ---------------------------------------------------------------
+
+    public function testNotCharsFailsOnAnyCharacterOfTheSets(): void
+    {
+        $rule = Rule::string()->notChars([Chars::Emoji]);
+
+        $this->assertSame([], self::failedRules($rule, 'hello、世界'));
+        $this->assertSame(['notChars'], self::failedRules($rule, 'hi 😀'));
+        $this->assertSame(['notChars'], self::failedRules($rule, '☀'));
+    }
+
+    public function testNotCharsEmojiAlsoRejectsTextSymbolsAndTheZeroWidthJoiner(): void
+    {
+        $rule = Rule::string()->notChars([Chars::Emoji]);
+
+        $this->assertSame(['notChars'], self::failedRules($rule, 'Acme©'));
+        $this->assertSame(['notChars'], self::failedRules($rule, 'Brand™'));
+        $this->assertSame(['notChars'], self::failedRules($rule, "\u{0DC1}\u{0DCA}\u{200D}\u{0DBB}\u{0DD3}"));
+    }
+
+    public function testNotCharsListedNewlinesDoNotMatchCrlf(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(["\r", "\n"]), "a\r\nb"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Newlines]), "a\r\nb"));
+    }
+
+    public function testNotCharsSupplementaryMatchesWhatUtf8mb3CannotStore(): void
+    {
+        $rule = Rule::string()->notChars([Chars::Supplementary]);
+
+        $this->assertSame([], self::failedRules($rule, '☀❤漢'));
+        $this->assertSame(['notChars'], self::failedRules($rule, '𠮷野家'));
+        $this->assertSame(['notChars'], self::failedRules($rule, '😀'));
+    }
+
+    public function testNotCharsFailsOnAListedCharacter(): void
+    {
+        $rule = Rule::string()->notChars([Chars::HankakuKatakana, 'lI1O0']);
+
+        $this->assertSame([], self::failedRules($rule, 'passWord'));
+        $this->assertSame(['notChars'], self::failedRules($rule, 'pass1'));
+        $this->assertSame(['notChars'], self::failedRules($rule, 'ｶﾅ'));
+    }
+
+    public function testNotCharsComparesListedCharactersAsNfcGraphemeClusters(): void
+    {
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{00E9}"]), "cafe\u{0301}"));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(['l']), "l\u{0303}"));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(['👍🏻']), '👍'));
+    }
+
+    public function testNotCharsFailsWhenPcreGivesUp(): void
+    {
+        $jit       = \ini_get('pcre.jit');
+        $backtrack = \ini_get('pcre.backtrack_limit');
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            // A pattern no other test builds: PHP caches each compiled pattern with
+            // its JIT code, and a cached JIT pattern ignores pcre.jit=0 and the
+            // backtrack limit, so a shared pattern would let PCRE succeed here.
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Letter, Chars::Tabs]), str_repeat('-', 50000)));
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+            ini_set('pcre.backtrack_limit', (string) $backtrack);
+        }
+    }
+
+    public function testListedCharacterRulesKeepMemoryFlatOnALongValue(): void
+    {
+        $value = str_repeat('a', 1_000_000);
+        $rules = [
+            Rule::string()->chars([Chars::Numeric, 'a']),
+            Rule::string()->notChars(['"']),
+            Rule::string()->minCharClasses(2, [Chars::Numeric, 'a']),
+        ];
+
+        foreach ($rules as $rule) {
+            memory_reset_peak_usage();
+            $before = memory_get_usage();
+            self::failedRules($rule, $value);
+            $this->assertLessThan(16 * 1024 * 1024, memory_get_peak_usage() - $before);
+        }
+    }
+
+    public function testNotCharsError(): void
+    {
+        self::assertErrorSame(
+            new ValidationError('notChars', ['chars' => ['emoji'], 'listed' => ['#']], 'The v field contains characters that are not allowed.'),
+            self::onlyError(Rule::string()->notChars([Chars::Emoji, '#']), 'a#'),
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // minCharClasses
+    // ---------------------------------------------------------------
+
+    public function testMinCharClassesCountsTheSetsTheValueUses(): void
+    {
+        $rule = Rule::string()->minCharClasses(3, [Chars::Uppercase, Chars::Lowercase, Chars::Numeric, Chars::Symbols]);
+
+        $this->assertSame([], self::failedRules($rule, 'abcDEF12'));
+        $this->assertSame([], self::failedRules($rule, 'abc!12'));
+        $this->assertSame(['minCharClasses'], self::failedRules($rule, 'abcdef12'));
+        $this->assertSame(['minCharClasses'], self::failedRules($rule, 'あいう1'));
+    }
+
+    public function testMinCharClassesRequiresAllWhenTheMinimumIsTheCount(): void
+    {
+        $rule = Rule::string()->minCharClasses(2, [Chars::Lowercase, Chars::Numeric]);
+
+        $this->assertSame([], self::failedRules($rule, 'a1'));
+        $this->assertSame(['minCharClasses'], self::failedRules($rule, 'abc'));
+    }
+
+    public function testMinCharClassesCountsAListedStringAsOneClass(): void
+    {
+        $rule = Rule::string()->minCharClasses(3, [Chars::Lowercase, Chars::Numeric, '!@']);
+
+        $this->assertSame([], self::failedRules($rule, 'a1!'));
+        $this->assertSame(['minCharClasses'], self::failedRules($rule, 'a!@'));
+    }
+
+    public function testMinCharClassesCountsOverlappingSetsIndependently(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->minCharClasses(2, [Chars::Alpha, Chars::Uppercase]), 'ABC'));
+    }
+
+    public function testMinCharClassesComparesListedCharactersAsNfcGraphemeClusters(): void
+    {
+        $rule = Rule::string()->minCharClasses(2, [Chars::Lowercase, "\u{00E9}"]);
+
+        $this->assertSame([], self::failedRules($rule, "ae\u{0301}"));
+        $this->assertSame(['minCharClasses'], self::failedRules(Rule::string()->minCharClasses(2, [Chars::Numeric, 'a']), "1a\u{0301}"));
+    }
+
+    public function testMinCharClassesError(): void
+    {
+        self::assertErrorSame(
+            new ValidationError('minCharClasses', ['min' => 2, 'chars' => ['lowercase', 'numeric'], 'listed' => ['!']], 'The v field must contain at least 2 kinds of characters.'),
+            self::onlyError(Rule::string()->minCharClasses(2, [Chars::Lowercase, Chars::Numeric, '!']), 'abc'),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{int, string}>
+     */
+    public static function invalidCharClassMinimums(): iterable
+    {
+        yield 'zero' => [0, 'minCharClasses() needs a minimum of at least 1, got 0.'];
+        yield 'more than the sets' => [3, 'minCharClasses() needs a minimum of at most 2 (the number of sets given), got 3.'];
+    }
+
+    #[DataProvider('invalidCharClassMinimums')]
+    public function testMinCharClassesRejectsAMinimumOutsideTheSets(int $min, string $message): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses($min, [Chars::Lowercase, Chars::Numeric]));
+
+        $this->assertSame($message, $e->getMessage());
+    }
+
+    public function testMinCharClassesRejectsAnEmptySetList(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(1, []));
+
+        $this->assertSame('minCharClasses() needs at least one value.', $e->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{list<Chars|string>}>
+     */
+    public static function duplicatedCharClasses(): iterable
+    {
+        yield 'same case' => [[Chars::Alpha, Chars::Alpha]];
+        yield 'same listed string' => [['ab', Chars::Numeric, 'ab']];
+    }
+
+    /**
+     * @param list<Chars|string> $sets
+     */
+    #[DataProvider('duplicatedCharClasses')]
+    public function testMinCharClassesRejectsASetGivenTwice(array $sets): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(2, $sets));
+
+        $this->assertSame('minCharClasses() needs each set at most once.', $e->getMessage());
+    }
+
+    public function testMinCharClassesTellsACaseFromAListedStringWithTheSameSpelling(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->minCharClasses(2, [Chars::Alpha, 'alpha']), 'Zl'));
+    }
+
+    public function testMinCharClassesRejectsInvalidUtf8ListedCharacters(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(1, ["\xFF"]));
+
+        $this->assertSame('minCharClasses() needs listed characters in valid UTF-8.', $e->getMessage());
+    }
+
+    public function testMinCharClassesRejectsAnEmptyListedString(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(1, ['']));
+
+        $this->assertSame('minCharClasses() needs at least one character in each listed string.', $e->getMessage());
     }
 
     // ---------------------------------------------------------------
