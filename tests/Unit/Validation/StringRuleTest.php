@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\Chars;
+use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
 use Sloop\Validation\ValidationError;
 
@@ -95,11 +96,11 @@ final class StringRuleTest extends TestCase
     public function testLengthErrorsCarryTheirBound(): void
     {
         self::assertErrorSame(
-            new ValidationError('maxLength', ['max' => 1], 'The v field must not be longer than 1 characters.'),
+            new ValidationError('maxLength', ['max' => 1, 'unit' => 'graphemes'], 'The v field must not be longer than 1 characters.'),
             self::onlyError(Rule::string()->maxLength(1), 'ab'),
         );
         self::assertErrorSame(
-            new ValidationError('exactLength', ['length' => 3], 'The v field must be exactly 3 characters.'),
+            new ValidationError('exactLength', ['length' => 3, 'unit' => 'graphemes'], 'The v field must be exactly 3 characters.'),
             self::onlyError(Rule::string()->exactLength(3), 'ab'),
         );
     }
@@ -127,6 +128,133 @@ final class StringRuleTest extends TestCase
     public function testZeroLengthIsAccepted(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->minLength(0), 'a'));
+    }
+
+    /**
+     * Rules built with the given unit, each passing only at the length of the
+     * value in that unit: 👨‍👩‍👧 is 1 grapheme, 5 code points and 18 bytes.
+     *
+     * @return iterable<string, array{LengthUnit, int}>
+     */
+    public static function lengthUnits(): iterable
+    {
+        yield 'graphemes' => [LengthUnit::Graphemes, 1];
+        yield 'codepoints' => [LengthUnit::Codepoints, 5];
+        yield 'bytes' => [LengthUnit::Bytes, 18];
+    }
+
+    #[DataProvider('lengthUnits')]
+    public function testLengthRulesCountInTheGivenUnit(LengthUnit $unit, int $length): void
+    {
+        $family = '👨‍👩‍👧';
+
+        $this->assertSame([], self::failedRules(Rule::string()->minLength($length, unit: $unit), $family));
+        $this->assertSame(['minLength'], self::failedRules(Rule::string()->minLength($length + 1, unit: $unit), $family));
+        $this->assertSame([], self::failedRules(Rule::string()->maxLength($length, unit: $unit), $family));
+        $this->assertSame(['maxLength'], self::failedRules(Rule::string()->maxLength($length - 1, unit: $unit), $family));
+        $this->assertSame([], self::failedRules(Rule::string()->exactLength($length, unit: $unit), $family));
+        $this->assertSame(['exactLength'], self::failedRules(Rule::string()->exactLength($length + 1, unit: $unit), $family));
+    }
+
+    public function testCodepointsCountACombiningMarkSeparately(): void
+    {
+        $decomposed = "e\u{0301}";
+
+        $this->assertSame([], self::failedRules(Rule::string()->exactLength(1), $decomposed));
+        $this->assertSame([], self::failedRules(Rule::string()->exactLength(2, unit: LengthUnit::Codepoints), $decomposed));
+    }
+
+    public function testLengthErrorsCarryTheirUnit(): void
+    {
+        self::assertErrorSame(
+            new ValidationError('minLength', ['min' => 4, 'unit' => 'codepoints'], 'The v field must be at least 4 characters.'),
+            self::onlyError(Rule::string()->minLength(4, unit: LengthUnit::Codepoints), 'abc'),
+        );
+        self::assertErrorSame(
+            new ValidationError('maxLength', ['max' => 2, 'unit' => 'bytes'], 'The v field must not be longer than 2 bytes.'),
+            self::onlyError(Rule::string()->maxLength(2, unit: LengthUnit::Bytes), 'あ'),
+        );
+        self::assertErrorSame(
+            new ValidationError('exactLength', ['length' => 2, 'unit' => 'bytes'], 'The v field must be exactly 2 bytes.'),
+            self::onlyError(Rule::string()->exactLength(2, unit: LengthUnit::Bytes), 'あ'),
+        );
+    }
+
+    public function testOwnMessageCanSelectOnTheUnit(): void
+    {
+        $message = '{label}は{max}{unit, select, bytes {バイト} other {文字}}以内';
+
+        $this->assertSame(
+            'vは3バイト以内',
+            self::onlyError(Rule::string()->maxLength(3, $message, LengthUnit::Bytes), 'ああ')->message,
+        );
+        $this->assertSame(
+            'vは1文字以内',
+            self::onlyError(Rule::string()->maxLength(1, $message), 'ああ')->message,
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // blockSize
+    // ---------------------------------------------------------------
+
+    public function testBlockSizeRequiresAMultipleOfTheSize(): void
+    {
+        $rule = Rule::string()->blockSize(4);
+
+        $this->assertSame([], self::failedRules($rule, 'abcd'));
+        $this->assertSame([], self::failedRules($rule, 'abcdefgh'));
+        $this->assertSame(['blockSize'], self::failedRules($rule, 'abc'));
+        $this->assertSame(['blockSize'], self::failedRules($rule, 'abcde'));
+    }
+
+    public function testBlockSizeDoesNotJudgeAnEmptyField(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->blockSize(4), ''));
+    }
+
+    public function testBlockSizeCountsInTheGivenUnit(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->blockSize(2), 'ああ'));
+        $this->assertSame(['blockSize'], self::failedRules(Rule::string()->blockSize(2, unit: LengthUnit::Bytes), 'あああ'));
+        $this->assertSame([], self::failedRules(Rule::string()->blockSize(3, unit: LengthUnit::Bytes), 'ああ'));
+        $this->assertSame(['blockSize'], self::failedRules(Rule::string()->blockSize(2, unit: LengthUnit::Codepoints), "e\u{0301}a"));
+    }
+
+    public function testBlockSizeErrorCarriesItsSizeAndUnit(): void
+    {
+        self::assertErrorSame(
+            new ValidationError('blockSize', ['size' => 4, 'unit' => 'graphemes'], 'The v field length must be a multiple of 4 characters.'),
+            self::onlyError(Rule::string()->blockSize(4), 'abc'),
+        );
+        self::assertErrorSame(
+            new ValidationError('blockSize', ['size' => 2, 'unit' => 'bytes'], 'The v field length must be a multiple of 2 bytes.'),
+            self::onlyError(Rule::string()->blockSize(2, unit: LengthUnit::Bytes), 'あ'),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function invalidBlockSizes(): iterable
+    {
+        yield 'zero' => [0];
+        yield 'negative' => [-1];
+    }
+
+    public function testBlockSizeOfOneAcceptsAnyLength(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->blockSize(1), 'abc'));
+    }
+
+    #[DataProvider('invalidBlockSizes')]
+    public function testBlockSizeBelowOneThrows(int $size): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->blockSize($size));
+
+        $this->assertSame('Block size must be at least 1, got ' . $size . '.', $e->getMessage());
     }
 
     // ---------------------------------------------------------------

@@ -101,7 +101,7 @@ final class ValidatorTest extends TestCase
         $result = new Validator(['name' => Rule::string()->minLength(3)])->validate(['name' => 'ab']);
 
         self::assertErrorsSame(
-            ['name' => [new ValidationError('minLength', ['min' => 3], 'The name field must be at least 3 characters.')]],
+            ['name' => [new ValidationError('minLength', ['min' => 3, 'unit' => 'graphemes'], 'The name field must be at least 3 characters.')]],
             $result->errors(),
         );
     }
