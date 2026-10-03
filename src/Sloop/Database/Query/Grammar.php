@@ -1605,8 +1605,8 @@ class Grammar
      *
      * DISTINCT outside DISTINCT_AGGREGATES and a sort order or separator on
      * anything but GROUP_CONCAT are refused here rather than sent: both
-     * servers reject them (1064), bar JSON_ARRAYAGG(DISTINCT), which MySQL
-     * alone rejects and so is not offered either. The named factories cannot
+     * servers reject them (1064), bar JSON_ARRAYAGG() with DISTINCT or a
+     * sort order, which MySQL alone rejects and so is not offered either. The named factories cannot
      * build them; a FunctionCall constructed directly can.
      *
      * A subclass that replaces this writes the DISTINCT, the sort terms and the
