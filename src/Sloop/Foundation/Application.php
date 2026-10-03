@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Foundation;
 
 use Nyholm\Psr7\ServerRequest;
+use Nyholm\Psr7\Stream;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -26,6 +27,7 @@ use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
+use Sloop\Http\Request\FormBody;
 use Sloop\Http\Request\JsonBody;
 use Sloop\Http\Request\UploadedFiles;
 use Sloop\Http\Response\ApiResponseFormatter;
@@ -106,9 +108,9 @@ final class Application implements RequestHandlerInterface
      * This is also the error boundary: exceptions from route middleware and
      * controllers are converted into error responses here, so the error
      * response still flows back through the global middleware stack and
-     * receives its headers (traceparent, CORS, ...). A request whose JSON body
-     * could not be parsed is answered with a 400 here, before routing, for the
-     * same reason.
+     * receives its headers (traceparent, CORS, ...). A request whose JSON or
+     * form body could not be parsed is answered with a 400 here, before
+     * routing, for the same reason.
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
@@ -119,6 +121,12 @@ final class Application implements RequestHandlerInterface
         if (JsonBody::isMalformed($request)) {
             return $this->renderException(
                 new DomainException('The request body is not valid JSON.', HttpStatus::BadRequest),
+            );
+        }
+
+        if (FormBody::isMalformed($request)) {
+            return $this->renderException(
+                new DomainException('The request body could not be read as form data.', HttpStatus::BadRequest),
             );
         }
 
@@ -648,7 +656,9 @@ final class Application implements RequestHandlerInterface
      *
      * A body sent with a JSON content type replaces the form values, since PHP
      * puts only form bodies in $_POST; one that is not a JSON object or array
-     * is marked, and handle() answers it with a 400.
+     * is marked, and handle() answers it with a 400. PHP fills $_POST and
+     * $_FILES only for POST, so the form body of a PUT, PATCH or DELETE is read
+     * here, and one PHP refuses to read is marked the same way.
      *
      * @return ServerRequestInterface
      * @throws \InvalidArgumentException When the URI or a header value cannot be parsed, or an uploaded file carries an error code PHP does not define
@@ -658,15 +668,23 @@ final class Application implements RequestHandlerInterface
         $method  = Arr::getString($_SERVER, 'REQUEST_METHOD', 'GET');
         $uri     = Arr::getString($_SERVER, 'REQUEST_URI', '/');
         $headers = \function_exists('getallheaders') ? getallheaders() : [];
-        $rawBody = file_get_contents('php://input');
-        $body    = $rawBody === false || $rawBody === '' ? null : $rawBody;
 
-        return JsonBody::parse(
-            new ServerRequest($method, $uri, $headers, $body, '1.1', $_SERVER)
+        // request_parse_body() finds nothing in php://input once something has
+        // read it, so the form body is parsed before the raw body is taken.
+        $request = FormBody::parse(
+            new ServerRequest($method, $uri, $headers, null, '1.1', $_SERVER)
                 ->withQueryParams($_GET)
                 ->withParsedBody($_POST)
                 ->withCookieParams($_COOKIE)
                 ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES)),
+            request_parse_body(...),
         );
+
+        $rawBody = file_get_contents('php://input');
+        if ($rawBody !== false && $rawBody !== '') {
+            $request = $request->withBody(Stream::create($rawBody));
+        }
+
+        return JsonBody::parse($request);
     }
 }
