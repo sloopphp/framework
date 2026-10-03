@@ -33,16 +33,20 @@
 # when the run ends. Nothing is shared between runs, so one session cannot drop a
 # table, restart a server or wipe a data volume out from under another. The
 # servers are started before the other gates and waited for just before
-# Integration, so their boot overlaps the static checks.
+# Integration, so once the images are on the machine their boot overlaps the
+# static checks. The first run, or one after an image changes, pulls the image
+# before anything else starts.
 #
-# The containers carry a label naming the run's host and process. A run killed
-# too hard to clean up (kill -9) leaves them behind; the next run removes those
-# whose process is gone and leaves everything else alone.
+# The containers carry a label naming the run that owns them: host, PID
+# namespace, user and process. A run killed too hard to clean up (kill -9)
+# leaves them behind; the next --with-integration run removes those whose owner
+# it can see is gone and leaves everything else alone.
 #
 # The run is serialised per worktree where flock is installed, since two gates
 # in the same tree fight over the same caches.
 #
-# Exit code: 1 if any gate fails, 0 if all pass, 3 if another run holds the lock.
+# Exit code: 0 if all pass, 1 if any gate fails, 2 for an unknown argument, 3 if
+# another run holds the lock, 130 / 143 when interrupted (INT / TERM).
 
 set -uo pipefail
 
@@ -56,10 +60,22 @@ cd "$script_dir/.." || exit 1
 mysql_image='mysql:8.0'
 mariadb_image='mariadb:10.11'
 
-# Label put on every server this gate starts. The value is "<host> <pid>" of the
-# run that owns it, which is what lets a later run tell a leftover from a server
-# a parallel run is still using.
+# Label put on every server this gate starts. The value names the run that owns
+# it, which is what lets a later run tell a leftover from a server a parallel run
+# is still using. A process id only means something to a run that sees the same
+# processes, so the value carries the PID namespace and the user as well as the
+# host: WSL distributions share the Windows host name and one docker daemon but
+# each has its own PID namespace, and a process of another user can be hidden
+# from /proc (hidepid).
 gate_label='sloop.quality-gate.owner'
+
+# The PID namespace of this shell, or "-" where there is none to read (macOS).
+gate_pid_namespace() {
+    local ns
+    ns=$(readlink /proc/self/ns/pid 2> /dev/null) || ns=''
+    [[ $ns =~ ^[^[:space:]]+$ ]] || ns='-'
+    printf '%s' "$ns"
+}
 
 # Whether process $1 on this host is still running.
 #
@@ -69,7 +85,7 @@ gate_label='sloop.quality-gate.owner'
 #
 # $1 the process id
 gate_process_alive() {
-    [[ $1 =~ ^[0-9]+$ ]] || return 0
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || return 0
 
     if [ -d /proc/self ]; then
         [ -d "/proc/$1" ]
@@ -84,24 +100,37 @@ gate_process_alive() {
     esac
 }
 
-# The servers left behind by runs on this host whose process is gone.
+# The servers left behind by runs that this run can see are gone.
 #
 # Reads "<container id> <label value>" lines on stdin, as `docker ps` writes
-# them below, and prints the ids to remove. A line from another host, or one
-# whose label does not have the "<host> <pid>" shape with a numeric pid, is left
-# alone: this gate did not start it, or cannot tell whether its owner is still
-# running.
+# them below, and prints the ids to remove. The label value is
+# "<host> <pid namespace> <uid> <pid>"; the host is read as everything before the
+# last three words, so a host name with a space still compares whole.
 #
-# $1 this host's name
+# Removed only when the host, the PID namespace and the user all match this run
+# and the process is gone. Anything else is left alone: a run elsewhere, one
+# whose processes this run cannot see, or a line that does not have the shape
+# this gate writes. The id has to look like a container id too, since a label
+# value can hold a newline and so put a line of its own making here.
+#
+# $1 this host's name, $2 this run's PID namespace, $3 this run's uid
 stale_gate_servers() {
-    local host="$1" id owner owner_host owner_pid
+    local host="$1" namespace="$2" uid="$3"
+    local id owner rest owner_pid owner_uid owner_namespace owner_host
     while read -r id owner; do
-        [ -n "$id" ] || continue
-        owner_host=${owner% *}
+        [[ $id =~ ^[0-9a-f]{12,64}$ ]] || continue
         owner_pid=${owner##* }
+        rest=${owner% *}
+        owner_uid=${rest##* }
+        rest=${rest% *}
+        owner_namespace=${rest##* }
+        owner_host=${rest% *}
+        # Fewer than four words: the trims above stop changing the value.
+        [ "$owner_host" != "$rest" ] || continue
         [ "$owner_host" = "$host" ] || continue
-        [ "$owner_host" != "$owner" ] || continue
-        [[ $owner_pid =~ ^[0-9]+$ ]] || continue
+        [ "$owner_namespace" = "$namespace" ] || continue
+        [ "$owner_uid" = "$uid" ] || continue
+        [[ $owner_pid =~ ^[1-9][0-9]*$ ]] || continue
         if ! gate_process_alive "$owner_pid"; then
             printf '%s\n' "$id"
         fi
@@ -110,10 +139,24 @@ stale_gate_servers() {
 
 # Remove the servers this run started. Called only from the EXIT trap, which
 # the linter does not follow (SC2329).
+#
+# Found by this run's label as well as by the ids it registered: an interrupt
+# during `docker run` stops the client before the id comes back, while the
+# daemon still creates and starts the server. Removing by id alone left one
+# server running in each of 5 interrupts at that point; by label, none.
 # shellcheck disable=SC2329
 remove_gate_servers() {
+    local ids
+    ids=$(docker ps -aq --filter "label=$gate_label=$gate_owner" 2> /dev/null)
     if [ "${#gate_servers[@]}" -gt 0 ]; then
-        docker rm -f "${gate_servers[@]}" > /dev/null 2>&1
+        # Expanded only after the count check: bash 3.2 treats an empty array
+        # as unset under `set -u`.
+        ids="$ids ${gate_servers[*]}"
+    fi
+    if [ -n "${ids// /}" ]; then
+        # Word splitting is wanted: one id per word.
+        # shellcheck disable=SC2086
+        docker rm -f $ids > /dev/null 2>&1
     fi
 }
 
@@ -130,7 +173,7 @@ remove_gate_servers() {
 # $1 image, $2 the prefix of the image's environment variables (MYSQL / MARIADB)
 start_gate_server() {
     docker run -d \
-        --label "$gate_label=$(hostname) $$" \
+        --label "$gate_label=$gate_owner" \
         --tmpfs /var/lib/mysql \
         -p 127.0.0.1::3306 \
         -e "$2_ROOT_PASSWORD=root" \
@@ -214,19 +257,24 @@ fi
 gate_servers=()
 gate_server_error=''
 if [ "$with_integration" -eq 1 ]; then
-    # The signal traps turn an interrupt into an exit so that the EXIT trap runs
-    # for it too; only kill -9 skips it, and the next run's sweep below picks
-    # that up.
+    gate_host=$(hostname)
+    gate_namespace=$(gate_pid_namespace)
+    gate_owner="$gate_host $gate_namespace $(id -u) $$"
+
+    # bash runs the EXIT trap when TERM or HUP ends it; the INT trap makes Ctrl-C
+    # do the same on every bash this runs under. Only kill -9 skips it, and the
+    # next run's sweep below picks that up. TERM is not trapped: a trap would
+    # wait for the gate in the foreground (Infection, up to minutes) before
+    # cleaning up.
     trap remove_gate_servers EXIT
     trap 'exit 130' INT
-    trap 'exit 143' TERM
 
     if ! command -v docker > /dev/null 2>&1; then
         gate_server_error='docker is not installed'
     else
         leftovers=$(docker ps -a --filter "label=$gate_label" \
             --format "{{.ID}} {{.Label \"$gate_label\"}}" 2> /dev/null \
-            | stale_gate_servers "$(hostname)")
+            | stale_gate_servers "$gate_host" "$gate_namespace" "$(id -u)")
         if [ -n "$leftovers" ]; then
             # Word splitting is wanted: one id per word.
             # shellcheck disable=SC2086

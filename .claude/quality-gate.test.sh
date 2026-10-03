@@ -217,11 +217,15 @@ check_answer 'process alive: an exited process' 'no' gate_process_alive "$gone_p
 # Anything that is not a pid counts as running, so its server is kept.
 check_answer 'process alive: not a number' 'yes' gate_process_alive 'abc'
 check_answer 'process alive: empty' 'yes' gate_process_alive ''
+check_answer 'process alive: a leading zero' 'yes' gate_process_alive '0300'
 
 # The sweep decides which servers a run may remove, so a mistake here removes a
 # server a parallel run is using. gate_process_alive is replaced by a stub that
 # treats only the pids in $alive_pids as running, so the cases are about the
 # reading of the label, not about which processes happen to exist.
+#
+# This run is host 'here', PID namespace 'ns1' and uid 1000 unless $4 says
+# otherwise. Container ids are 12 hex digits, as `docker ps` prints them.
 #
 # $1 case name, $2 the docker ps lines, $3 expected ids (newline-separated),
 # $4 this host's name (default 'here')
@@ -231,7 +235,7 @@ check_sweep() {
         # Called by stale_gate_servers, which the linter does not follow (SC2329).
         # shellcheck disable=SC2329
         gate_process_alive() { [[ " $alive_pids " == *" $1 "* ]]; }
-        printf '%s\n' "$lines" | stale_gate_servers "$host"
+        printf '%s\n' "$lines" | stale_gate_servers "$host" 'ns1' '1000'
     )
 
     if [ "$got" = "$want" ]; then
@@ -244,27 +248,38 @@ check_sweep() {
 }
 
 alive_pids='100 200'
+id_a='aaaaaaaaaaaa'
+id_b='bbbbbbbbbbbb'
 
-check_sweep 'sweep: a run that is gone' 'aaa here 300' 'aaa'
-check_sweep 'sweep: a run that is still going' 'aaa here 100' ''
-check_sweep 'sweep: another host' 'aaa there 300' ''
-check_sweep 'sweep: a label without a pid' 'aaa here' ''
-# A one-word label equal to this host's name: the word matches the host and
-# also passes as a pid, so only the one-word check rejects it.
-check_sweep 'sweep: a label that is a single number' 'aaa 300' '' '300'
-check_sweep 'sweep: no label value' 'aaa' ''
+check_sweep 'sweep: a run that is gone' "$id_a here ns1 1000 300" "$id_a"
+check_sweep 'sweep: a run that is still going' "$id_a here ns1 1000 100" ''
+check_sweep 'sweep: another host' "$id_a there ns1 1000 300" ''
+# Same host name, other processes: a WSL distribution sharing the docker daemon.
+check_sweep 'sweep: another PID namespace' "$id_a here ns2 1000 300" ''
+# Another user's process can be hidden from /proc, so absent does not mean gone.
+check_sweep 'sweep: another user' "$id_a here ns1 1001 300" ''
+check_sweep 'sweep: a label without a pid' "$id_a here ns1 1000" ''
+check_sweep 'sweep: a label of three words' "$id_a ns1 1000 300" ''
+# Three words that match this run's namespace, uid and a gone pid, with a host
+# of 'ns1': only the word count check rejects it.
+check_sweep 'sweep: a label one word short' "$id_a ns1 1000 300" '' 'ns1'
+check_sweep 'sweep: no label value' "$id_a" ''
 check_sweep 'sweep: empty lines' '
 
 ' ''
-check_sweep 'sweep: a pid that is not a number' 'aaa here x1' ''
-check_sweep 'sweep: a host name with a space' 'aaa my host 300' 'aaa' 'my host'
-check_sweep 'sweep: a host name that only starts the same' 'aaa my host 300' '' 'my'
-check_sweep 'sweep: only the gone ones among several' 'aaa here 100
-bbb here 300
-ccc there 400
-ddd here 200
-eee here 500' 'bbb
-eee'
+check_sweep 'sweep: a pid that is not a number' "$id_a here ns1 1000 x1" ''
+check_sweep 'sweep: a pid with a leading zero' "$id_a here ns1 1000 0300" ''
+check_sweep 'sweep: a host name with a space' "$id_a my host ns1 1000 300" "$id_a" 'my host'
+check_sweep 'sweep: a host name that only starts the same' "$id_a my host ns1 1000 300" '' 'my'
+# A label value holding a newline puts a line of its own on the output. Its
+# first word is a container name here, which docker rm would accept.
+check_sweep 'sweep: a first word that is not a container id' 'victim here ns1 1000 300' ''
+check_sweep 'sweep: only the gone ones among several' "$id_a here ns1 1000 100
+$id_b here ns1 1000 300
+cccccccccccc there ns1 1000 400
+dddddddddddd here ns1 1000 200
+eeeeeeeeeeee here ns1 1000 500" "$id_b
+eeeeeeeeeeee"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

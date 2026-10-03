@@ -13,7 +13,8 @@ use Sloop\Database\Connection;
  * Connection parameters come from the DB_HOST / DB_PORT / DB_NAME / DB_USER /
  * DB_PASS environment variables, falling back to 127.0.0.1:3306, the sloop_test
  * database and sloop/secret. `.claude/quality-gate.sh --with-integration` starts
- * a server per run and passes its port in DB_PORT.
+ * a server per run and passes all five variables, the port being the one that
+ * differs from the defaults.
  *
  * Future additions (per-test begin/rollback, fixture helpers) belong here so
  * every concrete integration test inherits them.
