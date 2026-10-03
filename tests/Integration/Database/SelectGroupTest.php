@@ -95,6 +95,56 @@ final class SelectGroupTest extends TransactionalIntegrationTestCase
         ], $rows);
     }
 
+    public function testBothServersReadADistinctAggregateOnceEachValue(): void
+    {
+        // The five posts are written by users 1, 1, 1, 2 and 3, and are
+        // published as 1 or 0. SUM comes back as a DECIMAL, read as a string
+        // on both servers.
+        $rows = $this->connection
+            ->select(
+                [Expression::count('user_id', distinct: true), 'authors'],
+                [Expression::sum('user_id', distinct: true), 'author_sum'],
+                [Expression::count('published', distinct: true), 'states'],
+            )
+            ->from('posts')
+            ->get();
+
+        $this->assertSame([['authors' => 3, 'author_sum' => '6', 'states' => 2]], $rows);
+    }
+
+    public function testBothServersJoinTheValuesOfAGroupConcatInOrderWithTheSeparator(): void
+    {
+        $rows = $this->connection
+            ->select(
+                'status',
+                [Expression::groupConcat('name', orders: ['name' => 'DESC'], separator: "・'"), 'names'],
+                [Expression::groupConcat('status', distinct: true, separator: ''), 'once'],
+            )
+            ->from('users')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->get();
+
+        $this->assertSame([
+            ['status' => 'active', 'names' => "dave・'bob・'alice", 'once' => 'active'],
+            ['status' => 'blocked', 'names' => 'carol', 'once' => 'blocked'],
+        ], $rows);
+    }
+
+    public function testBothServersConvertTheSeparatorToTheCharsetOfWhatItJoins(): void
+    {
+        // The values are latin1 here and the connection utf8mb4. A separator
+        // written as hexadecimal bytes would be read as latin1 as it stands and
+        // come back as "Ã©"; a quoted literal is converted like any value.
+        $rows = $this->connection
+            ->select([Expression::groupConcat(Expression::of('CONVERT(`name` USING latin1)'), orders: [Expression::of('`name`')], separator: 'é'), 'names'])
+            ->from('users')
+            ->where('status', 'active')
+            ->get();
+
+        $this->assertSame([['names' => 'aliceébobédave']], $rows);
+    }
+
     public function testGroupByFoldsTheRowsIntoOneRowPerValue(): void
     {
         $rows = $this->connection->select('user_id', Expression::of('COUNT(*) AS posts_written'))
