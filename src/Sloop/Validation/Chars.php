@@ -138,7 +138,14 @@ enum Chars: string
     /** CJK symbols and punctuation (U+3001-U+303F; not the ideographic space, which is ZenkakuSpace), the middle dot `・` and `゠`, and full-width ASCII symbols and currency signs. */
     case ZenkakuSymbols = 'zenkaku_symbols';
 
-    /** Emoji: pictographs and the joiners, variation selector, skin tones, regional indicators, keycap, and tags that build emoji sequences. */
+    /**
+     * Emoji: pictographs (Extended_Pictographic) and the joiners, variation selector, skin tones, regional indicators, keycap, and tags that build emoji sequences.
+     *
+     * Extended_Pictographic also covers symbols usually shown as text, such
+     * as `©` `™` `®` `‼` `↔`, and the zero width joiner is used in the
+     * spelling of some scripts (Sinhala, Malayalam). notChars([Chars::Emoji])
+     * therefore rejects those as well.
+     */
     case Emoji = 'emoji';
 
     /** Hexadecimal digits 0-9, a-f, A-F. */

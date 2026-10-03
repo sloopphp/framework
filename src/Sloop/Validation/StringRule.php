@@ -158,7 +158,8 @@ final class StringRule extends FieldRule
      * A Chars case matches any code point of the value. A string in $sets lists
      * characters to reject, matched as whole grapheme clusters in NFC: a listed
      * `l` does not match `l̃` (l followed by a combining tilde). Use a Chars case
-     * to reject a code point wherever it appears.
+     * to reject a code point wherever it appears. Chars::Emoji used here also
+     * rejects `©` `™` `®` and the zero width joiner (see Chars::Emoji).
      *
      * @param  list<Chars|string>       $sets    Rejected character sets and listed characters
      * @param  string|null              $message Message for this rule only
