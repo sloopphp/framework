@@ -440,6 +440,20 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['e']), "e\u{301}"));
     }
 
+    public function testNotContainsFindsALoneCombiningMarkOnlyInADecomposedValue(): void
+    {
+        $rule = Rule::string()->notContains(["\u{301}"]);
+
+        $this->assertSame(['notContains'], self::failedRules($rule, "e\u{301}"));
+        $this->assertSame([], self::failedRules($rule, "\u{E9}"));
+    }
+
+    public function testNotContainsDoesNotFindAPrecomposedHangulNeedleInJamoThatNfcComposesDifferently(): void
+    {
+        // The jamo compose to U+AD00 U+B9B0; neither form of the value holds U+AD00 U+B9AC.
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(["\u{AD00}\u{B9AC}"]), "\u{1100}\u{116A}\u{11AB}\u{1105}\u{1175}\u{11AB}"));
+    }
+
     /**
      * @return iterable<string, array{string, string, list<string>}>
      */
@@ -451,7 +465,7 @@ final class StringRuleTest extends TestCase
         yield 'precomposed letter in the value as given' => ["e\u{301}", "x\u{E9}\u{323}", ['notContains']];
         yield 'precomposed needle, marks given in the other order' => ["\u{E9}", "xe\u{323}\u{301}", []];
         yield 'decomposed needle, marks given in the other order' => ["e\u{301}", "xe\u{323}\u{301}", []];
-        yield 'precomposed needle, decomposed with a mark between' => ["\u{E9}", "xe\u{301}\u{323}", []];
+        yield 'precomposed needle, decomposed value with a following mark' => ["\u{E9}", "xe\u{301}\u{323}", []];
     }
 
     /**
@@ -555,6 +569,24 @@ final class StringRuleTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', '']));
 
         $this->assertSame('notContains() needs at least one character in each value.', $e->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function nonStringNeedles(): iterable
+    {
+        // The method name comes from here so that the call is not checked against list<string>.
+        yield 'int' => ['notContains', 1];
+        yield 'array' => ['notContains', ['a']];
+    }
+
+    #[DataProvider('nonStringNeedles')]
+    public function testNotContainsNonStringNeedleIsATypeError(string $method, mixed $needle): void
+    {
+        $rule = Rule::string();
+
+        $this->assertThrows(\TypeError::class, static fn () => $rule->{$method}([$needle]));
     }
 
     public function testNotContainsInvalidUtf8NeedleThrows(): void
