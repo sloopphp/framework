@@ -433,6 +433,73 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['e']), "\u{E9}"));
     }
 
+    public function testNotContainsFindsALetterFollowedByACombiningMark(): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['e']), "e\u{301}"));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, list<string>}>
+     */
+    public static function reorderedCombiningMarks(): iterable
+    {
+        // NFC reorders e + U+0301 + U+0323 to U+1EB9 + U+0301, so only the
+        // value as given holds e + U+0301 or U+00E9.
+        yield 'decomposed needle in the value as given' => ["e\u{301}", "xe\u{301}\u{323}", ['notContains']];
+        yield 'precomposed needle in the value as given' => ["e\u{301}", "x\u{E9}\u{323}", ['notContains']];
+        yield 'precomposed needle, marks given in the other order' => ["\u{E9}", "xe\u{323}\u{301}", []];
+        yield 'decomposed needle, marks given in the other order' => ["e\u{301}", "xe\u{323}\u{301}", []];
+        yield 'precomposed needle, decomposed with a mark between' => ["\u{E9}", "xe\u{301}\u{323}", []];
+    }
+
+    /**
+     * @param list<string> $expected
+     */
+    #[DataProvider('reorderedCombiningMarks')]
+    public function testNotContainsWithReorderedCombiningMarks(string $needle, string $value, array $expected): void
+    {
+        $this->assertSame($expected, self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame($expected, self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function foldedFormsWithoutAPrecomposedCapital(): iterable
+    {
+        // The capital has no precomposed form, the small letter has one.
+        yield 'j caron, precomposed needle' => ["\u{1F0}", "J\u{30C}"];
+        yield 'j caron, decomposed needle' => ["J\u{30C}", "\u{1F0}"];
+        yield 'w ring' => ["\u{1E98}", "W\u{30A}"];
+        yield 'iota with dialytika and tonos' => ["\u{390}", "\u{399}\u{308}\u{301}"];
+    }
+
+    #[DataProvider('foldedFormsWithoutAPrecomposedCapital')]
+    public function testNotContainsIgnoreCaseComposesAfterFolding(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsIgnoreCaseLeavesTheDottedCapitalIApart(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['istanbul'], ignoreCase: true), "\u{130}STANBUL"));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function lookAlikeValues(): iterable
+    {
+        yield 'cyrillic a' => ["\u{430}dmin"];
+        yield 'zero width space' => ["ad\u{200B}min"];
+    }
+
+    #[DataProvider('lookAlikeValues')]
+    public function testNotContainsDoesNotRejectLookAlikeOrInvisibleCharacters(string $value): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), $value));
+    }
+
     public function testNotContainsKeepsTheValueUnchanged(): void
     {
         $this->assertSame("e\u{301}te\u{301}", self::valueOf(Rule::string()->notContains(['x']), "e\u{301}te\u{301}"));

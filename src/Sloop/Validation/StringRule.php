@@ -151,14 +151,16 @@ final class StringRule extends FieldRule
     /**
      * Fail when the value contains any of the given strings.
      *
-     * Each needle is compared in NFC against both the value as given and its
-     * NFC form, so a decomposed `café` contains `café`, and `admin` followed
-     * by a combining tilde (which NFC turns into `admiñ`) still contains
-     * `admin`; a precomposed `é` does not contain `e`. The value itself is
-     * kept as given. With $ignoreCase, upper and lower case are compared one
-     * character to one (`ÉLAN` contains `élan`, `SS` does not contain `ß`);
-     * full-width and half-width characters stay different (`ＰＡＳＳ` does not
-     * contain `pass`).
+     * A needle matches the value as given or its NFC form. Its NFC form is
+     * looked for in both, and the needle as given in the value as given:
+     * a decomposed `café` contains `café`, `admin` followed by a combining
+     * tilde (which NFC turns into `admiñ`) still contains `admin`, and a
+     * needle `e` + U+0301 is found in `e` + U+0301 + U+0323 even though NFC
+     * reorders those marks. A precomposed `é` does not contain `e`. The value
+     * itself is kept as given. With $ignoreCase, upper and lower case are
+     * compared one character to one (`ÉLAN` contains `élan`, `SS` does not
+     * contain `ß`); full-width and half-width characters stay different
+     * (`ＰＡＳＳ` does not contain `pass`).
      *
      * @param  list<string>             $needles    Strings the value must not contain
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
@@ -177,17 +179,17 @@ final class StringRule extends FieldRule
             if (!mb_check_encoding($needle, 'UTF-8')) {
                 throw new InvalidArgumentException('notContains() needs values in valid UTF-8.');
             }
-            $prepared[] = self::caseFolded(self::nfc($needle), $ignoreCase);
+            $prepared[] = self::comparisonForms($needle, $ignoreCase);
         }
 
         return $this->withCheck('notContains', ['values' => $needles], static function (string $value) use ($prepared, $ignoreCase): bool {
-            // Both forms: NFC composes a combining mark into the last letter of
-            // a needle (`admin` + U+0303 becomes `admiñ`) and composes a
-            // decomposed letter into place, so either form alone lets a needle
-            // through. Each form is folded once, not once per needle.
-            $forms = [self::caseFolded($value, $ignoreCase), self::caseFolded(self::nfc($value), $ignoreCase)];
-            foreach ($prepared as $needle) {
-                if (str_contains($forms[0], $needle) || str_contains($forms[1], $needle)) {
+            // NFC composes a combining mark into the last letter of a needle
+            // (`admin` + U+0303 becomes `admiñ`) and reorders marks (e + U+0301
+            // + U+0323 becomes U+1EB9 + U+0301), so the value as given is
+            // searched too. Each form is built once, not once per needle.
+            [$raw, $normalized] = self::comparisonForms($value, $ignoreCase);
+            foreach ($prepared as [$needleRaw, $needleNormalized]) {
+                if (str_contains($raw, $needleNormalized) || str_contains($normalized, $needleNormalized) || str_contains($raw, $needleRaw)) {
                     return false;
                 }
             }
@@ -602,15 +604,26 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * A valid UTF-8 string with simple case folding applied when asked (the folding mb_stripos() uses).
+     * The two forms notContains() compares: as given, and in NFC.
      *
-     * @param  string $value Valid UTF-8 string
-     * @param  bool   $fold  Whether to fold the case
-     * @return string
+     * With $fold, both are case folded with the simple folding mb_stripos()
+     * uses, and the NFC form is normalized again after folding: `J` + U+030C
+     * has no precomposed form, but its folded `j` + U+030C composes to `ǰ`.
+     *
+     * @param  string                $value Valid UTF-8 string
+     * @param  bool                  $fold  Whether to fold the case
+     * @return array{string, string}
      */
-    private static function caseFolded(string $value, bool $fold): string
+    private static function comparisonForms(string $value, bool $fold): array
     {
-        return $fold ? mb_convert_case($value, \MB_CASE_FOLD_SIMPLE, 'UTF-8') : $value;
+        if (!$fold) {
+            return [$value, self::nfc($value)];
+        }
+
+        return [
+            mb_convert_case($value, \MB_CASE_FOLD_SIMPLE, 'UTF-8'),
+            self::nfc(mb_convert_case(self::nfc($value), \MB_CASE_FOLD_SIMPLE, 'UTF-8')),
+        ];
     }
 
     /**
