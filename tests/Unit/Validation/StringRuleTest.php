@@ -131,9 +131,6 @@ final class StringRuleTest extends TestCase
     }
 
     /**
-     * Rules built with the given unit, each passing only at the length of the
-     * value in that unit: 👨‍👩‍👧 is 1 grapheme, 5 code points and 18 bytes.
-     *
      * @return iterable<string, array{LengthUnit, int}>
      */
     public static function lengthUnits(): iterable
@@ -146,7 +143,7 @@ final class StringRuleTest extends TestCase
     #[DataProvider('lengthUnits')]
     public function testLengthRulesCountInTheGivenUnit(LengthUnit $unit, int $length): void
     {
-        $family = '👨‍👩‍👧';
+        $family = '👨‍👩‍👧'; // 1 grapheme, 5 code points, 18 bytes
 
         $this->assertSame([], self::failedRules(Rule::string()->minLength($length, unit: $unit), $family));
         $this->assertSame(['minLength'], self::failedRules(Rule::string()->minLength($length + 1, unit: $unit), $family));
