@@ -14,8 +14,8 @@ use UnitEnum;
  * `0.0` and `-0.0` share one. An enum case has one: there is one instance of
  * each case, so `===` compares the case. A value with no such key (any other
  * object, NAN, which is not `===` to itself, a resource, or an array holding
- * one) is compared with the earlier ones of its kind one by one; neither a
- * request body nor a validated value holds one.
+ * one) is compared with the earlier ones of its kind one by one. A request
+ * body cannot hold one; only a sanitizer closure can put one in.
  *
  * @internal Used by ArraySanitize::Unique and the distinct() rules.
  */
