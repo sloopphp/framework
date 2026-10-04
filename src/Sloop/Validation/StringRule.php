@@ -159,7 +159,7 @@ final class StringRule extends FieldRule
      * reorders those marks. A precomposed `é` does not contain `e`. The value
      * itself is kept as given. With $ignoreCase, upper and lower case are
      * compared one character to one (`ÉLAN` contains `élan`, `SS` does not
-     * contain `ß`); full-width and half-width characters stay different
+     * contain `ß`, `I` and `ı` stay different); full-width and half-width characters stay different
      * (`ＰＡＳＳ` does not contain `pass`).
      *
      * @param  list<string>             $needles    Strings the value must not contain
@@ -167,7 +167,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message    Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
-     * @throws \TypeError               When a needle is not a string
+     * @throws \TypeError               When a needle is not a string (an array needle holding invalid UTF-8 gets the InvalidArgumentException instead)
      */
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {

@@ -15,6 +15,7 @@ use Sloop\Validation\CharSet;
 use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
 use Sloop\Validation\ValidationError;
+use TypeError;
 
 final class StringRuleTest extends TestCase
 {
@@ -586,7 +587,26 @@ final class StringRuleTest extends TestCase
     {
         $rule = Rule::string();
 
-        $this->assertThrows(\TypeError::class, static fn () => $rule->{$method}([$needle]));
+        $this->assertThrows(TypeError::class, static fn () => $rule->{$method}([$needle]));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function notContainsMethodName(): iterable
+    {
+        // The method name comes from here so that the call is not checked against list<string>.
+        yield 'notContains' => ['notContains'];
+    }
+
+    #[DataProvider('notContainsMethodName')]
+    public function testNotContainsArrayNeedleWithInvalidUtf8IsTheUtf8Error(string $method): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->{$method}([["\xFF"]]));
+
+        $this->assertSame('notContains() needs values in valid UTF-8.', $e->getMessage());
     }
 
     public function testNotContainsInvalidUtf8NeedleThrows(): void
