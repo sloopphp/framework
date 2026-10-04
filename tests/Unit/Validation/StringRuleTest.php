@@ -682,8 +682,8 @@ final class StringRuleTest extends TestCase
         try {
             // PCRE gives up only while matching, so each value holds the listed
             // character where one check finds it, with a mark that keeps the whole
-            // cluster from matching; no other test lists these characters, which
-            // keeps the compiled patterns uncached.
+            // cluster from matching; no other test builds these patterns, which
+            // keeps them out of the compiled-pattern cache.
             // Both forms hold `§`.
             $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['§']), "a§\u{0301}"));
             // Only the value holds `=`: NFC turns `=` and U+0338 into `≠`.
