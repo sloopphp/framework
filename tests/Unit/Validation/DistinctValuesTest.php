@@ -26,6 +26,18 @@ final class DistinctValuesTest extends TestCase
         $this->assertFalse(DistinctValues::hasDuplicate([0.0, 1.0]));
     }
 
+    public function testFloatsAreComparedWhateverTheSerializePrecision(): void
+    {
+        $precision = \ini_get('serialize_precision');
+        ini_set('serialize_precision', '10');
+        try {
+            $this->assertFalse(DistinctValues::hasDuplicate([0.1, 0.10000000001]));
+            $this->assertFalse(DistinctValues::hasDuplicate([[0.1], [0.10000000001]]));
+        } finally {
+            ini_set('serialize_precision', (string) $precision);
+        }
+    }
+
     public function testArraysHoldingFloatsAreComparedWithStrictEquality(): void
     {
         $this->assertTrue(DistinctValues::hasDuplicate([[0.0], [-0.0]]));

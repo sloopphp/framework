@@ -67,8 +67,8 @@ final class DistinctValues
      * A string two values share exactly when they are `===`, or null when there is none.
      *
      * serialize() keeps the type, the keys and their order, which is what
-     * `===` compares, once every float is written as the one value its `===`
-     * peers share (0.0 for -0.0).
+     * `===` compares, once every float is written as the bits of its double
+     * (the same for 0.0 and -0.0, whatever serialize_precision is).
      *
      * @param  mixed       $value Value to key
      * @return string|null
@@ -81,7 +81,7 @@ final class DistinctValues
     }
 
     /**
-     * The value with -0.0 written as 0.0 throughout, or null when it cannot be keyed.
+     * The value with every float written as its bits, or null when it cannot be keyed.
      *
      * Wrapped in a one-element array so that a null value is told apart from
      * "no key". NAN, which is not `===` to itself, an object other than an enum
@@ -97,8 +97,11 @@ final class DistinctValues
                 return null;
             }
 
-            // -0.0 === 0.0, but the two serialize differently.
-            return [$value === 0.0 ? 0.0 : $value];
+            // The bits of the double, so that the key does not depend on
+            // serialize_precision; -0.0 === 0.0, so the two share one. Wrapped in
+            // an object so that no string can share the key: an object given as
+            // a value is never keyed.
+            return [(object) ['float' => bin2hex(pack('E', $value === 0.0 ? 0.0 : $value))]];
         }
 
         if (\is_array($value)) {
