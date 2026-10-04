@@ -13,7 +13,8 @@ use RuntimeException;
  * Rules for a field whose validated value is a string.
  *
  * Accepts only strings of valid UTF-8; an int or any other type is a type
- * failure (no implicit conversion). Lengths are counted in grapheme clusters.
+ * failure (no implicit conversion). Lengths are counted in grapheme clusters
+ * unless a rule is given another LengthUnit.
  *
  * @extends FieldRule<string>
  */
@@ -34,48 +35,69 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Fail when the value has fewer characters than given.
+     * Fail when the value is shorter than given.
      *
-     * @param  int                      $min     Minimum length in grapheme clusters
+     * @param  int                      $min     Minimum length
      * @param  string|null              $message Message for this rule only
+     * @param  LengthUnit               $unit    Unit the length is counted in
      * @return self
      * @throws InvalidArgumentException When $min is negative or the message template is malformed
      */
-    public function minLength(int $min, ?string $message = null): self
+    public function minLength(int $min, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
     {
         self::assertLength($min);
 
-        return $this->withCheck('minLength', ['min' => $min], static fn (string $value): bool => self::length($value) >= $min, $message);
+        return $this->withCheck('minLength', ['min' => $min, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) >= $min, $message);
     }
 
     /**
-     * Fail when the value has more characters than given.
+     * Fail when the value is longer than given.
      *
-     * @param  int                      $max     Maximum length in grapheme clusters
+     * @param  int                      $max     Maximum length
      * @param  string|null              $message Message for this rule only
+     * @param  LengthUnit               $unit    Unit the length is counted in
      * @return self
      * @throws InvalidArgumentException When $max is negative or the message template is malformed
      */
-    public function maxLength(int $max, ?string $message = null): self
+    public function maxLength(int $max, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
     {
         self::assertLength($max);
 
-        return $this->withCheck('maxLength', ['max' => $max], static fn (string $value): bool => self::length($value) <= $max, $message);
+        return $this->withCheck('maxLength', ['max' => $max, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) <= $max, $message);
     }
 
     /**
-     * Fail unless the value has exactly the given number of characters.
+     * Fail unless the value has exactly the given length.
      *
-     * @param  int                      $length  Required length in grapheme clusters
+     * @param  int                      $length  Required length
      * @param  string|null              $message Message for this rule only
+     * @param  LengthUnit               $unit    Unit the length is counted in
      * @return self
      * @throws InvalidArgumentException When $length is negative or the message template is malformed
      */
-    public function exactLength(int $length, ?string $message = null): self
+    public function exactLength(int $length, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
     {
         self::assertLength($length);
 
-        return $this->withCheck('exactLength', ['length' => $length], static fn (string $value): bool => self::length($value) === $length, $message);
+        return $this->withCheck('exactLength', ['length' => $length, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) === $length, $message);
+    }
+
+    /**
+     * Fail unless the length of the value is a multiple of the given size.
+     *
+     * @param  int                      $size    Block size, at least 1
+     * @param  string|null              $message Message for this rule only
+     * @param  LengthUnit               $unit    Unit the length is counted in
+     * @return self
+     * @throws InvalidArgumentException When $size is less than 1 or the message template is malformed
+     */
+    public function blockSize(int $size, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
+    {
+        if ($size < 1) {
+            throw new InvalidArgumentException('Block size must be at least 1, got ' . $size . '.');
+        }
+
+        return $this->withCheck('blockSize', ['size' => $size, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) % $size === 0, $message);
     }
 
     /**
@@ -324,19 +346,6 @@ final class StringRule extends FieldRule
     protected function typeRule(): string
     {
         return 'string';
-    }
-
-    /**
-     * Length of a valid UTF-8 string in grapheme clusters.
-     *
-     * @param  string $value Valid UTF-8 string
-     * @return int
-     */
-    private static function length(string $value): int
-    {
-        $length = grapheme_strlen($value);
-
-        return \is_int($length) ? $length : 0;
     }
 
     /**

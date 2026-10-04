@@ -218,7 +218,7 @@ final class ArrayRuleTest extends TestCase
         yield 'maxCount' => [
             Rule::array()->maxCount(1),
             [1, 2],
-            new ValidationError('maxCount', ['max' => 1], 'The v field must not have more than 1 items.'),
+            new ValidationError('maxCount', ['max' => 1], 'The v field must not have more than 1 item.'),
         ];
         yield 'betweenCount' => [
             Rule::array()->betweenCount(2, 3),
