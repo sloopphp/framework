@@ -151,6 +151,8 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['maxLength'], self::failedRules(Rule::string()->maxLength($length - 1, unit: $unit), $family));
         $this->assertSame([], self::failedRules(Rule::string()->exactLength($length, unit: $unit), $family));
         $this->assertSame(['exactLength'], self::failedRules(Rule::string()->exactLength($length + 1, unit: $unit), $family));
+        $this->assertSame([], self::failedRules(Rule::string()->blockSize($length, unit: $unit), $family));
+        $this->assertSame(['blockSize'], self::failedRules(Rule::string()->blockSize($length + 1, unit: $unit), $family));
     }
 
     public function testCodepointsCountACombiningMarkSeparately(): void
