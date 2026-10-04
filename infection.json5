@@ -76,6 +76,14 @@
                 "Sloop\\Validation\\DistinctValues::normalize"
             ]
         },
+        "CastInt": {
+            // CharSetPattern::braced reads at most six hex digits, which
+            // hexdec() always returns as an int; the cast only narrows the
+            // int|float return type for the static analysis.
+            "ignore": [
+                "Sloop\\Validation\\CharSetPattern::braced::146"
+            ]
+        },
         "LogicalOr": {
             // StringRule::clusters guards against grapheme_extract() returning
             // false or an empty string, or not reporting the next offset, none
@@ -83,7 +91,7 @@
             // Turning an || into && makes the guard never fire, which no input
             // can observe.
             "ignore": [
-                "Sloop\\Validation\\StringRule::clusters::516"
+                "Sloop\\Validation\\StringRule::clusters::534"
             ]
         },
         "CastString": {
@@ -107,7 +115,7 @@
                 // reliably, so the domain extraction on this line is never
                 // compared against a live answer; only the negative path (a
                 // domain under .invalid) is tested.
-                "Sloop\\Validation\\StringRule::email::307",
+                "Sloop\\Validation\\StringRule::email::301",
                 // JsonBody::isJson splits the Content-Type at the first ";" and
                 // reads only the part before it. A limit of 3 instead of 2 only
                 // splits the parameters it then ignores, so the media type read
@@ -154,8 +162,8 @@
             "ignore": [
                 // DecimalLiteral::compare::79: see IncrementInteger.
                 "Sloop\\Validation\\DecimalLiteral::compare::79",
-                // StringRule::email::307: see IncrementInteger.
-                "Sloop\\Validation\\StringRule::email::307",
+                // StringRule::email::301: see IncrementInteger.
+                "Sloop\\Validation\\StringRule::email::301",
                 "Sloop\\Support\\Str::random",
                 // Same millisecond-conversion literal as IncrementInteger above,
                 // in the opposite direction (1000 → 999).
@@ -197,20 +205,20 @@
             ]
         },
         "Plus": {
-            // StringRule::email::307: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::301: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::307"
+                "Sloop\\Validation\\StringRule::email::301"
             ]
         },
         "NotIdentical": {
-            // StringRule::email::307: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::301: see IncrementInteger (needs a live DNS lookup).
             // Application::createServerRequestFromGlobals::684 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
             // a test detects.
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::307",
+                "Sloop\\Validation\\StringRule::email::301",
                 "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
             ]
         },
@@ -227,9 +235,9 @@
             ]
         },
         "UnwrapSubstr": {
-            // StringRule::email::307: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::301: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::307"
+                "Sloop\\Validation\\StringRule::email::301"
             ]
         },
         "CastFloat": {
@@ -361,7 +369,7 @@
                 // listed. Falling through walks the value's clusters against an
                 // empty list and counts nothing, so only the work differs.
                 // Pinned to the line so the final return stays covered.
-                "Sloop\\Validation\\StringRule::countListedKinds::466",
+                "Sloop\\Validation\\StringRule::countListedKinds::484",
                 // ConnectionManager::resolvePool returns the pool it already
                 // validated. Falling through validates the same readonly config
                 // with the same pure validator and stores an equal PoolConfig,

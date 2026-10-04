@@ -13,7 +13,7 @@ namespace Sloop\Validation;
  * half-width forms are separate cases, so a set can be widened by adding cases
  * but never needs narrowing.
  */
-enum Chars: string
+enum Chars: string implements CharSet
 {
     /**
      * PCRE character class contents keyed by case value.
@@ -166,5 +166,15 @@ enum Chars: string
     public function pattern(): string
     {
         return self::PATTERNS[$this->value];
+    }
+
+    /**
+     * Name reported in the `chars` parameter of a failed rule: the case value.
+     *
+     * @return string
+     */
+    public function name(): string
+    {
+        return $this->value;
     }
 }

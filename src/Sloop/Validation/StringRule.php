@@ -154,12 +154,13 @@ final class StringRule extends FieldRule
      * A string in $sets lists characters to allow, split into grapheme
      * clusters: a character of the value passes when it equals one of them
      * (both compared in NFC, so a decomposed `é` matches a listed `é`) or when
-     * every code point of it is in one of the Chars cases.
+     * every code point of it is in one of the CharSets (Chars cases or an
+     * application's own; see CharSet for what a pattern may hold).
      *
-     * @param  list<Chars|string>       $sets    Allowed character sets and listed characters; the value may mix characters from all of them
+     * @param  list<CharSet|string>     $sets    Allowed character sets and listed characters; the value may mix characters from all of them
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function chars(array $sets, ?string $message = null): self
@@ -184,7 +185,7 @@ final class StringRule extends FieldRule
     /**
      * Fail when any character of the value belongs to one of the given sets.
      *
-     * A Chars case matches any code point of the value. A string in $sets
+     * A CharSet matches any code point of the value. A string in $sets
      * lists characters to reject, split into grapheme clusters. A listed
      * character of one code point before or after NFC (a decomposed `é`
      * counts) matches that code point anywhere in the value or in its NFC
@@ -197,10 +198,10 @@ final class StringRule extends FieldRule
      * "\r" and "\n" apart, or use Chars::Newlines). Chars::Emoji used here
      * also rejects `©` `™` `®` and the zero width joiner (see Chars::Emoji).
      *
-     * @param  list<Chars|string>       $sets    Rejected character sets and listed characters
+     * @param  list<CharSet|string>     $sets    Rejected character sets and listed characters
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function notChars(array $sets, ?string $message = null): self
@@ -235,17 +236,17 @@ final class StringRule extends FieldRule
     /**
      * Fail unless the value has characters from at least the given number of sets.
      *
-     * Each element of $sets is one kind: a Chars case counts when any code
+     * Each element of $sets is one kind: a CharSet counts when any code
      * point of the value is in it, and a string counts once when any grapheme
      * cluster of the value equals one of its characters (compared in NFC).
      * Overlapping sets count independently: with [Chars::Alpha,
      * Chars::Uppercase], `ABC` uses both.
      *
      * @param  int                      $min     Minimum number of kinds the value must use
-     * @param  list<Chars|string>       $sets    The kinds to count
+     * @param  list<CharSet|string>     $sets    The kinds to count
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function minCharClasses(int $min, array $sets, ?string $message = null): self
@@ -257,20 +258,13 @@ final class StringRule extends FieldRule
         if ($min > \count($sets)) {
             throw new InvalidArgumentException('minCharClasses() needs a minimum of at most ' . \count($sets) . ' (the number of sets given), got ' . $min . '.');
         }
-        [, $names, $listed] = self::readSets($sets, 'minCharClasses');
+        [, $names, $listed, $setPatterns] = self::readSets($sets, 'minCharClasses');
         if (\count(array_unique($names)) !== \count($names) || \count(array_unique($listed)) !== \count($listed)) {
             throw new InvalidArgumentException('minCharClasses() needs each set at most once.');
         }
 
-        $patterns    = [];
-        $listedKinds = [];
-        foreach ($sets as $set) {
-            if ($set instanceof Chars) {
-                $patterns[] = '/[' . $set->pattern() . ']/u';
-            } else {
-                $listedKinds[] = self::clusterSet($set);
-            }
-        }
+        $patterns    = array_map(static fn (string $pattern): string => '/[' . $pattern . ']/u', $setPatterns);
+        $listedKinds = array_map(self::clusterSet(...), $listed);
 
         return $this->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
             $used = self::countListedKinds($value, $listedKinds);
@@ -367,20 +361,26 @@ final class StringRule extends FieldRule
     /**
      * Split character sets into a character class and the listed characters.
      *
-     * @param  list<Chars|string>                        $sets Chars cases and listed characters
-     * @param  string                                    $rule Rule name for the message
-     * @return array{string, list<string>, list<string>}
-     * @throws InvalidArgumentException                  When a listed string is empty or not valid UTF-8
+     * @param  list<CharSet|string>                                    $sets Character sets and listed characters
+     * @param  string                                                  $rule Rule name for the message
+     * @return array{string, list<string>, list<string>, list<string>} Joined class, set names, listed strings, and each set's pattern
+     * @throws InvalidArgumentException                                When a listed string is empty or not valid UTF-8, or a CharSet pattern is unsafe to join (see CharSet)
      */
     private static function readSets(array $sets, string $rule): array
     {
-        $class  = '';
-        $names  = [];
-        $listed = [];
+        $class    = '';
+        $names    = [];
+        $listed   = [];
+        $patterns = [];
         foreach ($sets as $set) {
-            if ($set instanceof Chars) {
-                $class  .= $set->pattern();
-                $names[] = $set->value;
+            if ($set instanceof CharSet) {
+                // Read each method once: an application set is code the rule
+                // does not control, and what was checked must be what is used.
+                $name       = $set->name();
+                $pattern    = $set instanceof Chars ? $set->pattern() : self::applicationPattern($set->pattern(), $name, $rule);
+                $class     .= $pattern;
+                $names[]    = $name;
+                $patterns[] = $pattern;
 
                 continue;
             }
@@ -393,7 +393,25 @@ final class StringRule extends FieldRule
             $listed[] = $set;
         }
 
-        return [$class, $names, $listed];
+        return [$class, $names, $listed, $patterns];
+    }
+
+    /**
+     * The pattern of an application CharSet, written back in a form that is safe to join.
+     *
+     * @param  string                   $pattern Pattern returned by CharSet::pattern()
+     * @param  string                   $name    Name returned by CharSet::name()
+     * @param  string                   $rule    Rule name for the message
+     * @return string
+     * @throws InvalidArgumentException When the name is empty, or the pattern is outside the grammar CharSet describes
+     */
+    private static function applicationPattern(string $pattern, string $name, string $rule): string
+    {
+        if ($name === '') {
+            throw new InvalidArgumentException($rule . '() cannot use a CharSet whose name is empty.');
+        }
+
+        return CharSetPattern::normalize($pattern, $rule . '() cannot use the CharSet ' . $name . ': ');
     }
 
     /**
@@ -418,9 +436,9 @@ final class StringRule extends FieldRule
                 // The NFC form also matches as a whole cluster, so U+0344 still
                 // rejects a bare U+0308 U+0301 (a single code point there is
                 // already caught by the code points).
-                $single = array_filter([$cluster, $nfc], static fn (string $form): bool => mb_strlen($form) === 1);
+                $single = array_filter([$cluster, $nfc], static fn (string $form): bool => mb_strlen($form, 'UTF-8') === 1);
                 foreach ($single as $form) {
-                    $codePoints .= '\\x{' . dechex(mb_ord($form)) . '}';
+                    $codePoints .= '\\x{' . dechex(mb_ord($form, 'UTF-8')) . '}';
                 }
                 $clusters[$nfc] = true;
             }
