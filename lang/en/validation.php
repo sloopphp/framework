@@ -30,6 +30,7 @@ return [
     'regex'          => 'The {label} field format is invalid.',
     'in'             => 'The selected {label} is invalid.',
     'notIn'          => 'The selected {label} is invalid.',
+    'notContains'    => 'The {label} field contains a value that is not allowed.',
     'chars'          => 'The {label} field contains characters that are not allowed.',
     'notChars'       => 'The {label} field contains characters that are not allowed.',
     'minCharClasses' => 'The {label} field must contain at least {min} kinds of characters.',

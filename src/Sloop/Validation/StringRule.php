@@ -149,6 +149,46 @@ final class StringRule extends FieldRule
     }
 
     /**
+     * Fail when the value contains any of the given strings.
+     *
+     * Both sides are compared in NFC, so a decomposed `café` contains `café`;
+     * the value itself is kept as given. With $ignoreCase, upper and lower
+     * case are the same in any script (`ÉLAN` contains `élan`); full-width and
+     * half-width characters stay different (`ＰＡＳＳ` does not contain `pass`).
+     *
+     * @param  list<string>             $needles    Strings the value must not contain
+     * @param  bool                     $ignoreCase Treat upper and lower case as the same
+     * @param  string|null              $message    Message for this rule only
+     * @return self
+     * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
+     */
+    public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
+    {
+        self::assertNotEmpty($needles, 'notContains');
+        $normalized = [];
+        foreach ($needles as $needle) {
+            if ($needle === '') {
+                throw new InvalidArgumentException('notContains() needs at least one character in each value.');
+            }
+            if (!mb_check_encoding($needle, 'UTF-8')) {
+                throw new InvalidArgumentException('notContains() needs values in valid UTF-8.');
+            }
+            $normalized[] = self::nfc($needle);
+        }
+
+        return $this->withCheck('notContains', ['values' => $needles], static function (string $value) use ($normalized, $ignoreCase): bool {
+            $value = self::nfc($value);
+            foreach ($normalized as $needle) {
+                if ($ignoreCase ? mb_stripos($value, $needle, 0, 'UTF-8') !== false : str_contains($value, $needle)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }, $message);
+    }
+
+    /**
      * Fail unless every character of the value belongs to one of the given sets.
      *
      * A string in $sets lists characters to allow, split into grapheme

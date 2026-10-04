@@ -347,6 +347,93 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['in'], self::failedRules(Rule::string()->in(['1.0']), '1'));
     }
 
+    // ---------------------------------------------------------------
+    // notContains
+    // ---------------------------------------------------------------
+
+    public function testNotContains(): void
+    {
+        $rule = Rule::string()->notContains(['admin', 'root']);
+
+        $this->assertSame([], self::failedRules($rule, 'user'));
+        $this->assertSame(['notContains'], self::failedRules($rule, 'xadminx'));
+        $this->assertSame(['notContains'], self::failedRules($rule, 'root'));
+        self::assertErrorSame(
+            new ValidationError('notContains', ['values' => ['admin', 'root']], 'The v field contains a value that is not allowed.'),
+            self::onlyError($rule, 'myroot'),
+        );
+    }
+
+    public function testNotContainsIsCaseSensitiveByDefault(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass']), 'PASSWORD'));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function caseInsensitiveMatches(): iterable
+    {
+        yield 'ascii' => ['pass', 'myPASSword'];
+        yield 'latin with diacritics' => ['élan', 'ÉLAN'];
+        yield 'greek' => ['σοφία', 'ΣΟΦΊΑ'];
+    }
+
+    #[DataProvider('caseInsensitiveMatches')]
+    public function testNotContainsIgnoreCaseUsesUnicodeCase(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsKeepsFullWidthAndHalfWidthApart(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass'], ignoreCase: true), 'ＰＡＳＳ'));
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['ＰＡＳＳ']), 'pass'));
+    }
+
+    public function testNotContainsComparesBothSidesInNfc(): void
+    {
+        // e + U+0301 against U+00E9, in both directions.
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{E9}t\u{E9}"]), "un e\u{301}te\u{301}"));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["e\u{301}te\u{301}"]), "un \u{E9}t\u{E9}"));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{C9}T\u{C9}"], ignoreCase: true), "e\u{301}te\u{301}"));
+    }
+
+    public function testNotContainsKeepsTheValueUnchanged(): void
+    {
+        $this->assertSame("e\u{301}te\u{301}", self::valueOf(Rule::string()->notContains(['x']), "e\u{301}te\u{301}"));
+    }
+
+    public function testNotContainsReportsTheNeedlesAsGiven(): void
+    {
+        $rule = Rule::string()->notContains(["e\u{301}te\u{301}"]);
+
+        $this->assertSame(['values' => ["e\u{301}te\u{301}"]], self::onlyError($rule, "\u{E9}t\u{E9}")->params);
+    }
+
+    public function testNotContainsSkipsAnEmptyValue(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['a']), ''));
+    }
+
+    public function testNotContainsEmptyNeedleThrows(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', '']));
+
+        $this->assertSame('notContains() needs at least one character in each value.', $e->getMessage());
+    }
+
+    public function testNotContainsInvalidUtf8NeedleThrows(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', "\xFF"]));
+
+        $this->assertSame('notContains() needs values in valid UTF-8.', $e->getMessage());
+    }
+
     /**
      * @return iterable<string, array{string}>
      */
@@ -354,6 +441,7 @@ final class StringRuleTest extends TestCase
     {
         yield 'in' => ['in'];
         yield 'notIn' => ['notIn'];
+        yield 'notContains' => ['notContains'];
         yield 'chars' => ['chars'];
         yield 'notChars' => ['notChars'];
         yield 'url' => ['url'];
