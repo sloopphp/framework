@@ -426,6 +426,8 @@ final class StringRuleTest extends TestCase
         // n + U+0303 becomes U+00F1, so only the value as given still holds "admin".
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin']), "admin\u{303}"));
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), "ADMIN\u{303}"));
+        // A + U+0301 becomes U+0386, so a Greek needle is only in the folded value as given.
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{3C3}\u{3BF}\u{3C6}\u{3AF}\u{3B1}"], ignoreCase: true), "\u{3A3}\u{39F}\u{3A6}\u{38A}\u{391}\u{301}"));
     }
 
     public function testNotContainsDoesNotFindALetterInsideAPrecomposedCharacter(): void
