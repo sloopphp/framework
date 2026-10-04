@@ -66,6 +66,16 @@
                 "Sloop\\Validation\\StringRule::splitListed"
             ]
         },
+        "LogicalOrAllSubExprNegation": {
+            // DistinctValues keys a value only to skip comparing every pair: a
+            // value with no key falls back to in_array(..., true) against the
+            // earlier unkeyed ones, which is exactly `===`. Negating both sides
+            // of normalize()'s last condition leaves every scalar unkeyed, which
+            // changes only the time taken.
+            "ignore": [
+                "Sloop\\Validation\\DistinctValues::normalize"
+            ]
+        },
         "LogicalOr": {
             // StringRule::clusters guards against grapheme_extract() returning
             // false or an empty string, or not reporting the next offset, none
@@ -329,6 +339,11 @@
             // the visible output is unchanged; only an unobservable performance
             // difference remains. Equivalent in black-box test terms.
             "ignore": [
+                // DistinctValues::normalize keys an enum case: without the return
+                // the case falls through to the object branch and is compared one
+                // by one with in_array(..., true), which gives the same answer.
+                // Only the time taken changes (see LogicalOrAllSubExprNegation).
+                "Sloop\\Validation\\DistinctValues::normalize::121",
                 "Sloop\\Support\\Str::snake",
                 "Sloop\\Support\\Str::studly",
                 // Result::constructorParameters returns the cached reflection
