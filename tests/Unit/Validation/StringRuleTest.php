@@ -364,6 +364,13 @@ final class StringRuleTest extends TestCase
         );
     }
 
+    public function testNotContainsUsesTheGivenMessage(): void
+    {
+        $rule = Rule::string()->notContains(['admin'], message: '{label} must not contain a reserved word');
+
+        $this->assertSame('v must not contain a reserved word', self::onlyError($rule, 'admin')->message);
+    }
+
     public function testNotContainsIsCaseSensitiveByDefault(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass']), 'PASSWORD'));
@@ -396,12 +403,34 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['ＰＡＳＳ']), 'pass'));
     }
 
-    public function testNotContainsComparesBothSidesInNfc(): void
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function canonicallyEquivalentForms(): iterable
     {
-        // e + U+0301 against U+00E9, in both directions.
-        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{E9}t\u{E9}"]), "un e\u{301}te\u{301}"));
-        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["e\u{301}te\u{301}"]), "un \u{E9}t\u{E9}"));
-        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{C9}T\u{C9}"], ignoreCase: true), "e\u{301}te\u{301}"));
+        yield 'composed needle, composed value' => ["\u{E9}t\u{E9}", "un \u{E9}t\u{E9}"];
+        yield 'composed needle, decomposed value' => ["\u{E9}t\u{E9}", "un e\u{301}te\u{301}"];
+        yield 'decomposed needle, composed value' => ["e\u{301}te\u{301}", "un \u{E9}t\u{E9}"];
+        yield 'decomposed needle, decomposed value' => ["e\u{301}te\u{301}", "un e\u{301}te\u{301}"];
+    }
+
+    #[DataProvider('canonicallyEquivalentForms')]
+    public function testNotContainsMatchesCanonicallyEquivalentForms(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([mb_strtoupper($needle)], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsMatchesANeedleThatNfcComposesAway(): void
+    {
+        // n + U+0303 becomes U+00F1, so only the value as given still holds "admin".
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin']), "admin\u{303}"));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), "ADMIN\u{303}"));
+    }
+
+    public function testNotContainsDoesNotFindALetterInsideAPrecomposedCharacter(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['e']), "\u{E9}"));
     }
 
     public function testNotContainsKeepsTheValueUnchanged(): void
