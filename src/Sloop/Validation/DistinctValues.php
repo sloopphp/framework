@@ -15,7 +15,7 @@ use UnitEnum;
  * each case, so `===` compares the case. A value with no such key (any other
  * object, NAN, which is not `===` to itself, a resource, or an array holding
  * one) is compared with the earlier ones of its kind one by one. A request
- * body cannot hold one; only a sanitizer closure can put one in.
+ * body cannot hold one.
  *
  * @internal Used by ArraySanitize::Unique and the distinct() rules.
  */
