@@ -570,10 +570,11 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notChars'], self::failedRules($rule, "\u{0DC1}\u{0DCA}\u{200D}\u{0DBB}\u{0DD3}"));
     }
 
-    public function testNotCharsListedNewlinesDoNotMatchCrlf(): void
+    public function testNotCharsListedNewlinesMatchInsideCrlf(): void
     {
-        $this->assertSame([], self::failedRules(Rule::string()->notChars(["\r", "\n"]), "a\r\nb"));
-        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Newlines]), "a\r\nb"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\r", "\n"]), "a\r\nb"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\n"]), "a\r\nb"));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(["\n"]), 'ab'));
     }
 
     public function testNotCharsSupplementaryMatchesWhatUtf8mb3CannotStore(): void
@@ -594,11 +595,65 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notChars'], self::failedRules($rule, 'ｶﾅ'));
     }
 
-    public function testNotCharsComparesListedCharactersAsNfcGraphemeClusters(): void
+    public function testNotCharsRejectsAListedCodePointInsideAGraphemeCluster(): void
+    {
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['l']), "l\u{0303}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['"']), "x\"\u{0301} y"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["'"]), "'\u{200D} OR 1=1"));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(['"']), 'x y'));
+    }
+
+    public function testNotCharsComparesListedCodePointsInNfc(): void
     {
         $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{00E9}"]), "cafe\u{0301}"));
-        $this->assertSame([], self::failedRules(Rule::string()->notChars(['l']), "l\u{0303}"));
-        $this->assertSame([], self::failedRules(Rule::string()->notChars(['👍🏻']), '👍'));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["e\u{0301}"]), "cafe\u{0301}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["e\u{0301}"]), "x\u{00E9}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{00E9}"]), "\u{00E9}\u{0303}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['K']), "\u{212A}"));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(["\u{00E9}"]), 'cafe'));
+    }
+
+    public function testNotCharsRejectsAListedCodePointThatNfcComposesAway(): void
+    {
+        $rule = Rule::string()->notChars(['>', '<', '=']);
+
+        $this->assertSame(['notChars'], self::failedRules($rule, ">\u{0338}"));
+        $this->assertSame(['notChars'], self::failedRules($rule, "a<\u{0338}b"));
+        $this->assertSame(['notChars'], self::failedRules($rule, "=\u{0338}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['e']), "e\u{0301}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{0301}"]), "e\u{0301}"));
+    }
+
+    public function testNotCharsTreatsACharacterThatNfcSplitsAsACodePoint(): void
+    {
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{0344}"]), "a\u{0344}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{0958}"]), "\u{0958}\u{0301}"));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars(["\u{0344}"]), "a\u{0308}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(["\u{0344}"]), "\u{0308}\u{0301}"));
+    }
+
+    public function testNotCharsListedCrlfMatchesOnlyThePair(): void
+    {
+        $rule = Rule::string()->notChars(["\r\n"]);
+
+        $this->assertSame(['notChars'], self::failedRules($rule, "a\r\nb"));
+        $this->assertSame([], self::failedRules($rule, "a\nb"));
+        $this->assertSame([], self::failedRules($rule, "a\rb"));
+    }
+
+    public function testNotCharsMatchesAListedMultiCodePointClusterOnlyAsAWhole(): void
+    {
+        $rule = Rule::string()->notChars(['👍🏻']);
+
+        $this->assertSame(['notChars'], self::failedRules($rule, 'ok👍🏻'));
+        $this->assertSame([], self::failedRules($rule, '👍'));
+        $this->assertSame([], self::failedRules($rule, "\u{1F3FB}"));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['👍🏻x']), 'ax'));
+    }
+
+    public function testNotCharsKeepsTheValueUnchanged(): void
+    {
+        $this->assertSame("cafe\u{0301}", self::valueOf(Rule::string()->notChars(['x']), "cafe\u{0301}"));
     }
 
     public function testNotCharsFailsWhenPcreGivesUp(): void
@@ -612,6 +667,29 @@ final class StringRuleTest extends TestCase
             // its JIT code, and a cached JIT pattern ignores pcre.jit=0 and the
             // backtrack limit, so a shared pattern would let PCRE succeed here.
             $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([Chars::Letter, Chars::Tabs]), str_repeat('-', 50000)));
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+            ini_set('pcre.backtrack_limit', (string) $backtrack);
+        }
+    }
+
+    public function testNotCharsFailsWhenPcreGivesUpOnAListedCharacter(): void
+    {
+        $jit       = \ini_get('pcre.jit');
+        $backtrack = \ini_get('pcre.backtrack_limit');
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            // PCRE gives up only while matching, so each value holds the listed
+            // character where one check finds it, with a mark that keeps the whole
+            // cluster from matching; no other test builds these patterns, which
+            // keeps them out of the compiled-pattern cache.
+            // Both forms hold `§`.
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['§']), "a§\u{0301}"));
+            // Only the value holds `=`: NFC turns `=` and U+0338 into `≠`.
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['=']), "=\u{0338}"));
+            // Only the NFC form holds `≠`.
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['≠']), "=\u{0338}\u{0301}"));
         } finally {
             ini_set('pcre.jit', (string) $jit);
             ini_set('pcre.backtrack_limit', (string) $backtrack);
