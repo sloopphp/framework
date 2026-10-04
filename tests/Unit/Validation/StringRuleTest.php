@@ -448,7 +448,7 @@ final class StringRuleTest extends TestCase
         // NFC reorders e + U+0301 + U+0323 to U+1EB9 + U+0301, so only the
         // value as given holds e + U+0301 or U+00E9.
         yield 'decomposed needle in the value as given' => ["e\u{301}", "xe\u{301}\u{323}", ['notContains']];
-        yield 'precomposed needle in the value as given' => ["e\u{301}", "x\u{E9}\u{323}", ['notContains']];
+        yield 'precomposed letter in the value as given' => ["e\u{301}", "x\u{E9}\u{323}", ['notContains']];
         yield 'precomposed needle, marks given in the other order' => ["\u{E9}", "xe\u{323}\u{301}", []];
         yield 'decomposed needle, marks given in the other order' => ["e\u{301}", "xe\u{323}\u{301}", []];
         yield 'precomposed needle, decomposed with a mark between' => ["\u{E9}", "xe\u{301}\u{323}", []];
@@ -474,12 +474,41 @@ final class StringRuleTest extends TestCase
         yield 'j caron, decomposed needle' => ["J\u{30C}", "\u{1F0}"];
         yield 'w ring' => ["\u{1E98}", "W\u{30A}"];
         yield 'iota with dialytika and tonos' => ["\u{390}", "\u{399}\u{308}\u{301}"];
+        // NFC before folding composes alpha + U+0345 to U+1FB3; folded first,
+        // U+0345 would become iota.
+        yield 'alpha with ypogegrammeni' => ["\u{1FB3}", "\u{3B1}\u{345}"];
     }
 
     #[DataProvider('foldedFormsWithoutAPrecomposedCapital')]
     public function testNotContainsIgnoreCaseComposesAfterFolding(string $needle, string $value): void
     {
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function mbStriposPairs(): iterable
+    {
+        yield 'greek word' => ["\u{3A3}\u{39F}\u{3A6}\u{38A}\u{391}", "\u{3C3}\u{3BF}\u{3C6}\u{3AF}\u{3B1}"];
+        yield 'kelvin sign' => ["\u{212A}", 'k'];
+        yield 'title case dz' => ["\u{1C5}", "\u{1C6}"];
+        yield 'capital sharp s' => ["\u{1E9E}", "\u{DF}"];
+        yield 'final sigma' => ["\u{3C2}", "\u{3A3}"];
+        yield 'ohm sign' => ["\u{3A9}MEGA", "\u{2126}mega"];
+        yield 'dotted capital i' => ["\u{130}", 'i'];
+        yield 'dotless small i' => ['I', "\u{131}"];
+        yield 'sharp s against ss' => ['STRASSE', "stra\u{DF}e"];
+        yield 'ligature fi' => ["\u{FB01}le", 'FILE'];
+        yield 'ypogegrammeni' => ["\u{3B1}\u{3B9}", "\u{3B1}\u{345}"];
+    }
+
+    #[DataProvider('mbStriposPairs')]
+    public function testNotContainsIgnoreCaseMatchesWhereMbStriposDoes(string $value, string $needle): void
+    {
+        $expected = mb_stripos($value, $needle, 0, 'UTF-8') !== false ? ['notContains'] : [];
+
+        $this->assertSame($expected, self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
     public function testNotContainsIgnoreCaseLeavesTheDottedCapitalIApart(): void

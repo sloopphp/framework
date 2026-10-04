@@ -167,6 +167,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message    Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
+     * @throws \TypeError               When a needle is not a string
      */
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {
