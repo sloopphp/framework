@@ -8,7 +8,10 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
+use Sloop\Tests\Unit\Validation\Stub\AppChars;
+use Sloop\Tests\Unit\Validation\Stub\FragmentChars;
 use Sloop\Validation\Chars;
+use Sloop\Validation\CharSet;
 use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
 use Sloop\Validation\ValidationError;
@@ -843,6 +846,222 @@ final class StringRuleTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(1, ['']));
 
         $this->assertSame('minCharClasses() needs at least one character in each listed string.', $e->getMessage());
+    }
+
+    // ---------------------------------------------------------------
+    // CharSet
+    // ---------------------------------------------------------------
+
+    public function testCharsAcceptsAnApplicationCharSet(): void
+    {
+        $rule = Rule::string()->chars([AppChars::Circled]);
+
+        $this->assertSame([], self::failedRules($rule, '①⑳'));
+        $this->assertSame(['chars'], self::failedRules($rule, '①㉑'));
+    }
+
+    public function testCharsMixesApplicationCharSetsWithCharsAndListedCharacters(): void
+    {
+        $rule = Rule::string()->chars([Chars::Numeric, AppChars::Circled, '#']);
+
+        $this->assertSame([], self::failedRules($rule, '1①#'));
+        self::assertErrorSame(
+            new ValidationError('chars', ['chars' => ['numeric', 'circled'], 'listed' => ['#']], 'The v field contains characters that are not allowed.'),
+            self::onlyError($rule, 'a'),
+        );
+    }
+
+    public function testNotCharsAndMinCharClassesAcceptAnApplicationCharSet(): void
+    {
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars([AppChars::Circled]), 'a①'));
+        $this->assertSame([], self::failedRules(Rule::string()->notChars([AppChars::Circled]), 'a1'));
+        $this->assertSame([], self::failedRules(Rule::string()->minCharClasses(2, [Chars::Lowercase, AppChars::Greek]), 'aλ'));
+        $this->assertSame(['minCharClasses'], self::failedRules(Rule::string()->minCharClasses(2, [Chars::Lowercase, AppChars::Greek]), 'ab'));
+    }
+
+    public function testACharSetCanBeAClass(): void
+    {
+        $rule = Rule::string()->chars([new FragmentChars('\p{Greek}', 'greek letters')]);
+
+        $this->assertSame([], self::failedRules($rule, 'λόγος'));
+        self::assertErrorSame(
+            new ValidationError('chars', ['chars' => ['greek letters'], 'listed' => []], 'The v field contains characters that are not allowed.'),
+            self::onlyError($rule, 'a'),
+        );
+    }
+
+    public function testCharsIsACharSetNamedByItsValue(): void
+    {
+        $this->assertSame('zenkaku_symbols', Chars::ZenkakuSymbols->name());
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function safeCharSetPatterns(): iterable
+    {
+        yield 'range' => ['a-z', 'm', "\u{FFFD}"];
+        yield 'escaped hyphen first' => ['\-a', '-', "\u{FFFD}"];
+        yield 'escaped hyphen last' => ['a\-', '-', "\u{FFFD}"];
+        yield 'escaped caret first' => ['\^a', '^', "\u{FFFD}"];
+        yield 'escaped caret later' => ['a\^', '^', "\u{FFFD}"];
+        yield 'escaped brackets' => ['\[\]', ']', "\u{FFFD}"];
+        yield 'escaped slash' => ['\/', '/', "\u{FFFD}"];
+        yield 'escaped backslash last' => ['a\\\\', '\\', "\u{FFFD}"];
+        yield 'unicode property' => ['\p{Han}', '漢', "\u{FFFD}"];
+        yield 'script property' => ['\p{sc=Greek}', 'λ', "\u{FFFD}"];
+        yield 'negated property' => ['\P{Han}', 'a', '漢'];
+        yield 'code point range' => ['\x{2460}-\x{2473}', '⑳', "\u{FFFD}"];
+        yield 'multibyte characters' => ['あい', 'い', "\u{FFFD}"];
+        yield 'multibyte range' => ['ぁ-ん', 'そ', "\u{FFFD}"];
+        yield 'range from an escaped symbol' => ['\!-\/', '+', "\u{FFFD}"];
+        yield 'one-character range' => ['a-a', 'a', 'b'];
+        yield 'range followed by a character' => ['a-cx', 'x', 'd'];
+        yield 'highest code point' => ['\x{10FFFF}', "\u{10FFFF}", 'a'];
+        yield 'range across the surrogates' => ['\x{D7FF}-\x{E000}', "\u{E000}", 'a'];
+    }
+
+    #[DataProvider('safeCharSetPatterns')]
+    public function testSafeCharSetPatternsAreAccepted(string $pattern, string $accepted, string $rejected): void
+    {
+        $rule = Rule::string()->chars([new FragmentChars($pattern)]);
+
+        $this->assertSame([], self::failedRules($rule, $accepted));
+        $this->assertSame(['chars'], self::failedRules($rule, $rejected));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function unsafeCharSetPatterns(): iterable
+    {
+        $escape = 'its pattern has an escape other than \x{...}, \p{...}, \P{...} or a backslash before an ASCII symbol';
+
+        yield 'empty' => ['', 'its pattern is empty'];
+        yield 'invalid utf-8' => ["\xFF", 'its pattern is not valid UTF-8'];
+        yield 'closing bracket' => ['a]|.*', 'its pattern has an unescaped ]'];
+        yield 'posix class' => ['[:alpha:]', 'its pattern has an unescaped ['];
+        yield 'opening bracket only' => ['a[', 'its pattern has an unescaped ['];
+        yield 'caret first' => ['^a', 'its pattern has an unescaped ^'];
+        yield 'caret later' => ['a^', 'its pattern has an unescaped ^'];
+        yield 'hyphen first' => ['-z', 'its pattern has an unescaped -'];
+        yield 'hyphen last' => ['a-', 'its pattern has an unescaped -'];
+        yield 'two hyphens' => ['a--b', 'its pattern has an unescaped -'];
+        yield 'escaped backslash then hyphen last' => ['a\\\\-', 'its pattern has an unescaped -'];
+        yield 'unescaped slash' => ['a/b', 'its pattern has an unescaped /'];
+        yield 'backslash last' => ['a\\', $escape];
+        yield 'digit class' => ['\d', $escape];
+        yield 'backslash before a multibyte character' => ['\あ', $escape];
+        yield 'octal \0' => ['a\0', $escape];
+        yield 'octal \101' => ['\101', $escape];
+        yield '\c taking the next backslash' => ['a\c\]|.*', $escape];
+        yield '\E hiding a leading caret' => ['\E^a', $escape];
+        yield 'empty \Q\E hiding a leading caret' => ['\Q\E^a', $escape];
+        yield '\E after a range hyphen' => ['!-\E', $escape];
+        yield 'quoted characters' => ['\Qab\E', $escape];
+        yield 'hex without braces' => ['\x41', 'its pattern has \x without {...}'];
+        yield 'hex braces never closed' => ['\x{41', 'its pattern has \x without {...}'];
+        yield 'hex braces empty' => ['\x{}', 'its pattern has \x{...} without one to six hex digits'];
+        yield 'hex past unicode' => ['\x{110000}', 'its pattern has \x{110000}, which is not a Unicode scalar value'];
+        yield 'surrogate' => ['\x{D800}', 'its pattern has \x{D800}, which is not a Unicode scalar value'];
+        yield 'last surrogate' => ['\x{DFFF}', 'its pattern has \x{DFFF}, which is not a Unicode scalar value'];
+        yield 'property without braces' => ['\pL', 'its pattern has \p without {...}'];
+        yield 'property name with a space' => ['\p{Greek Letter}', 'its pattern has a property name outside letters, digits, _ and ='];
+        yield 'unknown property' => ['\p{Nope}', 'its pattern does not compile as a character class'];
+        yield 'range ending in a property' => ['a-\p{Han}', 'its pattern has a range that ends in a property'];
+        yield 'backwards range' => ['z-a', 'its pattern has a range that runs backwards'];
+    }
+
+    #[DataProvider('unsafeCharSetPatterns')]
+    public function testUnsafeCharSetPatternsThrowOnDeclaration(string $pattern, string $reason): void
+    {
+        $declarations = [
+            'chars'          => static fn () => Rule::string()->chars([new FragmentChars($pattern, 'bad')]),
+            'notChars'       => static fn () => Rule::string()->notChars([new FragmentChars($pattern, 'bad')]),
+            'minCharClasses' => static fn () => Rule::string()->minCharClasses(1, [new FragmentChars($pattern, 'bad')]),
+        ];
+
+        foreach ($declarations as $method => $declare) {
+            $e        = $this->assertThrows(InvalidArgumentException::class, $declare);
+            $expected = $method . '() cannot use the CharSet bad: ' . $reason;
+            if (str_contains($reason, 'does not compile')) {
+                // The PCRE error follows in parentheses; its wording depends on the PCRE version.
+                $this->assertStringStartsWith($expected . ' (', $e->getMessage());
+            } else {
+                $this->assertSame($expected . '.', $e->getMessage());
+            }
+        }
+    }
+
+    public function testACharSetPatternThatDoesNotCompileReportsThePcreError(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->chars([new FragmentChars('\p{Nope}', 'bad')]));
+
+        $this->assertMatchesRegularExpression('/^chars\(\) cannot use the CharSet bad: its pattern does not compile as a character class \(preg_match\(\): Compilation failed: [^)]+\)\.$/', $e->getMessage());
+    }
+
+    public function testCharacterSetsReadUtf8WhateverTheMbstringInternalEncoding(): void
+    {
+        $encoding = mb_internal_encoding();
+        mb_internal_encoding('SJIS-win');
+        try {
+            $this->assertSame([], self::failedRules(Rule::string()->chars([new FragmentChars('あ')]), 'あ'));
+            // A combining mark keeps the grapheme cluster from matching, so only the
+            // code point check, which reads the listed character, can reject it.
+            $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars(['あ']), "xあ\u{0301}"));
+        } finally {
+            mb_internal_encoding($encoding);
+        }
+    }
+
+    public function testCharSetsMixingLowAndHighCodePointsMatchOnPcre2WithTheFix(): void
+    {
+        if (version_compare(explode(' ', PCRE_VERSION)[0], '10.48', '<')) {
+            self::markTestSkipped('PCRE2 ' . PCRE_VERSION . ' mismatches classes that mix code points up to U+00FF with ones at U+8000 and above (fixed in PCRE2 10.48, #841).');
+        }
+        $sets = [Chars::Emoji, Chars::HankakuKatakana, new FragmentChars('\x{2d}-\x{3042}')];
+
+        $this->assertSame([], self::failedRules(Rule::string()->chars($sets), 'あ'));
+        $this->assertSame(['notChars'], self::failedRules(Rule::string()->notChars($sets), 'あ'));
+    }
+
+    public function testACharSetWithAnEmptyNameThrows(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->chars([new FragmentChars('a', '')]));
+
+        $this->assertSame('chars() cannot use a CharSet whose name is empty.', $e->getMessage());
+    }
+
+    public function testACharSetPatternIsReadOnceSoTheCheckedPatternIsTheOneUsed(): void
+    {
+        $changing = new class () implements CharSet {
+            private int $calls = 0;
+
+            public function pattern(): string
+            {
+                return ++$this->calls === 1 ? 'a' : 'a]|.*';
+            }
+
+            public function name(): string
+            {
+                return 'changing';
+            }
+        };
+
+        $this->assertSame(['chars'], self::failedRules(Rule::string()->chars([$changing]), 'zz'));
+    }
+
+    public function testMinCharClassesRejectsTwoCharSetsWithTheSameName(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(2, [AppChars::Circled, new FragmentChars('a', 'circled')]));
+
+        $this->assertSame('minCharClasses() needs each set at most once.', $e->getMessage());
     }
 
     // ---------------------------------------------------------------
