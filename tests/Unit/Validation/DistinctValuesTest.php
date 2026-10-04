@@ -26,6 +26,11 @@ final class DistinctValuesTest extends TestCase
         $this->assertFalse(DistinctValues::hasDuplicate([0.0, 1.0]));
     }
 
+    public function testAFloatIsNotTheSameAsAnArrayHoldingItsBits(): void
+    {
+        $this->assertFalse(DistinctValues::hasDuplicate([0.5, ['float' => bin2hex(pack('E', 0.5))]]));
+    }
+
     public function testFloatsAreComparedWhateverTheSerializePrecision(): void
     {
         $precision = \ini_get('serialize_precision');

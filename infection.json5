@@ -343,7 +343,7 @@
                 // the case falls through to the object branch and is compared one
                 // by one with in_array(..., true), which gives the same answer.
                 // Only the time taken changes (see LogicalOrAllSubExprNegation).
-                "Sloop\\Validation\\DistinctValues::normalize::118",
+                "Sloop\\Validation\\DistinctValues::normalize::121",
                 "Sloop\\Support\\Str::snake",
                 "Sloop\\Support\\Str::studly",
                 // Result::constructorParameters returns the cached reflection
