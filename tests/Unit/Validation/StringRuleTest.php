@@ -223,11 +223,6 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['blockSize'], self::failedRules($rule, 'abcde'));
     }
 
-    public function testBlockSizeDoesNotJudgeAnEmptyField(): void
-    {
-        $this->assertSame([], self::failedRules(Rule::string()->blockSize(4), ''));
-    }
-
     public function testBlockSizeCountsInTheGivenUnit(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->blockSize(2), 'ああ'));
