@@ -165,7 +165,11 @@ final class StringRule extends FieldRule
     public function chars(array $sets, ?string $message = null): self
     {
         self::assertNotEmpty($sets, 'chars');
-        [$class, $names, $listed, $clusters] = self::readSets($sets, 'chars');
+        [$class, $names, $listed] = self::readSets($sets, 'chars');
+        $clusters                 = [];
+        foreach ($listed as $string) {
+            $clusters += self::clusterSet($string);
+        }
 
         $pattern = '/\A[' . $class . ']+\z/u';
         if ($clusters === []) {
@@ -180,13 +184,18 @@ final class StringRule extends FieldRule
     /**
      * Fail when any character of the value belongs to one of the given sets.
      *
-     * A Chars case matches any code point of the value. A string in $sets lists
-     * characters to reject, matched as whole grapheme clusters in NFC: a listed
-     * `l` does not match `l̃` (l followed by a combining tilde). Use a Chars case
-     * to reject a code point wherever it appears. Listed "\r" and "\n" do not
-     * match a CR LF pair, which is one grapheme cluster; use Chars::Newlines.
-     * Chars::Emoji used here also rejects `©` `™` `®` and the zero width
-     * joiner (see Chars::Emoji).
+     * A Chars case matches any code point of the value. A string in $sets
+     * lists characters to reject, split into grapheme clusters. A listed
+     * character of one code point before or after NFC (a decomposed `é`
+     * counts) matches that code point anywhere in the value or in its NFC
+     * form, inside a grapheme cluster too: a listed `>` rejects `>` followed
+     * by U+0338, which NFC turns into `≯` (not `≯` itself, which holds no
+     * `>`), a listed `l` rejects `l̃` (l followed by a combining tilde), and a
+     * listed "\n" rejects a CR LF pair. A listed character of more code points
+     * matches only a whole grapheme cluster: an emoji with a skin tone, or a
+     * listed "\r\n", which then rejects the pair but not a lone CR or LF (list
+     * "\r" and "\n" apart, or use Chars::Newlines). Chars::Emoji used here
+     * also rejects `©` `™` `®` and the zero width joiner (see Chars::Emoji).
      *
      * @param  list<Chars|string>       $sets    Rejected character sets and listed characters
      * @param  string|null              $message Message for this rule only
@@ -197,12 +206,19 @@ final class StringRule extends FieldRule
     public function notChars(array $sets, ?string $message = null): self
     {
         self::assertNotEmpty($sets, 'notChars');
-        [$class, $names, $listed, $clusters] = self::readSets($sets, 'notChars');
+        [$class, $names, $listed] = self::readSets($sets, 'notChars');
+        [$codePoints, $clusters]  = self::splitListed($listed);
+        $pattern                  = '/[' . $class . ']/u';
+        $listedPattern            = '/[' . $codePoints . ']/u';
 
-        $pattern = '/[' . $class . ']/u';
-
-        return $this->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $clusters): bool {
+        return $this->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $listedPattern, $codePoints, $clusters): bool {
             if ($class !== '' && preg_match($pattern, $value) !== 0) {
+                return false;
+            }
+            // Both forms: NFC composes some listed characters away (`>` and
+            // U+0338 become `≯`) and composes others into place (a decomposed
+            // `é`), so either form alone lets a listed character through.
+            if ($codePoints !== '' && (preg_match($listedPattern, $value) !== 0 || preg_match($listedPattern, self::nfc($value)) !== 0)) {
                 return false;
             }
 
@@ -351,18 +367,16 @@ final class StringRule extends FieldRule
     /**
      * Split character sets into a character class and the listed characters.
      *
-     * @param  list<Chars|string>                                             $sets Chars cases and listed characters
-     * @param  string                                                         $rule Rule name for the message
-     * @return array{string, list<string>, list<string>, array<string, true>}
-     * @throws InvalidArgumentException                                       When a listed string is empty or not valid UTF-8
-     * @throws RuntimeException                                               When ICU cannot split a listed string into grapheme clusters
+     * @param  list<Chars|string>                        $sets Chars cases and listed characters
+     * @param  string                                    $rule Rule name for the message
+     * @return array{string, list<string>, list<string>}
+     * @throws InvalidArgumentException                  When a listed string is empty or not valid UTF-8
      */
     private static function readSets(array $sets, string $rule): array
     {
-        $class    = '';
-        $names    = [];
-        $listed   = [];
-        $clusters = [];
+        $class  = '';
+        $names  = [];
+        $listed = [];
         foreach ($sets as $set) {
             if ($set instanceof Chars) {
                 $class  .= $set->pattern();
@@ -376,21 +390,53 @@ final class StringRule extends FieldRule
             if (!mb_check_encoding($set, 'UTF-8')) {
                 throw new InvalidArgumentException($rule . '() needs listed characters in valid UTF-8.');
             }
-            $listed[]  = $set;
-            $clusters += self::clusterSet($set);
+            $listed[] = $set;
         }
 
-        return [$class, $names, $listed, $clusters];
+        return [$class, $names, $listed];
+    }
+
+    /**
+     * Split listed characters into single code points and grapheme clusters.
+     *
+     * A form of one code point, before or after NFC, goes to the code points,
+     * and the NFC form is also kept as a grapheme cluster.
+     *
+     * @param  list<string>                          $listed Listed strings of valid UTF-8
+     * @return array{string, array<array-key, true>} Character class contents for the single code points, and every listed cluster in NFC as set keys
+     * @throws RuntimeException                      When ICU cannot split a listed string into grapheme clusters
+     */
+    private static function splitListed(array $listed): array
+    {
+        $codePoints = '';
+        $clusters   = [];
+        foreach ($listed as $string) {
+            foreach (self::clusters($string) as $cluster) {
+                $nfc = self::nfc($cluster);
+                // One code point before or after NFC: U+0344 is one code point that
+                // NFC splits in two, and a decomposed `é` is two that NFC joins.
+                // The NFC form also matches as a whole cluster, so U+0344 still
+                // rejects a bare U+0308 U+0301 (a single code point there is
+                // already caught by the code points).
+                $single = array_filter([$cluster, $nfc], static fn (string $form): bool => mb_strlen($form) === 1);
+                foreach ($single as $form) {
+                    $codePoints .= '\\x{' . dechex(mb_ord($form)) . '}';
+                }
+                $clusters[$nfc] = true;
+            }
+        }
+
+        return [$codePoints, $clusters];
     }
 
     /**
      * Whether every grapheme cluster of the value is listed or made only of allowed code points.
      *
-     * @param  string              $value    Valid UTF-8 string
-     * @param  string|null         $pattern  Pattern matching a cluster made only of allowed code points, or null when no Chars case was given
-     * @param  array<string, true> $clusters Listed grapheme clusters in NFC
+     * @param  string                 $value    Valid UTF-8 string
+     * @param  string|null            $pattern  Pattern matching a cluster made only of allowed code points, or null when no Chars case was given
+     * @param  array<array-key, true> $clusters Listed grapheme clusters in NFC (a digit becomes an int key)
      * @return bool
-     * @throws RuntimeException    When ICU cannot split the value
+     * @throws RuntimeException       When ICU cannot split the value
      */
     private static function eachClusterAllowed(string $value, ?string $pattern, array $clusters): bool
     {
@@ -409,10 +455,10 @@ final class StringRule extends FieldRule
     /**
      * How many of the listed kinds have a grapheme cluster in the value.
      *
-     * @param  string                    $value Valid UTF-8 string
-     * @param  list<array<string, true>> $kinds Each kind's grapheme clusters in NFC
+     * @param  string                       $value Valid UTF-8 string
+     * @param  list<array<array-key, true>> $kinds Each kind's grapheme clusters in NFC
      * @return int
-     * @throws RuntimeException          When ICU cannot split the value
+     * @throws RuntimeException             When ICU cannot split the value
      */
     private static function countListedKinds(string $value, array $kinds): int
     {
@@ -436,9 +482,9 @@ final class StringRule extends FieldRule
     /**
      * The grapheme clusters of a valid UTF-8 string, each in NFC, as set keys.
      *
-     * @param  string              $value Valid UTF-8 string
-     * @return array<string, true>
-     * @throws RuntimeException    When ICU cannot split the value
+     * @param  string                 $value Valid UTF-8 string
+     * @return array<array-key, true>
+     * @throws RuntimeException       When ICU cannot split the value
      */
     private static function clusterSet(string $value): array
     {
