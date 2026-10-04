@@ -385,6 +385,11 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
+    public function testNotContainsIgnoreCaseComparesOneCharacterToOne(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(["stra\u{DF}e"], ignoreCase: true), 'STRASSE'));
+    }
+
     public function testNotContainsKeepsFullWidthAndHalfWidthApart(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass'], ignoreCase: true), 'ＰＡＳＳ'));

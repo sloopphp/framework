@@ -153,8 +153,9 @@ final class StringRule extends FieldRule
      *
      * Both sides are compared in NFC, so a decomposed `café` contains `café`;
      * the value itself is kept as given. With $ignoreCase, upper and lower
-     * case are the same in any script (`ÉLAN` contains `élan`); full-width and
-     * half-width characters stay different (`ＰＡＳＳ` does not contain `pass`).
+     * case are compared one character to one (`ÉLAN` contains `élan`, `SS`
+     * does not contain `ß`); full-width and half-width characters stay
+     * different (`ＰＡＳＳ` does not contain `pass`).
      *
      * @param  list<string>             $needles    Strings the value must not contain
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
