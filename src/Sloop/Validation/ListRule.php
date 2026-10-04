@@ -73,9 +73,10 @@ final class ListRule extends ArrayRule
      * Elements are compared the way same() compares two fields: a date by the
      * instant it names, a decimal by its normalized digits, anything else with
      * `===` (so `1` and `'1'` never meet here: the element rule has already
-     * given both one type). An empty element is not compared, and the rule does
-     * not run when an element failed its own rules. The error is reported once,
-     * on the list.
+     * given both one type), and the same inside an element that is itself a
+     * list or a shape. An empty element is not compared, even where the element
+     * rule fills in a default, and the rule does not run when an element failed
+     * its own rules. The error is reported once, on the list.
      *
      * @param  string|null              $message Message for this rule only
      * @return static
@@ -87,7 +88,7 @@ final class ListRule extends ArrayRule
             throw new InvalidArgumentException('distinct() cannot compare the elements of this list: no two inputs can share their value.');
         }
 
-        // The rule receives what each element compares by; an empty element compares by null.
+        // The rule receives what each element compares by, and null for an empty element.
         return $this->withElementsCheck(
             'distinct',
             static fn (array $compared): bool => !DistinctValues::hasDuplicate(array_filter($compared, static fn (mixed $item): bool => $item !== null)),
@@ -162,16 +163,20 @@ final class ListRule extends ArrayRule
      *
      * Not reached when a rule on the number of elements has failed.
      *
-     * @param  array<array-key, mixed>                                                $typed Value of the declared type
-     * @return array{list<Failure>, array<array-key, mixed>, array<array-key, mixed>}
-     * @throws \UnexpectedValueException                                              When a sanitizer closure returns the wrong type
-     * @throws \RuntimeException                                                      When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * The rules reading the elements receive what each element compares by,
+     * with null for an empty element, which they do not compare.
+     *
+     * @param  array<array-key, mixed>                                                 $typed Value of the declared type
+     * @return array{list<Failure>, array<array-key, mixed>, list<mixed>, list<mixed>}
+     * @throws \UnexpectedValueException                                               When a sanitizer closure returns the wrong type
+     * @throws \RuntimeException                                                       When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      */
     protected function validateChildren(mixed $typed): array
     {
-        $failures = [];
-        $values   = [];
-        $compared = [];
+        $failures   = [];
+        $values     = [];
+        $comparable = [];
+        $elements   = [];
         foreach (array_values($typed) as $position => $item) {
             $outcome = $this->element->evaluate($item);
             foreach ($outcome->failures as $failure) {
@@ -181,10 +186,12 @@ final class ListRule extends ArrayRule
                     $this->element->fieldMessage(),
                 );
             }
-            $values[]   = $outcome->value;
-            $compared[] = $outcome->comparable;
+            $values[]     = $outcome->value;
+            $comparable[] = $outcome->comparable;
+            // An empty element takes no part, even where the element rule fills in a default.
+            $elements[] = $outcome->comparing ? $outcome->comparable : null;
         }
 
-        return [$failures, $values, $compared];
+        return [$failures, $values, $comparable, $elements];
     }
 }

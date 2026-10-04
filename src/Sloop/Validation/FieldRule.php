@@ -268,16 +268,16 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, $failures);
         }
 
-        [$failures, $typed, $compared] = $this->validateChildren($typed);
+        [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed);
 
         return new FieldOutcome(
             $this->output($typed),
-            $this->comparable($typed),
+            $comparable,
             true,
             [
                 ...$failures,
                 ...$this->run($this->checks, $typed),
-                ...($failures === [] ? $this->run($this->elementChecks, $compared) : []),
+                ...($failures === [] ? $this->run($this->elementChecks, $elements) : []),
             ],
         );
     }
@@ -285,8 +285,9 @@ abstract class FieldRule
     /**
      * Run a set of rules over a value, keeping every failure.
      *
-     * @param  list<Check<T>>   $checks Rules to run
-     * @param  T                $typed  Value the rules test
+     * @template V
+     * @param  list<Check<V>>   $checks Rules to run
+     * @param  V                $typed  Value the rules test
      * @return list<Failure>
      * @throws RuntimeException When ICU cannot split a string into grapheme clusters or count them
      */
@@ -392,16 +393,17 @@ abstract class FieldRule
      * and before every other rule declared on this field. A type that holds
      * nothing answers with no failures and the value unchanged.
      *
-     * The third value is what a rule reading the elements compares: the value
-     * itself, except where an element's validated value is an object that
-     * `===` would compare by identity.
+     * The third value is what same() / different() compare, built from what
+     * each element compares by where the type holds elements, so that a date
+     * nested in a list is compared by the instant it names. The fourth is what
+     * the rules reading the elements receive.
      *
-     * @param  T                          $typed Value of the declared type
-     * @return array{list<Failure>, T, T} Failures of the elements, the value to carry on with, and the value the rules reading the elements compare
+     * @param  T                                 $typed Value of the declared type
+     * @return array{list<Failure>, T, mixed, T} Failures of the elements, the value to carry on with, the value same() / different() compare, and the value the rules reading the elements receive
      */
     protected function validateChildren(mixed $typed): array
     {
-        return [[], $typed, $typed];
+        return [[], $typed, $this->comparable($typed), $typed];
     }
 
     /**

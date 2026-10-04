@@ -10,8 +10,8 @@ namespace Sloop\Validation;
  * Each value is turned into a string key that two values share exactly when
  * they are `===`: the type is part of the key, so `1` and `'1'` differ, and
  * `0.0` and `-0.0` share one. A value with no such key (an object, NAN, which
- * is not `===` to itself, or an array holding a float or an object) is
- * compared with the earlier ones of its kind one by one.
+ * is not `===` to itself, or an array holding either) is compared with the
+ * earlier ones of its kind one by one; a request body cannot hold one.
  *
  * @internal Used by ArraySanitize::Unique and the distinct() rules.
  */
@@ -62,10 +62,31 @@ final class DistinctValues
     /**
      * A string two values share exactly when they are `===`, or null when there is none.
      *
+     * serialize() keeps the type, the keys and their order, which is what
+     * `===` compares, once every float is written as the one value its `===`
+     * peers share (0.0 for -0.0).
+     *
      * @param  mixed       $value Value to key
      * @return string|null
      */
     private static function key(mixed $value): ?string
+    {
+        $normalized = self::normalize($value);
+
+        return $normalized === null ? null : serialize($normalized[0]);
+    }
+
+    /**
+     * The value with -0.0 written as 0.0 throughout, or null when it cannot be keyed.
+     *
+     * Wrapped in a one-element array so that a null value is told apart from
+     * "no key". NAN, which is not `===` to itself, an object, compared by
+     * identity, and a resource cannot be keyed.
+     *
+     * @param  mixed             $value Value to normalize
+     * @return array{mixed}|null
+     */
+    private static function normalize(mixed $value): ?array
     {
         if (\is_float($value)) {
             if (is_nan($value)) {
@@ -73,35 +94,22 @@ final class DistinctValues
             }
 
             // -0.0 === 0.0, but the two serialize differently.
-            return serialize($value === 0.0 ? 0.0 : $value);
+            return [$value === 0.0 ? 0.0 : $value];
         }
 
-        return self::serializesLikeIdentity($value) ? serialize($value) : null;
-    }
-
-    /**
-     * Whether two values that serialize alike are exactly the values that are `===`.
-     *
-     * True for null, bool, int, string, and arrays of those: serialize() keeps
-     * the type, the keys and their order, which is what `===` compares. A
-     * float inside an array is left out for the two zeros and NAN, and an
-     * object for comparing by identity.
-     *
-     * @param  mixed $value Value to check
-     * @return bool
-     */
-    private static function serializesLikeIdentity(mixed $value): bool
-    {
-        if (!\is_array($value)) {
-            return $value === null || \is_bool($value) || \is_int($value) || \is_string($value);
-        }
-
-        foreach ($value as $item) {
-            if (!self::serializesLikeIdentity($item)) {
-                return false;
+        if (\is_array($value)) {
+            $normalized = [];
+            foreach ($value as $index => $item) {
+                $part = self::normalize($item);
+                if ($part === null) {
+                    return null;
+                }
+                $normalized[$index] = $part[0];
             }
+
+            return [$normalized];
         }
 
-        return true;
+        return \is_object($value) || \is_resource($value) ? null : [$value];
     }
 }

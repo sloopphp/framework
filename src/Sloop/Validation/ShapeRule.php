@@ -157,22 +157,24 @@ final class ShapeRule extends ArrayRule
     /**
      * Validate every declared key, keeping the failures of all of them.
      *
-     * @param  array<array-key, mixed>                                                $typed Value of the declared type
-     * @return array{list<Failure>, array<array-key, mixed>, array<array-key, mixed>}
-     * @throws \RuntimeException                                                      When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
-     * @throws \UnexpectedValueException                                              When a sanitizer closure returns the wrong type
+     * @param  array<array-key, mixed>                                                                         $typed Value of the declared type
+     * @return array{list<Failure>, array<array-key, mixed>, array<array-key, mixed>, array<array-key, mixed>}
+     * @throws \RuntimeException                                                                               When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws \UnexpectedValueException                                                                       When a sanitizer closure returns the wrong type
      */
     protected function validateChildren(mixed $typed): array
     {
         [$outcomes, $keyFailures] = $this->keys->evaluateFields($typed);
 
-        $failures = [];
-        $values   = [];
+        $failures   = [];
+        $values     = [];
+        $comparable = [];
         foreach ($keyFailures as $key => $ownFailures) {
             // Every declared key is in the value, whether it passed, failed or
             // never came in, so that the caller reads the same shape it
             // declared and the Validator does for a field of its own.
-            $values[$key] = $outcomes[$key]->value;
+            $values[$key]     = $outcomes[$key]->value;
+            $comparable[$key] = $outcomes[$key]->comparable;
             if ($ownFailures === []) {
                 continue;
             }
@@ -183,6 +185,6 @@ final class ShapeRule extends ArrayRule
             }
         }
 
-        return [$failures, $values, $values];
+        return [$failures, $values, $comparable, $values];
     }
 }

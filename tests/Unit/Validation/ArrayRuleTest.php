@@ -316,6 +316,44 @@ final class ArrayRuleTest extends TestCase
         $this->assertSame([], self::failedRules(Rule::array()->distinct(), [['a' => 1], ['a' => '1']]));
     }
 
+    public function testDistinctComparesDatesNestedInAListOrAShape(): void
+    {
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::list(Rule::date()))->distinct(), [['2026-01-01'], ['2026-01-01']]));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::shape(['d' => Rule::date()]))->distinct(), [['d' => '2026-01-01'], ['d' => '2026-01-01']]));
+        $this->assertSame([], self::failedRules(Rule::list(Rule::shape(['d' => Rule::date()]))->distinct(), [['d' => '2026-01-01'], ['d' => '2026-01-02']]));
+    }
+
+    public function testDistinctDoesNotCompareAnEmptyElementThatTakesTheElementDefault(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::list(Rule::string()->default('x'))->distinct(), ['', '']));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::string()->default('x'))->distinct(), ['x', 'x']));
+    }
+
+    public function testDistinctUsesItsOwnMessage(): void
+    {
+        $this->assertSame('vの値が重複しています', self::onlyError(Rule::list(Rule::string())->distinct('{label}の値が重複しています'), ['a', 'a'])->message);
+    }
+
+    public function testDistinctRefusesAMalformedMessage(): void
+    {
+        $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::list(Rule::string())->distinct("'{label}'"));
+    }
+
+    public function testDistinctDoesNotRunWhenACountRuleFailed(): void
+    {
+        $this->assertSame(['maxCount'], self::failedRules(Rule::list(Rule::string())->maxCount(1)->distinct(), ['a', 'a']));
+    }
+
+    public function testSameComparesDatesInListsByTheInstantTheyName(): void
+    {
+        $validator = new Validator([
+            'a' => Rule::list(Rule::dateTime()),
+            'b' => Rule::list(Rule::dateTime())->same('a'),
+        ]);
+
+        $this->assertSame([], $validator->validate(['a' => ['2026-01-01T09:00:00+09:00'], 'b' => ['2026-01-01T00:00:00Z']])->errors());
+    }
+
     public function testDistinctLeavesTheRuleItWasCalledOnUnchanged(): void
     {
         $rule = Rule::list(Rule::string());

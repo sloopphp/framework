@@ -63,13 +63,17 @@
                 // StringRule::splitListed builds the same kind of set from every
                 // listed character in NFC; notChars reads its values only through
                 // isset(). The method holds no other true literal.
-                "Sloop\\Validation\\StringRule::splitListed",
-                // DistinctValues keys a value only to skip comparing every pair:
-                // a value with no key falls back to in_array(..., true) against
-                // the earlier unkeyed ones, which is exactly `===`. A mutant that
-                // makes a value unkeyed (returning null for a float, or answering
-                // false from serializesLikeIdentity) changes only the time taken.
-                "Sloop\\Validation\\DistinctValues::serializesLikeIdentity"
+                "Sloop\\Validation\\StringRule::splitListed"
+            ]
+        },
+        "LogicalOrAllSubExprNegation": {
+            // DistinctValues keys a value only to skip comparing every pair: a
+            // value with no key falls back to in_array(..., true) against the
+            // earlier unkeyed ones, which is exactly `===`. Negating both sides
+            // of normalize()'s last condition leaves every scalar unkeyed, which
+            // changes only the time taken.
+            "ignore": [
+                "Sloop\\Validation\\DistinctValues::normalize"
             ]
         },
         "LogicalOr": {
@@ -79,17 +83,7 @@
             // Turning an || into && makes the guard never fire, which no input
             // can observe.
             "ignore": [
-                "Sloop\\Validation\\StringRule::clusters::516",
-                // DistinctValues::serializesLikeIdentity: see TrueValue. Turning an
-                // || into && only answers false for more values.
-                "Sloop\\Validation\\DistinctValues::serializesLikeIdentity"
-            ]
-        },
-        "FunctionCall": {
-            // DistinctValues::key: see TrueValue. Dropping the serialize() call
-            // returns null, so the float is compared one by one.
-            "ignore": [
-                "Sloop\\Validation\\DistinctValues::key::76"
+                "Sloop\\Validation\\StringRule::clusters::516"
             ]
         },
         "CastString": {
@@ -339,15 +333,12 @@
             ]
         },
         "ReturnRemoval": {
-            // DistinctValues::key::76: see TrueValue. Without the return the
-            // float falls through to serializesLikeIdentity, which answers false.
             // Str::snake / Str::studly cache hit branches return the cached
             // value early. Removing the early return causes the body to run
             // again and overwrite the cache with the same computed value, so
             // the visible output is unchanged; only an unobservable performance
             // difference remains. Equivalent in black-box test terms.
             "ignore": [
-                "Sloop\\Validation\\DistinctValues::key::76",
                 "Sloop\\Support\\Str::snake",
                 "Sloop\\Support\\Str::studly",
                 // Result::constructorParameters returns the cached reflection

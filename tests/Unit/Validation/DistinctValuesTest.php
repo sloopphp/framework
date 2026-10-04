@@ -56,6 +56,12 @@ final class DistinctValuesTest extends TestCase
         $this->assertTrue(DistinctValues::hasDuplicate([[$object], [$object]]));
     }
 
+    public function testResourcesAreTheSameOnlyWhenIdentical(): void
+    {
+        $this->assertFalse(DistinctValues::hasDuplicate([STDIN, STDOUT]));
+        $this->assertTrue(DistinctValues::hasDuplicate([STDIN, STDIN]));
+    }
+
     public function testFirstOccurrencesKeepsTheKeysOfTheValuesKept(): void
     {
         $this->assertSame(['a' => 1, 'c' => 2], DistinctValues::firstOccurrences(['a' => 1, 'b' => 1, 'c' => 2, 'd' => 2]));
