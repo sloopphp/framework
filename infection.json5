@@ -106,11 +106,6 @@
                 // same consequence: the limit 2 -> 3 is equivalent, and the pin
                 // also hides the index [0] -> [1], which FormBodyTest kills.
                 "Sloop\\Http\\Request\\FormBody::isForm::105",
-                // LengthUnit::graphemes falls back to 0 when grapheme_strlen()
-                // returns false or null, which it does only for invalid UTF-8.
-                // Rule::string() rejects invalid UTF-8 before any length rule
-                // runs, so the fallback value is never read.
-                "Sloop\\Validation\\LengthUnit::graphemes",
                 // Connection::sleepBackoff / logQuerySuccess convert seconds to
                 // milliseconds with a literal 1000. Shifting it to 1001 changes
                 // a sleep duration or an elapsed-time reading by a tenth of a
@@ -145,9 +140,8 @@
             "ignore": [
                 // DecimalLiteral::compare::79: see IncrementInteger.
                 "Sloop\\Validation\\DecimalLiteral::compare::79",
-                // StringRule::email::291 and LengthUnit::graphemes: see IncrementInteger.
+                // StringRule::email::291: see IncrementInteger.
                 "Sloop\\Validation\\StringRule::email::291",
-                "Sloop\\Validation\\LengthUnit::graphemes",
                 "Sloop\\Support\\Str::random",
                 // Same millisecond-conversion literal as IncrementInteger above,
                 // in the opposite direction (1000 → 999).

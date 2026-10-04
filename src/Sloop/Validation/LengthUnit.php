@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use RuntimeException;
+
 /**
  * Unit in which the length rules of StringRule count a string.
  *
@@ -14,6 +16,9 @@ enum LengthUnit: string
 {
     /**
      * User-perceived characters (grapheme clusters): 👨‍👩‍👧 is 1.
+     *
+     * Not a bound on storage size: any number of combining marks or
+     * joiner-linked characters after a base character count as 1.
      */
     case Graphemes = 'graphemes';
 
@@ -31,8 +36,9 @@ enum LengthUnit: string
     /**
      * Length of a valid UTF-8 string in this unit.
      *
-     * @param  string $value Valid UTF-8 string
+     * @param  string           $value Valid UTF-8 string
      * @return int
+     * @throws RuntimeException When ICU cannot count the grapheme clusters
      */
     public function length(string $value): int
     {
@@ -46,13 +52,17 @@ enum LengthUnit: string
     /**
      * Number of grapheme clusters in a valid UTF-8 string.
      *
-     * @param  string $value Valid UTF-8 string
+     * @param  string           $value Valid UTF-8 string
      * @return int
+     * @throws RuntimeException When ICU cannot count the grapheme clusters
      */
     private static function graphemes(string $value): int
     {
         $length = grapheme_strlen($value);
+        if (!\is_int($length)) {
+            throw new RuntimeException('Could not count the grapheme clusters of the value.');
+        }
 
-        return \is_int($length) ? $length : 0;
+        return $length;
     }
 }

@@ -213,7 +213,7 @@ final class StringRuleTest extends TestCase
     public function testBlockSizeCountsInTheGivenUnit(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->blockSize(2), 'ああ'));
-        $this->assertSame(['blockSize'], self::failedRules(Rule::string()->blockSize(2, unit: LengthUnit::Bytes), 'あああ'));
+        $this->assertSame(['blockSize'], self::failedRules(Rule::string()->blockSize(2, unit: LengthUnit::Bytes), "\u{00E9}a"));
         $this->assertSame([], self::failedRules(Rule::string()->blockSize(3, unit: LengthUnit::Bytes), 'ああ'));
         $this->assertSame(['blockSize'], self::failedRules(Rule::string()->blockSize(2, unit: LengthUnit::Codepoints), "e\u{0301}a"));
     }
@@ -230,6 +230,11 @@ final class StringRuleTest extends TestCase
         );
     }
 
+    public function testBlockSizeOfOneAcceptsAnyLength(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->blockSize(1), 'abc'));
+    }
+
     /**
      * @return iterable<string, array{int}>
      */
@@ -237,11 +242,6 @@ final class StringRuleTest extends TestCase
     {
         yield 'zero' => [0];
         yield 'negative' => [-1];
-    }
-
-    public function testBlockSizeOfOneAcceptsAnyLength(): void
-    {
-        $this->assertSame([], self::failedRules(Rule::string()->blockSize(1), 'abc'));
     }
 
     #[DataProvider('invalidBlockSizes')]

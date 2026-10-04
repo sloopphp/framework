@@ -228,7 +228,7 @@ abstract class FieldRule
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @return FieldOutcome
      * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
-     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters
+     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      */
     public function evaluate(mixed $raw): FieldOutcome
     {
@@ -277,7 +277,7 @@ abstract class FieldRule
      * @param  list<Check<T>>   $checks Rules to run
      * @param  T                $typed  Value of the declared type
      * @return list<Failure>
-     * @throws RuntimeException When ICU cannot split a string into grapheme clusters
+     * @throws RuntimeException When ICU cannot split a string into grapheme clusters or count them
      */
     private function run(array $checks, mixed $typed): array
     {
