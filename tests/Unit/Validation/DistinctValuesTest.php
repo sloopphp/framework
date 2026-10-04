@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Validation;
 
 use PHPUnit\Framework\TestCase;
+use Sloop\Tests\Unit\Validation\Stub\Priority;
 use Sloop\Validation\DistinctValues;
 use stdClass;
 
@@ -54,6 +55,12 @@ final class DistinctValuesTest extends TestCase
         $this->assertFalse(DistinctValues::hasDuplicate([$object, new stdClass()]));
         $this->assertSame([0 => $object, 2 => 'x'], DistinctValues::firstOccurrences([$object, $object, 'x']));
         $this->assertTrue(DistinctValues::hasDuplicate([[$object], [$object]]));
+    }
+
+    public function testEnumCasesAreTheSameOnlyAsTheSameCase(): void
+    {
+        $this->assertTrue(DistinctValues::hasDuplicate([[Priority::Low, 'a'], [Priority::Low, 'a']]));
+        $this->assertFalse(DistinctValues::hasDuplicate([[Priority::Low, 'a'], [Priority::High, 'a']]));
     }
 
     public function testResourcesAreTheSameOnlyWhenIdentical(): void

@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use UnitEnum;
+
 /**
  * Finds values that are `===` to an earlier one, without comparing every pair.
  *
  * Each value is turned into a string key that two values share exactly when
  * they are `===`: the type is part of the key, so `1` and `'1'` differ, and
- * `0.0` and `-0.0` share one. A value with no such key (an object, NAN, which
- * is not `===` to itself, or an array holding either) is compared with the
- * earlier ones of its kind one by one; a request body cannot hold one.
+ * `0.0` and `-0.0` share one. An enum case has one: there is one instance of
+ * each case, so `===` compares the case. A value with no such key (any other
+ * object, NAN, which is not `===` to itself, a resource, or an array holding
+ * one) is compared with the earlier ones of its kind one by one; neither a
+ * request body nor a validated value holds one.
  *
  * @internal Used by ArraySanitize::Unique and the distinct() rules.
  */
@@ -80,8 +84,8 @@ final class DistinctValues
      * The value with -0.0 written as 0.0 throughout, or null when it cannot be keyed.
      *
      * Wrapped in a one-element array so that a null value is told apart from
-     * "no key". NAN, which is not `===` to itself, an object, compared by
-     * identity, and a resource cannot be keyed.
+     * "no key". NAN, which is not `===` to itself, an object other than an enum
+     * case, compared by identity, and a resource cannot be keyed.
      *
      * @param  mixed             $value Value to normalize
      * @return array{mixed}|null
@@ -108,6 +112,10 @@ final class DistinctValues
             }
 
             return [$normalized];
+        }
+
+        if ($value instanceof UnitEnum) {
+            return [$value];
         }
 
         return \is_object($value) || \is_resource($value) ? null : [$value];

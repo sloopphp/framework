@@ -339,6 +339,11 @@
             // the visible output is unchanged; only an unobservable performance
             // difference remains. Equivalent in black-box test terms.
             "ignore": [
+                // DistinctValues::normalize keys an enum case: without the return
+                // the case falls through to the object branch and is compared one
+                // by one with in_array(..., true), which gives the same answer.
+                // Only the time taken changes (see LogicalOrAllSubExprNegation).
+                "Sloop\\Validation\\DistinctValues::normalize::118",
                 "Sloop\\Support\\Str::snake",
                 "Sloop\\Support\\Str::studly",
                 // Result::constructorParameters returns the cached reflection
