@@ -96,7 +96,7 @@ final class StringRuleTest extends TestCase
     public function testLengthErrorsCarryTheirBound(): void
     {
         self::assertErrorSame(
-            new ValidationError('maxLength', ['max' => 1, 'unit' => 'graphemes'], 'The v field must not be longer than 1 characters.'),
+            new ValidationError('maxLength', ['max' => 1, 'unit' => 'graphemes'], 'The v field must not be longer than 1 character.'),
             self::onlyError(Rule::string()->maxLength(1), 'ab'),
         );
         self::assertErrorSame(
@@ -174,6 +174,22 @@ final class StringRuleTest extends TestCase
         self::assertErrorSame(
             new ValidationError('exactLength', ['length' => 2, 'unit' => 'bytes'], 'The v field must be exactly 2 bytes.'),
             self::onlyError(Rule::string()->exactLength(2, unit: LengthUnit::Bytes), 'あ'),
+        );
+    }
+
+    public function testLengthMessagesUseTheSingularForOneAndNoDigitGrouping(): void
+    {
+        $this->assertSame(
+            'The v field must not be longer than 1 byte.',
+            self::onlyError(Rule::string()->maxLength(1, unit: LengthUnit::Bytes), 'あ')->message,
+        );
+        $this->assertSame(
+            'The v field must be at least 1000 characters.',
+            self::onlyError(Rule::string()->minLength(1000), 'a')->message,
+        );
+        $this->assertSame(
+            'The v field length must be a multiple of 1000 bytes.',
+            self::onlyError(Rule::string()->blockSize(1000, unit: LengthUnit::Bytes), 'a')->message,
         );
     }
 
