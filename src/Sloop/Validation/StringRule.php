@@ -167,23 +167,20 @@ final class StringRule extends FieldRule
      * @param  string|null              $message    Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
-     * @throws \TypeError               When a needle is not a string (an array needle holding invalid UTF-8 gets the InvalidArgumentException instead)
+     * @throws \TypeError               When a needle is not a string
      */
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
         $prepared = [];
+        $values   = [];
         foreach ($needles as $needle) {
-            if ($needle === '') {
-                throw new InvalidArgumentException('notContains() needs at least one character in each value.');
-            }
-            if (!mb_check_encoding($needle, 'UTF-8')) {
-                throw new InvalidArgumentException('notContains() needs values in valid UTF-8.');
-            }
+            self::assertNeedle($needle);
             $prepared[] = self::comparisonForms($needle, $ignoreCase);
+            $values[]   = $needle;
         }
 
-        return $this->withCheck('notContains', ['values' => $needles], static function (string $value) use ($prepared, $ignoreCase): bool {
+        return $this->withCheck('notContains', ['values' => $values], static function (string $value) use ($prepared, $ignoreCase): bool {
             // NFC composes a combining mark into the last letter of a needle
             // (`admin` + U+0303 becomes `admiñ`) and reorders marks (e + U+0301
             // + U+0323 becomes U+1EB9 + U+0301), so the value as given is
@@ -602,6 +599,26 @@ final class StringRule extends FieldRule
         $normalized = Normalizer::normalize($value);
 
         return \is_string($normalized) ? $normalized : $value;
+    }
+
+    /**
+     * Reject a needle notContains() cannot search for.
+     *
+     * The string parameter turns a needle of any other type, null included,
+     * into a TypeError before anything reads it.
+     *
+     * @param  string                   $needle Needle as given
+     * @return void
+     * @throws InvalidArgumentException When the needle is empty or not valid UTF-8
+     */
+    private static function assertNeedle(string $needle): void
+    {
+        if ($needle === '') {
+            throw new InvalidArgumentException('notContains() needs at least one character in each value.');
+        }
+        if (!mb_check_encoding($needle, 'UTF-8')) {
+            throw new InvalidArgumentException('notContains() needs values in valid UTF-8.');
+        }
     }
 
     /**

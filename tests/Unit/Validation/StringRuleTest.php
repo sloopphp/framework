@@ -14,6 +14,7 @@ use Sloop\Validation\Chars;
 use Sloop\Validation\CharSet;
 use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
+use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
 use TypeError;
 
@@ -580,6 +581,8 @@ final class StringRuleTest extends TestCase
         // The method name comes from here so that the call is not checked against list<string>.
         yield 'int' => ['notContains', 1];
         yield 'array' => ['notContains', ['a']];
+        yield 'array holding invalid UTF-8' => ['notContains', ["\xFF"]];
+        yield 'null' => ['notContains', null];
     }
 
     #[DataProvider('nonStringNeedles')]
@@ -600,13 +603,12 @@ final class StringRuleTest extends TestCase
     }
 
     #[DataProvider('notContainsMethodName')]
-    public function testNotContainsArrayNeedleWithInvalidUtf8IsTheUtf8Error(string $method): void
+    public function testNotContainsReportsTheNeedlesAsAList(string $method): void
     {
-        $rule = Rule::string();
+        $rule = Rule::string()->{$method}(['x' => 'admin', 'y' => 'root']);
+        self::assertInstanceOf(StringRule::class, $rule);
 
-        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->{$method}([["\xFF"]]));
-
-        $this->assertSame('notContains() needs values in valid UTF-8.', $e->getMessage());
+        $this->assertSame(['values' => ['admin', 'root']], self::onlyError($rule, 'root')->params);
     }
 
     public function testNotContainsInvalidUtf8NeedleThrows(): void
