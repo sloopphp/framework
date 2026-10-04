@@ -88,6 +88,13 @@ abstract class FieldRule
     private array $sizeChecks = [];
 
     /**
+     * Declared rules that read the validated elements, which run only when every element passed.
+     *
+     * @var list<Check<T>>
+     */
+    private array $elementChecks = [];
+
+    /**
      * Declared same() / different() rules.
      *
      * @var list<Comparison>
@@ -261,13 +268,17 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, $failures);
         }
 
-        [$failures, $typed] = $this->validateChildren($typed);
+        [$failures, $typed, $compared] = $this->validateChildren($typed);
 
         return new FieldOutcome(
             $this->output($typed),
             $this->comparable($typed),
             true,
-            [...$failures, ...$this->run($this->checks, $typed)],
+            [
+                ...$failures,
+                ...$this->run($this->checks, $typed),
+                ...($failures === [] ? $this->run($this->elementChecks, $compared) : []),
+            ],
         );
     }
 
@@ -275,7 +286,7 @@ abstract class FieldRule
      * Run a set of rules over a value, keeping every failure.
      *
      * @param  list<Check<T>>   $checks Rules to run
-     * @param  T                $typed  Value of the declared type
+     * @param  T                $typed  Value the rules test
      * @return list<Failure>
      * @throws RuntimeException When ICU cannot split a string into grapheme clusters or count them
      */
@@ -381,12 +392,16 @@ abstract class FieldRule
      * and before every other rule declared on this field. A type that holds
      * nothing answers with no failures and the value unchanged.
      *
-     * @param  T                       $typed Value of the declared type
-     * @return array{list<Failure>, T} Failures of the elements, and the value to carry on with
+     * The third value is what a rule reading the elements compares: the value
+     * itself, except where an element's validated value is an object that
+     * `===` would compare by identity.
+     *
+     * @param  T                          $typed Value of the declared type
+     * @return array{list<Failure>, T, T} Failures of the elements, the value to carry on with, and the value the rules reading the elements compare
      */
     protected function validateChildren(mixed $typed): array
     {
-        return [[], $typed];
+        return [[], $typed, $typed];
     }
 
     /**
@@ -477,6 +492,30 @@ abstract class FieldRule
 
         $copy           = clone $this;
         $copy->checks[] = new Check($rule, $params, $passes, $message);
+
+        return $copy;
+    }
+
+    /**
+     * Append a rule that reads the validated elements, which runs only when every element passed.
+     *
+     * An element that failed has no validated value to read, so judging the
+     * array on it would report a failure no input caused.
+     *
+     * @param  string                    $rule    Rule name, also the language file key
+     * @param  Closure(T): bool          $passes  Returns true when the elements, as validateChildren() hands them to these rules, satisfy the rule
+     * @param  string|null               $message Message for this rule only
+     * @return static
+     * @throws \InvalidArgumentException When the message template is malformed
+     */
+    protected function withElementsCheck(string $rule, Closure $passes, ?string $message): static
+    {
+        if ($message !== null) {
+            ValidationMessages::assertValidPattern($message);
+        }
+
+        $copy                  = clone $this;
+        $copy->elementChecks[] = new Check($rule, [], $passes, $message);
 
         return $copy;
     }

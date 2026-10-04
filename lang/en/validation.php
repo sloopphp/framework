@@ -49,6 +49,7 @@ return [
     'maxCount'       => 'The {label} field must not have more than {max, plural, =1 {1 item} other {{max, number, ::group-off} items}}.',
     'betweenCount'   => 'The {label} field must have between {min} and {max, plural, =1 {1 item} other {{max, number, ::group-off} items}}.',
     'exactCount'     => 'The {label} field must have exactly {count, plural, =1 {1 item} other {{count, number, ::group-off} items}}.',
+    'distinct'       => 'The {label} field has a duplicate value.',
     'same'           => 'The {label} field must match {other}.',
     'different'      => 'The {label} field and {other} must be different.',
 ];

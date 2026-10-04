@@ -266,6 +266,72 @@ final class ArrayRuleTest extends TestCase
     }
 
     // ---------------------------------------------------------------
+    // distinct()
+    // ---------------------------------------------------------------
+
+    public function testDistinctFailsOnceOnTheListWhenTwoElementsAreTheSame(): void
+    {
+        self::assertErrorSame(
+            new ValidationError('distinct', [], 'The v field has a duplicate value.'),
+            self::onlyError(Rule::list(Rule::string())->distinct(), ['a', 'b', 'a', 'b']),
+        );
+        $this->assertSame([], self::failedRules(Rule::list(Rule::string())->distinct(), ['a', 'b']));
+    }
+
+    public function testDistinctComparesTheElementsAfterTheyAreGivenTheirType(): void
+    {
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::int())->distinct(), [1, '1']));
+        $this->assertSame([], self::failedRules(Rule::array()->distinct(), [1, '1']));
+        $this->assertSame(['distinct'], self::failedRules(Rule::array()->distinct(), [1, 1]));
+    }
+
+    public function testDistinctComparesDatesByTheInstantTheyName(): void
+    {
+        $rule = Rule::list(Rule::dateTime())->distinct();
+
+        $this->assertSame(['distinct'], self::failedRules($rule, ['2026-01-01T09:00:00+09:00', '2026-01-01T00:00:00Z']));
+        $this->assertSame([], self::failedRules($rule, ['2026-01-01T09:00:00+09:00', '2026-01-01T09:00:00Z']));
+    }
+
+    public function testDistinctComparesDecimalsByTheirNormalizedDigits(): void
+    {
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::decimal(5, 2))->distinct(), ['1.5', '1.50']));
+    }
+
+    public function testDistinctDoesNotCompareEmptyElements(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::list(Rule::string())->distinct(), ['a', '', null]));
+        $this->assertSame([], self::failedRules(Rule::array()->distinct(), ['a', '', '', null, null]));
+        $this->assertSame(['distinct'], self::failedRules(Rule::array()->distinct(), [0, '0', 0]));
+    }
+
+    public function testDistinctDoesNotRunWhenAnElementFailed(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::list(Rule::int())->distinct(), ['x', 'x']));
+    }
+
+    public function testDistinctComparesNestedArraysByTheirContents(): void
+    {
+        $this->assertSame(['distinct'], self::failedRules(Rule::array()->distinct(), [['a' => 1], ['a' => 1]]));
+        $this->assertSame([], self::failedRules(Rule::array()->distinct(), [['a' => 1], ['a' => '1']]));
+    }
+
+    public function testDistinctLeavesTheRuleItWasCalledOnUnchanged(): void
+    {
+        $rule = Rule::list(Rule::string());
+        $rule->distinct();
+
+        $this->assertSame([], self::failedRules($rule, ['a', 'a']));
+    }
+
+    public function testDistinctRefusesAListOfFiles(): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::list(Rule::file())->distinct());
+
+        $this->assertSame('distinct() cannot compare the elements of this list: no two inputs can share their value.', $e->getMessage());
+    }
+
+    // ---------------------------------------------------------------
     // Rule::list() — every element has the same type
     // ---------------------------------------------------------------
 
@@ -813,6 +879,27 @@ final class ArrayRuleTest extends TestCase
     public function testRemoveEmptyKeepsTheKeysOfAMap(): void
     {
         $this->assertSame(['b' => 2], self::valueOf(Rule::array(ArraySanitize::RemoveEmpty), ['a' => null, 'b' => 2]));
+    }
+
+    public function testUniqueKeepsTheFirstOfEachValueAndRenumbersAList(): void
+    {
+        $this->assertSame(['a', 'b', 'c'], self::valueOf(Rule::array(ArraySanitize::Unique), ['a', 'b', 'a', 'c', 'b']));
+    }
+
+    public function testUniqueComparesTheInputWithStrictEquality(): void
+    {
+        $this->assertSame(['1', 1, 1.0, true, null, ''], self::valueOf(Rule::array(ArraySanitize::Unique), ['1', 1, 1.0, true, null, '', null]));
+        $this->assertSame([[1], ['1']], self::valueOf(Rule::array(ArraySanitize::Unique), [[1], ['1'], [1]]));
+    }
+
+    public function testUniqueKeepsTheKeysOfAMap(): void
+    {
+        $this->assertSame(['a' => 1, 'c' => 2], self::valueOf(Rule::array(ArraySanitize::Unique), ['a' => 1, 'b' => 1, 'c' => 2]));
+    }
+
+    public function testUniqueRunsBeforeTheElementsAreGivenTheirType(): void
+    {
+        $this->assertSame([1, 1], self::valueOf(Rule::list(Rule::int(), ArraySanitize::Unique), ['1', 1]));
     }
 
     public function testAClosureCanSanitizeTheArray(): void
