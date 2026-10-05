@@ -428,13 +428,18 @@ final class StringRuleTest extends TestCase
         // n + U+0303 becomes U+00F1, so only the value as given still holds "admin".
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin']), "admin\u{303}"));
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), "ADMIN\u{303}"));
-        // A + U+0301 becomes U+0386, so a Greek needle is only in the folded value as given.
+        // A + U+0301 becomes U+0386 in NFC; the caseless form decomposes it again and finds the needle.
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{3C3}\u{3BF}\u{3C6}\u{3AF}\u{3B1}"], ignoreCase: true), "\u{3A3}\u{39F}\u{3A6}\u{38A}\u{391}\u{301}"));
     }
 
     public function testNotContainsDoesNotFindALetterInsideAPrecomposedCharacter(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['e']), "\u{E9}"));
+    }
+
+    public function testNotContainsDoesNotCheckAnEmptyValue(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['a'], ignoreCase: true), ''));
     }
 
     public function testNotContainsFindsALetterFollowedByACombiningMark(): void
@@ -483,15 +488,14 @@ final class StringRuleTest extends TestCase
     /**
      * @return iterable<string, array{string, string}>
      */
-    public static function marksThatFoldingComposesAway(): iterable
+    public static function marksBothChecksFind(): iterable
     {
-        // Folded and recomposed, U+03AA + U+0301 would become U+0390 and lose the acute;
-        // the case-sensitive check finds it in the value's NFC form.
+        // Found with and without ignoreCase: a value rejected without it stays rejected with it.
         yield 'lone acute' => ["\u{301}", "A\u{3B9}A\u{399}\u{344}"];
         yield 'acute and kelvin sign' => ["\u{301}\u{212A}", "\u{399}\u{323}\u{344}\u{212A}Ia"];
     }
 
-    #[DataProvider('marksThatFoldingComposesAway')]
+    #[DataProvider('marksBothChecksFind')]
     public function testNotContainsIgnoreCaseRejectsWhatTheCaseSensitiveCheckRejects(string $needle, string $value): void
     {
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle]), $value));

@@ -166,9 +166,8 @@ final class StringRule extends FieldRule
      * precomposed `é` then contains `e`, while `ADMİN` does not contain
      * `admin`: the dot of `İ` sits between `i` and `n`. A value rejected without
      * $ignoreCase is rejected with it too. Full-width and half-width
-     * characters stay different (`ＰＡＳＳ` does not contain `pass`), and a
-     * value with any character put between the letters, such as a zero-width
-     * space or a combining mark, does not contain the needle.
+     * characters stay different (`ＰＡＳＳ` does not contain `pass`), and
+     * `ad` + U+200B + `min` and `a` + U+0301 + `dmin` do not contain `admin`.
      *
      * @param  list<string>             $needles    Strings the value must not contain (keys are ignored)
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
