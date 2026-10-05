@@ -198,19 +198,8 @@ final class StringRule extends FieldRule
         // Each form of the value is built once, not once per needle.
         $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain);
         if ($ignoreCase) {
-            $passes = static function (string $value) use ($plain, $caseless): bool {
-                if (self::containsAny([$value, self::nfc($value)], $plain)) {
-                    return false;
-                }
-                $folded = self::caselessForm($value);
-                foreach ($caseless as $needle) {
-                    if (str_contains($folded, $needle)) {
-                        return false;
-                    }
-                }
-
-                return true;
-            };
+            $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain)
+                && !self::containsCaseless(self::caselessForm($value), $caseless);
         }
 
         return $this->withCheck('notContains', ['values' => $values], $passes, $message);
@@ -664,6 +653,24 @@ final class StringRule extends FieldRule
         if (!mb_check_encoding($needle, 'UTF-8')) {
             throw new InvalidArgumentException('notContains() needs values in valid UTF-8, got invalid UTF-8 at position ' . $position . '.');
         }
+    }
+
+    /**
+     * Whether a value in the caseless form contains any of the needles in the same form.
+     *
+     * @param  string       $value   Value from caselessForm()
+     * @param  list<string> $needles Needles from caselessForm()
+     * @return bool
+     */
+    private static function containsCaseless(string $value, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($value, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
