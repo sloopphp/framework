@@ -152,8 +152,8 @@ final class StringRule extends FieldRule
     /**
      * Fail when the value contains any of the given strings.
      *
-     * A needle matches the value as given or its NFC form. Its NFC form is
-     * looked for in both, and the needle as given in the value as given:
+     * The needle in NFC is looked for in the value as given and in its NFC
+     * form, and the needle as given in the value as given:
      * a decomposed `café` contains `café`, `admin` followed by a combining
      * tilde (which NFC turns into `admiñ`) still contains `admin`, and a
      * needle `e` + U+0301 is found in `e` + U+0301 + U+0323 even though NFC
@@ -175,12 +175,13 @@ final class StringRule extends FieldRule
         self::assertNotEmpty($needles, 'notContains');
         $prepared = [];
         $values   = [];
-        foreach ($needles as $key => $needle) {
+        foreach ($needles as $needle) {
             try {
                 self::assertNeedle($needle);
             } catch (TypeError $e) {
-                // The engine's message names the private helper; say which needle it was.
-                throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at key ' . var_export($key, true) . '.', previous: $e);
+                // The engine's message names the private helper; say which needle it was by
+                // position, not by key, so nothing from the array itself reaches the message.
+                throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at position ' . \count($values) . '.', previous: $e);
             }
             $prepared[] = self::comparisonForms($needle, $ignoreCase);
             $values[]   = $needle;

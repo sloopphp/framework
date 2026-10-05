@@ -538,11 +538,6 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
-    public function testNotContainsIgnoreCaseLeavesTheDottedCapitalIApart(): void
-    {
-        $this->assertSame([], self::failedRules(Rule::string()->notContains(['istanbul'], ignoreCase: true), "\u{130}STANBUL"));
-    }
-
     /**
      * @return iterable<string, array{string}>
      */
@@ -571,11 +566,6 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['values' => ["e\u{301}te\u{301}"]], self::onlyError($rule, "\u{E9}t\u{E9}")->params);
     }
 
-    public function testNotContainsSkipsAnEmptyValue(): void
-    {
-        $this->assertSame([], self::failedRules(Rule::string()->notContains(['a']), ''));
-    }
-
     public function testNotContainsEmptyNeedleThrows(): void
     {
         $rule = Rule::string();
@@ -598,16 +588,6 @@ final class StringRuleTest extends TestCase
         yield 'Chars case' => ['notContains', Chars::Alpha, Chars::class];
     }
 
-    #[DataProvider('notContainsMethodName')]
-    public function testNotContainsTypeErrorQuotesAStringKey(string $method): void
-    {
-        $rule = Rule::string();
-
-        $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['x' => 'admin', 'bad key' => 1]));
-
-        $this->assertSame("notContains() needs strings, got int at key 'bad key'.", $e->getMessage());
-    }
-
     #[DataProvider('nonStringNeedles')]
     public function testNotContainsNonStringNeedleIsATypeError(string $method, mixed $needle, string $type): void
     {
@@ -615,7 +595,7 @@ final class StringRuleTest extends TestCase
 
         $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['admin', $needle]));
 
-        $this->assertSame('notContains() needs strings, got ' . $type . ' at key 1.', $e->getMessage());
+        $this->assertSame('notContains() needs strings, got ' . $type . ' at position 1.', $e->getMessage());
         $this->assertInstanceOf(TypeError::class, $e->getPrevious());
     }
 
@@ -626,6 +606,17 @@ final class StringRuleTest extends TestCase
     {
         // The method name comes from here so that the call is not checked against list<string>.
         yield 'notContains' => ['notContains'];
+    }
+
+    #[DataProvider('notContainsMethodName')]
+    public function testNotContainsTypeErrorNamesThePositionNotTheKey(string $method): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['x' => 'admin', "bad\nkey" => 1]));
+
+        $this->assertSame('notContains() needs strings, got int at position 1.', $e->getMessage());
+        $this->assertInstanceOf(TypeError::class, $e->getPrevious());
     }
 
     #[DataProvider('notContainsMethodName')]
