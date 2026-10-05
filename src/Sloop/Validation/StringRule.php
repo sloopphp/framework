@@ -158,8 +158,8 @@ final class StringRule extends FieldRule
      * needle `e` + U+0301 is found in `e` + U+0301 + U+0323 even though NFC
      * reorders those marks. A precomposed `é` does not contain `e`. The value
      * itself is kept as given. With $ignoreCase, upper and lower case are
-     * compared one character to one (`ÉLAN` contains `élan`, `SS` does not
-     * contain `ß`, `I` and `ı` stay different); full-width and half-width characters stay different
+     * compared one character to one: `ÉLAN` contains `élan`, but `SS` does
+     * not contain `ß`. Full-width and half-width characters stay different
      * (`ＰＡＳＳ` does not contain `pass`).
      *
      * @param  list<string>             $needles    Strings the value must not contain

@@ -373,6 +373,11 @@ final class StringRuleTest extends TestCase
         $this->assertSame('v must not contain a reserved word', self::onlyError($rule, 'admin')->message);
     }
 
+    public function testNotContainsRefusesAMalformedMessage(): void
+    {
+        $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->notContains(['admin'], message: "'{label}'"));
+    }
+
     public function testNotContainsIsCaseSensitiveByDefault(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass']), 'PASSWORD'));
@@ -504,7 +509,7 @@ final class StringRuleTest extends TestCase
     /**
      * @return iterable<string, array{string, string}>
      */
-    public static function mbStriposPairs(): iterable
+    public static function simpleCaseFoldingPairs(): iterable
     {
         yield 'greek word' => ["\u{3A3}\u{39F}\u{3A6}\u{38A}\u{391}", "\u{3C3}\u{3BF}\u{3C6}\u{3AF}\u{3B1}"];
         yield 'kelvin sign' => ["\u{212A}", 'k'];
@@ -512,19 +517,30 @@ final class StringRuleTest extends TestCase
         yield 'capital sharp s' => ["\u{1E9E}", "\u{DF}"];
         yield 'final sigma' => ["\u{3C2}", "\u{3A3}"];
         yield 'ohm sign' => ["\u{3A9}MEGA", "\u{2126}mega"];
+        yield 'ypogegrammeni' => ["\u{3B1}\u{3B9}", "\u{3B1}\u{345}"];
+    }
+
+    #[DataProvider('simpleCaseFoldingPairs')]
+    public function testNotContainsIgnoreCaseMatchesCharactersThatFoldToTheSameCharacter(string $value, string $needle): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function pairsWithoutAOneToOneCaseMapping(): iterable
+    {
         yield 'dotted capital i' => ["\u{130}", 'i'];
         yield 'dotless small i' => ['I', "\u{131}"];
         yield 'sharp s against ss' => ['STRASSE', "stra\u{DF}e"];
         yield 'ligature fi' => ["\u{FB01}le", 'FILE'];
-        yield 'ypogegrammeni' => ["\u{3B1}\u{3B9}", "\u{3B1}\u{345}"];
     }
 
-    #[DataProvider('mbStriposPairs')]
-    public function testNotContainsIgnoreCaseMatchesWhereMbStriposDoes(string $value, string $needle): void
+    #[DataProvider('pairsWithoutAOneToOneCaseMapping')]
+    public function testNotContainsIgnoreCaseKeepsApartCharactersWithoutAOneToOneCaseMapping(string $value, string $needle): void
     {
-        $expected = mb_stripos($value, $needle, 0, 'UTF-8') !== false ? ['notContains'] : [];
-
-        $this->assertSame($expected, self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+        $this->assertSame([], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
     public function testNotContainsIgnoreCaseLeavesTheDottedCapitalIApart(): void
@@ -544,6 +560,7 @@ final class StringRuleTest extends TestCase
     #[DataProvider('lookAlikeValues')]
     public function testNotContainsDoesNotRejectLookAlikeOrInvisibleCharacters(string $value): void
     {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin']), $value));
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), $value));
     }
 
