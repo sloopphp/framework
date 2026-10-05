@@ -195,23 +195,25 @@ final class StringRule extends FieldRule
             $values[] = $needle;
         }
 
-        return $this->withCheck('notContains', ['values' => $values], static function (string $value) use ($plain, $caseless): bool {
-            // Each form of the value is built once, not once per needle.
-            if (self::containsAny([$value, self::nfc($value)], $plain)) {
-                return false;
-            }
-            if ($caseless === []) {
-                return true;
-            }
-            $folded = self::caselessForm($value);
-            foreach ($caseless as $needle) {
-                if (str_contains($folded, $needle)) {
+        // Each form of the value is built once, not once per needle.
+        $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain);
+        if ($ignoreCase) {
+            $passes = static function (string $value) use ($plain, $caseless): bool {
+                if (self::containsAny([$value, self::nfc($value)], $plain)) {
                     return false;
                 }
-            }
+                $folded = self::caselessForm($value);
+                foreach ($caseless as $needle) {
+                    if (str_contains($folded, $needle)) {
+                        return false;
+                    }
+                }
 
-            return true;
-        }, $message);
+                return true;
+            };
+        }
+
+        return $this->withCheck('notContains', ['values' => $values], $passes, $message);
     }
 
     /**
