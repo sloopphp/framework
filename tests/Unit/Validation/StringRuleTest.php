@@ -483,26 +483,10 @@ final class StringRuleTest extends TestCase
     /**
      * @return iterable<string, array{string, string}>
      */
-    public static function foldedFormsWithoutAPrecomposedCapital(): iterable
-    {
-        // The capital has no precomposed form, the small letter has one.
-        yield 'j caron, precomposed needle' => ["\u{1F0}", "J\u{30C}"];
-        yield 'j caron, decomposed needle' => ["J\u{30C}", "\u{1F0}"];
-        yield 'w ring' => ["\u{1E98}", "W\u{30A}"];
-        yield 'iota with dialytika and tonos' => ["\u{390}", "\u{399}\u{308}\u{301}"];
-        // NFC before folding composes alpha + U+0345 to U+1FB3; folded first,
-        // U+0345 would become iota.
-        // Capital alpha + U+0345 is not canonically equivalent to U+1FB3, so only the folded
-        // forms match, and only when NFC runs before folding: folded first, U+0345 becomes iota.
-        yield 'capital alpha with ypogegrammeni' => ["\u{1FB3}", "\u{391}\u{345}"];
-    }
-
-    /**
-     * @return iterable<string, array{string, string}>
-     */
     public static function marksThatFoldingComposesAway(): iterable
     {
-        // Folded, U+03AA becomes U+03CA and NFC composes it with U+0301 into U+0390.
+        // Folded and recomposed, U+03AA + U+0301 would become U+0390 and lose the acute;
+        // the case-sensitive check finds it in the value's NFC form.
         yield 'lone acute' => ["\u{301}", "A\u{3B9}A\u{399}\u{344}"];
         yield 'acute and kelvin sign' => ["\u{301}\u{212A}", "\u{399}\u{323}\u{344}\u{212A}Ia"];
     }
@@ -514,8 +498,29 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
-    #[DataProvider('foldedFormsWithoutAPrecomposedCapital')]
-    public function testNotContainsIgnoreCaseComposesAfterFolding(string $needle, string $value): void
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function canonicalCaselessMatches(): iterable
+    {
+        // The capital has no precomposed form, the small letter has one.
+        yield 'j caron, precomposed needle' => ["\u{1F0}", "J\u{30C}"];
+        yield 'j caron, decomposed needle' => ["J\u{30C}", "\u{1F0}"];
+        yield 'w ring' => ["\u{1E98}", "W\u{30A}"];
+        yield 'iota with dialytika and tonos' => ["\u{390}", "\u{399}\u{308}\u{301}"];
+        // Capital alpha + U+0345 is not canonically equivalent to U+1FB3; both fold to alpha + iota.
+        yield 'capital alpha with ypogegrammeni' => ["\u{1FB3}", "\u{391}\u{345}"];
+        // Small iota with dialytika, in a capital decomposed value, a small decomposed one and a precomposed one.
+        yield 'iota with dialytika in a capital decomposed value' => ["\u{3CA}", "\u{399}\u{308}\u{301}"];
+        yield 'iota with dialytika in a small decomposed value' => ["\u{3CA}", "\u{3B9}\u{308}\u{301}"];
+        yield 'iota with dialytika in a precomposed value' => ["\u{3CA}", "\u{390}"];
+        // Decomposed, a precomposed letter holds its base letter.
+        yield 'e in a precomposed e acute' => ['e', "\u{E9}"];
+        yield 'precomposed hangul in jamo' => ["\u{AD00}\u{B9AC}", "\u{1100}\u{116A}\u{11AB}\u{1105}\u{1175}\u{11AB}"];
+    }
+
+    #[DataProvider('canonicalCaselessMatches')]
+    public function testNotContainsIgnoreCaseUsesCanonicalCaselessMatching(string $needle, string $value): void
     {
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
@@ -532,6 +537,8 @@ final class StringRuleTest extends TestCase
         yield 'final sigma' => ["\u{3C2}", "\u{3A3}"];
         yield 'ohm sign' => ["\u{3A9}MEGA", "\u{2126}mega"];
         yield 'ypogegrammeni' => ["\u{3B1}\u{3B9}", "\u{3B1}\u{345}"];
+        // U+0130 decomposes to I + U+0307, which folds to i + U+0307.
+        yield 'dotted capital i' => ["\u{130}", 'i'];
     }
 
     #[DataProvider('simpleCaseFoldingPairs')]
@@ -545,7 +552,6 @@ final class StringRuleTest extends TestCase
      */
     public static function pairsWithoutAOneToOneCaseMapping(): iterable
     {
-        yield 'dotted capital i' => ["\u{130}", 'i'];
         yield 'dotless small i' => ['I', "\u{131}"];
         yield 'sharp s against ss' => ['STRASSE', "stra\u{DF}e"];
         yield 'ligature fi' => ["\u{FB01}le", 'FILE'];
