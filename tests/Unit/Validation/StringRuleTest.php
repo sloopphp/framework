@@ -505,6 +505,35 @@ final class StringRuleTest extends TestCase
     /**
      * @return iterable<string, array{string, string}>
      */
+    public static function otherCaseOfWhatTheCaseSensitiveCheckFinds(): iterable
+    {
+        // The decomposed forms reorder the marks, so the caseless form alone misses these.
+        yield 'capital needle, small value' => ["\u{1F88}", "\u{1F80}\u{301}"];
+        yield 'small needle, capital value' => ["\u{1F80}", "\u{1F88}\u{301}"];
+        yield 'capital latin needle' => ["\u{C1}", "\u{E1}\u{323}"];
+        yield 'capital latin value' => ["\u{E1}", "\u{C1}\u{323}"];
+    }
+
+    #[DataProvider('otherCaseOfWhatTheCaseSensitiveCheckFinds')]
+    public function testNotContainsIgnoreCaseFindsTheOtherCaseOfWhatTheCaseSensitiveCheckFinds(string $needle, string $value): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsIgnoreCaseCanDependOnTheCaseANeedleIsWrittenIn(): void
+    {
+        $rule = static fn (string $needle): StringRule => Rule::string()->notContains([$needle], ignoreCase: true);
+
+        $this->assertSame(['notContains'], self::failedRules($rule("\u{1F80}"), "\u{1F80}\u{301}"));
+        $this->assertSame([], self::failedRules($rule("\u{1F08}\u{399}"), "\u{1F80}\u{301}"));
+        $this->assertSame(['notContains'], self::failedRules($rule("\u{3AA}"), "\u{399}\u{308}\u{301}\u{323}"));
+        $this->assertSame([], self::failedRules($rule("\u{3CA}"), "\u{399}\u{308}\u{301}\u{323}"));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
     public static function canonicalCaselessMatches(): iterable
     {
         // The capital has no precomposed form, the small letter has one.

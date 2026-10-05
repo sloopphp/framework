@@ -165,7 +165,10 @@ final class StringRule extends FieldRule
      * `İ` contains `i`, but `SS` does not contain `ß`. Being decomposed, a
      * precomposed `é` then contains `e`, while `ADMİN` does not contain
      * `admin`: the dot of `İ` sits between `i` and `n`. A value rejected without
-     * $ignoreCase is rejected with it too. Full-width and half-width
+     * $ignoreCase is rejected with it too, and the value and needles as given
+     * are also compared folded, so `Á` is found in `á` + U+0323. The result
+     * can still depend on the case a needle is written in: `ᾀ` is found in
+     * `ᾀ` + U+0301 but `ἈΙ` (U+1F08 U+0399) is not. Full-width and half-width
      * characters stay different (`ＰＡＳＳ` does not contain `pass`), and
      * `ad` + U+200B + `min` and `a` + U+0301 + `dmin` do not contain `admin`.
      *
@@ -181,6 +184,7 @@ final class StringRule extends FieldRule
         self::assertNotEmpty($needles, 'notContains');
         $plain    = [];
         $caseless = [];
+        $folded   = [];
         $values   = [];
         foreach ($needles as $needle) {
             try {
@@ -193,6 +197,7 @@ final class StringRule extends FieldRule
             $plain[] = [$needle, self::nfc($needle)];
             if ($ignoreCase) {
                 $caseless[] = self::caselessForm($needle);
+                $folded[]   = self::simpleFold($needle);
             }
             $values[] = $needle;
         }
@@ -201,7 +206,8 @@ final class StringRule extends FieldRule
         $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain);
         if ($ignoreCase) {
             $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain)
-                && !self::containsCaseless(self::caselessForm($value), $caseless);
+                && !self::containsCaseless(self::caselessForm($value), $caseless)
+                && !self::containsCaseless(self::simpleFold($value), $folded);
         }
 
         return $this->withCheck('notContains', ['values' => $values], $passes, $message);
@@ -658,10 +664,10 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Whether a value in the caseless form contains any of the needles in the same form.
+     * Whether a value contains any of the needles, all brought to the same case-folded form.
      *
-     * @param  string       $value   Value from caselessForm()
-     * @param  list<string> $needles Needles from caselessForm()
+     * @param  string       $value   Value from caselessForm() or simpleFold()
+     * @param  list<string> $needles Needles from the same function as $value
      * @return bool
      */
     private static function containsCaseless(string $value, array $needles): bool
@@ -688,7 +694,18 @@ final class StringRule extends FieldRule
      */
     private static function caselessForm(string $value): string
     {
-        return self::nfd(mb_convert_case(self::nfd($value), \MB_CASE_FOLD_SIMPLE, 'UTF-8'));
+        return self::nfd(self::simpleFold(self::nfd($value)));
+    }
+
+    /**
+     * A valid UTF-8 string with the simple case folding, which maps one character to one.
+     *
+     * @param  string $value Valid UTF-8 string
+     * @return string
+     */
+    private static function simpleFold(string $value): string
+    {
+        return mb_convert_case($value, \MB_CASE_FOLD_SIMPLE, 'UTF-8');
     }
 
     /**
