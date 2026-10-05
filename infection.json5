@@ -157,12 +157,12 @@
                 // a future edit adding a killable literal here is not swallowed.
                 "Sloop\\Database\\Query\\Expression::placeholders::756",
                 // TimeRule::assertTimeOnly writes and reads back every hour of
-                // the day. Whether a format reads back changes only where G and
-                // g change width: at 1 (g writes 0 as 12), 10 and 13. No format
-                // fails at 0 or 23 alone, so starting at 1 or adding 24 (which
-                // DateTimeImmutable reads as 00:30 the next day) checks the
-                // same formats.
-                "Sloop\\Validation\\TimeRule::assertTimeOnly::296"
+                // the day. Adding hour 24 is equivalent: DateTimeImmutable reads
+                // it as 00:30 the next day, which hour 0 already covers. The pin
+                // also covers 0 -> 1 on the same line, which TimeRuleTest kills
+                // with 'Gha' (it reads back every hour but 0); a line pin cannot
+                // separate the two, so that mutant is no longer counted.
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::306"
             ]
         },
         "DecrementInteger": {
@@ -192,12 +192,14 @@
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
                 "Sloop\\Database\\Query\\Expression::placeholders::756",
-                // TimeRule::assertTimeOnly::296: see IncrementInteger (23 → 22
-                // stops before the last hour). The pin also covers 0 → -1, which
-                // the tests kill because DateTimeImmutable refuses hour -1; a
-                // line pin cannot separate the two, so that mutant is no longer
-                // counted.
-                "Sloop\\Validation\\TimeRule::assertTimeOnly::296"
+                // TimeRule::assertTimeOnly: 23 -> 22 stops before the last
+                // hour. Every hour character writes 23 in the same shape as 22
+                // (two digits for G, H, g and h, and pm for a / A), so a format
+                // that cannot read back 23 cannot read back 22 either, and the
+                // loop still rejects it. The pin also covers 0 -> -1, which the tests
+                // kill because DateTimeImmutable refuses hour -1; a line pin
+                // cannot separate the two, so that mutant is no longer counted.
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::306"
             ]
         },
         "GreaterThan": {

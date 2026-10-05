@@ -167,6 +167,7 @@ final class TimeRuleTest extends TestCase
         yield 'one-digit hour run into the minute and second' => ['Gis', 'time() needs a format that reads back what it writes, and \'Gis\' does not.'];
         yield 'one-digit 12-hour run into the minute' => ['gi', 'time() needs a format that reads back what it writes, and \'gi\' does not.'];
         yield 'one-digit 12-hour with meridiem run into the minute' => ['gis A', 'time() needs a format that reads back what it writes, and \'gis A\' does not.'];
+        yield 'one-digit hour run into a 12-hour hour, wrong only at midnight' => ['Gha', 'time() needs a format that reads back what it writes, and \'Gha\' does not.'];
         yield 'lone backslash' => ['H:i\\', 'time() needs a format that reads back what it writes, and \'H:i\\\' does not.'];
     }
 

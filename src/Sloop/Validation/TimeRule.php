@@ -292,17 +292,19 @@ final class TimeRule extends FieldRule
      */
     private static function assertTimeOnly(string $format): void
     {
+        // Whether the format writes a date or a time zone does not depend
+        // on the time written, so one time settles it.
+        try {
+            TimeOfDay::fromDateTime(new DateTimeImmutable('@0'))->format($format);
+        } catch (InvalidArgumentException) {
+            throw new InvalidArgumentException(
+                'time() is for a time of day, and \'' . $format . '\' carries a date or a time zone. Use date() or dateTime().',
+            );
+        }
+
         $utc = new DateTimeZone('UTC');
         foreach (range(0, 23) as $hour) {
-            $probe = new DateTimeImmutable(\sprintf('1970-01-01 %02d:30:45.123456', $hour), $utc);
-
-            try {
-                $rendered = TimeOfDay::fromDateTime($probe)->format($format);
-            } catch (InvalidArgumentException) {
-                throw new InvalidArgumentException(
-                    'time() is for a time of day, and \'' . $format . '\' carries a date or a time zone. Use date() or dateTime().',
-                );
-            }
+            $rendered = new DateTimeImmutable(\sprintf('1970-01-01 %02d:30:45.123456', $hour), $utc)->format($format);
 
             // A trailing backslash escapes nothing and format() writes a NUL
             // byte for it, which createFromFormat() raises a ValueError on
