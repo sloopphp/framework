@@ -611,6 +611,7 @@ final class StringRuleTest extends TestCase
         $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['admin', $needle]));
 
         $this->assertSame('notContains() needs strings, got ' . $type . ' at key 1.', $e->getMessage());
+        $this->assertInstanceOf(TypeError::class, $e->getPrevious());
     }
 
     /**

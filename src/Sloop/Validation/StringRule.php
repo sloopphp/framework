@@ -180,7 +180,7 @@ final class StringRule extends FieldRule
                 self::assertNeedle($needle);
             } catch (TypeError $e) {
                 // The engine's message names the private helper; say which needle it was.
-                throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at key ' . $key . '.', 0, $e);
+                throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at key ' . $key . '.', previous: $e);
             }
             $prepared[] = self::comparisonForms($needle, $ignoreCase);
             $values[]   = $needle;
