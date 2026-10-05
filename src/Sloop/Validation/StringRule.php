@@ -163,9 +163,12 @@ final class StringRule extends FieldRule
      * (both decomposed, case folded and decomposed again), with the simple
      * folding that maps one character to one: `ÉLAN` contains `élan` and
      * `İ` contains `i`, but `SS` does not contain `ß`. Being decomposed, a
-     * precomposed `é` then contains `e`. A value rejected without
+     * precomposed `é` then contains `e`, while `ADMİN` does not contain
+     * `admin`: the dot of `İ` sits between `i` and `n`. A value rejected without
      * $ignoreCase is rejected with it too. Full-width and half-width
-     * characters stay different (`ＰＡＳＳ` does not contain `pass`).
+     * characters stay different (`ＰＡＳＳ` does not contain `pass`), and a
+     * value with any character put between the letters, such as a zero-width
+     * space or a combining mark, does not contain the needle.
      *
      * @param  list<string>             $needles    Strings the value must not contain (keys are ignored)
      * @param  bool                     $ignoreCase Treat upper and lower case as the same

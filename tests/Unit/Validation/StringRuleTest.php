@@ -566,14 +566,16 @@ final class StringRuleTest extends TestCase
     /**
      * @return iterable<string, array{string}>
      */
-    public static function lookAlikeValues(): iterable
+    public static function lookAlikeOrInsertedValues(): iterable
     {
         yield 'cyrillic a' => ["\u{430}dmin"];
         yield 'zero width space' => ["ad\u{200B}min"];
+        yield 'combining mark between letters' => ["a\u{301}dmin"];
+        yield 'dotted capital i followed by a letter' => ["ADM\u{130}N"];
     }
 
-    #[DataProvider('lookAlikeValues')]
-    public function testNotContainsDoesNotRejectLookAlikeOrInvisibleCharacters(string $value): void
+    #[DataProvider('lookAlikeOrInsertedValues')]
+    public function testNotContainsDoesNotRejectLookAlikeOrInsertedCharacters(string $value): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin']), $value));
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), $value));
