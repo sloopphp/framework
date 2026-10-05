@@ -160,10 +160,11 @@ final class StringRule extends FieldRule
      * reorders those marks. A precomposed `é` does not contain `e`. The value
      * itself is kept as given. With $ignoreCase, upper and lower case are
      * compared one character to one: `ÉLAN` contains `élan`, but `SS` does
-     * not contain `ß`. Full-width and half-width characters stay different
+     * not contain `ß`. A value rejected without $ignoreCase is rejected with
+     * it too. Full-width and half-width characters stay different
      * (`ＰＡＳＳ` does not contain `pass`).
      *
-     * @param  list<string>             $needles    Strings the value must not contain
+     * @param  list<string>             $needles    Strings the value must not contain (keys are ignored)
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
      * @param  string|null              $message    Message for this rule only
      * @return self
@@ -173,8 +174,12 @@ final class StringRule extends FieldRule
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
-        $prepared = [];
-        $values   = [];
+        // With $ignoreCase the unfolded forms are compared as well: folding can
+        // let NFC compose a combining mark away (U+03AA + U+0301 folds and
+        // composes to U+0390), so the folded forms alone could miss a needle.
+        $plain  = [];
+        $folded = [];
+        $values = [];
         foreach ($needles as $needle) {
             try {
                 self::assertNeedle($needle);
@@ -183,23 +188,20 @@ final class StringRule extends FieldRule
                 // position, not by key, so nothing from the array itself reaches the message.
                 throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at position ' . \count($values) . '.', previous: $e);
             }
-            $prepared[] = self::comparisonForms($needle, $ignoreCase);
-            $values[]   = $needle;
+            $plain[] = self::comparisonForms($needle, false);
+            if ($ignoreCase) {
+                $folded[] = self::comparisonForms($needle, true);
+            }
+            $values[] = $needle;
         }
 
-        return $this->withCheck('notContains', ['values' => $values], static function (string $value) use ($prepared, $ignoreCase): bool {
-            // NFC composes a combining mark into the last letter of a needle
-            // (`admin` + U+0303 becomes `admiñ`) and reorders marks (e + U+0301
-            // + U+0323 becomes U+1EB9 + U+0301), so the value as given is
-            // searched too. Each form is built once, not once per needle.
-            [$raw, $normalized] = self::comparisonForms($value, $ignoreCase);
-            foreach ($prepared as [$needleRaw, $needleNormalized]) {
-                if (str_contains($raw, $needleNormalized) || str_contains($normalized, $needleNormalized) || str_contains($raw, $needleRaw)) {
-                    return false;
-                }
+        return $this->withCheck('notContains', ['values' => $values], static function (string $value) use ($plain, $folded): bool {
+            // Each form of the value is built once, not once per needle.
+            if (self::containsAny(self::comparisonForms($value, false), $plain)) {
+                return false;
             }
 
-            return true;
+            return $folded === [] || !self::containsAny(self::comparisonForms($value, true), $folded);
         }, $message);
     }
 
@@ -606,6 +608,29 @@ final class StringRule extends FieldRule
         $normalized = Normalizer::normalize($value);
 
         return \is_string($normalized) ? $normalized : $value;
+    }
+
+    /**
+     * Whether a value, in the two forms notContains() compares, contains any of the needles.
+     *
+     * NFC composes a combining mark into the last letter of a needle (`admin`
+     * + U+0303 becomes `admiñ`) and reorders marks (e + U+0301 + U+0323
+     * becomes U+1EB9 + U+0301), so the value as given is searched too.
+     *
+     * @param  array{string, string}       $value   The value as given and in NFC
+     * @param  list<array{string, string}> $needles Each needle as given and in NFC, built the same way as the value
+     * @return bool
+     */
+    private static function containsAny(array $value, array $needles): bool
+    {
+        [$raw, $normalized] = $value;
+        foreach ($needles as [$needleRaw, $needleNormalized]) {
+            if (str_contains($raw, $needleNormalized) || str_contains($normalized, $needleNormalized) || str_contains($raw, $needleRaw)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

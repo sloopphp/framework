@@ -495,6 +495,23 @@ final class StringRuleTest extends TestCase
         yield 'alpha with ypogegrammeni' => ["\u{1FB3}", "\u{3B1}\u{345}"];
     }
 
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function marksThatFoldingComposesAway(): iterable
+    {
+        // Folded, U+03AA becomes U+03CA and NFC composes it with U+0301 into U+0390.
+        yield 'lone acute' => ["\u{301}", "A\u{3B9}A\u{399}\u{344}"];
+        yield 'acute and kelvin sign' => ["\u{301}\u{212A}", "\u{399}\u{323}\u{344}\u{212A}Ia"];
+    }
+
+    #[DataProvider('marksThatFoldingComposesAway')]
+    public function testNotContainsIgnoreCaseRejectsWhatTheCaseSensitiveCheckRejects(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
     #[DataProvider('foldedFormsWithoutAPrecomposedCapital')]
     public function testNotContainsIgnoreCaseComposesAfterFolding(string $needle, string $value): void
     {
