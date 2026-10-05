@@ -166,9 +166,11 @@ final class StringRule extends FieldRule
      * precomposed `é` then contains `e`, while `ADMİN` does not contain
      * `admin`: the dot of `İ` sits between `i` and `n`. A value rejected without
      * $ignoreCase is rejected with it too, and the value and needles as given
-     * are also compared folded, so `Á` is found in `á` + U+0323. The result
-     * can still depend on the case a needle is written in: `ᾀ` is found in
-     * `ᾀ` + U+0301 but `ἈΙ` (U+1F08 U+0399) is not. Full-width and half-width
+     * are also compared folded, so `Á` is found in a precomposed `á` (U+00E1)
+     * + U+0323. The result can still depend on the case the needle or the
+     * value is written in: `ᾀ` is found in `ᾀ` + U+0301 but `ἈΙ` (U+1F08
+     * U+0399) is not, and `Ϊ` is found in `Ι` + U+0308 + U+0301 + U+0323 but
+     * not in `ι` + U+0308 + U+0301 + U+0323. Full-width and half-width
      * characters stay different (`ＰＡＳＳ` does not contain `pass`), and
      * `ad` + U+200B + `min` and `a` + U+0301 + `dmin` do not contain `admin`.
      *

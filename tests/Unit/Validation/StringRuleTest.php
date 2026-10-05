@@ -521,7 +521,7 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
-    public function testNotContainsIgnoreCaseCanDependOnTheCaseANeedleIsWrittenIn(): void
+    public function testNotContainsIgnoreCaseCanDependOnTheCaseTheNeedleOrValueIsWrittenIn(): void
     {
         $rule = static fn (string $needle): StringRule => Rule::string()->notContains([$needle], ignoreCase: true);
 
@@ -529,6 +529,7 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules($rule("\u{1F08}\u{399}"), "\u{1F80}\u{301}"));
         $this->assertSame(['notContains'], self::failedRules($rule("\u{3AA}"), "\u{399}\u{308}\u{301}\u{323}"));
         $this->assertSame([], self::failedRules($rule("\u{3CA}"), "\u{399}\u{308}\u{301}\u{323}"));
+        $this->assertSame([], self::failedRules($rule("\u{3AA}"), "\u{3B9}\u{308}\u{301}\u{323}"));
     }
 
     /**
