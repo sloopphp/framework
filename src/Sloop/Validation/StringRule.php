@@ -8,6 +8,7 @@ use Generator;
 use InvalidArgumentException;
 use Normalizer;
 use RuntimeException;
+use TypeError;
 
 /**
  * Rules for a field whose validated value is a string.
@@ -167,15 +168,20 @@ final class StringRule extends FieldRule
      * @param  string|null              $message    Message for this rule only
      * @return self
      * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
-     * @throws \TypeError               When a needle is not a string
+     * @throws TypeError                When a needle is not a string
      */
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
         $prepared = [];
         $values   = [];
-        foreach ($needles as $needle) {
-            self::assertNeedle($needle);
+        foreach ($needles as $key => $needle) {
+            try {
+                self::assertNeedle($needle);
+            } catch (TypeError $e) {
+                // The engine's message names the private helper; say which needle it was.
+                throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at key ' . $key . '.', 0, $e);
+            }
             $prepared[] = self::comparisonForms($needle, $ignoreCase);
             $values[]   = $needle;
         }
@@ -610,6 +616,7 @@ final class StringRule extends FieldRule
      * @param  string                   $needle Needle as given
      * @return void
      * @throws InvalidArgumentException When the needle is empty or not valid UTF-8
+     * @throws TypeError                When the needle is not a string (raised by the parameter type)
      */
     private static function assertNeedle(string $needle): void
     {

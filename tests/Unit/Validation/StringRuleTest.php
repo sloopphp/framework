@@ -591,23 +591,26 @@ final class StringRuleTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{string, mixed}>
+     * @return iterable<string, array{string, mixed, string}>
      */
     public static function nonStringNeedles(): iterable
     {
         // The method name comes from here so that the call is not checked against list<string>.
-        yield 'int' => ['notContains', 1];
-        yield 'array' => ['notContains', ['a']];
-        yield 'array holding invalid UTF-8' => ['notContains', ["\xFF"]];
-        yield 'null' => ['notContains', null];
+        yield 'int' => ['notContains', 1, 'int'];
+        yield 'array' => ['notContains', ['a'], 'array'];
+        yield 'array holding invalid UTF-8' => ['notContains', ["\xFF"], 'array'];
+        yield 'null' => ['notContains', null, 'null'];
+        yield 'Chars case' => ['notContains', Chars::Alpha, Chars::class];
     }
 
     #[DataProvider('nonStringNeedles')]
-    public function testNotContainsNonStringNeedleIsATypeError(string $method, mixed $needle): void
+    public function testNotContainsNonStringNeedleIsATypeError(string $method, mixed $needle, string $type): void
     {
         $rule = Rule::string();
 
-        $this->assertThrows(TypeError::class, static fn () => $rule->{$method}([$needle]));
+        $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['admin', $needle]));
+
+        $this->assertSame('notContains() needs strings, got ' . $type . ' at key 1.', $e->getMessage());
     }
 
     /**
