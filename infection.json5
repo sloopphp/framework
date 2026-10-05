@@ -162,7 +162,7 @@
                 // also covers 0 -> 1 on the same line, which TimeRuleTest kills
                 // with 'Gha' (it reads back every hour but 0); a line pin cannot
                 // separate the two, so that mutant is no longer counted.
-                "Sloop\\Validation\\TimeRule::assertTimeOnly::306"
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::307"
             ]
         },
         "DecrementInteger": {
@@ -199,7 +199,7 @@
                 // loop still rejects it. The pin also covers 0 -> -1, which the tests
                 // kill because DateTimeImmutable refuses hour -1; a line pin
                 // cannot separate the two, so that mutant is no longer counted.
-                "Sloop\\Validation\\TimeRule::assertTimeOnly::306"
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::307"
             ]
         },
         "GreaterThan": {

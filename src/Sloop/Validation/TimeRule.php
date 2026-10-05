@@ -293,8 +293,8 @@ final class TimeRule extends FieldRule
     private static function assertTimeOnly(string $format): void
     {
         // Whether the format writes a date or a time zone does not depend
-        // on the time written, so any time settles it. The epoch is only a
-        // value that takes no numbers to build.
+        // on the time written, so any time settles it. The epoch is built from
+        // a string because an integer literal would leave a mutant that changes nothing.
         try {
             TimeOfDay::fromDateTime(new DateTimeImmutable('@0'))->format($format);
         } catch (InvalidArgumentException) {

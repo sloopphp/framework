@@ -294,6 +294,16 @@ final class TimeRuleTest extends TestCase
         $this->assertSame('09:30:00', self::timeOf($value['t']));
     }
 
+    public function testADefaultDeclaredOnAContainerIsRefusedWhenTheFormatDoesNotReadBackItsHour(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::shape(['t' => Rule::time('g:i')])->default(['t' => TimeOfDay::of(15, 30)]),
+        );
+
+        $this->assertSame('time() reads times with \'g:i\', which does not read back 15:30:00.', $thrown->getMessage());
+    }
+
     // -------------------------------------------------------
     // same / different
     // -------------------------------------------------------
