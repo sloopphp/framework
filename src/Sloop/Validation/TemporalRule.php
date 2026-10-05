@@ -197,7 +197,7 @@ abstract class TemporalRule extends FieldRule
 
         return $this->withCheck(
             $rule,
-            ['date' => $this->describeLimit($limit)],
+            ['limit' => $this->describeLimit($limit)],
             static function (DateTimeImmutable $value) use ($aligned, $earlier, $orEqual): bool {
                 $ordering = $value <=> $aligned;
                 $strictly = $earlier ? $ordering < 0 : $ordering > 0;

@@ -286,7 +286,7 @@ final class DateRuleTest extends TestCase
             static fn (): ValidationError => self::onlyError(Rule::date()->before($limit), '2026-06-20'),
         );
 
-        $this->assertSame(['date' => '2026-06-15'], $error->params);
+        $this->assertSame(['limit' => '2026-06-15'], $error->params);
     }
 
     /**
@@ -480,7 +480,7 @@ final class DateRuleTest extends TestCase
         $error = self::onlyError(Rule::date('d/m/Y')->before(new DateTimeImmutable('2026-01-10')), '03/02/2026');
 
         $this->assertSame('before', $error->rule);
-        $this->assertSame(['date' => '10/01/2026'], $error->params);
+        $this->assertSame(['limit' => '10/01/2026'], $error->params);
     }
 
     public function testTwoFieldsWithTheSameDateCompareEqual(): void

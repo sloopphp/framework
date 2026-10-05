@@ -90,8 +90,15 @@
             // of which it does for the valid UTF-8 that coerce() lets through.
             // Turning an || into && makes the guard never fire, which no input
             // can observe.
+            // TimeRule::coerce rejects a value PHP repaired through
+            // getLastErrors(), and accepts() then rejects it again: every
+            // warning PHP gives is for a part out of range (24:00, 09:60,
+            // 23:59:60), which it rolls into the next part, so the value it
+            // writes back never matches the input. Turning the || into &&
+            // leaves only the second rejection, which no input can observe.
             "ignore": [
-                "Sloop\\Validation\\StringRule::clusters::534"
+                "Sloop\\Validation\\StringRule::clusters::534",
+                "Sloop\\Validation\\TimeRule::coerce::150"
             ]
         },
         "CastString": {

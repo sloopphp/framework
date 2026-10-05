@@ -121,6 +121,19 @@ final class Rule
     }
 
     /**
+     * A field whose validated value is a time of day, with no date and no time zone.
+     *
+     * @param  string                             $format        Format the input must match, as DateTimeImmutable::createFromFormat() reads it
+     * @param  Sanitize|(Closure(string): string) ...$sanitizers Applied in order before validation
+     * @return TimeRule
+     * @throws \InvalidArgumentException          When $format is empty, carries a date or a time zone, does not read back what it writes, or Sanitize::StripNewlines, StripTabs or StripControlChars follows Sanitize::StripTags
+     */
+    public static function time(string $format = 'H:i', Sanitize|Closure ...$sanitizers): TimeRule
+    {
+        return new TimeRule($format, array_values($sanitizers));
+    }
+
+    /**
      * A field whose validated value is an uploaded file.
      *
      * Takes no sanitizers: there is no string to clean.
