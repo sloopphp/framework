@@ -182,7 +182,7 @@ final class StringRule extends FieldRule
         $values = [];
         foreach ($needles as $needle) {
             try {
-                self::assertNeedle($needle);
+                self::assertNeedle($needle, \count($values));
             } catch (TypeError $e) {
                 // The engine's message names the private helper; say which needle it was by
                 // position, not by key, so nothing from the array itself reaches the message.
@@ -639,18 +639,19 @@ final class StringRule extends FieldRule
      * The string parameter turns a needle of any other type, null included,
      * into a TypeError before anything reads it.
      *
-     * @param  string                   $needle Needle as given
+     * @param  string                   $needle   Needle as given
+     * @param  int                      $position 0-based position of the needle, for the message
      * @return void
      * @throws InvalidArgumentException When the needle is empty or not valid UTF-8
      * @throws TypeError                When the needle is not a string (raised by the parameter type)
      */
-    private static function assertNeedle(string $needle): void
+    private static function assertNeedle(string $needle, int $position): void
     {
         if ($needle === '') {
-            throw new InvalidArgumentException('notContains() needs at least one character in each value.');
+            throw new InvalidArgumentException('notContains() needs at least one character in each value, got an empty string at position ' . $position . '.');
         }
         if (!mb_check_encoding($needle, 'UTF-8')) {
-            throw new InvalidArgumentException('notContains() needs values in valid UTF-8.');
+            throw new InvalidArgumentException('notContains() needs values in valid UTF-8, got invalid UTF-8 at position ' . $position . '.');
         }
     }
 

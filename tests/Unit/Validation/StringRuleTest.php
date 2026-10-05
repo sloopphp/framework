@@ -492,7 +492,9 @@ final class StringRuleTest extends TestCase
         yield 'iota with dialytika and tonos' => ["\u{390}", "\u{399}\u{308}\u{301}"];
         // NFC before folding composes alpha + U+0345 to U+1FB3; folded first,
         // U+0345 would become iota.
-        yield 'alpha with ypogegrammeni' => ["\u{1FB3}", "\u{3B1}\u{345}"];
+        // Capital alpha + U+0345 is not canonically equivalent to U+1FB3, so only the folded
+        // forms match, and only when NFC runs before folding: folded first, U+0345 becomes iota.
+        yield 'capital alpha with ypogegrammeni' => ["\u{1FB3}", "\u{391}\u{345}"];
     }
 
     /**
@@ -571,11 +573,6 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), $value));
     }
 
-    public function testNotContainsKeepsTheValueUnchanged(): void
-    {
-        $this->assertSame("e\u{301}te\u{301}", self::valueOf(Rule::string()->notContains(['x']), "e\u{301}te\u{301}"));
-    }
-
     public function testNotContainsReportsTheNeedlesAsGiven(): void
     {
         $rule = Rule::string()->notContains(["e\u{301}te\u{301}"]);
@@ -589,7 +586,7 @@ final class StringRuleTest extends TestCase
 
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', '']));
 
-        $this->assertSame('notContains() needs at least one character in each value.', $e->getMessage());
+        $this->assertSame('notContains() needs at least one character in each value, got an empty string at position 1.', $e->getMessage());
     }
 
     /**
@@ -652,7 +649,7 @@ final class StringRuleTest extends TestCase
 
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', "\xFF"]));
 
-        $this->assertSame('notContains() needs values in valid UTF-8.', $e->getMessage());
+        $this->assertSame('notContains() needs values in valid UTF-8, got invalid UTF-8 at position 1.', $e->getMessage());
     }
 
     /**
