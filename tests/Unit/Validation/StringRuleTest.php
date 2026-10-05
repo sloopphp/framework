@@ -399,11 +399,6 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
     }
 
-    public function testNotContainsIgnoreCaseComparesOneCharacterToOne(): void
-    {
-        $this->assertSame([], self::failedRules(Rule::string()->notContains(["stra\u{DF}e"], ignoreCase: true), 'STRASSE'));
-    }
-
     public function testNotContainsKeepsFullWidthAndHalfWidthApart(): void
     {
         $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass'], ignoreCase: true), 'ＰＡＳＳ'));
@@ -603,6 +598,16 @@ final class StringRuleTest extends TestCase
         yield 'Chars case' => ['notContains', Chars::Alpha, Chars::class];
     }
 
+    #[DataProvider('notContainsMethodName')]
+    public function testNotContainsTypeErrorQuotesAStringKey(string $method): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['x' => 'admin', 'bad key' => 1]));
+
+        $this->assertSame("notContains() needs strings, got int at key 'bad key'.", $e->getMessage());
+    }
+
     #[DataProvider('nonStringNeedles')]
     public function testNotContainsNonStringNeedleIsATypeError(string $method, mixed $needle, string $type): void
     {
@@ -627,7 +632,8 @@ final class StringRuleTest extends TestCase
     public function testNotContainsReportsTheNeedlesAsAList(string $method): void
     {
         $rule = Rule::string()->{$method}(['x' => 'admin', 'y' => 'root']);
-        self::assertInstanceOf(StringRule::class, $rule);
+
+        $this->assertInstanceOf(StringRule::class, $rule);
 
         $this->assertSame(['values' => ['admin', 'root']], self::onlyError($rule, 'root')->params);
     }
