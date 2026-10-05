@@ -79,6 +79,8 @@ final class TimeRuleTest extends TestCase
         yield 'escaped letters' => ['H\hi', '09h30', '09:30:00'];
         yield 'escaped u is a letter' => ['H:i\u', '09:30u', '09:30:00'];
         yield 'hour only' => ['H', '07', '07:00:00'];
+        yield 'two-digit hour run into the minute' => ['Hi', '0930', '09:30:00'];
+        yield 'one-digit hour alone' => ['G', '7', '07:00:00'];
         yield 'no time written' => ['\T\B\D', 'TBD', '00:00:00'];
     }
 
@@ -161,6 +163,10 @@ final class TimeRuleTest extends TestCase
         yield 'offset' => ['H:iP', $dateOrZone('H:iP')];
         yield 'unix timestamp' => ['U', $dateOrZone('U')];
         yield 'fraction written twice' => ['H:i:s.u v', 'time() needs a format that reads back what it writes, and \'H:i:s.u v\' does not.'];
+        yield 'one-digit hour run into the minute' => ['Gi', 'time() needs a format that reads back what it writes, and \'Gi\' does not.'];
+        yield 'one-digit hour run into the minute and second' => ['Gis', 'time() needs a format that reads back what it writes, and \'Gis\' does not.'];
+        yield 'one-digit 12-hour run into the minute' => ['gi', 'time() needs a format that reads back what it writes, and \'gi\' does not.'];
+        yield 'one-digit 12-hour with meridiem run into the minute' => ['gis A', 'time() needs a format that reads back what it writes, and \'gis A\' does not.'];
         yield 'lone backslash' => ['H:i\\', 'time() needs a format that reads back what it writes, and \'H:i\\\' does not.'];
     }
 

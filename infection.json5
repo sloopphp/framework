@@ -155,7 +155,14 @@
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::756"
+                "Sloop\\Database\\Query\\Expression::placeholders::756",
+                // TimeRule::assertTimeOnly writes and reads back every hour of
+                // the day. Whether a format reads back changes only where G and
+                // g change width: at 1 (g writes 0 as 12), 10 and 13. No format
+                // fails at 0 or 23 alone, so starting at 1 or adding 24 (which
+                // DateTimeImmutable reads as 00:30 the next day) checks the
+                // same formats.
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::296"
             ]
         },
         "DecrementInteger": {
@@ -184,7 +191,13 @@
                 "Sloop\\Error\\SloopException::__construct::62",
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
-                "Sloop\\Database\\Query\\Expression::placeholders::756"
+                "Sloop\\Database\\Query\\Expression::placeholders::756",
+                // TimeRule::assertTimeOnly::296: see IncrementInteger (23 → 22
+                // stops before the last hour). The pin also covers 0 → -1, which
+                // the tests kill because DateTimeImmutable refuses hour -1; a
+                // line pin cannot separate the two, so that mutant is no longer
+                // counted.
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::296"
             ]
         },
         "GreaterThan": {

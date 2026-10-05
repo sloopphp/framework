@@ -281,36 +281,43 @@ final class TimeRule extends FieldRule
      *
      * A format writing a date or a time zone would make the field depend on
      * something a time of day does not have. Of the rest, a format
-     * createFromFormat() cannot read back (one ending in a lone backslash)
-     * would reject every input.
+     * createFromFormat() cannot read back would reject what it writes, so
+     * each hour of the day is written and read back: `G` and `g` write one
+     * digit or two depending on the hour, and `Gi` reads back 15:30 but not
+     * 09:30, which it writes as `930`.
      *
      * @param  string                   $format Format as the caller declared it
      * @return void
-     * @throws InvalidArgumentException When the format carries a date or a time zone, or does not read back
+     * @throws InvalidArgumentException When the format carries a date or a time zone, or does not read back every hour
      */
     private static function assertTimeOnly(string $format): void
     {
-        try {
-            $rendered = TimeOfDay::fromDateTime(new DateTimeImmutable('15:30:45.123456'))->format($format);
-        } catch (InvalidArgumentException) {
-            throw new InvalidArgumentException(
-                'time() is for a time of day, and \'' . $format . '\' carries a date or a time zone. Use date() or dateTime().',
-            );
-        }
+        $utc = new DateTimeZone('UTC');
+        foreach (range(0, 23) as $hour) {
+            $probe = new DateTimeImmutable(\sprintf('1970-01-01 %02d:30:45.123456', $hour), $utc);
 
-        // A trailing backslash escapes nothing and format() writes a NUL byte
-        // for it, which createFromFormat() raises a ValueError on rather than
-        // refusing to parse.
-        $back = str_contains($rendered, "\0")
-            ? false
-            : DateTimeImmutable::createFromFormat($format, $rendered, new DateTimeZone('UTC'));
-        if ($back === false
-            || DateTimeImmutable::getLastErrors() !== false
-            || $back->format($format) !== $rendered
-        ) {
-            throw new InvalidArgumentException(
-                'time() needs a format that reads back what it writes, and \'' . $format . '\' does not.',
-            );
+            try {
+                $rendered = TimeOfDay::fromDateTime($probe)->format($format);
+            } catch (InvalidArgumentException) {
+                throw new InvalidArgumentException(
+                    'time() is for a time of day, and \'' . $format . '\' carries a date or a time zone. Use date() or dateTime().',
+                );
+            }
+
+            // A trailing backslash escapes nothing and format() writes a NUL
+            // byte for it, which createFromFormat() raises a ValueError on
+            // rather than refusing to parse.
+            $back = str_contains($rendered, "\0")
+                ? false
+                : DateTimeImmutable::createFromFormat($format, $rendered, $utc);
+            if ($back === false
+                || DateTimeImmutable::getLastErrors() !== false
+                || $back->format($format) !== $rendered
+            ) {
+                throw new InvalidArgumentException(
+                    'time() needs a format that reads back what it writes, and \'' . $format . '\' does not.',
+                );
+            }
         }
     }
 }
