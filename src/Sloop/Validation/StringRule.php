@@ -168,10 +168,11 @@ final class StringRule extends FieldRule
      * $ignoreCase is rejected with it too, and the case-sensitive search is
      * run again on the value and needles folded, as given and in NFC, so `Á`
      * is found in a precomposed `á` (U+00E1) + U+0323 and `Ć` in `c` + U+0323
-     * + U+0301. The result can still depend on the case the needle or the
-     * value is written in: `ᾀ` is found in `ᾀ` + U+0301 but `ἈΙ` (U+1F08
-     * U+0399) is not, and `Ϊ` is found in `Ι` + U+0308 + U+0301 + U+0323 but
-     * not in `ι` + U+0308 + U+0301 + U+0323. Full-width and half-width
+     * + U+0301. When combining marks follow a letter that NFC composes in one
+     * case but not the other, the result can still depend on the case the
+     * needle or the value is written in: `ĥ` is found in `H` + U+0331 +
+     * U+0302 but not in `h` + U+0331 + U+0302, which NFC turns into `ẖ` +
+     * U+0302. Full-width and half-width
      * characters stay different (`ＰＡＳＳ` does not contain `pass`), and
      * `ad` + U+200B + `min` and `a` + U+0301 + `dmin` do not contain `admin`.
      *

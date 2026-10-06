@@ -533,6 +533,8 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules($rule("\u{1F08}\u{399}"), "\u{1F80}\u{301}"));
         $this->assertSame(['notContains'], self::failedRules($rule("\u{3AA}"), "\u{399}\u{308}\u{301}\u{323}"));
         $this->assertSame([], self::failedRules($rule("\u{3AA}"), "\u{3B9}\u{308}\u{301}\u{323}"));
+        $this->assertSame(['notContains'], self::failedRules($rule("\u{125}"), "H\u{331}\u{302}"));
+        $this->assertSame([], self::failedRules($rule("\u{125}"), "h\u{331}\u{302}"));
     }
 
     /**
