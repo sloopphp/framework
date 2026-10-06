@@ -8,6 +8,7 @@ use Generator;
 use InvalidArgumentException;
 use Normalizer;
 use RuntimeException;
+use TypeError;
 
 /**
  * Rules for a field whose validated value is a string.
@@ -146,6 +147,85 @@ final class StringRule extends FieldRule
         self::assertNotEmpty($values, 'notIn');
 
         return $this->withCheck('notIn', ['values' => $values], static fn (string $value): bool => !\in_array($value, $values, true), $message);
+    }
+
+    /**
+     * Fail when the value contains any of the given strings.
+     *
+     * The needle in NFC is looked for in the value as given and in its NFC
+     * form, and the needle as given in the value as given:
+     * a decomposed `café` contains `café`, `admin` followed by a combining
+     * tilde (which NFC turns into `admiñ`) still contains `admin`, and a
+     * needle `e` + U+0301 is found in `e` + U+0301 + U+0323 even though NFC
+     * reorders those marks. A precomposed `é` does not contain `e`. The value
+     * itself is kept as given. With $ignoreCase, the value is also rejected
+     * when it contains the needle under Unicode canonical caseless matching
+     * (both decomposed, case folded and decomposed again), with the simple
+     * folding that maps one character to one: `ÉLAN` contains `élan` and
+     * `İ` contains `i`, but `SS` does not contain `ß`. Being decomposed, a
+     * precomposed `é` then contains `e`, while `ADMİN` does not contain
+     * `admin`: the dot of `İ` sits between `i` and `n`. A value rejected without
+     * $ignoreCase is rejected with it too, and the case-sensitive search is
+     * run again on the value and needles folded, as given and in NFC, so `Á`
+     * is found in a precomposed `á` (U+00E1) + U+0323 and `Ć` in `c` + U+0323
+     * + U+0301. When combining marks follow a letter that NFC composes in one
+     * case but not the other, the result can still depend on the case the
+     * needle or the value is written in: `ĥ` is found in `H` + U+0331 +
+     * U+0302 but not in `h` + U+0331 + U+0302, which NFC turns into `ẖ` +
+     * U+0302. Writing the iota subscript (U+0345) as a capital `Ι` can change
+     * it too: `ᾀ` is found in `ᾀ` + U+0301 but `ἈΙ` is not. Full-width and half-width
+     * characters stay different (`ＰＡＳＳ` does not contain `pass`), and
+     * `ad` + U+200B + `min` and `a` + U+0301 + `dmin` do not contain `admin`.
+     *
+     * @param  list<string>             $needles    Strings the value must not contain (keys are ignored)
+     * @param  bool                     $ignoreCase Treat upper and lower case as the same
+     * @param  string|null              $message    Message for this rule only
+     * @return self
+     * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
+     * @throws TypeError                When a needle is not a string
+     */
+    public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
+    {
+        self::assertNotEmpty($needles, 'notContains');
+        $plain     = [];
+        $caseless  = [];
+        $foldedRaw = [];
+        $foldedNfc = [];
+        $values    = [];
+        foreach ($needles as $needle) {
+            try {
+                self::assertNeedle($needle, \count($values));
+            } catch (TypeError $e) {
+                // The engine's message names the private helper; say which needle it was by
+                // position, not by key, so nothing from the array itself reaches the message.
+                throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at position ' . \count($values) . '.', previous: $e);
+            }
+            $forms   = self::withNfc($needle);
+            $plain[] = $forms;
+            if ($ignoreCase) {
+                $caseless[]  = self::caselessForm($needle);
+                $foldedRaw[] = self::withNfc(self::simpleFold($needle));
+                $foldedNfc[] = self::withNfc(self::simpleFold($forms[1]));
+            }
+            $values[] = $needle;
+        }
+
+        // Each form of the value is built once, not once per needle.
+        $passes = static fn (string $value): bool => !self::containsAny(self::withNfc($value), $plain);
+        if ($ignoreCase) {
+            // The case-sensitive search again on the value and needles folded, as given and in NFC,
+            // so that the other case of what it finds is found too.
+            $passes = static function (string $value) use ($plain, $caseless, $foldedRaw, $foldedNfc): bool {
+                $forms = self::withNfc($value);
+
+                return !self::containsAny($forms, $plain)
+                    && !self::containsCaseless(self::caselessForm($value), $caseless)
+                    && !self::containsAny(self::withNfc(self::simpleFold($value)), $foldedRaw)
+                    && !self::containsAny(self::withNfc(self::simpleFold($forms[1])), $foldedNfc);
+            };
+        }
+
+        return $this->withCheck('notContains', ['values' => $values], $passes, $message);
     }
 
     /**
@@ -549,6 +629,120 @@ final class StringRule extends FieldRule
     private static function nfc(string $value): string
     {
         $normalized = Normalizer::normalize($value);
+
+        return \is_string($normalized) ? $normalized : $value;
+    }
+
+    /**
+     * Whether a value, as given or in NFC, contains any of the needles.
+     *
+     * NFC composes a combining mark into the last letter of a needle (`admin`
+     * + U+0303 becomes `admiñ`) and reorders marks (e + U+0301 + U+0323
+     * becomes U+1EB9 + U+0301), so the value as given is searched too.
+     *
+     * @param  array{string, string}       $value   A string and its NFC form, from withNfc()
+     * @param  list<array{string, string}> $needles Each needle and its NFC form, from withNfc()
+     * @return bool
+     */
+    private static function containsAny(array $value, array $needles): bool
+    {
+        [$raw, $normalized] = $value;
+        foreach ($needles as [$needleRaw, $needleNormalized]) {
+            if (str_contains($raw, $needleNormalized) || str_contains($normalized, $needleNormalized) || str_contains($raw, $needleRaw)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Reject a needle notContains() cannot search for.
+     *
+     * The string parameter turns a needle of any other type, null included,
+     * into a TypeError before anything reads it.
+     *
+     * @param  string                   $needle   Needle as given
+     * @param  int                      $position 0-based position of the needle, for the message
+     * @return void
+     * @throws InvalidArgumentException When the needle is empty or not valid UTF-8
+     * @throws TypeError                When the needle is not a string (raised by the parameter type)
+     */
+    private static function assertNeedle(string $needle, int $position): void
+    {
+        if ($needle === '') {
+            throw new InvalidArgumentException('notContains() needs at least one character in each value, got an empty string at position ' . $position . '.');
+        }
+        if (!mb_check_encoding($needle, 'UTF-8')) {
+            throw new InvalidArgumentException('notContains() needs values in valid UTF-8, got invalid UTF-8 at position ' . $position . '.');
+        }
+    }
+
+    /**
+     * Whether a value in the caseless form contains any of the needles in the same form.
+     *
+     * @param  string       $value   Value from caselessForm()
+     * @param  list<string> $needles Needles from caselessForm()
+     * @return bool
+     */
+    private static function containsCaseless(string $value, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($value, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A valid UTF-8 string in the form of Unicode canonical caseless matching.
+     *
+     * NFD, then case folding, then NFD again (Unicode 3.13, D145), with the
+     * simple folding that maps one character to one. Decomposing first keeps
+     * a capital and a small letter from composing differently: `Ι` + U+0308
+     * + U+0301 and `ΐ` both become `ι` + U+0308 + U+0301.
+     *
+     * @param  string $value Valid UTF-8 string
+     * @return string
+     */
+    private static function caselessForm(string $value): string
+    {
+        return self::nfd(self::simpleFold(self::nfd($value)));
+    }
+
+    /**
+     * A valid UTF-8 string as given and in NFC, the pair containsAny() searches.
+     *
+     * @param  string                $value Valid UTF-8 string
+     * @return array{string, string}
+     */
+    private static function withNfc(string $value): array
+    {
+        return [$value, self::nfc($value)];
+    }
+
+    /**
+     * A valid UTF-8 string with the simple case folding, which maps one character to one.
+     *
+     * @param  string $value Valid UTF-8 string
+     * @return string
+     */
+    private static function simpleFold(string $value): string
+    {
+        return mb_convert_case($value, \MB_CASE_FOLD_SIMPLE, 'UTF-8');
+    }
+
+    /**
+     * A valid UTF-8 string in Normalization Form D.
+     *
+     * @param  string $value Valid UTF-8 string
+     * @return string
+     */
+    private static function nfd(string $value): string
+    {
+        $normalized = Normalizer::normalize($value, Normalizer::FORM_D);
 
         return \is_string($normalized) ? $normalized : $value;
     }

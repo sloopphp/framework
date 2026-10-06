@@ -14,7 +14,9 @@ use Sloop\Validation\Chars;
 use Sloop\Validation\CharSet;
 use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
+use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
+use TypeError;
 
 final class StringRuleTest extends TestCase
 {
@@ -347,6 +349,357 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['in'], self::failedRules(Rule::string()->in(['1.0']), '1'));
     }
 
+    // ---------------------------------------------------------------
+    // notContains
+    // ---------------------------------------------------------------
+
+    public function testNotContains(): void
+    {
+        $rule = Rule::string()->notContains(['admin', 'root']);
+
+        $this->assertSame([], self::failedRules($rule, 'user'));
+        $this->assertSame(['notContains'], self::failedRules($rule, 'xadminx'));
+        $this->assertSame(['notContains'], self::failedRules($rule, 'root'));
+        self::assertErrorSame(
+            new ValidationError('notContains', ['values' => ['admin', 'root']], 'The v field contains a value that is not allowed.'),
+            self::onlyError($rule, 'myroot'),
+        );
+    }
+
+    public function testNotContainsUsesTheGivenMessage(): void
+    {
+        $rule = Rule::string()->notContains(['admin'], message: '{label} must not contain a reserved word');
+
+        $this->assertSame('v must not contain a reserved word', self::onlyError($rule, 'admin')->message);
+    }
+
+    public function testNotContainsRefusesAMalformedMessage(): void
+    {
+        $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->notContains(['admin'], message: "'{label}'"));
+    }
+
+    public function testNotContainsIsCaseSensitiveByDefault(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass']), 'PASSWORD'));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function caseInsensitiveMatches(): iterable
+    {
+        yield 'ascii' => ['pass', 'myPASSword'];
+        yield 'latin with diacritics' => ['élan', 'ÉLAN'];
+        yield 'greek' => ['σοφία', 'ΣΟΦΊΑ'];
+    }
+
+    #[DataProvider('caseInsensitiveMatches')]
+    public function testNotContainsIgnoreCaseUsesUnicodeCase(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsKeepsFullWidthAndHalfWidthApart(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['pass'], ignoreCase: true), 'ＰＡＳＳ'));
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['ＰＡＳＳ']), 'pass'));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function canonicallyEquivalentForms(): iterable
+    {
+        yield 'composed needle, composed value' => ["\u{E9}t\u{E9}", "un \u{E9}t\u{E9}"];
+        yield 'composed needle, decomposed value' => ["\u{E9}t\u{E9}", "un e\u{301}te\u{301}"];
+        yield 'decomposed needle, composed value' => ["e\u{301}te\u{301}", "un \u{E9}t\u{E9}"];
+        yield 'decomposed needle, decomposed value' => ["e\u{301}te\u{301}", "un e\u{301}te\u{301}"];
+    }
+
+    #[DataProvider('canonicallyEquivalentForms')]
+    public function testNotContainsMatchesCanonicallyEquivalentForms(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([mb_strtoupper($needle)], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsMatchesANeedleThatNfcComposesAway(): void
+    {
+        // n + U+0303 becomes U+00F1, so only the value as given still holds "admin".
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin']), "admin\u{303}"));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), "ADMIN\u{303}"));
+        // A + U+0301 becomes U+0386 in NFC; the caseless form decomposes it again and finds the needle.
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(["\u{3C3}\u{3BF}\u{3C6}\u{3AF}\u{3B1}"], ignoreCase: true), "\u{3A3}\u{39F}\u{3A6}\u{38A}\u{391}\u{301}"));
+    }
+
+    public function testNotContainsDoesNotFindALetterInsideAPrecomposedCharacter(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['e']), "\u{E9}"));
+    }
+
+    public function testNotContainsDoesNotCheckAnEmptyValue(): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['a'], ignoreCase: true), ''));
+    }
+
+    public function testNotContainsFindsALetterFollowedByACombiningMark(): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains(['e']), "e\u{301}"));
+    }
+
+    public function testNotContainsFindsALoneCombiningMarkOnlyInADecomposedValue(): void
+    {
+        $rule = Rule::string()->notContains(["\u{301}"]);
+
+        $this->assertSame(['notContains'], self::failedRules($rule, "e\u{301}"));
+        $this->assertSame([], self::failedRules($rule, "\u{E9}"));
+    }
+
+    public function testNotContainsDoesNotFindAPrecomposedHangulNeedleInJamoThatNfcComposesDifferently(): void
+    {
+        // The jamo compose to U+AD00 U+B9B0; neither form of the value holds U+AD00 U+B9AC.
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(["\u{AD00}\u{B9AC}"]), "\u{1100}\u{116A}\u{11AB}\u{1105}\u{1175}\u{11AB}"));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, list<string>}>
+     */
+    public static function reorderedCombiningMarks(): iterable
+    {
+        // NFC reorders e + U+0301 + U+0323 to U+1EB9 + U+0301, so only the
+        // value as given holds e + U+0301 or U+00E9.
+        yield 'decomposed needle in the value as given' => ["e\u{301}", "xe\u{301}\u{323}", ['notContains']];
+        yield 'precomposed letter in the value as given' => ["e\u{301}", "x\u{E9}\u{323}", ['notContains']];
+        yield 'precomposed needle, marks given in the other order' => ["\u{E9}", "xe\u{323}\u{301}", []];
+        yield 'decomposed needle, marks given in the other order' => ["e\u{301}", "xe\u{323}\u{301}", []];
+        yield 'precomposed needle, decomposed value with a following mark' => ["\u{E9}", "xe\u{301}\u{323}", []];
+    }
+
+    /**
+     * @param list<string> $expected
+     */
+    #[DataProvider('reorderedCombiningMarks')]
+    public function testNotContainsWithReorderedCombiningMarks(string $needle, string $value, array $expected): void
+    {
+        $this->assertSame($expected, self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame($expected, self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function marksBothChecksFind(): iterable
+    {
+        // Found with and without ignoreCase: a value rejected without it stays rejected with it.
+        yield 'lone acute' => ["\u{301}", "A\u{3B9}A\u{399}\u{344}"];
+        yield 'acute and kelvin sign' => ["\u{301}\u{212A}", "\u{399}\u{323}\u{344}\u{212A}Ia"];
+    }
+
+    #[DataProvider('marksBothChecksFind')]
+    public function testNotContainsIgnoreCaseRejectsWhatTheCaseSensitiveCheckRejects(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function otherCaseOfWhatTheCaseSensitiveCheckFinds(): iterable
+    {
+        // The decomposed forms reorder the marks, so the caseless form alone misses these;
+        // the folded forms, as given and in NFC, find them.
+        yield 'capital needle, small value' => ["\u{1F88}", "\u{1F80}\u{301}"];
+        yield 'small needle, capital value' => ["\u{1F80}", "\u{1F88}\u{301}"];
+        yield 'capital latin needle' => ["\u{C1}", "\u{E1}\u{323}"];
+        yield 'capital latin value' => ["\u{E1}", "\u{C1}\u{323}"];
+        yield 'capital needle composed only in NFC' => ["\u{106}", "c\u{323}\u{301}"];
+        yield 'capital cyrillic needle composed only in NFC' => ["\u{419}", "\u{438}\u{323}\u{306}"];
+        yield 'small greek needle composed only in NFC' => ["\u{3CA}", "\u{399}\u{308}\u{301}\u{323}"];
+        yield 'decomposed capital needle with an iota subscript' => ["\u{391}\u{308}\u{345}", "\u{3B1}\u{308}\u{301}\u{345}"];
+    }
+
+    #[DataProvider('otherCaseOfWhatTheCaseSensitiveCheckFinds')]
+    public function testNotContainsIgnoreCaseFindsTheOtherCaseOfWhatTheCaseSensitiveCheckFinds(string $needle, string $value): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains([$needle]), $value));
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsIgnoreCaseCanDependOnTheCaseTheNeedleOrValueIsWrittenIn(): void
+    {
+        $rule = static fn (string $needle): StringRule => Rule::string()->notContains([$needle], ignoreCase: true);
+
+        $this->assertSame(['notContains'], self::failedRules($rule("\u{1F80}"), "\u{1F80}\u{301}"));
+        $this->assertSame([], self::failedRules($rule("\u{1F08}\u{399}"), "\u{1F80}\u{301}"));
+        $this->assertSame(['notContains'], self::failedRules($rule("\u{3AA}"), "\u{399}\u{308}\u{301}\u{323}"));
+        $this->assertSame([], self::failedRules($rule("\u{3AA}"), "\u{3B9}\u{308}\u{301}\u{323}"));
+        $this->assertSame(['notContains'], self::failedRules($rule("\u{125}"), "H\u{331}\u{302}"));
+        $this->assertSame([], self::failedRules($rule("\u{125}"), "h\u{331}\u{302}"));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function canonicalCaselessMatches(): iterable
+    {
+        // The capital has no precomposed form, the small letter has one.
+        yield 'j caron, precomposed needle' => ["\u{1F0}", "J\u{30C}"];
+        yield 'j caron, decomposed needle' => ["J\u{30C}", "\u{1F0}"];
+        yield 'w ring' => ["\u{1E98}", "W\u{30A}"];
+        yield 'iota with dialytika and tonos' => ["\u{390}", "\u{399}\u{308}\u{301}"];
+        // Capital alpha + U+0345 is not canonically equivalent to U+1FB3; both fold to alpha + iota.
+        yield 'capital alpha with ypogegrammeni' => ["\u{1FB3}", "\u{391}\u{345}"];
+        // Small iota with dialytika, in a capital decomposed value, a small decomposed one and a precomposed one.
+        yield 'iota with dialytika in a capital decomposed value' => ["\u{3CA}", "\u{399}\u{308}\u{301}"];
+        yield 'iota with dialytika in a small decomposed value' => ["\u{3CA}", "\u{3B9}\u{308}\u{301}"];
+        yield 'iota with dialytika in a precomposed value' => ["\u{3CA}", "\u{390}"];
+        // Decomposed, a precomposed letter holds its base letter.
+        yield 'e in a precomposed e acute' => ['e', "\u{E9}"];
+        yield 'precomposed hangul in jamo' => ["\u{AD00}\u{B9AC}", "\u{1100}\u{116A}\u{11AB}\u{1105}\u{1175}\u{11AB}"];
+    }
+
+    #[DataProvider('canonicalCaselessMatches')]
+    public function testNotContainsIgnoreCaseUsesCanonicalCaselessMatching(string $needle, string $value): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function simpleCaseFoldingPairs(): iterable
+    {
+        yield 'greek word' => ["\u{3A3}\u{39F}\u{3A6}\u{38A}\u{391}", "\u{3C3}\u{3BF}\u{3C6}\u{3AF}\u{3B1}"];
+        yield 'kelvin sign' => ["\u{212A}", 'k'];
+        yield 'title case dz' => ["\u{1C5}", "\u{1C6}"];
+        yield 'capital sharp s' => ["\u{1E9E}", "\u{DF}"];
+        yield 'final sigma' => ["\u{3C2}", "\u{3A3}"];
+        yield 'ohm sign' => ["\u{3A9}MEGA", "\u{2126}mega"];
+        yield 'ypogegrammeni' => ["\u{3B1}\u{3B9}", "\u{3B1}\u{345}"];
+        // U+0130 decomposes to I + U+0307, which folds to i + U+0307.
+        yield 'dotted capital i' => ["\u{130}", 'i'];
+    }
+
+    #[DataProvider('simpleCaseFoldingPairs')]
+    public function testNotContainsIgnoreCaseMatchesCharactersThatFoldToTheSameCharacter(string $value, string $needle): void
+    {
+        $this->assertSame(['notContains'], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function pairsWithoutAOneToOneCaseMapping(): iterable
+    {
+        yield 'dotless small i' => ['I', "\u{131}"];
+        yield 'sharp s against ss' => ['STRASSE', "stra\u{DF}e"];
+        yield 'ligature fi' => ["\u{FB01}le", 'FILE'];
+    }
+
+    #[DataProvider('pairsWithoutAOneToOneCaseMapping')]
+    public function testNotContainsIgnoreCaseKeepsApartCharactersWithoutAOneToOneCaseMapping(string $value, string $needle): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains([$needle], ignoreCase: true), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function lookAlikeOrInsertedValues(): iterable
+    {
+        yield 'cyrillic a' => ["\u{430}dmin"];
+        yield 'zero width space' => ["ad\u{200B}min"];
+        yield 'combining mark between letters' => ["a\u{301}dmin"];
+        yield 'dotted capital i followed by a letter' => ["ADM\u{130}N"];
+    }
+
+    #[DataProvider('lookAlikeOrInsertedValues')]
+    public function testNotContainsDoesNotRejectLookAlikeOrInsertedCharacters(string $value): void
+    {
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin']), $value));
+        $this->assertSame([], self::failedRules(Rule::string()->notContains(['admin'], ignoreCase: true), $value));
+    }
+
+    public function testNotContainsReportsTheNeedlesAsGiven(): void
+    {
+        $rule = Rule::string()->notContains(["e\u{301}te\u{301}"]);
+
+        $this->assertSame(['values' => ["e\u{301}te\u{301}"]], self::onlyError($rule, "\u{E9}t\u{E9}")->params);
+    }
+
+    public function testNotContainsEmptyNeedleThrows(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', '']));
+
+        $this->assertSame('notContains() needs at least one character in each value, got an empty string at position 1.', $e->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{string, mixed, string}>
+     */
+    public static function nonStringNeedles(): iterable
+    {
+        // The method name comes from here so that the call is not checked against list<string>.
+        yield 'int' => ['notContains', 1, 'int'];
+        yield 'array' => ['notContains', ['a'], 'array'];
+        yield 'array holding invalid UTF-8' => ['notContains', ["\xFF"], 'array'];
+        yield 'null' => ['notContains', null, 'null'];
+        yield 'Chars case' => ['notContains', Chars::Alpha, Chars::class];
+    }
+
+    #[DataProvider('nonStringNeedles')]
+    public function testNotContainsNonStringNeedleIsATypeError(string $method, mixed $needle, string $type): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['admin', $needle]));
+
+        $this->assertSame('notContains() needs strings, got ' . $type . ' at position 1.', $e->getMessage());
+        $this->assertInstanceOf(TypeError::class, $e->getPrevious());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function notContainsMethodName(): iterable
+    {
+        // The method name comes from here so that the call is not checked against list<string>.
+        yield 'notContains' => ['notContains'];
+    }
+
+    #[DataProvider('notContainsMethodName')]
+    public function testNotContainsTypeErrorNamesThePositionNotTheKey(string $method): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(TypeError::class, static fn () => $rule->{$method}(['x' => 'admin', "bad\nkey" => 1]));
+
+        $this->assertSame('notContains() needs strings, got int at position 1.', $e->getMessage());
+        $this->assertInstanceOf(TypeError::class, $e->getPrevious());
+    }
+
+    #[DataProvider('notContainsMethodName')]
+    public function testNotContainsReportsTheNeedlesAsAList(string $method): void
+    {
+        $rule = Rule::string()->{$method}(['x' => 'admin', 'y' => 'root']);
+
+        $this->assertInstanceOf(StringRule::class, $rule);
+
+        $this->assertSame(['values' => ['admin', 'root']], self::onlyError($rule, 'root')->params);
+    }
+
+    public function testNotContainsInvalidUtf8NeedleThrows(): void
+    {
+        $rule = Rule::string();
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->notContains(['a', "\xFF"]));
+
+        $this->assertSame('notContains() needs values in valid UTF-8, got invalid UTF-8 at position 1.', $e->getMessage());
+    }
+
     /**
      * @return iterable<string, array{string}>
      */
@@ -354,6 +707,7 @@ final class StringRuleTest extends TestCase
     {
         yield 'in' => ['in'];
         yield 'notIn' => ['notIn'];
+        yield 'notContains' => ['notContains'];
         yield 'chars' => ['chars'];
         yield 'notChars' => ['notChars'];
         yield 'url' => ['url'];
