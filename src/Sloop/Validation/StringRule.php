@@ -165,9 +165,10 @@ final class StringRule extends FieldRule
      * `İ` contains `i`, but `SS` does not contain `ß`. Being decomposed, a
      * precomposed `é` then contains `e`, while `ADMİN` does not contain
      * `admin`: the dot of `İ` sits between `i` and `n`. A value rejected without
-     * $ignoreCase is rejected with it too, and the value and needles as given
-     * are also compared folded, so `Á` is found in a precomposed `á` (U+00E1)
-     * + U+0323. The result can still depend on the case the needle or the
+     * $ignoreCase is rejected with it too, and the case-sensitive search is
+     * run again on the value and needles folded, as given and in NFC, so `Á`
+     * is found in a precomposed `á` (U+00E1) + U+0323 and `Ć` in `c` + U+0323
+     * + U+0301. The result can still depend on the case the needle or the
      * value is written in: `ᾀ` is found in `ᾀ` + U+0301 but `ἈΙ` (U+1F08
      * U+0399) is not, and `Ϊ` is found in `Ι` + U+0308 + U+0301 + U+0323 but
      * not in `ι` + U+0308 + U+0301 + U+0323. Full-width and half-width
@@ -184,10 +185,11 @@ final class StringRule extends FieldRule
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
-        $plain    = [];
-        $caseless = [];
-        $folded   = [];
-        $values   = [];
+        $plain     = [];
+        $caseless  = [];
+        $foldedRaw = [];
+        $foldedNfc = [];
+        $values    = [];
         foreach ($needles as $needle) {
             try {
                 self::assertNeedle($needle, \count($values));
@@ -196,20 +198,24 @@ final class StringRule extends FieldRule
                 // position, not by key, so nothing from the array itself reaches the message.
                 throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at position ' . \count($values) . '.', previous: $e);
             }
-            $plain[] = [$needle, self::nfc($needle)];
+            $plain[] = self::withNfc($needle);
             if ($ignoreCase) {
-                $caseless[] = self::caselessForm($needle);
-                $folded[]   = self::simpleFold($needle);
+                $caseless[]  = self::caselessForm($needle);
+                $foldedRaw[] = self::withNfc(self::simpleFold($needle));
+                $foldedNfc[] = self::withNfc(self::simpleFold(self::nfc($needle)));
             }
             $values[] = $needle;
         }
 
         // Each form of the value is built once, not once per needle.
-        $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain);
+        $passes = static fn (string $value): bool => !self::containsAny(self::withNfc($value), $plain);
         if ($ignoreCase) {
-            $passes = static fn (string $value): bool => !self::containsAny([$value, self::nfc($value)], $plain)
+            // The case-sensitive search again on the value and needles folded, as given and in NFC,
+            // so that the other case of what it finds is found too.
+            $passes = static fn (string $value): bool => !self::containsAny(self::withNfc($value), $plain)
                 && !self::containsCaseless(self::caselessForm($value), $caseless)
-                && !self::containsCaseless(self::simpleFold($value), $folded);
+                && !self::containsAny(self::withNfc(self::simpleFold($value)), $foldedRaw)
+                && !self::containsAny(self::withNfc(self::simpleFold(self::nfc($value))), $foldedNfc);
         }
 
         return $this->withCheck('notContains', ['values' => $values], $passes, $message);
@@ -666,10 +672,10 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Whether a value contains any of the needles, all brought to the same case-folded form.
+     * Whether a value in the caseless form contains any of the needles in the same form.
      *
-     * @param  string       $value   Value from caselessForm() or simpleFold()
-     * @param  list<string> $needles Needles from the same function as $value
+     * @param  string       $value   Value from caselessForm()
+     * @param  list<string> $needles Needles from caselessForm()
      * @return bool
      */
     private static function containsCaseless(string $value, array $needles): bool
@@ -697,6 +703,17 @@ final class StringRule extends FieldRule
     private static function caselessForm(string $value): string
     {
         return self::nfd(self::simpleFold(self::nfd($value)));
+    }
+
+    /**
+     * A valid UTF-8 string as given and in NFC, the pair containsAny() searches.
+     *
+     * @param  string                $value Valid UTF-8 string
+     * @return array{string, string}
+     */
+    private static function withNfc(string $value): array
+    {
+        return [$value, self::nfc($value)];
     }
 
     /**

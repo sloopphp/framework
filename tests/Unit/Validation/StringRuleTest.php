@@ -507,11 +507,15 @@ final class StringRuleTest extends TestCase
      */
     public static function otherCaseOfWhatTheCaseSensitiveCheckFinds(): iterable
     {
-        // The decomposed forms reorder the marks, so the caseless form alone misses these.
+        // The decomposed forms reorder the marks, so the caseless form alone misses these;
+        // the folded forms, as given and in NFC, find them.
         yield 'capital needle, small value' => ["\u{1F88}", "\u{1F80}\u{301}"];
         yield 'small needle, capital value' => ["\u{1F80}", "\u{1F88}\u{301}"];
         yield 'capital latin needle' => ["\u{C1}", "\u{E1}\u{323}"];
         yield 'capital latin value' => ["\u{E1}", "\u{C1}\u{323}"];
+        yield 'capital needle composed only in NFC' => ["\u{106}", "c\u{323}\u{301}"];
+        yield 'capital cyrillic needle composed only in NFC' => ["\u{419}", "\u{438}\u{323}\u{306}"];
+        yield 'small greek needle composed only in NFC' => ["\u{3CA}", "\u{399}\u{308}\u{301}\u{323}"];
     }
 
     #[DataProvider('otherCaseOfWhatTheCaseSensitiveCheckFinds')]
@@ -528,7 +532,6 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['notContains'], self::failedRules($rule("\u{1F80}"), "\u{1F80}\u{301}"));
         $this->assertSame([], self::failedRules($rule("\u{1F08}\u{399}"), "\u{1F80}\u{301}"));
         $this->assertSame(['notContains'], self::failedRules($rule("\u{3AA}"), "\u{399}\u{308}\u{301}\u{323}"));
-        $this->assertSame([], self::failedRules($rule("\u{3CA}"), "\u{399}\u{308}\u{301}\u{323}"));
         $this->assertSame([], self::failedRules($rule("\u{3AA}"), "\u{3B9}\u{308}\u{301}\u{323}"));
     }
 
