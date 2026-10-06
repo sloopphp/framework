@@ -198,11 +198,12 @@ final class StringRule extends FieldRule
                 // position, not by key, so nothing from the array itself reaches the message.
                 throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at position ' . \count($values) . '.', previous: $e);
             }
-            $plain[] = self::withNfc($needle);
+            $forms   = self::withNfc($needle);
+            $plain[] = $forms;
             if ($ignoreCase) {
                 $caseless[]  = self::caselessForm($needle);
                 $foldedRaw[] = self::withNfc(self::simpleFold($needle));
-                $foldedNfc[] = self::withNfc(self::simpleFold(self::nfc($needle)));
+                $foldedNfc[] = self::withNfc(self::simpleFold($forms[1]));
             }
             $values[] = $needle;
         }
@@ -212,10 +213,14 @@ final class StringRule extends FieldRule
         if ($ignoreCase) {
             // The case-sensitive search again on the value and needles folded, as given and in NFC,
             // so that the other case of what it finds is found too.
-            $passes = static fn (string $value): bool => !self::containsAny(self::withNfc($value), $plain)
-                && !self::containsCaseless(self::caselessForm($value), $caseless)
-                && !self::containsAny(self::withNfc(self::simpleFold($value)), $foldedRaw)
-                && !self::containsAny(self::withNfc(self::simpleFold(self::nfc($value))), $foldedNfc);
+            $passes = static function (string $value) use ($plain, $caseless, $foldedRaw, $foldedNfc): bool {
+                $forms = self::withNfc($value);
+
+                return !self::containsAny($forms, $plain)
+                    && !self::containsCaseless(self::caselessForm($value), $caseless)
+                    && !self::containsAny(self::withNfc(self::simpleFold($value)), $foldedRaw)
+                    && !self::containsAny(self::withNfc(self::simpleFold($forms[1])), $foldedNfc);
+            };
         }
 
         return $this->withCheck('notContains', ['values' => $values], $passes, $message);
