@@ -170,4 +170,17 @@ final class FloatRule extends FieldRule
 
         return array_map(self::bound(...), $values);
     }
+
+    /**
+     * Whether a validated value of this field can be the given value: any float.
+     *
+     * @internal Read by Validator to check the values of requiredIf() / when().
+     *
+     * @param  mixed $value Value given to requiredIf() / when()
+     * @return bool
+     */
+    public function canHold(mixed $value): bool
+    {
+        return \is_float($value);
+    }
 }

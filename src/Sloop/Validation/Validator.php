@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use BackedEnum;
 use InvalidArgumentException;
 
 /**
@@ -17,8 +18,10 @@ use InvalidArgumentException;
  *
  * One validator can validate any number of inputs. A failure in one field does
  * not stop the others; what runs for one field, and in what order, is described
- * on FieldRule. same() / different() run after all fields, so the order of the
- * fields does not matter.
+ * on FieldRule. The rules that look at another field run after all fields, so
+ * the order of the fields does not matter: first requiredWith() / requiredIf(),
+ * each field after the fields it names, then same() / different() and when(),
+ * which see the fields as the first step left them.
  */
 final readonly class Validator
 {
@@ -30,34 +33,29 @@ final readonly class Validator
     private array $rules;
 
     /**
+     * Fields with a requiredWith() / requiredIf(), in the order they are judged.
+     *
+     * @var list<string>
+     */
+    private array $requiredOrder;
+
+    /**
      * Create a validator.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
-     * @throws InvalidArgumentException                  When a same() / different() rule names a field that has no rule, or either side's value cannot be compared
+     * @throws InvalidArgumentException                  When a rule names a field that has no rule; a same() / different() side cannot be compared;
+     *                                                   a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
+     *                                                   the named field's value; or fields required on each other include two with a default
      */
     public function __construct(array $rules)
     {
         foreach ($rules as $field => $rule) {
-            foreach ($rule->comparisons() as $comparison) {
-                if (!$rule->comparesByValue()) {
-                    throw new InvalidArgumentException(
-                        'Field "' . $field . '" compares with "' . $comparison->other . '", but no two inputs can share its own value.',
-                    );
-                }
-                if (!\array_key_exists($comparison->other, $rules)) {
-                    throw new InvalidArgumentException(
-                        'Field "' . $field . '" compares with "' . $comparison->other . '", which has no rule.',
-                    );
-                }
-                if (!$rules[$comparison->other]->comparesByValue()) {
-                    throw new InvalidArgumentException(
-                        'Field "' . $field . '" compares with "' . $comparison->other . '", whose value no two inputs can share.',
-                    );
-                }
-            }
+            self::assertComparisons($rules, $field, $rule);
+            self::assertConditions($rules, $field, $rule);
         }
 
-        $this->rules = $rules;
+        $this->rules         = $rules;
+        $this->requiredOrder = self::requiredOrder($rules);
     }
 
     /**
@@ -66,7 +64,7 @@ final readonly class Validator
      * @param  string                     $field Field name
      * @param  FieldRule<covariant mixed> $rule  Rules of the field
      * @return self
-     * @throws InvalidArgumentException   When the field already has rules, or a comparison names a field that has no rule, or either side's value cannot be compared
+     * @throws InvalidArgumentException   When the field already has rules, or the new set of rules is refused the way the constructor refuses it
      */
     public function with(string $field, FieldRule $rule): self
     {
@@ -153,16 +151,56 @@ final readonly class Validator
             $failures[$field] = $outcomes[$field]->failures;
         }
 
+        $failures = $this->judgeRequired($outcomes, $failures);
+
+        return [$outcomes, $this->judgeAgainstOthers($outcomes, $failures)];
+    }
+
+    /**
+     * Add the failures of requiredWith() / requiredIf(), each field after the fields it names.
+     *
+     * A field judged later sees a named field that its own condition made fail
+     * as failed.
+     *
+     * @param  array<string, FieldOutcome>  $outcomes Outcome of each field
+     * @param  array<string, list<Failure>> $failures Failures of each field so far
+     * @return array<string, list<Failure>>
+     */
+    private function judgeRequired(array $outcomes, array $failures): array
+    {
+        foreach ($this->requiredOrder as $field) {
+            if (!$outcomes[$field]->empty) {
+                continue;
+            }
+            $failure = $this->requiredFailure($field, $outcomes, $failures);
+            if ($failure !== null) {
+                $failures[$field] = [$failure];
+            }
+        }
+
+        return $failures;
+    }
+
+    /**
+     * Add the failures of same() / different() and of the rules of each when() that applies.
+     *
+     * Every field sees the others as judgeRequired() left them, so a failure
+     * added here by one field does not change what another field sees.
+     *
+     * @param  array<string, FieldOutcome>  $outcomes Outcome of each field
+     * @param  array<string, list<Failure>> $settled  Failures of each field after judgeRequired()
+     * @return array<string, list<Failure>>
+     */
+    private function judgeAgainstOthers(array $outcomes, array $settled): array
+    {
+        $failures = $settled;
         foreach ($this->rules as $field => $rule) {
             if (!$outcomes[$field]->comparing) {
                 continue;
             }
             foreach ($rule->comparisons() as $comparison) {
                 $other = $comparison->other;
-                if ($outcomes[$other]->failures !== []) {
-                    continue;
-                }
-                if (!$comparison->passes($outcomes[$field]->comparable, $outcomes[$other]->comparable)) {
+                if ($settled[$other] === [] && !$comparison->passes($outcomes[$field]->comparable, $outcomes[$other]->comparable)) {
                     $failures[$field][] = new Failure(
                         $comparison->rule,
                         ['other' => $other],
@@ -171,9 +209,323 @@ final readonly class Validator
                     );
                 }
             }
+            foreach ($rule->whens() as $index => $when) {
+                if (self::matchedValue($when->field, $when->values, $outcomes, $settled) !== null) {
+                    $failures[$field] = [...$failures[$field], ...$outcomes[$field]->whenFailures[$index]];
+                }
+            }
         }
 
-        return [$outcomes, $failures];
+        return $failures;
+    }
+
+    /**
+     * The failure of the first requiredWith() / requiredIf() of an empty field that holds, if any.
+     *
+     * @param  string                       $field    Field name
+     * @param  array<string, FieldOutcome>  $outcomes Outcome of each field
+     * @param  array<string, list<Failure>> $failures Failures of each field so far
+     * @return Failure|null
+     */
+    private function requiredFailure(string $field, array $outcomes, array $failures): ?Failure
+    {
+        foreach ($this->rules[$field]->requiredConditions() as $condition) {
+            $failure = $this->conditionFailure($condition, $outcomes, $failures);
+            if ($failure !== null) {
+                return $failure;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The failure of one requiredWith() / requiredIf() when it holds, naming the first field that makes it hold.
+     *
+     * @param  RequiredCondition            $condition Condition to check
+     * @param  array<string, FieldOutcome>  $outcomes  Outcome of each field
+     * @param  array<string, list<Failure>> $failures  Failures of each field so far
+     * @return Failure|null
+     */
+    private function conditionFailure(RequiredCondition $condition, array $outcomes, array $failures): ?Failure
+    {
+        foreach ($condition->fields as $other) {
+            if ($condition->rule === 'requiredWith') {
+                if (self::isFilled($other, $outcomes, $failures)) {
+                    return new Failure('requiredWith', ['other' => $other], $condition->message, otherLabel: $this->label($other));
+                }
+                continue;
+            }
+            $matched = self::matchedValue($other, $condition->values, $outcomes, $failures);
+            if ($matched !== null) {
+                return new Failure(
+                    'requiredIf',
+                    ['other' => $other, 'value' => self::describe($matched)],
+                    $condition->message,
+                    otherLabel: $this->label($other),
+                );
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether another field is filled: not empty or with a default, and not failed.
+     *
+     * @param  string                       $field    Field name
+     * @param  array<string, FieldOutcome>  $outcomes Outcome of each field
+     * @param  array<string, list<Failure>> $failures Failures of each field
+     * @return bool
+     */
+    private static function isFilled(string $field, array $outcomes, array $failures): bool
+    {
+        return $failures[$field] === [] && $outcomes[$field]->value !== null;
+    }
+
+    /**
+     * The given value that another field holds, when it is filled and holds one of them.
+     *
+     * @param  string                                 $field    Field name
+     * @param  list<string|int|float|bool|BackedEnum> $values   Values to look for
+     * @param  array<string, FieldOutcome>            $outcomes Outcome of each field
+     * @param  array<string, list<Failure>>           $failures Failures of each field
+     * @return string|int|float|bool|BackedEnum|null
+     */
+    private static function matchedValue(string $field, array $values, array $outcomes, array $failures): string|int|float|bool|BackedEnum|null
+    {
+        if (!self::isFilled($field, $outcomes, $failures)) {
+            return null;
+        }
+        foreach ($values as $candidate) {
+            if ($candidate === $outcomes[$field]->value) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Render the value that made requiredIf() hold, for the error parameters.
+     *
+     * @param  string|int|float|bool|BackedEnum $value Value given to requiredIf() that the named field holds
+     * @return int|float|string
+     */
+    private static function describe(string|int|float|bool|BackedEnum $value): int|float|string
+    {
+        return match (true) {
+            $value instanceof BackedEnum => $value->value,
+            \is_bool($value)             => $value ? 'true' : 'false',
+            default                      => $value,
+        };
+    }
+
+    /**
+     * Refuse a same() / different() that names a field without rules, or a side that cannot be compared.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @param  string                                    $field Field the rules are declared on
+     * @param  FieldRule<covariant mixed>                $rule  Rules of that field
+     * @return void
+     * @throws InvalidArgumentException                  When a comparison names a field that has no rule, or either side's value cannot be compared
+     */
+    private static function assertComparisons(array $rules, string $field, FieldRule $rule): void
+    {
+        foreach ($rule->comparisons() as $comparison) {
+            if (!$rule->comparesByValue()) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with "' . $comparison->other . '", but no two inputs can share its own value.',
+                );
+            }
+            if (!\array_key_exists($comparison->other, $rules)) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with "' . $comparison->other . '", which has no rule.',
+                );
+            }
+            if (!$rules[$comparison->other]->comparesByValue()) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with "' . $comparison->other . '", whose value no two inputs can share.',
+                );
+            }
+        }
+    }
+
+    /**
+     * Refuse a requiredWith() / requiredIf() / when() that names a field it cannot depend on.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @param  string                                    $field Field the rules are declared on
+     * @param  FieldRule<covariant mixed>                $rule  Rules of that field
+     * @return void
+     * @throws InvalidArgumentException                  When a rule names a field that has no rule, a requiredWith() / requiredIf() names its own field, or a value cannot be the named field's value
+     */
+    private static function assertConditions(array $rules, string $field, FieldRule $rule): void
+    {
+        foreach ($rule->requiredConditions() as $condition) {
+            foreach ($condition->fields as $other) {
+                if ($other === $field) {
+                    throw new InvalidArgumentException(
+                        'Field "' . $field . '" is required depending on itself, which never changes whether it is required.',
+                    );
+                }
+                self::assertNamesField($rules, $field, $other, $condition->rule);
+                if ($condition->rule === 'requiredIf') {
+                    self::assertCanHold($rules[$other], $field, $other, $condition->values, 'requiredIf');
+                }
+            }
+        }
+        foreach ($rule->whens() as $when) {
+            self::assertNamesField($rules, $field, $when->field, 'when');
+            self::assertCanHold($rules[$when->field], $field, $when->field, $when->values, 'when');
+        }
+    }
+
+    /**
+     * Refuse a rule that names a field without rules.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules  Field rules keyed by field name
+     * @param  string                                    $field  Field the rule is declared on
+     * @param  string                                    $other  Field the rule names
+     * @param  string                                    $method Method that declared the rule
+     * @return void
+     * @throws InvalidArgumentException                  When $other has no rule
+     */
+    private static function assertNamesField(array $rules, string $field, string $other, string $method): void
+    {
+        if (!\array_key_exists($other, $rules)) {
+            throw new InvalidArgumentException(
+                'Field "' . $field . '" names "' . $other . '" in ' . $method . '(), which has no rule.',
+            );
+        }
+    }
+
+    /**
+     * Refuse a requiredIf() / when() value that the named field never holds.
+     *
+     * @param  FieldRule<covariant mixed>             $rule   Rule of the named field
+     * @param  string                                 $field  Field the rule is declared on
+     * @param  string                                 $other  Field the rule names
+     * @param  list<string|int|float|bool|BackedEnum> $values Values the rule compares with
+     * @param  string                                 $method Method that declared the rule
+     * @return void
+     * @throws InvalidArgumentException               When a value cannot be a validated value of the named field
+     */
+    private static function assertCanHold(FieldRule $rule, string $field, string $other, array $values, string $method): void
+    {
+        foreach ($values as $value) {
+            if (!$rule->canHold($value)) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares "' . $other . '" with a ' . get_debug_type($value) . ' in ' . $method
+                    . '(), which that field never holds. Compare a string, int, float or bool field with a value of its type, or an enum field with its case.',
+                );
+            }
+        }
+    }
+
+    /**
+     * Order the fields with a requiredWith() / requiredIf() so that each comes after the fields it names.
+     *
+     * A field that names another, directly or through others, reaches more
+     * fields (counting itself) than the field it names, unless the two reach
+     * each other; so sorting by that count puts every field after the fields
+     * it names. Fields that reach each other name each other in a cycle and
+     * may be judged in any order among themselves, which gives the same result
+     * unless two of them have a default: then the field judged first takes the
+     * other's default for a filled field and fails, and the order decides
+     * which one fails.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @return list<string>
+     * @throws InvalidArgumentException                  When fields required on each other include two with a default
+     */
+    private static function requiredOrder(array $rules): array
+    {
+        $named   = self::namedFields($rules);
+        $reached = [];
+        foreach (array_keys($named) as $field) {
+            $reached[$field] = self::reached($field, $named);
+        }
+
+        foreach (array_keys($named) as $field) {
+            $cycle = [];
+            foreach (array_keys($named) as $other) {
+                if (\in_array($other, $reached[$field], true) && \in_array($field, $reached[$other], true)) {
+                    $cycle[] = $other;
+                }
+            }
+            self::assertOneDefault($rules, $cycle);
+        }
+
+        $order = array_keys($named);
+        usort($order, static fn (string $a, string $b): int => \count($reached[$a]) <=> \count($reached[$b]));
+
+        return $order;
+    }
+
+    /**
+     * The field itself and every field it names, directly or through others.
+     *
+     * @param  string                      $field Field to start from
+     * @param  array<string, list<string>> $named Fields each field names
+     * @return list<string>
+     */
+    private static function reached(string $field, array $named): array
+    {
+        $reached = [$field];
+        $queue   = $named[$field];
+        while ($queue !== []) {
+            $next = array_shift($queue);
+            if (\in_array($next, $reached, true)) {
+                continue;
+            }
+            $reached[] = $next;
+            $queue     = [...$queue, ...$named[$next] ?? []];
+        }
+
+        return $reached;
+    }
+
+    /**
+     * The fields each field names in a requiredWith() / requiredIf().
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @return array<string, list<string>>
+     */
+    private static function namedFields(array $rules): array
+    {
+        $named = [];
+        foreach ($rules as $field => $rule) {
+            foreach ($rule->requiredConditions() as $condition) {
+                $named[$field] = [...$named[$field] ?? [], ...$condition->fields];
+            }
+        }
+
+        return $named;
+    }
+
+    /**
+     * Refuse a set of fields required on each other in which more than one has a default.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @param  list<string>                              $group Fields that name each other
+     * @return void
+     * @throws InvalidArgumentException                  When two or more of them have a default
+     */
+    private static function assertOneDefault(array $rules, array $group): void
+    {
+        $withDefault = [];
+        foreach ($group as $field) {
+            if ($rules[$field]->declaresDefault()) {
+                $withDefault[] = $field;
+            }
+        }
+        if (\count($withDefault) > 1) {
+            throw new InvalidArgumentException(
+                'Fields "' . implode('", "', $group) . '" are required depending on each other, and "' . implode('", "', $withDefault)
+                . '" have a default, so which one is required would depend on the order they are checked.',
+            );
+        }
     }
 
     /**

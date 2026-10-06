@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use BackedEnum;
 use Closure;
 use InvalidArgumentException;
 use LogicException;
@@ -102,6 +103,27 @@ abstract class FieldRule
     private array $comparisons = [];
 
     /**
+     * Declared requiredWith() / requiredIf() rules.
+     *
+     * @var list<RequiredCondition>
+     */
+    private array $requiredConditions = [];
+
+    /**
+     * Declared when() conditions, each paired by position with its rules in $whenChecks.
+     *
+     * @var list<WhenCondition>
+     */
+    private array $whens = [];
+
+    /**
+     * Rules each when() adds: on the size of the value, on what it holds, and on its elements.
+     *
+     * @var list<array{list<Check<T>>, list<Check<T>>, list<Check<T>>}>
+     */
+    private array $whenChecks = [];
+
+    /**
      * Create a rule set for one field.
      *
      * @param  list<Sanitize|Closure(string): mixed> $sanitizers Sanitizers applied before validation, in order
@@ -140,6 +162,9 @@ abstract class FieldRule
     {
         if ($this->hasDefault) {
             throw new LogicException('A field cannot be both required and have a default.');
+        }
+        if ($this->requiredConditions !== []) {
+            throw new LogicException('A field cannot be both required and required on a condition.');
         }
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
@@ -227,6 +252,89 @@ abstract class FieldRule
     }
 
     /**
+     * Fail when the field is empty while any of the given fields is filled.
+     *
+     * A field counts as filled when it is not empty or has a default, and has
+     * not failed a rule of its own. To require two fields together, declare
+     * this on both.
+     *
+     * @param  string|list<string>      $fields  Name of the other field, or a list of names
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws LogicException           When the field is required
+     * @throws InvalidArgumentException When $fields is an empty list or holds a non-string, or the message template is malformed
+     */
+    public function requiredWith(string|array $fields, ?string $message = null): static
+    {
+        $names = \is_string($fields) ? [$fields] : $fields;
+        if ($names === []) {
+            throw new InvalidArgumentException('requiredWith() needs at least one field.');
+        }
+
+        return $this->withRequiredCondition(new RequiredCondition('requiredWith', $names, [], $message));
+    }
+
+    /**
+     * Fail when the field is empty while another field has one of the given values.
+     *
+     * The other field's validated value is compared with `===`, so it has to
+     * be of the type that field yields: a string for Rule::string(), an int
+     * for Rule::int(), a float for Rule::float(), a bool for Rule::bool() and
+     * a case for Rule::enum(). The other field is not looked at when it is
+     * empty without a default or failed a rule of its own.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  mixed                    $value   Value, or list of values, that makes this field required
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws LogicException           When the field is required
+     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the message template is malformed
+     */
+    public function requiredIf(string $field, mixed $value, ?string $message = null): static
+    {
+        return $this->withRequiredCondition(
+            new RequiredCondition('requiredIf', [$field], self::conditionValues($value, 'requiredIf'), $message),
+        );
+    }
+
+    /**
+     * Apply more rules while another field has one of the given values.
+     *
+     * The closure receives this rule with no rules of its own and returns it
+     * with the rules to add. It runs once, here, and may only add rules on the
+     * value: required(), default(), label(), message(), same(), different(),
+     * requiredWith(), requiredIf() and when() are refused. The added rules run
+     * after the field's own, and like those, not when the field is empty.
+     *
+     * The other field is compared as in requiredIf(). A failure added by
+     * another field's when() does not stop the comparison.
+     *
+     * @param  string                   $field Name of the other field
+     * @param  mixed                    $value Value, or list of values, that makes the rules apply
+     * @param  Closure(static): mixed   $then  Adds the rules to the rule it receives and returns it
+     * @return static
+     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the closure does anything other than add rules
+     */
+    public function when(string $field, mixed $value, Closure $then): static
+    {
+        $values = self::conditionValues($value, 'when');
+        $probe  = $this->withoutRules();
+        $added  = $then($probe);
+        if (!$added instanceof static || $added::class !== static::class) {
+            throw new InvalidArgumentException('when() needs the closure to return the rule it was given, with rules added.');
+        }
+        if ((array) $added->withoutChecks() !== (array) $probe) {
+            throw new InvalidArgumentException('when() can only add rules on the value; the closure changed something else about the field.');
+        }
+
+        $copy               = clone $this;
+        $copy->whens[]      = new WhenCondition($field, $values);
+        $copy->whenChecks[] = [$added->sizeChecks, $added->checks, $added->elementChecks];
+
+        return $copy;
+    }
+
+    /**
      * Validate one raw value.
      *
      * @internal Called by Validator, by ListRule for each of its elements and for an empty
@@ -250,8 +358,8 @@ abstract class FieldRule
             }
 
             return $this->default === null
-                ? new FieldOutcome(null, null, false, [])
-                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), false, []);
+                ? new FieldOutcome(null, null, false, [], empty: true)
+                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), false, [], empty: true);
         }
 
         $typed = $this->coerce($value);
@@ -268,6 +376,8 @@ abstract class FieldRule
             return new FieldOutcome(null, null, false, $failures);
         }
 
+        $sized = $typed;
+
         [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed);
 
         return new FieldOutcome(
@@ -279,7 +389,34 @@ abstract class FieldRule
                 ...$this->run($this->checks, $typed),
                 ...($failures === [] ? $this->run($this->elementChecks, $elements) : []),
             ],
+            // Every when() is run here, while the typed value is at hand; the
+            // Validator decides afterwards which of them apply.
+            whenFailures: $this->runWhens($sized, $typed, $elements, $failures === []),
         );
+    }
+
+    /**
+     * Run the rules of every when(), keeping the failures of each apart.
+     *
+     * @param  T                   $sized          Value the rules on the size test, before what it holds was read
+     * @param  T                   $typed          Value the other rules test
+     * @param  T                   $elements       Value the rules reading the elements test
+     * @param  bool                $elementsPassed Whether every element passed, without which those rules do not run
+     * @return list<list<Failure>>
+     * @throws RuntimeException    When ICU cannot split a string into grapheme clusters or count them
+     */
+    private function runWhens(mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed): array
+    {
+        $whenFailures = [];
+        foreach ($this->whenChecks as [$sizeChecks, $checks, $elementChecks]) {
+            $sizeFailures   = $this->run($sizeChecks, $sized);
+            $whenFailures[] = $sizeFailures !== [] ? $sizeFailures : [
+                ...$this->run($checks, $typed),
+                ...($elementsPassed ? $this->run($elementChecks, $elements) : []),
+            ];
+        }
+
+        return $whenFailures;
     }
 
     /**
@@ -369,6 +506,58 @@ abstract class FieldRule
     public function comparisons(): array
     {
         return $this->comparisons;
+    }
+
+    /**
+     * The declared requiredWith() / requiredIf() rules.
+     *
+     * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
+     *
+     * @return list<RequiredCondition>
+     */
+    public function requiredConditions(): array
+    {
+        return $this->requiredConditions;
+    }
+
+    /**
+     * The declared when() conditions, in the order their failures appear in an outcome.
+     *
+     * @internal Read by Validator, which decides which of them apply, and by ListRule, which refuses them.
+     *
+     * @return list<WhenCondition>
+     */
+    public function whens(): array
+    {
+        return $this->whens;
+    }
+
+    /**
+     * Whether default() was declared.
+     *
+     * @internal Read by Validator, which refuses two fields with a default required on each other.
+     *
+     * @return bool
+     */
+    public function declaresDefault(): bool
+    {
+        return $this->hasDefault;
+    }
+
+    /**
+     * Whether a validated value of this field can be the given value.
+     *
+     * Only the types whose validated value is compared as it is answer yes;
+     * the others are never named by requiredIf() / when().
+     *
+     * @internal Read by Validator to check the values of requiredIf() / when() against the field they name.
+     *
+     * @param  mixed $value Value given to requiredIf() / when()
+     * @return bool
+     */
+    public function canHold(mixed $value): bool
+    {
+        return false;
     }
 
     /**
@@ -545,6 +734,93 @@ abstract class FieldRule
 
         $copy               = clone $this;
         $copy->sizeChecks[] = new Check($rule, $params, $passes, $message);
+
+        return $copy;
+    }
+
+    /**
+     * Append a requiredWith() / requiredIf() rule.
+     *
+     * @param  RequiredCondition        $condition Rule to append
+     * @return static
+     * @throws LogicException           When the field is required
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    private function withRequiredCondition(RequiredCondition $condition): static
+    {
+        if ($this->required) {
+            throw new LogicException('A field cannot be both required and required on a condition.');
+        }
+        if ($condition->message !== null) {
+            ValidationMessages::assertValidPattern($condition->message);
+        }
+
+        $copy = clone $this;
+        $copy->requiredConditions[] = $condition;
+
+        return $copy;
+    }
+
+    /**
+     * Read the value, or list of values, given to requiredIf() / when().
+     *
+     * @param  mixed                                            $value  Value as the caller gave it
+     * @param  string                                           $method Method name, for the message
+     * @return non-empty-list<string|int|float|bool|BackedEnum>
+     * @throws InvalidArgumentException                         When $value is null, an empty list, or holds something no field yields
+     */
+    private static function conditionValues(mixed $value, string $method): array
+    {
+        $values = \is_array($value) ? $value : [$value];
+        if ($values === []) {
+            throw new InvalidArgumentException($method . '() needs at least one value.');
+        }
+        $checked = [];
+        foreach ($values as $one) {
+            if (!\is_string($one) && !\is_int($one) && !\is_float($one) && !\is_bool($one) && !$one instanceof BackedEnum) {
+                throw new InvalidArgumentException(
+                    $method . '() compares with a string, int, float, bool or backed enum case, got ' . get_debug_type($one) . '.',
+                );
+            }
+            $checked[] = $one;
+        }
+
+        return $checked;
+    }
+
+    /**
+     * This rule with nothing declared on it beyond its type, for a when() closure to add to.
+     *
+     * @return static
+     */
+    private function withoutRules(): static
+    {
+        $copy                  = $this->withoutChecks();
+        $copy->required        = false;
+        $copy->requiredMessage = null;
+        $copy->hasDefault      = false;
+        $copy->default         = null;
+        $copy->fieldMessage    = null;
+        $copy->displayLabel    = null;
+        $copy->comparisons     = [];
+        $copy->requiredConditions = [];
+        $copy->whens              = [];
+        $copy->whenChecks         = [];
+
+        return $copy;
+    }
+
+    /**
+     * This rule without the rules on its value.
+     *
+     * @return static
+     */
+    private function withoutChecks(): static
+    {
+        $copy                = clone $this;
+        $copy->checks        = [];
+        $copy->sizeChecks    = [];
+        $copy->elementChecks = [];
 
         return $copy;
     }

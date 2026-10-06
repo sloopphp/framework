@@ -176,4 +176,17 @@ final class EnumRule extends FieldRule
     {
         return array_map(static fn (BackedEnum $case): int|string => $case->value, $cases);
     }
+
+    /**
+     * Whether a validated value of this field can be the given value: a case of its enum.
+     *
+     * @internal Read by Validator to check the values of requiredIf() / when().
+     *
+     * @param  mixed $value Value given to requiredIf() / when()
+     * @return bool
+     */
+    public function canHold(mixed $value): bool
+    {
+        return $value instanceof $this->enum;
+    }
 }
