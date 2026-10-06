@@ -90,8 +90,15 @@
             // of which it does for the valid UTF-8 that coerce() lets through.
             // Turning an || into && makes the guard never fire, which no input
             // can observe.
+            // TimeRule::coerce rejects a value PHP repaired through
+            // getLastErrors(), and accepts() then rejects it again: every
+            // warning PHP gives is for a part out of range (24:00, 09:60,
+            // 23:59:60), which it rolls into the next part, so the value it
+            // writes back never matches the input. Turning the || into &&
+            // leaves only the second rejection, which no input can observe.
             "ignore": [
-                "Sloop\\Validation\\StringRule::clusters::534"
+                "Sloop\\Validation\\StringRule::clusters::534",
+                "Sloop\\Validation\\TimeRule::coerce::150"
             ]
         },
         "CastString": {
@@ -148,7 +155,14 @@
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::756"
+                "Sloop\\Database\\Query\\Expression::placeholders::756",
+                // TimeRule::assertTimeOnly writes and reads back every hour of
+                // the day. Adding hour 24 is equivalent: DateTimeImmutable reads
+                // it as 00:30 the next day, which hour 0 already covers. The pin
+                // also covers 0 -> 1 on the same line, which TimeRuleTest kills
+                // with 'Gha' (it reads back every hour but 0); a line pin cannot
+                // separate the two, so that mutant is no longer counted.
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::307"
             ]
         },
         "DecrementInteger": {
@@ -177,7 +191,15 @@
                 "Sloop\\Error\\SloopException::__construct::62",
                 // Same array_fill start index as IncrementInteger above, in the
                 // opposite direction (0 → -1).
-                "Sloop\\Database\\Query\\Expression::placeholders::756"
+                "Sloop\\Database\\Query\\Expression::placeholders::756",
+                // TimeRule::assertTimeOnly: 23 -> 22 stops before the last
+                // hour. Every hour character writes 23 in the same shape as 22
+                // (two digits for G, H, g and h, and pm for a / A), so a format
+                // that cannot read back 23 cannot read back 22 either, and the
+                // loop still rejects it. The pin also covers 0 -> -1, which the tests
+                // kill because DateTimeImmutable refuses hour -1; a line pin
+                // cannot separate the two, so that mutant is no longer counted.
+                "Sloop\\Validation\\TimeRule::assertTimeOnly::307"
             ]
         },
         "GreaterThan": {

@@ -186,7 +186,7 @@ final class DateTimeRuleTest extends TestCase
         );
 
         $this->assertSame('before', $error->rule);
-        $this->assertSame(['date' => '2026-01-02T03:04:05+00:00'], $error->params);
+        $this->assertSame(['limit' => '2026-01-02T03:04:05+00:00'], $error->params);
     }
 
     public function testTwoFieldsNamingTheSameInstantInDifferentZonesCompareEqual(): void
