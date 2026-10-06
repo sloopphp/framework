@@ -516,6 +516,7 @@ final class StringRuleTest extends TestCase
         yield 'capital needle composed only in NFC' => ["\u{106}", "c\u{323}\u{301}"];
         yield 'capital cyrillic needle composed only in NFC' => ["\u{419}", "\u{438}\u{323}\u{306}"];
         yield 'small greek needle composed only in NFC' => ["\u{3CA}", "\u{399}\u{308}\u{301}\u{323}"];
+        yield 'decomposed capital needle with an iota subscript' => ["\u{391}\u{308}\u{345}", "\u{3B1}\u{308}\u{301}\u{345}"];
     }
 
     #[DataProvider('otherCaseOfWhatTheCaseSensitiveCheckFinds')]
