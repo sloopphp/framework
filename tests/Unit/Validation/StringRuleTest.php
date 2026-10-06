@@ -1419,6 +1419,98 @@ final class StringRuleTest extends TestCase
     }
 
     // ---------------------------------------------------------------
+    // streamSafe
+    // ---------------------------------------------------------------
+
+    /**
+     * @return iterable<string, array{StringRule}>
+     */
+    public static function normalizingRules(): iterable
+    {
+        yield 'chars with a Chars case only' => [Rule::string()->chars([Chars::Alpha])];
+        yield 'chars with a listed character' => [Rule::string()->chars([Chars::Alpha, '#'])];
+        yield 'notChars' => [Rule::string()->notChars(['#'])];
+        yield 'minCharClasses' => [Rule::string()->minCharClasses(1, [Chars::Alpha])];
+        yield 'notContains' => [Rule::string()->notContains(['admin'])];
+        yield 'notContains with ignoreCase' => [Rule::string()->notContains(['admin'], ignoreCase: true)];
+    }
+
+    #[DataProvider('normalizingRules')]
+    public function testMoreThan30CombiningCharactersInARowFailStreamSafeOnly(StringRule $rule): void
+    {
+        self::assertErrorSame(
+            new ValidationError('streamSafe', [], 'The v field has too many combining characters in a row.'),
+            self::onlyError($rule, 'a' . str_repeat("\u{0301}", 31)),
+        );
+    }
+
+    #[DataProvider('normalizingRules')]
+    public function testThirtyCombiningCharactersInARowDoNotFailStreamSafe(StringRule $rule): void
+    {
+        $this->assertNotContains('streamSafe', self::failedRules($rule, 'a' . str_repeat("\u{0301}", 30)));
+    }
+
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function nonStarterRuns(): iterable
+    {
+        yield 'marks of two classes that NFC reorders, 31' => ['a' . str_repeat("\u{0323}\u{0301}", 15) . "\u{0323}", false];
+        yield 'marks of two classes, 30' => ['a' . str_repeat("\u{0323}\u{0301}", 15), true];
+        yield 'U+0F73 decomposes to two non-starters, 16 of them' => ['a' . str_repeat("\u{0F73}", 16), false];
+        yield 'U+0F73, 15 of them' => ['a' . str_repeat("\u{0F73}", 15), true];
+        yield 'two trailing marks of ǖ and 29 more' => ["\u{01D6}" . str_repeat("\u{0301}", 29), false];
+        yield 'two trailing marks of ǖ and 28 more' => ["\u{01D6}" . str_repeat("\u{0301}", 28), true];
+        yield 'a starter between two runs of 30' => ['a' . str_repeat("\u{0301}", 30) . 'b' . str_repeat("\u{0301}", 30), true];
+        yield 'precomposed letters with a mark each' => [str_repeat("\u{00E9}", 100), true];
+        yield 'no letter before the marks' => [str_repeat("\u{0301}", 31), false];
+        yield '40000 pairs of marks NFC reorders' => ['a' . str_repeat("\u{0323}\u{0301}", 40000), false];
+    }
+
+    #[DataProvider('nonStarterRuns')]
+    public function testStreamSafeCountsNonStartersOfTheNfkdForm(string $value, bool $passes): void
+    {
+        $this->assertSame($passes ? [] : ['streamSafe'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
+    }
+
+    public function testStreamSafeStopsEveryOtherRuleOfTheField(): void
+    {
+        $rule = Rule::string()->regex('/x/')->notContains(['admin'])->chars([Chars::Alpha]);
+
+        $this->assertSame(['streamSafe'], self::failedRules($rule, 'admin' . str_repeat("\u{0301}", 31)));
+    }
+
+    public function testStreamSafeIsNotCheckedWithoutARuleThatNormalizes(): void
+    {
+        $value = 'a' . str_repeat("\u{0301}", 40);
+
+        $this->assertSame($value, self::valueOf(Rule::string()->maxLength(1)->regex('/^a/'), $value));
+    }
+
+    /**
+     * @return iterable<string, array{callable(): StringRule, string}>
+     */
+    public static function listedStringsNotStreamSafe(): iterable
+    {
+        $long = 'a' . str_repeat("\u{0301}", 31);
+
+        yield 'chars' => [static fn (): StringRule => Rule::string()->chars([Chars::Alpha, $long]), 'chars() needs listed characters with at most 30 combining characters in a row.'];
+        yield 'notChars' => [static fn (): StringRule => Rule::string()->notChars(['#', $long]), 'notChars() needs listed characters with at most 30 combining characters in a row.'];
+        yield 'minCharClasses' => [static fn (): StringRule => Rule::string()->minCharClasses(1, [$long]), 'minCharClasses() needs listed characters with at most 30 combining characters in a row.'];
+        yield 'notContains' => [static fn (): StringRule => Rule::string()->notContains(['admin', $long]), 'notContains() needs values with at most 30 combining characters in a row, got more at position 1.'];
+    }
+
+    /**
+     * @param callable(): StringRule $declare
+     */
+    #[DataProvider('listedStringsNotStreamSafe')]
+    public function testListedStringWithMoreThan30CombiningCharactersInARowIsRejected(callable $declare, string $message): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, $declare);
+        $this->assertSame($message, $e->getMessage());
+    }
+
+    // ---------------------------------------------------------------
     // email / url / ip
     // ---------------------------------------------------------------
 

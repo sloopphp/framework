@@ -15,12 +15,22 @@ use TypeError;
  *
  * Accepts only strings of valid UTF-8; an int or any other type is a type
  * failure (no implicit conversion). Lengths are counted in grapheme clusters
- * unless a rule is given another LengthUnit.
+ * unless a rule is given another LengthUnit. A field with chars(), notChars(),
+ * minCharClasses() or notContains() first fails a value with more than 30
+ * combining characters in a row, as the rule streamSafe, and runs no other
+ * rule on it (see StreamSafe).
  *
  * @extends FieldRule<string>
  */
 final class StringRule extends FieldRule
 {
+    /**
+     * Whether the streamSafe rule has been added, by the first rule that needs it.
+     *
+     * @var bool
+     */
+    private bool $streamSafe = false;
+
     /**
      * Use this value when the field is empty.
      *
@@ -181,7 +191,7 @@ final class StringRule extends FieldRule
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
      * @param  string|null              $message    Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $needles is empty, a needle is empty or not valid UTF-8, or the message template is malformed
+     * @throws InvalidArgumentException When $needles is empty, a needle is empty, not valid UTF-8 or has more than 30 combining characters in a row, or the message template is malformed
      * @throws TypeError                When a needle is not a string
      */
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
@@ -225,7 +235,7 @@ final class StringRule extends FieldRule
             };
         }
 
-        return $this->withCheck('notContains', ['values' => $values], $passes, $message);
+        return $this->withStreamSafe()->withCheck('notContains', ['values' => $values], $passes, $message);
     }
 
     /**
@@ -240,7 +250,7 @@ final class StringRule extends FieldRule
      * @param  list<CharSet|string>     $sets    Allowed character sets and listed characters; the value may mix characters from all of them
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function chars(array $sets, ?string $message = null): self
@@ -259,7 +269,7 @@ final class StringRule extends FieldRule
             $passes = static fn (string $value): bool => self::eachClusterAllowed($value, $class === '' ? null : $pattern, $clusters);
         }
 
-        return $this->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message);
+        return $this->withStreamSafe()->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message);
     }
 
     /**
@@ -281,7 +291,7 @@ final class StringRule extends FieldRule
      * @param  list<CharSet|string>     $sets    Rejected character sets and listed characters
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, a listed string is empty or not valid UTF-8, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function notChars(array $sets, ?string $message = null): self
@@ -292,7 +302,7 @@ final class StringRule extends FieldRule
         $pattern                  = '/[' . $class . ']/u';
         $listedPattern            = '/[' . $codePoints . ']/u';
 
-        return $this->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $listedPattern, $codePoints, $clusters): bool {
+        return $this->withStreamSafe()->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $listedPattern, $codePoints, $clusters): bool {
             if ($class !== '' && preg_match($pattern, $value) !== 0) {
                 return false;
             }
@@ -326,7 +336,7 @@ final class StringRule extends FieldRule
      * @param  list<CharSet|string>     $sets    The kinds to count
      * @param  string|null              $message Message for this rule only
      * @return self
-     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty or not valid UTF-8, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
     public function minCharClasses(int $min, array $sets, ?string $message = null): self
@@ -346,7 +356,7 @@ final class StringRule extends FieldRule
         $patterns    = array_map(static fn (string $pattern): string => '/[' . $pattern . ']/u', $setPatterns);
         $listedKinds = array_map(self::clusterSet(...), $listed);
 
-        return $this->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
+        return $this->withStreamSafe()->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
             $used = self::countListedKinds($value, $listedKinds);
             foreach ($patterns as $pattern) {
                 if (preg_match($pattern, $value) === 1) {
@@ -439,12 +449,35 @@ final class StringRule extends FieldRule
     }
 
     /**
+     * Add the streamSafe rule once, ahead of every other rule of the field.
+     *
+     * chars(), notChars(), minCharClasses() and notContains() call this.
+     * Normalizing a run of combining characters takes time quadratic in its
+     * length, so a value with more than 30 in a row in NFKD (UAX #15, the
+     * Stream-Safe Text Format) fails here, before anything is normalized, and
+     * no other rule of the field runs on it.
+     *
+     * @return self
+     */
+    private function withStreamSafe(): self
+    {
+        if ($this->streamSafe) {
+            return $this;
+        }
+
+        $copy             = $this->withSizeCheck('streamSafe', [], StreamSafe::holds(...), null);
+        $copy->streamSafe = true;
+
+        return $copy;
+    }
+
+    /**
      * Split character sets into a character class and the listed characters.
      *
      * @param  list<CharSet|string>                                    $sets Character sets and listed characters
      * @param  string                                                  $rule Rule name for the message
      * @return array{string, list<string>, list<string>, list<string>} Joined class, set names, listed strings, and each set's pattern
-     * @throws InvalidArgumentException                                When a listed string is empty or not valid UTF-8, or a CharSet pattern is unsafe to join (see CharSet)
+     * @throws InvalidArgumentException                                When a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, or a CharSet pattern is unsafe to join (see CharSet)
      */
     private static function readSets(array $sets, string $rule): array
     {
@@ -469,6 +502,10 @@ final class StringRule extends FieldRule
             }
             if (!mb_check_encoding($set, 'UTF-8')) {
                 throw new InvalidArgumentException($rule . '() needs listed characters in valid UTF-8.');
+            }
+            if (!StreamSafe::holds($set)) {
+                // A value holding it would fail streamSafe first, so the listing would never take effect.
+                throw new InvalidArgumentException($rule . '() needs listed characters with at most ' . StreamSafe::MAX_NON_STARTERS . ' combining characters in a row.');
             }
             $listed[] = $set;
         }
@@ -665,7 +702,7 @@ final class StringRule extends FieldRule
      * @param  string                   $needle   Needle as given
      * @param  int                      $position 0-based position of the needle, for the message
      * @return void
-     * @throws InvalidArgumentException When the needle is empty or not valid UTF-8
+     * @throws InvalidArgumentException When the needle is empty, not valid UTF-8 or has more than 30 combining characters in a row
      * @throws TypeError                When the needle is not a string (raised by the parameter type)
      */
     private static function assertNeedle(string $needle, int $position): void
@@ -675,6 +712,10 @@ final class StringRule extends FieldRule
         }
         if (!mb_check_encoding($needle, 'UTF-8')) {
             throw new InvalidArgumentException('notContains() needs values in valid UTF-8, got invalid UTF-8 at position ' . $position . '.');
+        }
+        if (!StreamSafe::holds($needle)) {
+            // A value holding it would fail streamSafe first, so the needle would never be found.
+            throw new InvalidArgumentException('notContains() needs values with at most ' . StreamSafe::MAX_NON_STARTERS . ' combining characters in a row, got more at position ' . $position . '.');
         }
     }
 

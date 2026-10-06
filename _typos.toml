@@ -26,4 +26,8 @@ extend-ignore-re = [
     # separator, which is what makes it unable to read back what it writes.
     # It appears both bare and escaped, inside the expected exception message.
     "\\\\?'nd\\\\?'",
+
+    # StreamSafe: a character class generated from code points, written as
+    # `\x{hex}`; hex digits such as 1ABD or 30BA read as words.
+    "\\\\x\\{[0-9A-F]+\\}",
 ]
