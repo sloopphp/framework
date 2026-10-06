@@ -633,8 +633,8 @@ final class StringRule extends FieldRule
      * + U+0303 becomes `admiñ`) and reorders marks (e + U+0301 + U+0323
      * becomes U+1EB9 + U+0301), so the value as given is searched too.
      *
-     * @param  array{string, string}       $value   The value as given and in NFC
-     * @param  list<array{string, string}> $needles Each needle as given and in NFC
+     * @param  array{string, string}       $value   A string and its NFC form, from withNfc()
+     * @param  list<array{string, string}> $needles Each needle and its NFC form, from withNfc()
      * @return bool
      */
     private static function containsAny(array $value, array $needles): bool
