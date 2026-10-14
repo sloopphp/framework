@@ -810,6 +810,10 @@ abstract class FieldRule
     /**
      * Take a name given to requiredWith(), letting its string type refuse anything else.
      *
+     * The string parameter turns a name of any other type, null included,
+     * into a TypeError, which requiredWith() catches and throws again with
+     * the position of the name.
+     *
      * @param  string $name Name of another field
      * @return string
      */
