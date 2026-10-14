@@ -536,33 +536,53 @@ final class ConditionalRuleTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{Closure(StringRule): mixed}>
+     * @return iterable<string, array{Closure(StringRule): mixed, string}>
      */
     public static function forbiddenInsideWhen(): iterable
     {
-        yield 'required' => [static fn (StringRule $r): mixed => $r->required()];
-        yield 'default' => [static fn (StringRule $r): mixed => $r->default('x')];
-        yield 'label' => [static fn (StringRule $r): mixed => $r->label('X')];
-        yield 'message' => [static fn (StringRule $r): mixed => $r->message('m')];
-        yield 'same' => [static fn (StringRule $r): mixed => $r->same('a')];
-        yield 'different' => [static fn (StringRule $r): mixed => $r->different('a')];
-        yield 'requiredWith' => [static fn (StringRule $r): mixed => $r->requiredWith('a')];
-        yield 'requiredIf' => [static fn (StringRule $r): mixed => $r->requiredIf('a', 'x')];
-        yield 'when' => [static fn (StringRule $r): mixed => $r->when('a', 'x', static fn (StringRule $s): StringRule => $s->url())];
+        $changed  = 'when() can only add rules on the value; the closure changed something else about the field.';
+        $returned = 'when() needs the closure to return the rule it was given, with rules added.';
+        // Each closure also adds a rule, so the refusal is not the one for adding none.
+        yield 'required' => [static fn (StringRule $r): mixed => $r->url()->required(), $changed];
+        yield 'default' => [static fn (StringRule $r): mixed => $r->url()->default('x'), $changed];
+        yield 'label' => [static fn (StringRule $r): mixed => $r->url()->label('X'), $changed];
+        yield 'message' => [static fn (StringRule $r): mixed => $r->url()->message('m'), $changed];
+        yield 'same' => [static fn (StringRule $r): mixed => $r->url()->same('a'), $changed];
+        yield 'different' => [static fn (StringRule $r): mixed => $r->url()->different('a'), $changed];
+        yield 'requiredWith' => [static fn (StringRule $r): mixed => $r->url()->requiredWith('a'), $changed];
+        yield 'requiredIf' => [static fn (StringRule $r): mixed => $r->url()->requiredIf('a', 'x'), $changed];
+        yield 'when' => [static fn (StringRule $r): mixed => $r->url()->when('a', 'x', static fn (StringRule $s): StringRule => $s->url()), $changed];
         yield 'no return' => [static function (StringRule $r): mixed {
             $r->url();
             return null;
-        }];
-        yield 'another rule' => [static fn (StringRule $r): mixed => Rule::int()];
+        }, $returned];
+        yield 'another rule' => [static fn (StringRule $r): mixed => Rule::int()->min(1), $returned];
     }
 
     /**
      * @param Closure(StringRule): mixed $then
      */
     #[DataProvider('forbiddenInsideWhen')]
-    public function testWhenRefusesAClosureThatDoesMoreThanAddRules(Closure $then): void
+    public function testWhenRefusesAClosureThatDoesMoreThanAddRules(Closure $then, string $message): void
     {
-        $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->when('a', 'x', $then));
+        $thrown = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->when('a', 'x', $then));
+        self::assertSame($message, $thrown->getMessage());
+    }
+
+    public function testWhenLeavesTheRuleItWasCalledOnUnchanged(): void
+    {
+        $base = Rule::string();
+        $base->when('a', 'x', static fn (StringRule $r): StringRule => $r->url());
+
+        $this->assertSame([], self::failedRulesOf(['f' => $base, 'a' => Rule::string()], ['f' => 'not a url', 'a' => 'x']));
+    }
+
+    public function testRequiredWithLeavesTheRuleItWasCalledOnUnchanged(): void
+    {
+        $base = Rule::string();
+        $base->requiredWith('a');
+
+        $this->assertSame([], self::failedRulesOf(['f' => $base, 'a' => Rule::string()], ['a' => 'x']));
     }
 
     public function testWhenRefusesAClosureThatAddsNoRules(): void
@@ -769,6 +789,34 @@ final class ConditionalRuleTest extends TestCase
         ];
 
         $this->assertSame(['b' => ['requiredIf']], self::failedRulesOf($rules, ['d' => 'x']));
+    }
+
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>}>
+     */
+    public static function fieldsWithADefaultNamingACycle(): iterable
+    {
+        yield 'one field' => [Rule::string()->default('-')->requiredWith('a')];
+        yield 'after a field outside the cycle' => [Rule::string()->default('-')->requiredWith(['z', 'a'])];
+        yield 'in a later condition' => [Rule::string()->default('-')->requiredWith('a')->requiredWith('z')];
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $c
+     */
+    #[DataProvider('fieldsWithADefaultNamingACycle')]
+    public function testAFieldWithADefaultNamingACycleWaitsForTheFieldWithADefaultInIt(FieldRule $c): void
+    {
+        // c and a both have a default, and c is declared first. c has to see a
+        // fail its own condition rather than read a as filled by its default.
+        $rules = [
+            'c' => $c,
+            'a' => Rule::string()->default('-')->requiredWith('b'),
+            'b' => Rule::string()->requiredWith('a'),
+            'z' => Rule::string(),
+        ];
+
+        $this->assertSame(['a' => ['requiredWith']], self::failedRulesOf($rules, ['b' => 'x']));
     }
 
     public function testAFieldNamedAfterARepeatedNameIsStillJudgedFirst(): void
