@@ -155,7 +155,7 @@ abstract class FieldRule
      *
      * @param  string|null               $message Message for this rule only
      * @return static
-     * @throws LogicException            When a default has been declared, since the default would never be used
+     * @throws LogicException            When a default has been declared, since the default would never be used, or requiredWith() / requiredIf() has, since the field would always be required
      * @throws \InvalidArgumentException When the message template is malformed
      */
     public function required(?string $message = null): static
@@ -225,8 +225,9 @@ abstract class FieldRule
      *
      * Both sides are compared after sanitizing and type conversion. The rule
      * is not evaluated when the other field failed a rule of its own; a
-     * failure of the other field's own same() / different() does not stop it,
-     * so the result does not depend on the order of the fields.
+     * failure of the other field's own same() / different(), or of the rules
+     * its when() adds, does not stop it, so the result does not depend on the
+     * order of the fields.
      *
      * @param  string                    $field   Name of the other field
      * @param  string|null               $message Message for this rule only
@@ -255,7 +256,8 @@ abstract class FieldRule
      * Fail when the field is empty while any of the given fields is filled.
      *
      * A field counts as filled when it is not empty or has a default, and has
-     * not failed a rule of its own. To require two fields together, declare
+     * not failed a rule of its own (a failure of its same() / different() or
+     * of the rules its when() adds does not count). To require two fields together, declare
      * this on both.
      *
      * @param  string|list<string>      $fields  Name of the other field, or a list of names
@@ -281,7 +283,8 @@ abstract class FieldRule
      * be of the type that field yields: a string for Rule::string(), an int
      * for Rule::int(), a float for Rule::float(), a bool for Rule::bool() and
      * a case for Rule::enum(). The other field is not looked at when it is
-     * empty without a default or failed a rule of its own.
+     * empty without a default or failed a rule of its own, counted the same
+     * way as in requiredWith().
      *
      * @param  string                   $field   Name of the other field
      * @param  mixed                    $value   Value, or list of values, that makes this field required
@@ -301,9 +304,10 @@ abstract class FieldRule
      * Apply more rules while another field has one of the given values.
      *
      * The closure receives this rule with no rules of its own and returns it
-     * with the rules to add. It runs once, here, and may only add rules on the
-     * value: required(), default(), label(), message(), same(), different(),
-     * requiredWith(), requiredIf() and when() are refused. The added rules run
+     * with the rules to add. It runs once, here, must add at least one rule and
+     * may only add rules on the value: required(), default(), label(),
+     * message(), same(), different(), requiredWith(), requiredIf() and when()
+     * are refused. The added rules run
      * after the field's own, and like those, not when the field is empty.
      *
      * The other field is compared as in requiredIf(). A failure added by
@@ -313,7 +317,7 @@ abstract class FieldRule
      * @param  mixed                    $value Value, or list of values, that makes the rules apply
      * @param  Closure(static): mixed   $then  Adds the rules to the rule it receives and returns it
      * @return static
-     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the closure does anything other than add rules
+     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the closure adds no rules or does anything other than add rules
      */
     public function when(string $field, mixed $value, Closure $then): static
     {
@@ -325,6 +329,9 @@ abstract class FieldRule
         }
         if ((array) $added->withoutChecks() !== (array) $probe) {
             throw new InvalidArgumentException('when() can only add rules on the value; the closure changed something else about the field.');
+        }
+        if ($added->sizeChecks === [] && $added->checks === [] && $added->elementChecks === []) {
+            throw new InvalidArgumentException('when() needs the closure to add at least one rule.');
         }
 
         $copy               = clone $this;
@@ -389,34 +396,33 @@ abstract class FieldRule
                 ...$this->run($this->checks, $typed),
                 ...($failures === [] ? $this->run($this->elementChecks, $elements) : []),
             ],
-            // Every when() is run here, while the typed value is at hand; the
-            // Validator decides afterwards which of them apply.
-            whenFailures: $this->runWhens($sized, $typed, $elements, $failures === []),
+            // The Validator knows which when() applies only once every field
+            // has its value, so it runs them through this, with the typed
+            // value kept here; a when() that does not apply never runs.
+            runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === []),
         );
     }
 
     /**
-     * Run the rules of every when(), keeping the failures of each apart.
+     * Run the rules one when() adds.
      *
-     * @param  T                   $sized          Value the rules on the size test, before what it holds was read
-     * @param  T                   $typed          Value the other rules test
-     * @param  T                   $elements       Value the rules reading the elements test
-     * @param  bool                $elementsPassed Whether every element passed, without which those rules do not run
-     * @return list<list<Failure>>
-     * @throws RuntimeException    When ICU cannot split a string into grapheme clusters or count them
+     * @param  int              $index          Position of the when() among those declared
+     * @param  T                $sized          Value the rules on the size test, before what it holds was read
+     * @param  T                $typed          Value the other rules test
+     * @param  T                $elements       Value the rules reading the elements test
+     * @param  bool             $elementsPassed Whether every element passed, without which those rules do not run
+     * @return list<Failure>
+     * @throws RuntimeException When ICU cannot split a string into grapheme clusters or count them
      */
-    private function runWhens(mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed): array
+    private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed): array
     {
-        $whenFailures = [];
-        foreach ($this->whenChecks as [$sizeChecks, $checks, $elementChecks]) {
-            $sizeFailures   = $this->run($sizeChecks, $sized);
-            $whenFailures[] = $sizeFailures !== [] ? $sizeFailures : [
-                ...$this->run($checks, $typed),
-                ...($elementsPassed ? $this->run($elementChecks, $elements) : []),
-            ];
-        }
+        [$sizeChecks, $checks, $elementChecks] = $this->whenChecks[$index];
+        $sizeFailures = $this->run($sizeChecks, $sized);
 
-        return $whenFailures;
+        return $sizeFailures !== [] ? $sizeFailures : [
+            ...$this->run($checks, $typed),
+            ...($elementsPassed ? $this->run($elementChecks, $elements) : []),
+        ];
     }
 
     /**

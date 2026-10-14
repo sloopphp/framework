@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
+use Sloop\Validation\DecimalRule;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\StringRule;
@@ -564,6 +565,23 @@ final class ConditionalRuleTest extends TestCase
         $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->when('a', 'x', $then));
     }
 
+    public function testWhenRefusesAClosureThatAddsNoRules(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::string()->when('a', 'x', static fn (StringRule $r): StringRule => $r),
+        );
+        self::assertSame('when() needs the closure to add at least one rule.', $thrown->getMessage());
+    }
+
+    public function testWhenRefusesAClosureThatChangesASettingOfTheType(): void
+    {
+        $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::decimal(5, 2)->when('a', 'x', static fn (DecimalRule $r): DecimalRule => $r->asNumber()),
+        );
+    }
+
     // -------------------------------------------------------
     // declaring against the other fields
     // -------------------------------------------------------
@@ -721,6 +739,22 @@ final class ConditionalRuleTest extends TestCase
         ];
 
         $this->assertSame(['b' => ['requiredIf']], self::failedRulesOf($rules, ['d' => 'x']));
+    }
+
+    /**
+     * @param list<string> $order
+     */
+    #[DataProvider('declarationOrders')]
+    public function testTheFieldWithADefaultIsJudgedFirstInACycle(array $order): void
+    {
+        // a fails because y is filled; b names a, which failed, so b is not judged.
+        $all   = ['a' => Rule::string()->default('v')->requiredWith(['b', 'y']), 'b' => Rule::string()->requiredWith('a')];
+        $rules = ['y' => Rule::string()];
+        foreach ($order as $field) {
+            $rules[$field] = $all[$field];
+        }
+
+        $this->assertSame(['a' => ['requiredWith']], self::failedRulesOf($rules, ['y' => 'z']));
     }
 
     public function testAFieldNamingACycleIsJudgedAfterTheCycle(): void

@@ -209,9 +209,10 @@ final readonly class Validator
                     );
                 }
             }
+            $runWhen = $outcomes[$field]->runWhen;
             foreach ($rule->whens() as $index => $when) {
-                if (self::matchedValue($when->field, $when->values, $outcomes, $settled) !== null) {
-                    $failures[$field] = [...$failures[$field], ...$outcomes[$field]->whenFailures[$index]];
+                if ($runWhen !== null && self::matchedValue($when->field, $when->values, $outcomes, $settled) !== null) {
+                    $failures[$field] = [...$failures[$field], ...$runWhen($index)];
                 }
             }
         }
@@ -429,11 +430,13 @@ final readonly class Validator
      * A field that names another, directly or through others, reaches more
      * fields (counting itself) than the field it names, unless the two reach
      * each other; so sorting by that count puts every field after the fields
-     * it names. Fields that reach each other name each other in a cycle and
-     * may be judged in any order among themselves, which gives the same result
-     * unless two of them have a default: then the field judged first takes the
-     * other's default for a filled field and fails, and the order decides
-     * which one fails.
+     * it names. Fields that reach each other name each other in a cycle. In a
+     * cycle the field with a default is judged first: the other fields of the
+     * cycle have no default, so an empty one reads as not filled whether it
+     * fails or not, and a filled one is never judged, so that field's outcome
+     * is settled before the others look at it. Two fields with a default would
+     * each take the other's default for a filled field, and which one fails
+     * would depend on the order, so such a cycle is refused.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
      * @return list<string>
@@ -458,7 +461,11 @@ final readonly class Validator
         }
 
         $order = array_keys($named);
-        usort($order, static fn (string $a, string $b): int => \count($reached[$a]) <=> \count($reached[$b]));
+        usort(
+            $order,
+            static fn (string $a, string $b): int => [\count($reached[$a]), !$rules[$a]->declaresDefault()]
+                <=> [\count($reached[$b]), !$rules[$b]->declaresDefault()],
+        );
 
         return $order;
     }
