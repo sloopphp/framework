@@ -113,16 +113,13 @@
         },
         "IncrementInteger": {
             "ignore": [
-                // CombiningRun::allows, the early check on ALL_NON_STARTERS: a limit of 32 instead of 31 still fails
-                // early or leaves the run to the count below (see ConcatOperandRemoval).
-                "Sloop\\Validation\\CombiningRun::allows::206",
                 // CombiningRun::segmentHolds splits a segment into code points. In
                 // pairs, each pair's NFKD ends with the second one's non-starters
                 // added to the first one's when the second has no starter, so the
                 // run comes out the same: only the first code point of a segment can
                 // hold a starter, and a run that passes 30 inside a pair is still over
                 // 30 once the pair is added.
-                "Sloop\\Validation\\CombiningRun::segmentHolds::235",
+                "Sloop\\Validation\\CombiningRun::segmentHolds::255",
                 // DecimalLiteral::compare returns -1 or 1 when the signs differ.
                 // Every caller reads only the sign of the result (>= 0, <= 0,
                 // > 0), so -2 and 2 behave the same.
@@ -369,27 +366,7 @@
             // observable behaviour (return value, cache hit/miss outcome) is
             // identical. Equivalent mutant.
             "ignore": [
-                "Sloop\\Support\\Str::snake",
-                // CombiningRun::allows, the early check and the prefilter: see ConcatOperandRemoval. Moving
-                // `]?[` in the prefilter lets `]`, `?` and `[` into a segment, which
-                // segmentHolds() splits by code point and counts as starters.
-                "Sloop\\Validation\\CombiningRun::allows::206",
-                "Sloop\\Validation\\CombiningRun::allows::212"
-            ]
-        },
-        "ConcatOperandRemoval": {
-            // CombiningRun::allows fails early on 31 code points of
-            // ALL_NON_STARTERS in a row. The prefilter and the count after it fail every such run
-            // too, so breaking this pattern only changes how long the segments get:
-            // only the work differs.
-            // It builds its prefilter as an optional code point of
-            // NON_STARTER_EDGE before 14 or more of ALL_NON_STARTERS. Dropping `]?[`
-            // leaves `[EDGE ALL]{14,}`, one class of both sets: every run over 30
-            // spans at least 15 such code points, so it is still found, and
-            // segmentHolds() counts what it finds exactly. Only the work differs.
-            "ignore": [
-                "Sloop\\Validation\\CombiningRun::allows::206",
-                "Sloop\\Validation\\CombiningRun::allows::212"
+                "Sloop\\Support\\Str::snake"
             ]
         },
         "ReturnRemoval": {
@@ -426,12 +403,12 @@
                 // Falling through computes the same counts from the same NFKD form
                 // and caches them again, so only the work differs. Same shape as
                 // the Str cache hits above.
-                "Sloop\\Validation\\CombiningRun::edge::257",
+                "Sloop\\Validation\\CombiningRun::edge::277",
                 // CombiningRun::allows returns false early on 31 code points of
-                // ALL_NON_STARTERS in a row. Falling through, the prefilter and the count after it
-                // fails the same run, so only the length of the segments differs
-                // (see ConcatOperandRemoval).
-                "Sloop\\Validation\\CombiningRun::allows::207",
+                // ALL_NON_STARTERS in a row. Falling through, NON_STARTER_SEGMENT
+                // finds the same run and segmentHolds() fails it, so only the length
+                // of the segment it splits differs.
+                "Sloop\\Validation\\CombiningRun::allows::228",
                 // ConnectionManager::resolvePool returns the pool it already
                 // validated. Falling through validates the same readonly config
                 // with the same pure validator and stores an equal PoolConfig,

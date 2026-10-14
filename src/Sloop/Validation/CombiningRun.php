@@ -184,6 +184,27 @@ final class CombiningRun
         . '\x{1E08F}\x{1E130}-\x{1E136}\x{1E2AE}\x{1E2EC}-\x{1E2EF}\x{1E4EC}-\x{1E4EF}\x{1E5EE}-\x{1E5EF}\x{1E8D0}-\x{1E8D6}\x{1E944}-\x{1E94A}';
 
     /**
+     * A run of more than MAX_RUN code points that NFC composes.
+     *
+     * @var string
+     */
+    private const string COMPOSING_RUN = '/[' . self::COMPOSING . ']{' . (self::MAX_RUN + 1) . '}/u';
+
+    /**
+     * More than MAX_RUN code points of ALL_NON_STARTERS in a row, already too many non-starters.
+     *
+     * @var string
+     */
+    private const string ALL_NON_STARTERS_RUN = '/[' . self::ALL_NON_STARTERS . ']{' . (self::MAX_RUN + 1) . '}/u';
+
+    /**
+     * A run of code points that are all non-starters, with at most one more before it: the only kind that can be too long.
+     *
+     * @var string
+     */
+    private const string NON_STARTER_SEGMENT = '/[' . self::NON_STARTER_EDGE . ']?[' . self::ALL_NON_STARTERS . ']{' . self::SHORTEST_RUN . ',}/u';
+
+    /**
      * How each code point of NON_STARTER_EDGE adds to a run, computed on first use.
      *
      * @var array<string, array{bool, int}>
@@ -198,18 +219,17 @@ final class CombiningRun
      */
     public static function allows(string $value): bool
     {
-        if (preg_match('/[' . self::COMPOSING . ']{' . (self::MAX_RUN + 1) . '}/u', $value) !== 0) {
+        if (preg_match(self::COMPOSING_RUN, $value) !== 0) {
             return false;
         }
         // Each code point of ALL_NON_STARTERS adds at least one non-starter, so 31 in a row are already too many.
         // Failing here keeps every segment below at 31 code points or fewer; the count below would fail them too.
-        if (preg_match('/[' . self::ALL_NON_STARTERS . ']{' . (self::MAX_RUN + 1) . '}/u', $value) !== 0) {
+        if (preg_match(self::ALL_NON_STARTERS_RUN, $value) !== 0) {
             return false;
         }
 
-        // Only a run of code points that are all non-starters, with at most one more before it, can be too long;
-        // after the check above, each such run holds at most 31 code points.
-        $found = preg_match_all('/[' . self::NON_STARTER_EDGE . ']?[' . self::ALL_NON_STARTERS . ']{' . self::SHORTEST_RUN . ',}/u', $value, $matches);
+        // After the check above, each segment holds at most 31 code points.
+        $found = preg_match_all(self::NON_STARTER_SEGMENT, $value, $matches);
         if ($found === false) {
             return false;
         }

@@ -45,6 +45,21 @@ final class CombiningRunTest extends TestCase
     }
 
     // One scan of every code point serves all three checks; it takes about a third of a second.
+    /**
+     * Whether NFC may compose the code point with the one before: a non-starter, a starter whose NFC_Quick_Check is Maybe, or one whose NFD starts with either.
+     */
+    private static function nfcMayCompose(int $cp): bool
+    {
+        $continues = static fn (int $c): bool => IntlChar::getCombiningClass($c) !== 0 || IntlChar::getIntPropertyValue($c, IntlChar::PROPERTY_NFC_QUICK_CHECK) === self::NFC_QUICK_CHECK_MAYBE;
+        if ($continues($cp)) {
+            return true;
+        }
+        $char       = IntlChar::chr($cp);
+        $decomposed = Normalizer::getRawDecomposition($char, Normalizer::FORM_D) === null ? null : Normalizer::normalize($char, Normalizer::FORM_D);
+
+        return \is_string($decomposed) && $continues(mb_ord($decomposed, 'UTF-8'));
+    }
+
     public function testEveryCodePointEndingWithNonStartersIsCountedAndAddsNoMoreThanTheShortestRunAssumes(): void
     {
         $missed          = [];
@@ -78,38 +93,19 @@ final class CombiningRunTest extends TestCase
         $this->assertSame([3, 2], [$longestTrailing, $longestAll], 'Longest trailing run and longest all-non-starter form');
     }
 
-    public function testEveryStarterThatNfcMayComposeContinuesARun(): void
+    public function testEveryCodePointThatNfcMayComposeContinuesARun(): void
     {
         $missed = [];
         for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
-            if ($cp >= 0xD800 && $cp <= 0xDFFF || IntlChar::getCombiningClass($cp) !== 0 || IntlChar::getIntPropertyValue($cp, IntlChar::PROPERTY_NFC_QUICK_CHECK) !== self::NFC_QUICK_CHECK_MAYBE) {
+            if ($cp >= 0xD800 && $cp <= 0xDFFF || !self::nfcMayCompose($cp)) {
                 continue;
             }
             $char = IntlChar::chr($cp);
-            if (CombiningRun::allows(str_repeat($char, CombiningRun::MAX_RUN + 1)) || !CombiningRun::allows(str_repeat($char, CombiningRun::MAX_RUN))) {
-                $missed[] = \sprintf('U+%04X', $cp);
-            }
-        }
-
-        $this->assertSame([], $missed);
-    }
-
-    public function testEveryCodePointThatDecomposesIntoOneThatComposesContinuesARun(): void
-    {
-        $continues = static fn (int $cp): bool => IntlChar::getCombiningClass($cp) !== 0 || IntlChar::getIntPropertyValue($cp, IntlChar::PROPERTY_NFC_QUICK_CHECK) === self::NFC_QUICK_CHECK_MAYBE;
-        $vowels    = str_repeat("\u{113C2}", intdiv(CombiningRun::MAX_RUN, 2));
-        $missed    = [];
-        for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
-            if ($cp >= 0xD800 && $cp <= 0xDFFF || $continues($cp)) {
-                continue;
-            }
-            $char       = IntlChar::chr($cp);
-            $decomposed = Normalizer::getRawDecomposition($char, Normalizer::FORM_D) === null ? null : Normalizer::normalize($char, Normalizer::FORM_D);
-            if (!\is_string($decomposed) || !$continues(mb_ord($decomposed, 'UTF-8'))) {
-                continue;
-            }
-            // 31 code points that NFC composes as one run, with no run of non-starters over 30.
-            if (CombiningRun::allows($vowels . $char . $vowels)) {
+            // Taking turns with a vowel sign that composes keeps every run of non-starters at 2 or fewer,
+            // so only the run of code points that NFC composes can fail these.
+            $over   = str_repeat("\u{16126}" . $char, intdiv(CombiningRun::MAX_RUN, 2) + 1);
+            $atMost = str_repeat("\u{16126}" . $char, intdiv(CombiningRun::MAX_RUN, 2));
+            if (CombiningRun::allows($over) || !CombiningRun::allows($atMost)) {
                 $missed[] = \sprintf('U+%04X', $cp);
             }
         }
