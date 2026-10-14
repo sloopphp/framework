@@ -798,4 +798,17 @@ final class StringRule extends FieldRule
             throw new InvalidArgumentException('Invalid regular expression ' . $pattern . ': ' . preg_last_error_msg());
         }
     }
+
+    /**
+     * Whether a validated value of this field can be the given value: any string.
+     *
+     * @internal Read by Validator to check the values of requiredIf() / when().
+     *
+     * @param  mixed $value Value given to requiredIf() / when()
+     * @return bool
+     */
+    public function canHold(mixed $value): bool
+    {
+        return \is_string($value);
+    }
 }

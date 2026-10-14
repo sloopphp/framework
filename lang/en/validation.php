@@ -54,4 +54,6 @@ return [
     'distinct'       => 'The {label} field has a duplicate value.',
     'same'           => 'The {label} field must match {other}.',
     'different'      => 'The {label} field and {other} must be different.',
+    'requiredWith'   => 'The {label} field is required when {other} is present.',
+    'requiredIf'     => 'The {label} field is required when {other} is {value}.',
 ];

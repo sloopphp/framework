@@ -28,7 +28,7 @@ final class ListRule extends ArrayRule
      *
      * @param  FieldRule<covariant mixed>                                  $element         Rules every element must satisfy
      * @param  list<ArraySanitize|Closure(array<array-key, mixed>): mixed> $arraySanitizers Applied in order once the value is an array
-     * @throws InvalidArgumentException                                    When the element declares same() or different(), which have no sibling to name here
+     * @throws InvalidArgumentException                                    When the element declares same(), different(), requiredWith(), requiredIf() or when(), which have no sibling to name here
      */
     public function __construct(
         private readonly FieldRule $element,
@@ -37,6 +37,11 @@ final class ListRule extends ArrayRule
         if ($element->comparisons() !== []) {
             throw new InvalidArgumentException(
                 'The element of list() cannot compare with another field: there is no set of siblings to name.',
+            );
+        }
+        if ($element->requiredConditions() !== [] || $element->whens() !== []) {
+            throw new InvalidArgumentException(
+                'The element of list() cannot depend on another field: there is no set of siblings to name.',
             );
         }
 

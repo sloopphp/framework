@@ -54,6 +54,27 @@ final class ValidatorTest extends TestCase
     // Results
     // ---------------------------------------------------------------
 
+    public function testANumericFieldNameIsRefused(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => new Validator(['name' => Rule::string(), '1' => Rule::string()]),
+        );
+        self::assertSame(
+            'Validator needs named fields, and 1 is a number: PHP turns a numeric key into an int, which cannot name a field.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testWithRefusesANumericFieldName(): void
+    {
+        // PHP turns the key '2' into an int once with() puts it in the array.
+        $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => new Validator(['name' => Rule::string()])->with('2', Rule::int()),
+        );
+    }
+
     public function testValidInputYieldsValuesAndNoErrors(): void
     {
         $result = new Validator([

@@ -63,4 +63,17 @@ final class BoolRule extends FieldRule
     {
         return 'bool';
     }
+
+    /**
+     * Whether a validated value of this field can be the given value: any bool.
+     *
+     * @internal Read by Validator to check the values of requiredIf() / when().
+     *
+     * @param  mixed $value Value given to requiredIf() / when()
+     * @return bool
+     */
+    public function canHold(mixed $value): bool
+    {
+        return \is_bool($value);
+    }
 }
