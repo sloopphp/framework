@@ -44,7 +44,6 @@ final class CombiningRunTest extends TestCase
         return $edges;
     }
 
-    // One scan of every code point serves all three checks; it takes about a third of a second.
     /**
      * Whether NFC may compose the code point with the one before: a non-starter, a starter whose NFC_Quick_Check is Maybe, or one whose NFD starts with either.
      */
@@ -60,6 +59,7 @@ final class CombiningRunTest extends TestCase
         return \is_string($decomposed) && $continues(mb_ord($decomposed, 'UTF-8'));
     }
 
+    // One scan of every code point serves all three checks; it takes about a third of a second.
     public function testEveryCodePointEndingWithNonStartersIsCountedAndAddsNoMoreThanTheShortestRunAssumes(): void
     {
         $missed          = [];
@@ -110,7 +110,7 @@ final class CombiningRunTest extends TestCase
             }
         }
 
-        $this->assertSame([], $missed);
+        $this->assertSame([], $missed, 'Taking turns with U+16126 up to the limit');
     }
 
     public function testNoCodePointStartsWithNonStartersBeforeAStarter(): void
