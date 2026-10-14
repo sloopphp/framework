@@ -9,11 +9,14 @@ use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\UploadedFileInterface;
+use RuntimeException;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
 use Sloop\Validation\DecimalRule;
 use Sloop\Validation\FieldRule;
+use Sloop\Validation\FileRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
@@ -596,10 +599,43 @@ final class ConditionalRuleTest extends TestCase
 
     public function testWhenRefusesAClosureThatChangesASettingOfTheType(): void
     {
-        $this->assertThrows(
+        // max() adds a rule, so the refusal is not the one for adding none.
+        $thrown = $this->assertThrows(
             InvalidArgumentException::class,
-            static fn () => Rule::decimal(5, 2)->when('a', 'x', static fn (DecimalRule $r): DecimalRule => $r->asNumber()),
+            static fn () => Rule::decimal(5, 2)->when('a', 'x', static fn (DecimalRule $r): DecimalRule => $r->asNumber()->max('9')),
         );
+        self::assertSame('when() can only add rules on the value; the closure changed something else about the field.', $thrown->getMessage());
+    }
+
+    public function testRulesAddedByWhenDoNotRunWhileTheConditionDoesNotHold(): void
+    {
+        // mimeTypes() reads the stream; it must not be read for a condition that does not hold.
+        $file = $this->createMock(UploadedFileInterface::class);
+        $file->method('getError')->willReturn(UPLOAD_ERR_OK);
+        $file->method('getSize')->willReturn(10);
+        $file->expects(self::never())->method('getStream');
+        $rules = [
+            'kind' => Rule::string(),
+            'f'    => Rule::file()->when('kind', 'img', static fn (FileRule $r): FileRule => $r->mimeTypes(['image/png'])),
+        ];
+
+        $this->assertSame([], self::failedRulesOf($rules, ['kind' => 'doc', 'f' => $file]));
+    }
+
+    public function testRulesAddedByWhenRunWhileTheConditionHolds(): void
+    {
+        // The pair of the test above: the same rule does read the stream once the condition holds.
+        $file = $this->createMock(UploadedFileInterface::class);
+        $file->method('getError')->willReturn(UPLOAD_ERR_OK);
+        $file->method('getSize')->willReturn(10);
+        $file->expects(self::once())->method('getStream')->willThrowException(new RuntimeException('stream read'));
+        $rules = [
+            'kind' => Rule::string(),
+            'f'    => Rule::file()->when('kind', 'img', static fn (FileRule $r): FileRule => $r->mimeTypes(['image/png'])),
+        ];
+
+        $thrown = $this->assertThrows(RuntimeException::class, static fn () => self::failedRulesOf($rules, ['kind' => 'img', 'f' => $file]));
+        self::assertSame('stream read', $thrown->getMessage());
     }
 
     // -------------------------------------------------------

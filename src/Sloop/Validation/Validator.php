@@ -190,6 +190,7 @@ final readonly class Validator
      * @param  array<string, FieldOutcome>  $outcomes Outcome of each field
      * @param  array<string, list<Failure>> $settled  Failures of each field after judgeRequired()
      * @return array<string, list<Failure>>
+     * @throws \RuntimeException            When a rule added by when() cannot read a file's stream, or ICU cannot split a string into grapheme clusters or count them
      */
     private function judgeAgainstOthers(array $outcomes, array $settled): array
     {
