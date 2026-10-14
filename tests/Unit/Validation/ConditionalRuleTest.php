@@ -17,11 +17,13 @@ use Sloop\Tests\Unit\Validation\Stub\Priority;
 use Sloop\Validation\DecimalRule;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\FileRule;
+use Sloop\Validation\IntRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
 use Sloop\Validation\ValidationResult;
 use Sloop\Validation\Validator;
+use TypeError;
 
 final class ConditionalRuleTest extends TestCase
 {
@@ -199,6 +201,36 @@ final class ConditionalRuleTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{mixed, string}>
+     */
+    public static function namesThatAreNotStrings(): iterable
+    {
+        yield 'int' => [['a', 1], 'requiredWith() needs strings, got int at position 1.'];
+        yield 'object' => [[new \stdClass()], 'requiredWith() needs strings, got stdClass at position 0.'];
+        yield 'null' => [['a', 'b', null], 'requiredWith() needs strings, got null at position 2.'];
+        yield 'after a key' => [['k' => 'a', 'm' => 1], 'requiredWith() needs strings, got int at position 1.'];
+    }
+
+    #[DataProvider('namesThatAreNotStrings')]
+    public function testRequiredWithRefusesANameThatIsNotAString(mixed $fields, string $message): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->requiredWith($fields),
+        );
+        self::assertSame($message, $thrown->getMessage());
+    }
+
+    public function testRequiredWithIgnoresTheKeysOfTheList(): void
+    {
+        // @phpstan-ignore argument.type (the point of the test is what happens to the keys)
+        $rules = ['a' => Rule::string(), 'b' => Rule::string()->requiredWith(['k' => 'a'])];
+
+        $this->assertSame(['b' => ['requiredWith']], self::failedRulesOf($rules, ['a' => 'x']));
+    }
+
+    /**
      * @param Closure(): mixed         $declare
      * @param class-string<\Throwable> $expected
      */
@@ -360,6 +392,44 @@ final class ConditionalRuleTest extends TestCase
     public function testRequiredIfCannotFollowRequired(): void
     {
         $this->assertThrows(LogicException::class, static fn () => Rule::string()->required()->requiredIf('a', 'x'));
+    }
+
+    public function testRequiredCannotFollowRequiredIf(): void
+    {
+        $this->assertThrows(LogicException::class, static fn () => Rule::string()->requiredIf('a', 'x')->required());
+    }
+
+    public function testRulesAddedByWhenDoNotApplyToTheDefault(): void
+    {
+        $rules = [
+            'kind'   => Rule::string(),
+            'amount' => Rule::int()->default(0)->when('kind', 'refund', static fn (IntRule $r): IntRule => $r->min(1)),
+        ];
+
+        $this->assertSame([], self::failedRulesOf($rules, ['kind' => 'refund']));
+        $this->assertSame(['amount' => ['min']], self::failedRulesOf($rules, ['kind' => 'refund', 'amount' => '0']));
+    }
+
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>, string, string}>
+     */
+    public static function otherFieldsFailingOnlyAgainstOthers(): iterable
+    {
+        yield 'when' => [Rule::string()->when('k', 'x', static fn (StringRule $r): StringRule => $r->in(['ok'])), 'y', 'in'];
+        yield 'same' => [Rule::string()->same('k'), 'y', 'same'];
+        yield 'different' => [Rule::string()->different('k'), 'x', 'different'];
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $other
+     */
+    #[DataProvider('otherFieldsFailingOnlyAgainstOthers')]
+    public function testRequiredWithDoesNotSeeFailuresAddedAgainstOtherFields(FieldRule $other, string $value, string $rule): void
+    {
+        // o fails only against k, which a required condition does not count, so o is filled.
+        $rules = ['k' => Rule::string(), 'o' => $other, 'c' => Rule::string()->requiredWith('o')];
+
+        $this->assertSame(['o' => [$rule], 'c' => ['requiredWith']], self::failedRulesOf($rules, ['k' => 'x', 'o' => $value]));
     }
 
     /**

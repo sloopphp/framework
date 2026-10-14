@@ -42,20 +42,30 @@ final readonly class Validator
     /**
      * Create a validator.
      *
-     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
-     * @throws InvalidArgumentException                  When a rule names a field that has no rule; a same() / different() side cannot be compared;
-     *                                                   a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
-     *                                                   the named field's value; or fields required on each other include two with a default
+     * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
+     * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
+     *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
+     *                                                      the named field's value; or fields required on each other include two with a default
      */
     public function __construct(array $rules)
     {
+        $named = [];
         foreach ($rules as $field => $rule) {
-            self::assertComparisons($rules, $field, $rule);
-            self::assertConditions($rules, $field, $rule);
+            if (!\is_string($field)) {
+                throw new InvalidArgumentException(
+                    'Validator needs named fields, and ' . $field . ' is a number: PHP turns a numeric key into an int, '
+                    . 'which cannot name a field.',
+                );
+            }
+            $named[$field] = $rule;
+        }
+        foreach ($named as $field => $rule) {
+            self::assertComparisons($named, $field, $rule);
+            self::assertConditions($named, $field, $rule);
         }
 
-        $this->rules         = $rules;
-        $this->requiredOrder = self::requiredOrder($rules);
+        $this->rules         = $named;
+        $this->requiredOrder = self::requiredOrder($named);
     }
 
     /**

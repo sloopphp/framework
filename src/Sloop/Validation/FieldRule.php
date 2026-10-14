@@ -9,6 +9,7 @@ use Closure;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
+use TypeError;
 use UnexpectedValueException;
 
 /**
@@ -17,13 +18,15 @@ use UnexpectedValueException;
  * Each builder method returns a modified copy, so a rule held in a shared
  * variable is never changed by a later call on it.
  *
- * Processing order for one value: sanitize (only when the raw value is a
- * valid UTF-8 string), then the emptiness check (a missing key, null and ''
- * count as empty, and a subclass may add to that), then the type check, then
- * the rules on the size of the value, then what it holds, then every other
- * declared rule. An empty value runs no rule other than required() and yields
- * the declared default; a value of the wrong type or the wrong size stops
- * before what it holds is read.
+ * Processing order for one value, by the rules declared on the field itself:
+ * sanitize (only when the raw value is a valid UTF-8 string), then the
+ * emptiness check (a missing key, null and '' count as empty, and a subclass
+ * may add to that), then the type check, then the rules on the size of the
+ * value, then what it holds, then every other declared rule. An empty value
+ * fails required() or yields the declared default; a value of the wrong type
+ * or the wrong size stops before what it holds is read. The rules that look
+ * at other fields (requiredWith(), requiredIf(), same(), different() and
+ * when()) are judged by Validator after every field has gone through these.
  *
  * A subclass that can have a default declares default() with a native type
  * and passes the value on to withDefault().
@@ -260,17 +263,27 @@ abstract class FieldRule
      * of the rules its when() adds does not count). To require two fields together, declare
      * this on both.
      *
-     * @param  string|list<string>      $fields  Name of the other field, or a list of names
+     * @param  string|list<string>      $fields  Name of the other field, or a list of names (keys are ignored)
      * @param  string|null              $message Message for this rule only
      * @return static
      * @throws LogicException           When the field is required
-     * @throws InvalidArgumentException When $fields is an empty list or holds a non-string, or the message template is malformed
+     * @throws InvalidArgumentException When $fields is an empty list, or the message template is malformed
+     * @throws TypeError                When a name in the list is not a string
      */
     public function requiredWith(string|array $fields, ?string $message = null): static
     {
-        $names = \is_string($fields) ? [$fields] : $fields;
-        if ($names === []) {
+        if ($fields === []) {
             throw new InvalidArgumentException('requiredWith() needs at least one field.');
+        }
+        $names = [];
+        foreach (\is_string($fields) ? [$fields] : $fields as $name) {
+            try {
+                $names[] = self::fieldName($name);
+            } catch (TypeError $e) {
+                // The engine's message names the private helper; say which name it was by
+                // position, not by key, so nothing from the array itself reaches the message.
+                throw new TypeError('requiredWith() needs strings, got ' . get_debug_type($name) . ' at position ' . \count($names) . '.', previous: $e);
+            }
         }
 
         return $this->withRequiredCondition(new RequiredCondition('requiredWith', $names, [], $message));
@@ -792,6 +805,17 @@ abstract class FieldRule
         }
 
         return $checked;
+    }
+
+    /**
+     * Take a name given to requiredWith(), letting its string type refuse anything else.
+     *
+     * @param  string $name Name of another field
+     * @return string
+     */
+    private static function fieldName(string $name): string
+    {
+        return $name;
     }
 
     /**
