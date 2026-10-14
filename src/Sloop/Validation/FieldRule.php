@@ -412,7 +412,7 @@ abstract class FieldRule
      * @param  T                $elements       Value the rules reading the elements test
      * @param  bool             $elementsPassed Whether every element passed, without which those rules do not run
      * @return list<Failure>
-     * @throws RuntimeException When ICU cannot split a string into grapheme clusters or count them
+     * @throws RuntimeException When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      */
     private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed): array
     {
@@ -432,7 +432,7 @@ abstract class FieldRule
      * @param  list<Check<V>>   $checks Rules to run
      * @param  V                $typed  Value the rules test
      * @return list<Failure>
-     * @throws RuntimeException When ICU cannot split a string into grapheme clusters or count them
+     * @throws RuntimeException When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      */
     private function run(array $checks, mixed $typed): array
     {
