@@ -59,7 +59,7 @@ final class CombiningRunTest extends TestCase
         return \is_string($decomposed) && $continues(mb_ord($decomposed, 'UTF-8'));
     }
 
-    // One scan of every code point serves all three checks; it takes about a third of a second.
+    // One scan of every code point serves all three checks.
     public function testEveryCodePointEndingWithNonStartersIsCountedAndAddsNoMoreThanTheShortestRunAssumes(): void
     {
         $missed          = [];
