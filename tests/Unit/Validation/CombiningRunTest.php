@@ -7,10 +7,13 @@ namespace Sloop\Tests\Unit\Validation;
 use IntlChar;
 use Normalizer;
 use PHPUnit\Framework\TestCase;
-use Sloop\Validation\StreamSafe;
+use Sloop\Validation\CombiningRun;
 
-final class StreamSafeTest extends TestCase
+final class CombiningRunTest extends TestCase
 {
+    // UNORM_MAYBE in ICU; IntlChar has no constant for the values of NFC_Quick_Check.
+    private const int NFC_QUICK_CHECK_MAYBE = 2;
+
     /**
      * Every code point whose NFKD form ends with a non-starter, with whether the form is all non-starters and how many it ends with.
      *
@@ -41,53 +44,54 @@ final class StreamSafeTest extends TestCase
         return $edges;
     }
 
-    public function testEveryCodePointEndingWithNonStartersIsCounted(): void
+    // One scan of every code point serves all three checks; it takes about a third of a second.
+    public function testEveryCodePointEndingWithNonStartersIsCountedAndAddsNoMoreThanTheShortestRunAssumes(): void
     {
-        $missed = [];
-        foreach (self::nonStarterEdges() as $cp => [$allNonStarters, $count]) {
-            $char   = ($allNonStarters ? 'a' : '') . IntlChar::chr($cp);
-            $over   = $char . str_repeat("\u{0301}", StreamSafe::MAX_NON_STARTERS + 1 - $count);
-            $atMost = $char . str_repeat("\u{0301}", StreamSafe::MAX_NON_STARTERS - $count);
-            if (StreamSafe::holds($over) || !StreamSafe::holds($atMost)) {
-                $missed[] = \sprintf('U+%04X', $cp);
-            }
-        }
-
-        $this->assertSame([], $missed);
-    }
-
-    public function testEveryCodePointOfNonStartersOnlyIsFoundRepeated(): void
-    {
-        $missed = [];
-        foreach (self::nonStarterEdges() as $cp => [$allNonStarters, $count]) {
-            if (!$allNonStarters) {
-                continue;
-            }
-            $char   = IntlChar::chr($cp);
-            $over   = 'a' . str_repeat($char, intdiv(StreamSafe::MAX_NON_STARTERS, $count) + 1);
-            $atMost = 'a' . str_repeat($char, intdiv(StreamSafe::MAX_NON_STARTERS, $count));
-            if (StreamSafe::holds($over) || !StreamSafe::holds($atMost)) {
-                $missed[] = \sprintf('U+%04X', $cp);
-            }
-        }
-
-        $this->assertSame([], $missed);
-    }
-
-    public function testNoCodePointAddsMoreThanTheShortestRunAssumes(): void
-    {
+        $missed          = [];
+        $missedRepeated  = [];
         $longestTrailing = 0;
         $longestAll      = 0;
-        foreach (self::nonStarterEdges() as [$allNonStarters, $count]) {
-            if ($allNonStarters) {
-                $longestAll = max($longestAll, $count);
-            } else {
+        foreach (self::nonStarterEdges() as $cp => [$allNonStarters, $count]) {
+            $char   = ($allNonStarters ? 'a' : '') . IntlChar::chr($cp);
+            $over   = $char . str_repeat("\u{0301}", CombiningRun::MAX_RUN + 1 - $count);
+            $atMost = $char . str_repeat("\u{0301}", CombiningRun::MAX_RUN - $count);
+            if (CombiningRun::allows($over) || !CombiningRun::allows($atMost)) {
+                $missed[] = \sprintf('U+%04X', $cp);
+            }
+            if (!$allNonStarters) {
                 $longestTrailing = max($longestTrailing, $count);
+
+                continue;
+            }
+            $longestAll = max($longestAll, $count);
+            $repeated   = IntlChar::chr($cp);
+            $over       = 'a' . str_repeat($repeated, intdiv(CombiningRun::MAX_RUN, $count) + 1);
+            $atMost     = 'a' . str_repeat($repeated, intdiv(CombiningRun::MAX_RUN, $count));
+            if (CombiningRun::allows($over) || !CombiningRun::allows($atMost)) {
+                $missedRepeated[] = \sprintf('U+%04X', $cp);
             }
         }
 
-        // StreamSafe::SHORTEST_RUN (14) rests on these two numbers.
-        $this->assertSame([3, 2], [$longestTrailing, $longestAll]);
+        $this->assertSame([], $missed, 'Followed by U+0301 up to the limit');
+        $this->assertSame([], $missedRepeated, 'Repeated up to the limit');
+        // CombiningRun::SHORTEST_RUN (14) rests on these two numbers.
+        $this->assertSame([3, 2], [$longestTrailing, $longestAll], 'Longest trailing run and longest all-non-starter form');
+    }
+
+    public function testEveryStarterThatNfcMayComposeContinuesARun(): void
+    {
+        $missed = [];
+        for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
+            if ($cp >= 0xD800 && $cp <= 0xDFFF || IntlChar::getCombiningClass($cp) !== 0 || IntlChar::getIntPropertyValue($cp, IntlChar::PROPERTY_NFC_QUICK_CHECK) !== self::NFC_QUICK_CHECK_MAYBE) {
+                continue;
+            }
+            $char = IntlChar::chr($cp);
+            if (CombiningRun::allows(str_repeat($char, CombiningRun::MAX_RUN + 1)) || !CombiningRun::allows(str_repeat($char, CombiningRun::MAX_RUN))) {
+                $missed[] = \sprintf('U+%04X', $cp);
+            }
+        }
+
+        $this->assertSame([], $missed);
     }
 
     public function testNoCodePointStartsWithNonStartersBeforeAStarter(): void
@@ -109,7 +113,7 @@ final class StreamSafeTest extends TestCase
             }
         }
 
-        // StreamSafe counts a code point with a starter by its trailing non-starters alone.
+        // CombiningRun counts a code point with a starter by its trailing non-starters alone.
         $this->assertSame([], $leading);
     }
 }

@@ -8,27 +8,35 @@ use IntlChar;
 use Normalizer;
 
 /**
- * Tells whether a string is in the Stream-Safe Text Format of Unicode (UAX #15, UAX15-D3).
+ * Tells whether a string has no run of combining characters long enough to make normalization slow.
  *
- * A string is stream-safe when its NFKD form has no run of more than 30
- * non-starters (code points whose canonical combining class is not 0).
- * ICU's normalization takes time quadratic in the length of such a run when
- * its marks need reordering, so StringRule checks this before it normalizes.
- * The check itself takes time linear in the length of the string.
+ * ICU's normalization takes time quadratic in the length of two kinds of run,
+ * so StringRule checks both before it normalizes:
+ *
+ * - Non-starters (code points whose canonical combining class is not 0) whose
+ *   marks need reordering. A string passes when its NFKD form has no run of
+ *   more than 30 of them: the Stream-Safe Text Format of UAX #15 (UAX15-D3).
+ * - Code points that NFC composes with the one before: non-starters and the
+ *   starters whose NFC_Quick_Check is Maybe. Some vowel signs added in
+ *   Unicode 16.0 (Tulu-Tigalari, Gurung Khema, Kirat Rai) compose with each
+ *   other, and a run of them costs time quadratic in its length to compose.
+ *   A string passes when no more than 30 such code points stand in a row.
+ *
+ * Both checks take time linear in the length of the string.
  *
  * @internal Used by StringRule.
  */
-final class StreamSafe
+final class CombiningRun
 {
     /**
-     * Longest run of non-starters a stream-safe string may have.
+     * Longest run of either kind a string may have.
      *
      * @var int
      */
-    public const int MAX_NON_STARTERS = 30;
+    public const int MAX_RUN = 30;
 
     /**
-     * Fewest code points of ALL_NON_STARTERS in a row that a run longer than MAX_NON_STARTERS needs.
+     * Fewest code points of ALL_NON_STARTERS in a row that a run longer than MAX_RUN non-starters needs.
      *
      * In NFKD a code point with a starter ends with at most 3 non-starters, and
      * one without holds at most 2 (both measured over every code point with ICU
@@ -135,6 +143,45 @@ final class StreamSafe
         . '\x{1E5EE}-\x{1E5EF}\x{1E8D0}-\x{1E8D6}\x{1E944}-\x{1E94A}';
 
     /**
+     * Character class contents: the code points that continue a run NFC composes, generated the same way.
+     *
+     * Non-starters, and the starters whose NFC_Quick_Check is Maybe. A starter
+     * whose NFC_Quick_Check is Yes or No ends the run.
+     *
+     * @var string
+     */
+    private const string COMPOSING =
+        '\x{300}-\x{34E}\x{350}-\x{36F}\x{483}-\x{487}\x{591}-\x{5BD}\x{5BF}\x{5C1}-\x{5C2}\x{5C4}-\x{5C5}\x{5C7}'
+        . '\x{610}-\x{61A}\x{64B}-\x{65F}\x{670}\x{6D6}-\x{6DC}\x{6DF}-\x{6E4}\x{6E7}-\x{6E8}\x{6EA}-\x{6ED}\x{711}'
+        . '\x{730}-\x{74A}\x{7EB}-\x{7F3}\x{7FD}\x{816}-\x{819}\x{81B}-\x{823}\x{825}-\x{827}\x{829}-\x{82D}\x{859}-\x{85B}'
+        . '\x{897}-\x{89F}\x{8CA}-\x{8E1}\x{8E3}-\x{8FF}\x{93C}\x{94D}\x{951}-\x{954}\x{9BC}\x{9BE}'
+        . '\x{9CD}\x{9D7}\x{9FE}\x{A3C}\x{A4D}\x{ABC}\x{ACD}\x{B3C}'
+        . '\x{B3E}\x{B4D}\x{B56}-\x{B57}\x{BBE}\x{BCD}\x{BD7}\x{C3C}\x{C4D}'
+        . '\x{C55}-\x{C56}\x{CBC}\x{CC2}\x{CCD}\x{CD5}-\x{CD6}\x{D3B}-\x{D3C}\x{D3E}\x{D4D}'
+        . '\x{D57}\x{DCA}\x{DCF}\x{DDF}\x{E38}-\x{E3A}\x{E48}-\x{E4B}\x{EB8}-\x{EBA}\x{EC8}-\x{ECB}'
+        . '\x{F18}-\x{F19}\x{F35}\x{F37}\x{F39}\x{F71}-\x{F72}\x{F74}\x{F7A}-\x{F7D}\x{F80}'
+        . '\x{F82}-\x{F84}\x{F86}-\x{F87}\x{FC6}\x{102E}\x{1037}\x{1039}-\x{103A}\x{108D}\x{1161}-\x{1175}'
+        . '\x{11A8}-\x{11C2}\x{135D}-\x{135F}\x{1714}-\x{1715}\x{1734}\x{17D2}\x{17DD}\x{18A9}\x{1939}-\x{193B}'
+        . '\x{1A17}-\x{1A18}\x{1A60}\x{1A75}-\x{1A7C}\x{1A7F}\x{1AB0}-\x{1ABD}\x{1ABF}-\x{1ACE}\x{1B34}-\x{1B35}\x{1B44}'
+        . '\x{1B6B}-\x{1B73}\x{1BAA}-\x{1BAB}\x{1BE6}\x{1BF2}-\x{1BF3}\x{1C37}\x{1CD0}-\x{1CD2}\x{1CD4}-\x{1CE0}\x{1CE2}-\x{1CE8}'
+        . '\x{1CED}\x{1CF4}\x{1CF8}-\x{1CF9}\x{1DC0}-\x{1DFF}\x{20D0}-\x{20DC}\x{20E1}\x{20E5}-\x{20F0}\x{2CEF}-\x{2CF1}'
+        . '\x{2D7F}\x{2DE0}-\x{2DFF}\x{302A}-\x{302F}\x{3099}-\x{309A}\x{A66F}\x{A674}-\x{A67D}\x{A69E}-\x{A69F}\x{A6F0}-\x{A6F1}'
+        . '\x{A806}\x{A82C}\x{A8C4}\x{A8E0}-\x{A8F1}\x{A92B}-\x{A92D}\x{A953}\x{A9B3}\x{A9C0}'
+        . '\x{AAB0}\x{AAB2}-\x{AAB4}\x{AAB7}-\x{AAB8}\x{AABE}-\x{AABF}\x{AAC1}\x{AAF6}\x{ABED}\x{FB1E}'
+        . '\x{FE20}-\x{FE2F}\x{101FD}\x{102E0}\x{10376}-\x{1037A}\x{10A0D}\x{10A0F}\x{10A38}-\x{10A3A}\x{10A3F}'
+        . '\x{10AE5}-\x{10AE6}\x{10D24}-\x{10D27}\x{10D69}-\x{10D6D}\x{10EAB}-\x{10EAC}\x{10EFD}-\x{10EFF}\x{10F46}-\x{10F50}\x{10F82}-\x{10F85}\x{11046}'
+        . '\x{11070}\x{1107F}\x{110B9}-\x{110BA}\x{11100}-\x{11102}\x{11127}\x{11133}-\x{11134}\x{11173}\x{111C0}'
+        . '\x{111CA}\x{11235}-\x{11236}\x{112E9}-\x{112EA}\x{1133B}-\x{1133C}\x{1133E}\x{1134D}\x{11357}\x{11366}-\x{1136C}'
+        . '\x{11370}-\x{11374}\x{113B8}\x{113BB}\x{113C2}\x{113C5}\x{113C7}-\x{113C9}\x{113CE}-\x{113D0}\x{11442}'
+        . '\x{11446}\x{1145E}\x{114B0}\x{114BA}\x{114BD}\x{114C2}-\x{114C3}\x{115AF}\x{115BF}-\x{115C0}'
+        . '\x{1163F}\x{116B6}-\x{116B7}\x{1172B}\x{11839}-\x{1183A}\x{11930}\x{1193D}-\x{1193E}\x{11943}\x{119E0}'
+        . '\x{11A34}\x{11A47}\x{11A99}\x{11C3F}\x{11D42}\x{11D44}-\x{11D45}\x{11D97}\x{11F41}-\x{11F42}'
+        . '\x{1611E}-\x{16129}\x{1612F}\x{16AF0}-\x{16AF4}\x{16B30}-\x{16B36}\x{16D67}-\x{16D68}\x{16FF0}-\x{16FF1}\x{1BC9E}\x{1D165}-\x{1D169}'
+        . '\x{1D16D}-\x{1D172}\x{1D17B}-\x{1D182}\x{1D185}-\x{1D18B}\x{1D1AA}-\x{1D1AD}\x{1D242}-\x{1D244}\x{1E000}-\x{1E006}\x{1E008}-\x{1E018}\x{1E01B}-\x{1E021}'
+        . '\x{1E023}-\x{1E024}\x{1E026}-\x{1E02A}\x{1E08F}\x{1E130}-\x{1E136}\x{1E2AE}\x{1E2EC}-\x{1E2EF}\x{1E4EC}-\x{1E4EF}\x{1E5EE}-\x{1E5EF}'
+        . '\x{1E8D0}-\x{1E8D6}\x{1E944}-\x{1E94A}';
+
+    /**
      * How each code point of NON_STARTER_EDGE adds to a run, computed on first use.
      *
      * @var array<string, array{bool, int}>
@@ -142,14 +189,24 @@ final class StreamSafe
     private static array $edges = [];
 
     /**
-     * Whether the string has no run of more than 30 non-starters in NFKD.
+     * Whether the string has no run of either kind longer than 30.
      *
      * @param  string $value Valid UTF-8 string
      * @return bool
      */
-    public static function holds(string $value): bool
+    public static function allows(string $value): bool
     {
-        // Only a run of code points that are all non-starters, with at most one more before it, can be too long.
+        if (preg_match('/[' . self::COMPOSING . ']{' . (self::MAX_RUN + 1) . '}/u', $value) !== 0) {
+            return false;
+        }
+        // Each code point of ALL_NON_STARTERS adds at least one non-starter, so 31 in a row are already too many.
+        // Failing here keeps every segment below at 31 code points or fewer; the count below would fail them too.
+        if (preg_match('/[' . self::ALL_NON_STARTERS . ']{' . (self::MAX_RUN + 1) . '}/u', $value) !== 0) {
+            return false;
+        }
+
+        // Only a run of code points that are all non-starters, with at most one more before it, can be too long;
+        // after the check above, each such run holds at most 31 code points.
         $found = preg_match_all('/[' . self::NON_STARTER_EDGE . ']?[' . self::ALL_NON_STARTERS . ']{' . self::SHORTEST_RUN . ',}/u', $value, $matches);
         if ($found === false) {
             return false;
@@ -167,22 +224,18 @@ final class StreamSafe
     /**
      * Whether a run of code points from NON_STARTER_EDGE stays within the limit.
      *
-     * @param  string $segment Code points from NON_STARTER_EDGE only, all but the first from ALL_NON_STARTERS
+     * @param  string $segment At most 31 code points from NON_STARTER_EDGE, all but the first from ALL_NON_STARTERS
      * @return bool
      */
     private static function segmentHolds(string $segment): bool
     {
-        $run    = 0;
-        $length = \strlen($segment);
-        $offset = 0;
-        while ($offset < $length) {
-            $size = self::sequenceLength(\ord($segment[$offset]));
-            [$allNonStarters, $count] = self::edge(substr($segment, $offset, $size));
-            $offset                  += $size;
+        $run = 0;
+        foreach (mb_str_split($segment, 1, 'UTF-8') as $char) {
+            [$allNonStarters, $count] = self::edge($char);
 
             // A code point with a starter ends any run before it and starts a new one with its trailing non-starters.
             $run = $allNonStarters ? $run + $count : $count;
-            if ($run > self::MAX_NON_STARTERS) {
+            if ($run > self::MAX_RUN) {
                 return false;
             }
         }
@@ -211,23 +264,5 @@ final class StreamSafe
         $edge = [$trailing === \count($codePoints), $trailing];
 
         return self::$edges[$char] = $edge;
-    }
-
-    /**
-     * Number of bytes of the UTF-8 sequence that starts with the given byte.
-     *
-     * Only code points of NON_STARTER_EDGE reach here, and the first of them is
-     * U+00A8, so a sequence is never a single byte.
-     *
-     * @param  int $lead First byte of a sequence of two bytes or more in valid UTF-8
-     * @return int
-     */
-    private static function sequenceLength(int $lead): int
-    {
-        return match (true) {
-            $lead < 0xE0 => 2,
-            $lead < 0xF0 => 3,
-            default      => 4,
-        };
     }
 }

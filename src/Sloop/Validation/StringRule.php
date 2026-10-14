@@ -17,19 +17,20 @@ use TypeError;
  * failure (no implicit conversion). Lengths are counted in grapheme clusters
  * unless a rule is given another LengthUnit. A field with chars(), notChars(),
  * minCharClasses() or notContains() first fails a value with more than 30
- * combining characters in a row, as the rule streamSafe, and runs no other
- * rule on it (see StreamSafe).
+ * combining characters in a row, as the rule combiningRun, and runs no other
+ * rule on it (see CombiningRun). A message: given to those rules does not apply
+ * to combiningRun; the field's message() does.
  *
  * @extends FieldRule<string>
  */
 final class StringRule extends FieldRule
 {
     /**
-     * Whether the streamSafe rule has been added, by the first rule that needs it.
+     * Whether the combiningRun rule has been added, by the first rule that needs it.
      *
      * @var bool
      */
-    private bool $streamSafe = false;
+    private bool $combiningRun = false;
 
     /**
      * Use this value when the field is empty.
@@ -235,7 +236,7 @@ final class StringRule extends FieldRule
             };
         }
 
-        return $this->withStreamSafe()->withCheck('notContains', ['values' => $values], $passes, $message);
+        return $this->withCombiningRun()->withCheck('notContains', ['values' => $values], $passes, $message);
     }
 
     /**
@@ -269,7 +270,7 @@ final class StringRule extends FieldRule
             $passes = static fn (string $value): bool => self::eachClusterAllowed($value, $class === '' ? null : $pattern, $clusters);
         }
 
-        return $this->withStreamSafe()->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message);
+        return $this->withCombiningRun()->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message);
     }
 
     /**
@@ -302,7 +303,7 @@ final class StringRule extends FieldRule
         $pattern                  = '/[' . $class . ']/u';
         $listedPattern            = '/[' . $codePoints . ']/u';
 
-        return $this->withStreamSafe()->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $listedPattern, $codePoints, $clusters): bool {
+        return $this->withCombiningRun()->withCheck('notChars', ['chars' => $names, 'listed' => $listed], static function (string $value) use ($pattern, $class, $listedPattern, $codePoints, $clusters): bool {
             if ($class !== '' && preg_match($pattern, $value) !== 0) {
                 return false;
             }
@@ -356,7 +357,7 @@ final class StringRule extends FieldRule
         $patterns    = array_map(static fn (string $pattern): string => '/[' . $pattern . ']/u', $setPatterns);
         $listedKinds = array_map(self::clusterSet(...), $listed);
 
-        return $this->withStreamSafe()->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
+        return $this->withCombiningRun()->withCheck('minCharClasses', ['min' => $min, 'chars' => $names, 'listed' => $listed], static function (string $value) use ($min, $patterns, $listedKinds): bool {
             $used = self::countListedKinds($value, $listedKinds);
             foreach ($patterns as $pattern) {
                 if (preg_match($pattern, $value) === 1) {
@@ -449,24 +450,24 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Add the streamSafe rule once, ahead of every other rule of the field.
+     * Add the combiningRun rule once, ahead of every other rule of the field.
      *
      * chars(), notChars(), minCharClasses() and notContains() call this.
-     * Normalizing a run of combining characters takes time quadratic in its
-     * length, so a value with more than 30 in a row in NFKD (UAX #15, the
-     * Stream-Safe Text Format) fails here, before anything is normalized, and
-     * no other rule of the field runs on it.
+     * Normalizing a long run of combining characters takes time quadratic in
+     * its length, so a value with a run longer than 30 (see CombiningRun)
+     * fails here, before anything is normalized, and no other rule of the
+     * field runs on it.
      *
      * @return self
      */
-    private function withStreamSafe(): self
+    private function withCombiningRun(): self
     {
-        if ($this->streamSafe) {
+        if ($this->combiningRun) {
             return $this;
         }
 
-        $copy             = $this->withSizeCheck('streamSafe', [], StreamSafe::holds(...), null);
-        $copy->streamSafe = true;
+        $copy               = $this->withSizeCheck('combiningRun', [], CombiningRun::allows(...), null);
+        $copy->combiningRun = true;
 
         return $copy;
     }
@@ -503,9 +504,9 @@ final class StringRule extends FieldRule
             if (!mb_check_encoding($set, 'UTF-8')) {
                 throw new InvalidArgumentException($rule . '() needs listed characters in valid UTF-8.');
             }
-            if (!StreamSafe::holds($set)) {
-                // A value holding it would fail streamSafe first, so the listing would never take effect.
-                throw new InvalidArgumentException($rule . '() needs listed characters with at most ' . StreamSafe::MAX_NON_STARTERS . ' combining characters in a row.');
+            if (!CombiningRun::allows($set)) {
+                // A value holding it would fail combiningRun first, so the listing would never take effect.
+                throw new InvalidArgumentException($rule . '() needs listed characters with at most ' . CombiningRun::MAX_RUN . ' combining characters in a row.');
             }
             $listed[] = $set;
         }
@@ -713,9 +714,9 @@ final class StringRule extends FieldRule
         if (!mb_check_encoding($needle, 'UTF-8')) {
             throw new InvalidArgumentException('notContains() needs values in valid UTF-8, got invalid UTF-8 at position ' . $position . '.');
         }
-        if (!StreamSafe::holds($needle)) {
-            // A value holding it would fail streamSafe first, so the needle would never be found.
-            throw new InvalidArgumentException('notContains() needs values with at most ' . StreamSafe::MAX_NON_STARTERS . ' combining characters in a row, got more at position ' . $position . '.');
+        if (!CombiningRun::allows($needle)) {
+            // A value holding it would fail combiningRun first, so the needle would never be found.
+            throw new InvalidArgumentException('notContains() needs values with at most ' . CombiningRun::MAX_RUN . ' combining characters in a row, got more at position ' . $position . '.');
         }
     }
 

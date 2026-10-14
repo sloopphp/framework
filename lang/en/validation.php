@@ -34,7 +34,7 @@ return [
     'chars'          => 'The {label} field contains characters that are not allowed.',
     'notChars'       => 'The {label} field contains characters that are not allowed.',
     'minCharClasses' => 'The {label} field must contain at least {min} kinds of characters.',
-    'streamSafe'     => 'The {label} field has too many combining characters in a row.',
+    'combiningRun'     => 'The {label} field has too many combining characters in a row.',
     'email'          => 'The {label} field must be a valid email address.',
     'url'            => 'The {label} field must be a valid URL.',
     'ip'             => 'The {label} field must be a valid IP address.',

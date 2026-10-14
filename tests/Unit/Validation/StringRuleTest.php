@@ -16,6 +16,7 @@ use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
 use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
+use Sloop\Validation\Validator;
 use TypeError;
 
 final class StringRuleTest extends TestCase
@@ -1419,7 +1420,7 @@ final class StringRuleTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // streamSafe
+    // combiningRun
     // ---------------------------------------------------------------
 
     /**
@@ -1436,18 +1437,18 @@ final class StringRuleTest extends TestCase
     }
 
     #[DataProvider('normalizingRules')]
-    public function testMoreThan30CombiningCharactersInARowFailStreamSafeOnly(StringRule $rule): void
+    public function testMoreThan30CombiningCharactersInARowFailCombiningRunOnly(StringRule $rule): void
     {
         self::assertErrorSame(
-            new ValidationError('streamSafe', [], 'The v field has too many combining characters in a row.'),
+            new ValidationError('combiningRun', [], 'The v field has too many combining characters in a row.'),
             self::onlyError($rule, 'a' . str_repeat("\u{0301}", 31)),
         );
     }
 
     #[DataProvider('normalizingRules')]
-    public function testThirtyCombiningCharactersInARowDoNotFailStreamSafe(StringRule $rule): void
+    public function testThirtyCombiningCharactersInARowDoNotFailCombiningRun(StringRule $rule): void
     {
-        $this->assertNotContains('streamSafe', self::failedRules($rule, 'a' . str_repeat("\u{0301}", 30)));
+        $this->assertNotContains('combiningRun', self::failedRules($rule, 'a' . str_repeat("\u{0301}", 30)));
     }
 
     /**
@@ -1462,35 +1463,75 @@ final class StringRuleTest extends TestCase
         yield 'two trailing marks of ǖ and 29 more' => ["\u{01D6}" . str_repeat("\u{0301}", 29), false];
         yield 'two trailing marks of ǖ and 28 more' => ["\u{01D6}" . str_repeat("\u{0301}", 28), true];
         yield 'a starter between two runs of 30' => ['a' . str_repeat("\u{0301}", 30) . 'b' . str_repeat("\u{0301}", 30), true];
+        yield 'an ASCII character between two runs of 20' => ['a' . str_repeat("\u{0301}", 20) . '?' . str_repeat("\u{0301}", 20), true];
         yield 'precomposed letters with a mark each' => [str_repeat("\u{00E9}", 100), true];
         yield 'no letter before the marks' => [str_repeat("\u{0301}", 31), false];
         yield '40000 pairs of marks NFC reorders' => ['a' . str_repeat("\u{0323}\u{0301}", 40000), false];
     }
 
     #[DataProvider('nonStarterRuns')]
-    public function testStreamSafeCountsNonStartersOfTheNfkdForm(string $value, bool $passes): void
+    public function testCombiningRunCountsNonStartersOfTheNfkdForm(string $value, bool $passes): void
     {
-        $this->assertSame($passes ? [] : ['streamSafe'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
+        $this->assertSame($passes ? [] : ['combiningRun'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
     }
 
-    public function testStreamSafeStopsEveryOtherRuleOfTheField(): void
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function composingRuns(): iterable
+    {
+        yield 'Gurung Khema vowel sign O, 31' => [str_repeat("\u{16126}", 31), false];
+        yield 'Gurung Khema vowel sign O, 30' => [str_repeat("\u{16126}", 30), true];
+        yield 'vowel signs and combining acute in turn, 31' => [str_repeat("\u{16126}\u{0301}", 15) . "\u{16126}", false];
+        yield 'a letter between two runs of 30' => [str_repeat("\u{16126}", 30) . 'a' . str_repeat("\u{16126}", 30), true];
+        yield 'a Hangul vowel, which NFC may compose, between two runs of 30' => [str_repeat("\u{16126}", 30) . "\u{1161}" . str_repeat("\u{16126}", 30), false];
+        yield '32000 vowel signs' => [str_repeat("\u{16126}", 32000), false];
+        yield '31 digits and brackets, which compose with nothing' => [str_repeat('31{}[]|?', 4), true];
+    }
+
+    #[DataProvider('composingRuns')]
+    public function testCombiningRunCountsCodePointsThatNfcComposes(string $value, bool $passes): void
+    {
+        $this->assertSame($passes ? [] : ['combiningRun'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
+    }
+
+    public function testCombiningRunStopsEveryOtherRuleOfTheField(): void
     {
         $rule = Rule::string()->regex('/x/')->notContains(['admin'])->chars([Chars::Alpha]);
 
-        $this->assertSame(['streamSafe'], self::failedRules($rule, 'admin' . str_repeat("\u{0301}", 31)));
+        $this->assertSame(['combiningRun'], self::failedRules($rule, 'admin' . str_repeat("\u{0301}", 31)));
     }
 
-    public function testStreamSafeIsNotCheckedWithoutARuleThatNormalizes(): void
+    public function testCombiningRunIsNotCheckedWithoutCharsNotCharsMinCharClassesOrNotContains(): void
     {
         $value = 'a' . str_repeat("\u{0301}", 40);
 
         $this->assertSame($value, self::valueOf(Rule::string()->maxLength(1)->regex('/^a/'), $value));
     }
 
+    public function testCombiningRunUsesTheFieldMessageButNotTheMessageOfTheRuleThatAddedIt(): void
+    {
+        $value = 'a' . str_repeat("\u{0301}", 31);
+
+        $this->assertSame('The v field has too many combining characters in a row.', self::onlyError(Rule::string()->notContains(['admin'], message: 'No admin.'), $value)->message);
+        $this->assertSame('Bad.', self::onlyError(Rule::string()->notContains(['admin'])->message('Bad.'), $value)->message);
+    }
+
+    public function testAFieldThatFailsCombiningRunIsNotComparedBySame(): void
+    {
+        $result = new Validator([
+            'name'    => Rule::string()->notContains(['admin']),
+            'confirm' => Rule::string()->same('name'),
+        ])->validate(['name' => 'a' . str_repeat("\u{0301}", 31), 'confirm' => 'b']);
+
+        $this->assertSame(['name'], array_keys($result->errors()));
+        $this->assertSame('combiningRun', $result->errors()['name'][0]->rule);
+    }
+
     /**
      * @return iterable<string, array{callable(): StringRule, string}>
      */
-    public static function listedStringsNotStreamSafe(): iterable
+    public static function listedStringsNotCombiningRun(): iterable
     {
         $long = 'a' . str_repeat("\u{0301}", 31);
 
@@ -1503,7 +1544,7 @@ final class StringRuleTest extends TestCase
     /**
      * @param callable(): StringRule $declare
      */
-    #[DataProvider('listedStringsNotStreamSafe')]
+    #[DataProvider('listedStringsNotCombiningRun')]
     public function testListedStringWithMoreThan30CombiningCharactersInARowIsRejected(callable $declare, string $message): void
     {
         $e = $this->assertThrows(InvalidArgumentException::class, $declare);
