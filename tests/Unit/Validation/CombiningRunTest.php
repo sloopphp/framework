@@ -94,6 +94,29 @@ final class CombiningRunTest extends TestCase
         $this->assertSame([], $missed);
     }
 
+    public function testEveryCodePointThatDecomposesIntoOneThatComposesContinuesARun(): void
+    {
+        $continues = static fn (int $cp): bool => IntlChar::getCombiningClass($cp) !== 0 || IntlChar::getIntPropertyValue($cp, IntlChar::PROPERTY_NFC_QUICK_CHECK) === self::NFC_QUICK_CHECK_MAYBE;
+        $vowels    = str_repeat("\u{113C2}", intdiv(CombiningRun::MAX_RUN, 2));
+        $missed    = [];
+        for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
+            if ($cp >= 0xD800 && $cp <= 0xDFFF || $continues($cp)) {
+                continue;
+            }
+            $char       = IntlChar::chr($cp);
+            $decomposed = Normalizer::getRawDecomposition($char, Normalizer::FORM_D) === null ? null : Normalizer::normalize($char, Normalizer::FORM_D);
+            if (!\is_string($decomposed) || !$continues(mb_ord($decomposed, 'UTF-8'))) {
+                continue;
+            }
+            // 31 code points that NFC composes as one run, with no run of non-starters over 30.
+            if (CombiningRun::allows($vowels . $char . $vowels)) {
+                $missed[] = \sprintf('U+%04X', $cp);
+            }
+        }
+
+        $this->assertSame([], $missed);
+    }
+
     public function testNoCodePointStartsWithNonStartersBeforeAStarter(): void
     {
         $leading = [];

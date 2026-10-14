@@ -1487,6 +1487,8 @@ final class StringRuleTest extends TestCase
         yield 'a Hangul vowel, which NFC may compose, between two runs of 30' => [str_repeat("\u{16126}", 30) . "\u{1161}" . str_repeat("\u{16126}", 30), false];
         yield '32000 vowel signs' => [str_repeat("\u{16126}", 32000), false];
         yield '31 digits and brackets, which compose with nothing' => [str_repeat('31{}[]|?', 4), true];
+        yield 'U+0F73, whose NFD starts with a non-starter, between two runs of 30' => [str_repeat("\u{113C2}", 30) . "\u{0F73}" . str_repeat("\u{113C2}", 30), false];
+        yield 'U+0F73 between runs of 15' => [str_repeat("\u{113C2}", 15) . "\u{0F73}" . str_repeat("\u{113C2}", 14), true];
     }
 
     #[DataProvider('composingRuns')]
