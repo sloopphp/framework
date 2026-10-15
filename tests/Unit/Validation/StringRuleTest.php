@@ -16,6 +16,7 @@ use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
 use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
+use Sloop\Validation\Validator;
 use TypeError;
 
 final class StringRuleTest extends TestCase
@@ -1416,6 +1417,150 @@ final class StringRuleTest extends TestCase
         $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $rule->minCharClasses(2, [AppChars::Circled, new FragmentChars('a', 'circled')]));
 
         $this->assertSame('minCharClasses() needs each set at most once.', $e->getMessage());
+    }
+
+    // ---------------------------------------------------------------
+    // combiningRun
+    // ---------------------------------------------------------------
+
+    /**
+     * @return iterable<string, array{StringRule}>
+     */
+    public static function normalizingRules(): iterable
+    {
+        yield 'chars with a Chars case only' => [Rule::string()->chars([Chars::Alpha])];
+        yield 'chars with a listed character' => [Rule::string()->chars([Chars::Alpha, '#'])];
+        yield 'notChars' => [Rule::string()->notChars(['#'])];
+        yield 'minCharClasses' => [Rule::string()->minCharClasses(1, [Chars::Alpha])];
+        yield 'notContains' => [Rule::string()->notContains(['admin'])];
+        yield 'notContains with ignoreCase' => [Rule::string()->notContains(['admin'], ignoreCase: true)];
+    }
+
+    #[DataProvider('normalizingRules')]
+    public function testMoreThan30CombiningCharactersInARowFailCombiningRunOnly(StringRule $rule): void
+    {
+        self::assertErrorSame(
+            new ValidationError('combiningRun', [], 'The v field has too many combining characters in a row.'),
+            self::onlyError($rule, 'a' . str_repeat("\u{0301}", 31)),
+        );
+    }
+
+    #[DataProvider('normalizingRules')]
+    public function testThirtyCombiningCharactersInARowDoNotFailCombiningRun(StringRule $rule): void
+    {
+        $this->assertNotContains('combiningRun', self::failedRules($rule, 'a' . str_repeat("\u{0301}", 30)));
+    }
+
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function nonStarterRuns(): iterable
+    {
+        yield 'marks of two classes that NFC reorders, 31' => ['a' . str_repeat("\u{0323}\u{0301}", 15) . "\u{0323}", false];
+        yield 'marks of two classes, 30' => ['a' . str_repeat("\u{0323}\u{0301}", 15), true];
+        yield 'U+0F73 decomposes to two non-starters, 16 of them' => ['a' . str_repeat("\u{0F73}", 16), false];
+        yield 'U+0F73, 15 of them' => ['a' . str_repeat("\u{0F73}", 15), true];
+        yield 'two trailing marks of ǖ and 29 more' => ["\u{01D6}" . str_repeat("\u{0301}", 29), false];
+        yield 'two trailing marks of ǖ and 28 more' => ["\u{01D6}" . str_repeat("\u{0301}", 28), true];
+        yield 'a starter between two runs of 30' => ['a' . str_repeat("\u{0301}", 30) . 'b' . str_repeat("\u{0301}", 30), true];
+        yield 'an ASCII character between two runs of 20' => ['a' . str_repeat("\u{0301}", 20) . '?' . str_repeat("\u{0301}", 20), true];
+        yield 'precomposed letters with a mark each' => [str_repeat("\u{00E9}", 100), true];
+        yield 'no letter before the marks' => [str_repeat("\u{0301}", 31), false];
+        yield '40000 pairs of marks NFC reorders' => ['a' . str_repeat("\u{0323}\u{0301}", 40000), false];
+    }
+
+    #[DataProvider('nonStarterRuns')]
+    public function testCombiningRunCountsNonStartersOfTheNfkdForm(string $value, bool $passes): void
+    {
+        $this->assertSame($passes ? [] : ['combiningRun'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
+    }
+
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function composingRuns(): iterable
+    {
+        yield 'Gurung Khema vowel sign O, 31' => [str_repeat("\u{16126}", 31), false];
+        yield 'Gurung Khema vowel sign O, 30' => [str_repeat("\u{16126}", 30), true];
+        yield 'vowel signs and combining acute in turn, 31' => [str_repeat("\u{16126}\u{0301}", 15) . "\u{16126}", false];
+        yield 'a letter between two runs of 30' => [str_repeat("\u{16126}", 30) . 'a' . str_repeat("\u{16126}", 30), true];
+        yield 'a Hangul vowel, which NFC may compose, between two runs of 30' => [str_repeat("\u{16126}", 30) . "\u{1161}" . str_repeat("\u{16126}", 30), false];
+        yield '32000 vowel signs' => [str_repeat("\u{16126}", 32000), false];
+        yield '31 digits and brackets, which compose with nothing' => [str_repeat('31{}[]|?', 4), true];
+        yield 'U+0F73, whose NFD starts with a non-starter, between two runs of 30' => [str_repeat("\u{113C2}", 30) . "\u{0F73}" . str_repeat("\u{113C2}", 30), false];
+        yield 'U+0F73 between runs of 15' => [str_repeat("\u{113C2}", 15) . "\u{0F73}" . str_repeat("\u{113C2}", 14), true];
+    }
+
+    #[DataProvider('composingRuns')]
+    public function testCombiningRunCountsCodePointsThatNfcComposes(string $value, bool $passes): void
+    {
+        $this->assertSame($passes ? [] : ['combiningRun'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
+    }
+
+    public function testCombiningRunAlsoCountsCombiningMarksThatNfcDoesNotCompose(): void
+    {
+        // U+0903 (Devanagari visarga) is a combining mark with combining class 0 that NFC leaves alone;
+        // it counts through \p{M}, which also covers marks added after the tables' Unicode version.
+        $rule = Rule::string()->notContains(['zzz']);
+
+        $this->assertSame(['combiningRun'], self::failedRules($rule, str_repeat("\u{0903}", 31)));
+        $this->assertSame([], self::failedRules($rule, str_repeat("\u{0903}", 30)));
+    }
+
+    public function testCombiningRunStopsEveryOtherRuleOfTheField(): void
+    {
+        $rule = Rule::string()->regex('/x/')->notContains(['admin'])->chars([Chars::Alpha]);
+
+        $this->assertSame(['combiningRun'], self::failedRules($rule, 'admin' . str_repeat("\u{0301}", 31)));
+    }
+
+    public function testCombiningRunIsNotCheckedWithoutCharsNotCharsMinCharClassesOrNotContains(): void
+    {
+        $value = 'a' . str_repeat("\u{0301}", 40);
+
+        $this->assertSame($value, self::valueOf(Rule::string()->maxLength(1)->regex('/^a/'), $value));
+    }
+
+    public function testCombiningRunUsesTheFieldMessageButNotTheMessageOfTheRuleThatAddedIt(): void
+    {
+        $value = 'a' . str_repeat("\u{0301}", 31);
+
+        $this->assertSame('The v field has too many combining characters in a row.', self::onlyError(Rule::string()->notContains(['admin'], message: 'No admin.'), $value)->message);
+        $this->assertSame('Bad.', self::onlyError(Rule::string()->notContains(['admin'])->message('Bad.'), $value)->message);
+    }
+
+    public function testAFieldThatFailsCombiningRunIsNotComparedBySame(): void
+    {
+        $result = new Validator([
+            'name'    => Rule::string()->notContains(['admin']),
+            'confirm' => Rule::string()->same('name'),
+        ])->validate(['name' => 'a' . str_repeat("\u{0301}", 31), 'confirm' => 'b']);
+
+        $this->assertSame(['name'], array_keys($result->errors()));
+        $this->assertSame('combiningRun', $result->errors()['name'][0]->rule);
+    }
+
+    /**
+     * @return iterable<string, array{callable(): StringRule, string}>
+     */
+    public static function listedStringsNotCombiningRun(): iterable
+    {
+        $long = 'a' . str_repeat("\u{0301}", 31);
+
+        yield 'chars' => [static fn (): StringRule => Rule::string()->chars([Chars::Alpha, $long]), 'chars() needs listed characters with at most 30 combining characters in a row.'];
+        yield 'notChars' => [static fn (): StringRule => Rule::string()->notChars(['#', $long]), 'notChars() needs listed characters with at most 30 combining characters in a row.'];
+        yield 'minCharClasses' => [static fn (): StringRule => Rule::string()->minCharClasses(1, [$long]), 'minCharClasses() needs listed characters with at most 30 combining characters in a row.'];
+        yield 'notContains' => [static fn (): StringRule => Rule::string()->notContains(['admin', $long]), 'notContains() needs values with at most 30 combining characters in a row, got more at position 1.'];
+    }
+
+    /**
+     * @param callable(): StringRule $declare
+     */
+    #[DataProvider('listedStringsNotCombiningRun')]
+    public function testListedStringWithMoreThan30CombiningCharactersInARowIsRejected(callable $declare, string $message): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, $declare);
+        $this->assertSame($message, $e->getMessage());
     }
 
     // ---------------------------------------------------------------
