@@ -329,9 +329,10 @@ abstract class FieldRule
      * The closure receives this rule with no rules of its own and returns it
      * with the rules to add. It runs once, here, must add at least one rule and
      * may only add rules on the value: required(), default(), label(),
-     * message(), same(), different(), requiredWith(), requiredIf() and when()
-     * are refused. The added rules run
-     * after the field's own, and like those, not when the field is empty.
+     * message(), same(), different() and the other comparisons with another
+     * field, requiredWith(), requiredIf() and when() are refused. The added
+     * rules run after the field's own, and like those, not when the field is
+     * empty.
      *
      * The other field is compared as in requiredIf(). A failure added by
      * another field's when() does not stop the comparison.
@@ -847,6 +848,7 @@ abstract class FieldRule
         $copy->fieldMessage    = null;
         $copy->displayLabel    = null;
         $copy->comparisons     = [];
+        $copy->comparisonTests = [];
         $copy->requiredConditions = [];
         $copy->whens              = [];
         $copy->whenChecks         = [];
