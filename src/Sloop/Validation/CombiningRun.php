@@ -22,6 +22,9 @@ use Normalizer;
  *   Unicode 16.0 (Tulu-Tigalari, Gurung Khema, Kirat Rai) compose with each
  *   other, and a run of them costs time quadratic in its length to compose.
  *   A string passes when no more than 30 such code points stand in a row.
+ *   Combining marks (\p{M} in PCRE) count toward this run too, so marks that
+ *   a later Unicode version adds, which the tables below do not hold, still
+ *   stop at 31 where PCRE knows them.
  *
  * Both checks take time linear in the length of the string.
  *
@@ -35,6 +38,15 @@ final class CombiningRun
      * @var int
      */
     public const int MAX_RUN = 30;
+
+    /**
+     * Unicode version the character class constants were generated from (ICU 76.1).
+     *
+     * Regenerate them from the definitions in CombiningRunTest when ICU is upgraded.
+     *
+     * @var string
+     */
+    public const string UNICODE_VERSION = '16.0';
 
     /**
      * Fewest code points of ALL_NON_STARTERS in a row that a run longer than MAX_RUN non-starters needs.
@@ -184,11 +196,11 @@ final class CombiningRun
         . '\x{1E08F}\x{1E130}-\x{1E136}\x{1E2AE}\x{1E2EC}-\x{1E2EF}\x{1E4EC}-\x{1E4EF}\x{1E5EE}-\x{1E5EF}\x{1E8D0}-\x{1E8D6}\x{1E944}-\x{1E94A}';
 
     /**
-     * A run of more than MAX_RUN code points that NFC composes.
+     * A run of more than MAX_RUN code points that NFC composes, or combining marks.
      *
      * @var string
      */
-    private const string COMPOSING_RUN = '/[' . self::COMPOSING . ']{' . (self::MAX_RUN + 1) . '}/u';
+    private const string COMPOSING_RUN = '/[' . self::COMPOSING . '\p{M}]{' . (self::MAX_RUN + 1) . '}/u';
 
     /**
      * More than MAX_RUN code points of ALL_NON_STARTERS in a row, already too many non-starters.

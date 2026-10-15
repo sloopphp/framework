@@ -1497,6 +1497,16 @@ final class StringRuleTest extends TestCase
         $this->assertSame($passes ? [] : ['combiningRun'], self::failedRules(Rule::string()->notContains(['zzz']), $value));
     }
 
+    public function testCombiningRunAlsoCountsCombiningMarksThatNfcDoesNotCompose(): void
+    {
+        // U+0903 (Devanagari visarga) is a combining mark with combining class 0 that NFC leaves alone;
+        // it counts through \p{M}, which also covers marks added after the tables' Unicode version.
+        $rule = Rule::string()->notContains(['zzz']);
+
+        $this->assertSame(['combiningRun'], self::failedRules($rule, str_repeat("\u{0903}", 31)));
+        $this->assertSame([], self::failedRules($rule, str_repeat("\u{0903}", 30)));
+    }
+
     public function testCombiningRunStopsEveryOtherRuleOfTheField(): void
     {
         $rule = Rule::string()->regex('/x/')->notContains(['admin'])->chars([Chars::Alpha]);

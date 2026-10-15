@@ -15,6 +15,23 @@ final class CombiningRunTest extends TestCase
     private const int NFC_QUICK_CHECK_MAYBE = 2;
 
     /**
+     * Whether the code point is one the tables of CombiningRun were generated for: not a surrogate, and assigned by CombiningRun::UNICODE_VERSION.
+     *
+     * A newer ICU knows code points that the tables do not hold; those are left to the \p{M} part of the composing run.
+     */
+    private static function inTables(int $cp): bool
+    {
+        if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            return false;
+        }
+        $age   = IntlChar::charAge($cp);
+        $major = $age[0] ?? null;
+        $minor = $age[1] ?? null;
+
+        return \is_int($major) && \is_int($minor) && version_compare($major . '.' . $minor, CombiningRun::UNICODE_VERSION, '<=');
+    }
+
+    /**
      * Every code point whose NFKD form ends with a non-starter, with whether the form is all non-starters and how many it ends with.
      *
      * @return array<int, array{bool, int}>
@@ -23,7 +40,7 @@ final class CombiningRunTest extends TestCase
     {
         $edges = [];
         for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
-            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            if (!self::inTables($cp)) {
                 continue;
             }
             $char       = IntlChar::chr($cp);
@@ -97,7 +114,7 @@ final class CombiningRunTest extends TestCase
     {
         $missed = [];
         for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
-            if ($cp >= 0xD800 && $cp <= 0xDFFF || !self::nfcMayCompose($cp)) {
+            if (!self::inTables($cp) || !self::nfcMayCompose($cp)) {
                 continue;
             }
             $char = IntlChar::chr($cp);
@@ -117,7 +134,7 @@ final class CombiningRunTest extends TestCase
     {
         $leading = [];
         for ($cp = 0; $cp <= 0x10FFFF; ++$cp) {
-            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            if (!self::inTables($cp)) {
                 continue;
             }
             $char       = IntlChar::chr($cp);
