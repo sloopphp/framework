@@ -99,11 +99,21 @@ abstract class FieldRule
     private array $elementChecks = [];
 
     /**
-     * Declared same() / different() rules.
+     * Declared rules comparing this field with another field.
      *
      * @var list<Comparison>
      */
     private array $comparisons = [];
+
+    /**
+     * How each comparison that is not a same() / different() decides, keyed by its position in $comparisons.
+     *
+     * Each receives this field's typed value and the other field's validated
+     * value, which is null when that field was empty and had no default.
+     *
+     * @var array<int, Closure(T, mixed): bool>
+     */
+    private array $comparisonTests = [];
 
     /**
      * Declared requiredWith() / requiredIf() rules.
@@ -374,12 +384,12 @@ abstract class FieldRule
 
         if ($this->isEmpty($value)) {
             if ($this->required) {
-                return new FieldOutcome(null, null, false, [new Failure('required', [], $this->requiredMessage)]);
+                return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage)]);
             }
 
             return $this->default === null
-                ? new FieldOutcome(null, null, false, [], empty: true)
-                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), false, [], empty: true);
+                ? new FieldOutcome(null, null, [], empty: true)
+                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), [], empty: true);
         }
 
         $typed = $this->coerce($value);
@@ -387,13 +397,13 @@ abstract class FieldRule
             $rule   = $typed->rule ?? $this->typeRule();
             $params = $typed->rule === null ? $this->typeParams() : $typed->params;
 
-            return new FieldOutcome(null, null, false, [new Failure($rule, $params)]);
+            return new FieldOutcome(null, null, [new Failure($rule, $params)]);
         }
 
         // A value of the wrong size stops here, the way one of the wrong type does.
         $failures = $this->run($this->sizeChecks, $typed);
         if ($failures !== []) {
-            return new FieldOutcome(null, null, false, $failures);
+            return new FieldOutcome(null, null, $failures);
         }
 
         $sized = $typed;
@@ -403,7 +413,6 @@ abstract class FieldRule
         return new FieldOutcome(
             $this->output($typed),
             $comparable,
-            true,
             [
                 ...$failures,
                 ...$this->run($this->checks, $typed),
@@ -413,6 +422,7 @@ abstract class FieldRule
             // has its value, so it runs them through this, with the typed
             // value kept here; a when() that does not apply never runs.
             runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === []),
+            compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other),
         );
     }
 
@@ -860,7 +870,44 @@ abstract class FieldRule
     }
 
     /**
-     * Append a same() / different() rule.
+     * Append a rule that compares with another field and decides with the given test.
+     *
+     * @param  string                    $rule    Rule name, also the language file key and the declaring method's name
+     * @param  string                    $field   Name of the other field
+     * @param  string|null               $message Message for this rule only
+     * @param  Closure(T, mixed): bool   $test    Whether this field's typed value passes against the other field's validated value (null when that one was empty without a default)
+     * @return static
+     * @throws \InvalidArgumentException When the message template is malformed
+     */
+    protected function withFieldComparison(string $rule, string $field, ?string $message, Closure $test): static
+    {
+        $copy = $this->withComparison(new Comparison($rule, $field, $message, static::class, $this->typeRule()));
+
+        $copy->comparisonTests[\count($copy->comparisons) - 1] = $test;
+
+        return $copy;
+    }
+
+    /**
+     * Whether the comparison at the given position holds against the other field.
+     *
+     * @param  int          $index      Position of the comparison
+     * @param  T            $typed      This field's typed value
+     * @param  mixed        $comparable This field's comparable value
+     * @param  FieldOutcome $other      Outcome of the other field
+     * @return bool
+     */
+    private function holds(int $index, mixed $typed, mixed $comparable, FieldOutcome $other): bool
+    {
+        $test = $this->comparisonTests[$index] ?? null;
+
+        return $test === null
+            ? $this->comparisons[$index]->passes($comparable, $other->comparable)
+            : $test($typed, $other->value);
+    }
+
+    /**
+     * Append a rule comparing with another field.
      *
      * @param  Comparison                $comparison Rule to append
      * @return static

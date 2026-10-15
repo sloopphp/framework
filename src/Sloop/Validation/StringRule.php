@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use Closure;
 use Generator;
 use InvalidArgumentException;
 use Normalizer;
@@ -198,11 +199,7 @@ final class StringRule extends FieldRule
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
-        $plain     = [];
-        $caseless  = [];
-        $foldedRaw = [];
-        $foldedNfc = [];
-        $values    = [];
+        $values = [];
         foreach ($needles as $needle) {
             try {
                 self::assertNeedle($needle, \count($values));
@@ -211,32 +208,48 @@ final class StringRule extends FieldRule
                 // position, not by key, so nothing from the array itself reaches the message.
                 throw new TypeError('notContains() needs strings, got ' . get_debug_type($needle) . ' at position ' . \count($values) . '.', previous: $e);
             }
-            $forms   = self::withNfc($needle);
-            $plain[] = $forms;
-            if ($ignoreCase) {
-                $caseless[]  = self::caselessForm($needle);
-                $foldedRaw[] = self::withNfc(self::simpleFold($needle));
-                $foldedNfc[] = self::withNfc(self::simpleFold($forms[1]));
-            }
             $values[] = $needle;
         }
 
-        // Each form of the value is built once, not once per needle.
-        $passes = static fn (string $value): bool => !self::containsAny(self::withNfc($value), $plain);
-        if ($ignoreCase) {
-            // The case-sensitive search again on the value and needles folded, as given and in NFC,
-            // so that the other case of what it finds is found too.
-            $passes = static function (string $value) use ($plain, $caseless, $foldedRaw, $foldedNfc): bool {
-                $forms = self::withNfc($value);
+        return $this->withCombiningRun()->withCheck('notContains', ['values' => $values], self::absentFrom($values, $ignoreCase), $message);
+    }
 
-                return !self::containsAny($forms, $plain)
-                    && !self::containsCaseless(self::caselessForm($value), $caseless)
-                    && !self::containsAny(self::withNfc(self::simpleFold($value)), $foldedRaw)
-                    && !self::containsAny(self::withNfc(self::simpleFold($forms[1])), $foldedNfc);
-            };
-        }
-
-        return $this->withCombiningRun()->withCheck('notContains', ['values' => $values], $passes, $message);
+    /**
+     * Fail when the value contains the validated value of another field.
+     *
+     * Made for the sign-up form that keeps a password from holding the user
+     * name sent with it. The value is searched the way notContains() searches
+     * it, with the other field's value as the one string not to contain, so
+     * the same notes on NFC and on case apply. The other field is a sibling
+     * string() field; any other type is refused when the Validator is built,
+     * as is the field naming itself. Its value is the one validation produced,
+     * after its sanitizers.
+     *
+     * The rule is not evaluated when this field is empty, or when the other
+     * field failed a rule of its own; an empty other field is compared by its
+     * default, and passes when it has none or its default is ''. The field
+     * also fails, without being searched, when the other field's value has a
+     * run of more than 30 combining characters, which no ordinary text has
+     * and which would make normalizing it slow; the value itself is checked
+     * for such a run first, as for notContains().
+     *
+     * @param  string                   $field      Name of the other field
+     * @param  bool                     $ignoreCase Treat upper and lower case as the same
+     * @param  string|null              $message    Message for this rule only
+     * @return self
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function notContainsField(string $field, bool $ignoreCase = false, ?string $message = null): self
+    {
+        return $this->withCombiningRun()->withFieldComparison(
+            'notContainsField',
+            $field,
+            $message,
+            // The other side is null only when that field was empty without a default. A value
+            // normalizing would take quadratic time on is refused unread rather than searched.
+            static fn (string $own, mixed $other): bool => !\is_string($other) || $other === ''
+                || (CombiningRun::allows($other) && self::absentFrom([$other], $ignoreCase)($own)),
+        );
     }
 
     /**
@@ -692,6 +705,48 @@ final class StringRule extends FieldRule
         }
 
         return false;
+    }
+
+    /**
+     * A test that passes when the value contains none of the needles, the way notContains() describes.
+     *
+     * The forms of each needle are built here once; those of the value are
+     * built once per value, not once per needle.
+     *
+     * @param  list<string>          $needles    Valid UTF-8 strings, none of them empty
+     * @param  bool                  $ignoreCase Treat upper and lower case as the same
+     * @return Closure(string): bool
+     */
+    private static function absentFrom(array $needles, bool $ignoreCase): Closure
+    {
+        $plain     = [];
+        $caseless  = [];
+        $foldedRaw = [];
+        $foldedNfc = [];
+        foreach ($needles as $needle) {
+            $forms   = self::withNfc($needle);
+            $plain[] = $forms;
+            if ($ignoreCase) {
+                $caseless[]  = self::caselessForm($needle);
+                $foldedRaw[] = self::withNfc(self::simpleFold($needle));
+                $foldedNfc[] = self::withNfc(self::simpleFold($forms[1]));
+            }
+        }
+
+        if ($ignoreCase) {
+            // The case-sensitive search again on the value and needles folded, as given and in NFC,
+            // so that the other case of what it finds is found too.
+            return static function (string $value) use ($plain, $caseless, $foldedRaw, $foldedNfc): bool {
+                $forms = self::withNfc($value);
+
+                return !self::containsAny($forms, $plain)
+                    && !self::containsCaseless(self::caselessForm($value), $caseless)
+                    && !self::containsAny(self::withNfc(self::simpleFold($value)), $foldedRaw)
+                    && !self::containsAny(self::withNfc(self::simpleFold($forms[1])), $foldedNfc);
+            };
+        }
+
+        return static fn (string $value): bool => !self::containsAny(self::withNfc($value), $plain);
     }
 
     /**

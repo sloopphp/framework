@@ -44,6 +44,7 @@ final readonly class Validator
      *
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
      * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
+     *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; or fields required on each other include two with a default
      */
@@ -206,12 +207,13 @@ final readonly class Validator
     {
         $failures = $settled;
         foreach ($this->rules as $field => $rule) {
-            if (!$outcomes[$field]->comparing) {
+            $compare = $outcomes[$field]->compare;
+            if ($compare === null) {
                 continue;
             }
-            foreach ($rule->comparisons() as $comparison) {
+            foreach ($rule->comparisons() as $index => $comparison) {
                 $other = $comparison->other;
-                if ($settled[$other] === [] && !$comparison->passes($outcomes[$field]->comparable, $outcomes[$other]->comparable)) {
+                if ($settled[$other] === [] && !$compare($index, $outcomes[$other])) {
                     $failures[$field][] = new Failure(
                         $comparison->rule,
                         ['other' => $other],
@@ -334,17 +336,23 @@ final readonly class Validator
     }
 
     /**
-     * Refuse a same() / different() that names a field without rules, or a side that cannot be compared.
+     * Refuse a comparison that names its own field, a field without rules, a side that cannot be compared, or a field of another type.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
      * @param  string                                    $field Field the rules are declared on
      * @param  FieldRule<covariant mixed>                $rule  Rules of that field
      * @return void
-     * @throws InvalidArgumentException                  When a comparison names a field that has no rule, or either side's value cannot be compared
+     * @throws InvalidArgumentException                  When a comparison names its own field or a field that has no rule, either side's value cannot be compared,
+     *                                                   or an order or containment comparison names a field of another type
      */
     private static function assertComparisons(array $rules, string $field, FieldRule $rule): void
     {
         foreach ($rule->comparisons() as $comparison) {
+            if ($comparison->other === $field) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with itself in ' . $comparison->rule . '(), which gives the same result for every input.',
+                );
+            }
             if (!$rule->comparesByValue()) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" compares with "' . $comparison->other . '", but no two inputs can share its own value.',
@@ -358,6 +366,11 @@ final readonly class Validator
             if (!$rules[$comparison->other]->comparesByValue()) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" compares with "' . $comparison->other . '", whose value no two inputs can share.',
+                );
+            }
+            if ($comparison->otherRule !== null && !$rules[$comparison->other] instanceof $comparison->otherRule) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with "' . $comparison->other . '" in ' . $comparison->rule . '(), which needs a ' . $comparison->otherType . '() field.',
                 );
             }
         }
