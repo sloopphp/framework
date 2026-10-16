@@ -11,3 +11,5 @@
 .infection.cache/
 *.log
 /.claude/worktrees/
+# Configs .claude/infection-ignore-check.php writes for its runs and removes afterwards.
+/infection-ignore-check.*.json

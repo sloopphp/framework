@@ -61,6 +61,7 @@
             "Sloop\\Tests\\": "tests/"
         },
         "classmap": [
+            ".claude/infection-ignore-check.php",
             ".claude/mutation-baseline.php"
         ]
     },
