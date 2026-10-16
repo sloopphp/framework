@@ -36,7 +36,7 @@ final class MigratorTest extends TestCase
 
     protected function setUp(): void
     {
-        $directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
+        $directory = sys_get_temp_dir() . '/sloop_test_migrator_' . bin2hex(random_bytes(8));
         mkdir($directory);
         $resolved = realpath($directory);
         $this->assertIsString($resolved);
@@ -516,7 +516,7 @@ final class MigratorTest extends TestCase
             '$db->statement(\'CREATE TABLE listed_file (id INTEGER PRIMARY KEY)\');',
         );
 
-        $shadow          = sys_get_temp_dir() . '/sloop_test_migrator_shadow_' . uniqid();
+        $shadow          = sys_get_temp_dir() . '/sloop_test_migrator_shadow_' . bin2hex(random_bytes(8));
         $shadowDirectory = $shadow . '/' . basename($this->directory);
         mkdir($shadowDirectory, 0o777, true);
         file_put_contents(
@@ -547,7 +547,7 @@ final class MigratorTest extends TestCase
 
     public function testRunRefusesAClassAlreadyDeclaredElsewhere(): void
     {
-        $elsewhere = sys_get_temp_dir() . '/sloop_test_migrator_elsewhere_' . uniqid() . '.php';
+        $elsewhere = sys_get_temp_dir() . '/sloop_test_migrator_elsewhere_' . bin2hex(random_bytes(8)) . '.php';
         file_put_contents($elsewhere, '<?php final class MigratorDeclaredElsewhere {}');
         require_once $elsewhere;
         $declaredIn = realpath($elsewhere);

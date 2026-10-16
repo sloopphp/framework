@@ -10,6 +10,7 @@
          keep those out. PHPCS matches a pattern against the whole path, so
          from inside a worktree the pattern matches every file being checked
          and the run ends with "No files were checked". -->
+    <file>.claude/infection-ignore-check.php</file>
     <file>.claude/mutation-baseline.php</file>
 
     <arg name="colors"/>

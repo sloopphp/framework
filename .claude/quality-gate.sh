@@ -25,6 +25,7 @@
 # Usage:
 #   .claude/quality-gate.sh                    # run static checks and tests (a few seconds)
 #   .claude/quality-gate.sh --with-mutation    # also run infection (about 1 minute)
+#   .claude/quality-gate.sh --with-ignore-check # also check the ignore entries of infection.json5 (about 5 minutes)
 #   .claude/quality-gate.sh --with-integration # also run Integration (needs docker)
 #   .claude/quality-gate.sh --all              # run everything
 #
@@ -222,6 +223,7 @@ fi
 
 with_mutation=0
 with_integration=0
+with_ignore_check=0
 
 # Use the leading comment block (line 2 to the first blank line) as the help text.
 usage() {
@@ -232,7 +234,8 @@ for arg in "$@"; do
     case "$arg" in
         --with-mutation) with_mutation=1 ;;
         --with-integration) with_integration=1 ;;
-        --all) with_mutation=1; with_integration=1 ;;
+        --with-ignore-check) with_ignore_check=1 ;;
+        --all) with_mutation=1; with_integration=1; with_ignore_check=1 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $arg" >&2; usage >&2; exit 2 ;;
     esac
@@ -369,6 +372,10 @@ gate_count() {
         'Infection')
             # "2044 mutations were generated:"
             sed -n 's/^\([0-9][0-9]*\) mutations were generated.*/\1/p' "$plain" | tail -n 1
+            ;;
+        'Ignore check')
+            # "Checked 65 ignore entries.", the last line .claude/infection-ignore-check.php prints.
+            sed -n 's/^Checked \([0-9][0-9]*\) ignore entries\..*/\1/p' "$plain" | tail -n 1
             ;;
     esac
 
@@ -536,10 +543,22 @@ if [ "$with_mutation" -eq 1 ]; then
     # The baseline reads the report Infection writes. When Infection stops
     # before writing one, an older report is still on disk, and checking it
     # would report a pass for a run that never happened.
-    if [ "${codes[${#codes[@]} - 1]}" -eq 0 ]; then
+    infection_code="${codes[${#codes[@]} - 1]}"
+    if [ "$infection_code" -eq 0 ]; then
         run_gate 'Mutation baseline' php "$script_dir/mutation-baseline.php"
     else
         printf '\n  (Infection did not finish, so the baseline was not checked)\n'
+    fi
+fi
+
+# The ignore check runs Infection without the ignore entries over the files they
+# name and compares it with a run that has them. When Infection has just run in
+# full, its report is that second run, so only the first is added here.
+if [ "$with_ignore_check" -eq 1 ]; then
+    if [ "$with_mutation" -eq 1 ] && [ "$infection_code" -eq 0 ]; then
+        run_gate 'Ignore check' php "$script_dir/infection-ignore-check.php" --with-report=build/infection/infection.json
+    else
+        run_gate 'Ignore check' php "$script_dir/infection-ignore-check.php"
     fi
 fi
 

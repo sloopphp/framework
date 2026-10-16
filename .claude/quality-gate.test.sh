@@ -95,6 +95,10 @@ check 'infection: mutations generated' 'Infection' '2044' \
     '2044 mutations were generated:
     2031 mutants were killed by Test Framework'
 
+check 'ignore check: entries checked' 'Ignore check' '65' \
+    'Every ignore entry hides at least one mutant, and none that a test kills.
+Checked 65 ignore entries.'
+
 check 'actionlint: files collected' 'actionlint' '1' \
     'verbose: Collected 1 YAML files
 verbose: Linting .github/workflows/ci.yml

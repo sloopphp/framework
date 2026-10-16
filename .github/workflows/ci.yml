@@ -386,3 +386,35 @@ jobs:
 
       - name: Compare escaped mutants against the baseline
         run: php .claude/mutation-baseline.php
+
+  infection-ignore-check:
+    name: Infection Ignore Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: intl, pdo_mysql, pdo_sqlite, bcmath, fileinfo, apcu
+          ini-values: apc.enable_cli=1
+          coverage: pcov
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v6
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-8.5-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php-8.5-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      # Runs Infection twice over the files the ignore entries of infection.json5
+      # name, with and without the entries, and fails when an entry hides a
+      # mutant a test kills or hides nothing. A job of its own so that it runs
+      # beside Mutation Testing rather than after it.
+      - name: Check the ignore entries of infection.json5
+        run: php .claude/infection-ignore-check.php

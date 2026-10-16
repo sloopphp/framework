@@ -8,6 +8,12 @@
             "diff": "-            throw new ContainerException(\n+            new ContainerException("
         },
         {
+            "file": "src/Sloop/Container/Container.php",
+            "method": "Container::resolveBinding",
+            "mutator": "LogicalAndSingleSubExprNegation",
+            "diff": "-        if ($binding['shared'] && \\array_key_exists($id, $this->instances)) {\n+        if (!$binding['shared'] && \\array_key_exists($id, $this->instances)) {"
+        },
+        {
             "file": "src/Sloop/Database/Connection.php",
             "method": "Connection::shouldRetry",
             "mutator": "FalseValue",
@@ -168,6 +174,48 @@
             "method": "MiddlewareDispatcher::handle",
             "mutator": "DecrementInteger",
             "diff": "-        $nextHandler = clone($this, ['index' => $this->index + 1]);\n+        $nextHandler = clone($this, ['index' => $this->index + 0]);"
+        },
+        {
+            "file": "src/Sloop/Http/Request/FormBody.php",
+            "method": "FormBody::isForm",
+            "mutator": "IncrementInteger",
+            "diff": "-        return \\in_array(strtolower(trim(explode(';', $contentType, 2)[0])), self::FORM_TYPES, true);\n+        return \\in_array(strtolower(trim(explode(';', $contentType, 3)[0])), self::FORM_TYPES, true);"
+        },
+        {
+            "file": "src/Sloop/Http/Request/JsonBody.php",
+            "method": "JsonBody::isJson",
+            "mutator": "IncrementInteger",
+            "diff": "-        $mediaType = strtolower(trim(explode(';', $contentType, 2)[0]));\n+        $mediaType = strtolower(trim(explode(';', $contentType, 3)[0]));"
+        },
+        {
+            "file": "src/Sloop/Support/Str.php",
+            "method": "Str::random",
+            "mutator": "DecrementInteger",
+            "diff": "-            $result .= $chars[$randomizer->getInt(0, $charsLen - 1)];\n+            $result .= $chars[$randomizer->getInt(-1, $charsLen - 1)];"
+        },
+        {
+            "file": "src/Sloop/Validation/DecimalLiteral.php",
+            "method": "DecimalLiteral::compare",
+            "mutator": "DecrementInteger",
+            "diff": "-            return $this->negative ? -1 : 1;\n+            return $this->negative ? -2 : 1;"
+        },
+        {
+            "file": "src/Sloop/Validation/DecimalLiteral.php",
+            "method": "DecimalLiteral::compare",
+            "mutator": "IncrementInteger",
+            "diff": "-            return $this->negative ? -1 : 1;\n+            return $this->negative ? -1 : 2;"
+        },
+        {
+            "file": "src/Sloop/Validation/TimeRule.php",
+            "method": "TimeRule::assertTimeOnly",
+            "mutator": "DecrementInteger",
+            "diff": "-        foreach (range(0, 23) as $hour) {\n+        foreach (range(0, 22) as $hour) {"
+        },
+        {
+            "file": "src/Sloop/Validation/TimeRule.php",
+            "method": "TimeRule::assertTimeOnly",
+            "mutator": "IncrementInteger",
+            "diff": "-        foreach (range(0, 23) as $hour) {\n+        foreach (range(0, 24) as $hour) {"
         }
     ]
 }
