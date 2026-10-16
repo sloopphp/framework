@@ -375,7 +375,7 @@ final class FieldComparisonTest extends TestCase
 
         $this->assertSame(
             'Field "end" uses notContainsField(), which needs maxLength() or exactLength() on the same field counted in LengthUnit::Codepoints or LengthUnit::Bytes: '
-            . 'the search takes time in the product of both lengths, and grapheme clusters bound neither.',
+            . 'the search takes time in the product of both lengths, and a length counted in grapheme clusters does not bound it.',
             $e->getMessage(),
         );
     }
@@ -386,6 +386,13 @@ final class FieldComparisonTest extends TestCase
 
         $this->assertSame(['maxLength'], self::endFailures(Rule::string(), $end, ['start' => 'bob', 'end' => 'xbobx']));
         $this->assertSame(['exactLength'], self::endFailures(Rule::string(), Rule::string()->exactLength(3, unit: LengthUnit::Bytes)->notContainsField('start'), ['start' => 'b', 'end' => 'abcd']));
+    }
+
+    public function testNotContainsFieldStillSearchesAValueThatFailedAnotherRule(): void
+    {
+        $end = self::bounded()->minLength(10, unit: LengthUnit::Codepoints)->notContainsField('start');
+
+        $this->assertSame(['minLength', 'notContainsField'], self::endFailures(Rule::string(), $end, ['start' => 'bob', 'end' => 'xbobx']));
     }
 
     public function testOtherComparisonsStillRunAlongsideALengthFailure(): void

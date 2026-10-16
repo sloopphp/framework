@@ -359,7 +359,7 @@ final readonly class Validator
             if ($comparison->bounded && !$rule->boundsLength()) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" uses ' . $comparison->rule . '(), which needs maxLength() or exactLength() on the same field counted in '
-                    . 'LengthUnit::Codepoints or LengthUnit::Bytes: the search takes time in the product of both lengths, and grapheme clusters bound neither.',
+                    . 'LengthUnit::Codepoints or LengthUnit::Bytes: the search takes time in the product of both lengths, and a length counted in grapheme clusters does not bound it.',
                 );
             }
             if (!$rule->comparesByValue()) {
