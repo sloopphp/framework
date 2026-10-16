@@ -25,8 +25,9 @@ use UnexpectedValueException;
  * value, then what it holds, then every other declared rule. An empty value
  * fails required() or yields the declared default; a value of the wrong type
  * or the wrong size stops before what it holds is read. The rules that look
- * at other fields (requiredWith(), requiredIf(), same(), different() and
- * when()) are judged by Validator after every field has gone through these.
+ * at other fields (requiredWith(), requiredIf(), same(), different(), the
+ * other comparisons with another field and when()) are judged by Validator
+ * after every field has gone through these.
  *
  * A subclass that can have a default declares default() with a native type
  * and passes the value on to withDefault().
@@ -99,11 +100,21 @@ abstract class FieldRule
     private array $elementChecks = [];
 
     /**
-     * Declared same() / different() rules.
+     * Declared rules comparing this field with another field.
      *
      * @var list<Comparison>
      */
     private array $comparisons = [];
+
+    /**
+     * How each comparison that is not a same() / different() decides, keyed by its position in $comparisons.
+     *
+     * Each receives this field's typed value and the other field's validated
+     * value, which is null when that field was empty and had no default.
+     *
+     * @var array<int, Closure(T, mixed): bool>
+     */
+    private array $comparisonTests = [];
 
     /**
      * Declared requiredWith() / requiredIf() rules.
@@ -319,9 +330,10 @@ abstract class FieldRule
      * The closure receives this rule with no rules of its own and returns it
      * with the rules to add. It runs once, here, must add at least one rule and
      * may only add rules on the value: required(), default(), label(),
-     * message(), same(), different(), requiredWith(), requiredIf() and when()
-     * are refused. The added rules run
-     * after the field's own, and like those, not when the field is empty.
+     * message(), same(), different() and the other comparisons with another
+     * field, requiredWith(), requiredIf() and when() are refused. The added
+     * rules run after the field's own, and like those, not when the field is
+     * empty.
      *
      * The other field is compared as in requiredIf(). A failure added by
      * another field's when() does not stop the comparison.
@@ -374,12 +386,12 @@ abstract class FieldRule
 
         if ($this->isEmpty($value)) {
             if ($this->required) {
-                return new FieldOutcome(null, null, false, [new Failure('required', [], $this->requiredMessage)]);
+                return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage)]);
             }
 
             return $this->default === null
-                ? new FieldOutcome(null, null, false, [], empty: true)
-                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), false, [], empty: true);
+                ? new FieldOutcome(null, null, [], empty: true)
+                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), [], empty: true);
         }
 
         $typed = $this->coerce($value);
@@ -387,32 +399,34 @@ abstract class FieldRule
             $rule   = $typed->rule ?? $this->typeRule();
             $params = $typed->rule === null ? $this->typeParams() : $typed->params;
 
-            return new FieldOutcome(null, null, false, [new Failure($rule, $params)]);
+            return new FieldOutcome(null, null, [new Failure($rule, $params)]);
         }
 
         // A value of the wrong size stops here, the way one of the wrong type does.
         $failures = $this->run($this->sizeChecks, $typed);
         if ($failures !== []) {
-            return new FieldOutcome(null, null, false, $failures);
+            return new FieldOutcome(null, null, $failures);
         }
 
         $sized = $typed;
 
         [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed);
+        $checked      = $this->run($this->checks, $typed);
+        $lengthFailed = self::failedLength($checked);
 
         return new FieldOutcome(
             $this->output($typed),
             $comparable,
-            true,
             [
                 ...$failures,
-                ...$this->run($this->checks, $typed),
+                ...$checked,
                 ...($failures === [] ? $this->run($this->elementChecks, $elements) : []),
             ],
             // The Validator knows which when() applies only once every field
             // has its value, so it runs them through this, with the typed
             // value kept here; a when() that does not apply never runs.
             runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === []),
+            compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other, $lengthFailed),
         );
     }
 
@@ -516,7 +530,7 @@ abstract class FieldRule
     }
 
     /**
-     * The declared same() / different() rules.
+     * Declared rules comparing this field with another field.
      *
      * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
      *
@@ -734,9 +748,9 @@ abstract class FieldRule
      * Append a rule on the size of the value, which runs before what it holds is read.
      *
      * A failure here ends the field: the value is not handed to the caller and
-     * same() / different() do not run. Use it only where reading what the value
-     * holds is pointless once the rule has failed; anything else belongs in
-     * withCheck().
+     * the comparisons with another field do not run. Use it only where reading
+     * what the value holds is pointless once the rule has failed; anything else
+     * belongs in withCheck().
      *
      * @param  string                                                 $rule    Rule name, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name
@@ -837,6 +851,7 @@ abstract class FieldRule
         $copy->fieldMessage    = null;
         $copy->displayLabel    = null;
         $copy->comparisons     = [];
+        $copy->comparisonTests = [];
         $copy->requiredConditions = [];
         $copy->whens              = [];
         $copy->whenChecks         = [];
@@ -860,7 +875,92 @@ abstract class FieldRule
     }
 
     /**
-     * Append a same() / different() rule.
+     * Append a rule that compares with another field and decides with the given test.
+     *
+     * @param  string                    $rule    Rule name, also the language file key and the declaring method's name
+     * @param  string                    $field   Name of the other field
+     * @param  string|null               $message Message for this rule only
+     * @param  Closure(T, mixed): bool   $test    Whether this field's typed value passes against the other field's validated value (null when that one was empty without a default)
+     * @param  bool                      $bounded Whether the field must bound its length in code points or bytes (see Comparison)
+     * @return static
+     * @throws \InvalidArgumentException When the message template is malformed
+     */
+    protected function withFieldComparison(string $rule, string $field, ?string $message, Closure $test, bool $bounded = false): static
+    {
+        $copy = $this->withComparison(new Comparison($rule, $field, $message, static::class, $this->typeRule(), $bounded));
+
+        $copy->comparisonTests[\count($copy->comparisons) - 1] = $test;
+
+        return $copy;
+    }
+
+    /**
+     * Whether the comparison at the given position holds against the other field.
+     *
+     * @param  int          $index        Position of the comparison
+     * @param  T            $typed        This field's typed value
+     * @param  mixed        $comparable   This field's comparable value
+     * @param  FieldOutcome $other        Outcome of the other field
+     * @param  bool         $lengthFailed Whether the field failed maxLength() or exactLength()
+     * @return bool
+     */
+    private function holds(int $index, mixed $typed, mixed $comparable, FieldOutcome $other, bool $lengthFailed): bool
+    {
+        // A value already refused for its length is not searched: the bound is what keeps the search short.
+        if ($lengthFailed && $this->comparisons[$index]->bounded) {
+            return true;
+        }
+
+        $test = $this->comparisonTests[$index] ?? null;
+
+        return $test === null
+            ? $this->comparisons[$index]->passes($comparable, $other->comparable)
+            : $test($typed, $other->value);
+    }
+
+    /**
+     * Whether the failures include a rule on the length of the value.
+     *
+     * @param  list<Failure> $failures Failures of the declared rules
+     * @return bool
+     */
+    private static function failedLength(array $failures): bool
+    {
+        foreach ($failures as $failure) {
+            if ($failure->rule === 'maxLength' || $failure->rule === 'exactLength') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the field declares maxLength() or exactLength() counted in code points or bytes.
+     *
+     * A length in grapheme clusters bounds nothing: one cluster can hold any
+     * number of code points (a letter followed by zero width joiners).
+     *
+     * @internal Read by Validator for the comparisons that need a bound on the length.
+     *
+     * @return bool
+     */
+    public function boundsLength(): bool
+    {
+        foreach ($this->checks as $check) {
+            $unit = $check->params['unit'] ?? null;
+            if (($check->rule === 'maxLength' || $check->rule === 'exactLength')
+                && ($unit === LengthUnit::Codepoints->value || $unit === LengthUnit::Bytes->value)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Append a rule comparing with another field.
      *
      * @param  Comparison                $comparison Rule to append
      * @return static

@@ -98,6 +98,69 @@ final class TimeRule extends FieldRule
     }
 
     /**
+     * Fail unless the value is later than the validated value of another field.
+     *
+     * The other field is a sibling time() field; any other type is refused
+     * when the Validator is built, as is the field naming itself. Each side
+     * is read with its own format, and what a format does not write is zero:
+     * under `H:i` the value `09:30` is 09:30:00, which is before `09:30:30`.
+     * A range across midnight (22:00 to 02:00) cannot be written with two
+     * times; take it as dateTime() fields.
+     *
+     * The rule is not evaluated when this field is empty, or when the other
+     * field failed a rule of its own; an empty other field is compared by its
+     * default, and passes when it has none.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function afterField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0);
+    }
+
+    /**
+     * Fail unless the value is later than or equal to the validated value of another field.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function afterOrEqualField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0);
+    }
+
+    /**
+     * Fail unless the value is earlier than the validated value of another field.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function beforeField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0);
+    }
+
+    /**
+     * Fail unless the value is earlier than or equal to the validated value of another field.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function beforeOrEqualField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0);
+    }
+
+    /**
      * Use this time when the field is empty.
      *
      * The value is brought down to what the format writes, the same way a
@@ -322,5 +385,26 @@ final class TimeRule extends FieldRule
                 );
             }
         }
+    }
+
+    /**
+     * Append one of the four rules ordering the value against another field.
+     *
+     * @param  string                   $rule    Rule name, also the language file key
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @param  Closure(int): bool       $holds   Whether the result of comparing the value with the other passes
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    private function withOrderTo(string $rule, string $field, ?string $message, Closure $holds): static
+    {
+        // The other side is null only when that field was empty without a default.
+        return $this->withFieldComparison(
+            $rule,
+            $field,
+            $message,
+            static fn (TimeOfDay $own, mixed $other): bool => !$other instanceof TimeOfDay || $holds($own->compareTo($other)),
+        );
     }
 }

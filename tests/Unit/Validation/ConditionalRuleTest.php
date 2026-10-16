@@ -622,6 +622,7 @@ final class ConditionalRuleTest extends TestCase
         yield 'message' => [static fn (StringRule $r): mixed => $r->url()->message('m'), $changed];
         yield 'same' => [static fn (StringRule $r): mixed => $r->url()->same('a'), $changed];
         yield 'different' => [static fn (StringRule $r): mixed => $r->url()->different('a'), $changed];
+        yield 'notContainsField' => [static fn (StringRule $r): mixed => $r->url()->notContainsField('a'), $changed];
         yield 'requiredWith' => [static fn (StringRule $r): mixed => $r->url()->requiredWith('a'), $changed];
         yield 'requiredIf' => [static fn (StringRule $r): mixed => $r->url()->requiredIf('a', 'x'), $changed];
         yield 'when' => [static fn (StringRule $r): mixed => $r->url()->when('a', 'x', static fn (StringRule $s): StringRule => $s->url()), $changed];

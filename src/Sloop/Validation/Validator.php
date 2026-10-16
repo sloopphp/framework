@@ -20,8 +20,9 @@ use InvalidArgumentException;
  * not stop the others; what runs for one field, and in what order, is described
  * on FieldRule. The rules that look at another field run after all fields, so
  * the order of the fields does not matter: first requiredWith() / requiredIf(),
- * each field after the fields it names, then same() / different() and when(),
- * which see the fields as the first step left them.
+ * each field after the fields it names, then same(), different() and the
+ * other comparisons with another field, and when(), which see the fields as
+ * the first step left them.
  */
 final readonly class Validator
 {
@@ -44,6 +45,8 @@ final readonly class Validator
      *
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
      * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
+     *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
+     *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; or fields required on each other include two with a default
      */
@@ -119,7 +122,7 @@ final readonly class Validator
      *
      * The message comes from the rule's `message:`, then the field's
      * message(), then the language file. `{label}` is the field's label, and
-     * `{other}` of same() / different() is the other field's label.
+     * `{other}` of a comparison with another field is that field's label.
      *
      * @param  string            $field   Field name
      * @param  Failure           $failure Failed rule
@@ -192,7 +195,7 @@ final readonly class Validator
     }
 
     /**
-     * Add the failures of same() / different() and of the rules of each when() that applies.
+     * Add the failures of the comparisons with another field and of the rules of each when() that applies.
      *
      * Every field sees the others as judgeRequired() left them, so a failure
      * added here by one field does not change what another field sees.
@@ -206,12 +209,13 @@ final readonly class Validator
     {
         $failures = $settled;
         foreach ($this->rules as $field => $rule) {
-            if (!$outcomes[$field]->comparing) {
+            $compare = $outcomes[$field]->compare;
+            if ($compare === null) {
                 continue;
             }
-            foreach ($rule->comparisons() as $comparison) {
+            foreach ($rule->comparisons() as $index => $comparison) {
                 $other = $comparison->other;
-                if ($settled[$other] === [] && !$comparison->passes($outcomes[$field]->comparable, $outcomes[$other]->comparable)) {
+                if ($settled[$other] === [] && !$compare($index, $outcomes[$other])) {
                     $failures[$field][] = new Failure(
                         $comparison->rule,
                         ['other' => $other],
@@ -334,17 +338,30 @@ final readonly class Validator
     }
 
     /**
-     * Refuse a same() / different() that names a field without rules, or a side that cannot be compared.
+     * Refuse a comparison that names its own field, a field without rules, a side that cannot be compared, or a field of another type.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
      * @param  string                                    $field Field the rules are declared on
      * @param  FieldRule<covariant mixed>                $rule  Rules of that field
      * @return void
-     * @throws InvalidArgumentException                  When a comparison names a field that has no rule, or either side's value cannot be compared
+     * @throws InvalidArgumentException                  When a comparison names its own field or a field that has no rule, either side's value cannot be compared,
+     *                                                   an order or containment comparison names a field of another type, or notContainsField()
+     *                                                   is declared without a length bound in code points or bytes
      */
     private static function assertComparisons(array $rules, string $field, FieldRule $rule): void
     {
         foreach ($rule->comparisons() as $comparison) {
+            if ($comparison->other === $field) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with itself in ' . $comparison->rule . '(), which gives the same result for every input.',
+                );
+            }
+            if ($comparison->bounded && !$rule->boundsLength()) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" uses ' . $comparison->rule . '(), which needs maxLength() or exactLength() on the same field counted in '
+                    . 'LengthUnit::Codepoints or LengthUnit::Bytes: the search takes time in the product of both lengths, and a length counted in grapheme clusters does not bound it.',
+                );
+            }
             if (!$rule->comparesByValue()) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" compares with "' . $comparison->other . '", but no two inputs can share its own value.',
@@ -353,6 +370,11 @@ final readonly class Validator
             if (!\array_key_exists($comparison->other, $rules)) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" compares with "' . $comparison->other . '", which has no rule.',
+                );
+            }
+            if ($comparison->otherRule !== null && !$rules[$comparison->other] instanceof $comparison->otherRule) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with "' . $comparison->other . '" in ' . $comparison->rule . '(), which needs a ' . $comparison->otherType . '() field.',
                 );
             }
             if (!$rules[$comparison->other]->comparesByValue()) {

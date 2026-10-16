@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -76,6 +77,70 @@ abstract class TemporalRule extends FieldRule
     public function afterOrEqual(DateTimeInterface $limit, ?string $message = null): static
     {
         return $this->withComparisonTo('afterOrEqual', $limit, $message, true);
+    }
+
+    /**
+     * Fail unless the value is later than the validated value of another field.
+     *
+     * The other field is a sibling with the same factory: a date() field
+     * names another date() field and a dateTime() field another dateTime()
+     * field; anything else is refused when the Validator is built, as is the
+     * field naming itself. A dateTime() is ordered by the instant it names,
+     * whatever offset each input was written with. Each side is read with its
+     * own format, and what a format does not write is the start of it: under
+     * `Y-m` the value `2026-03` is 1 March, which is before `2026-03-15`.
+     *
+     * The rule is not evaluated when this field is empty, or when the other
+     * field failed a rule of its own; an empty other field is compared by its
+     * default, and passes when it has none.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function afterField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0);
+    }
+
+    /**
+     * Fail unless the value is later than or equal to the validated value of another field.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function afterOrEqualField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0);
+    }
+
+    /**
+     * Fail unless the value is earlier than the validated value of another field.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function beforeField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0);
+    }
+
+    /**
+     * Fail unless the value is earlier than or equal to the validated value of another field.
+     *
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function beforeOrEqualField(string $field, ?string $message = null): static
+    {
+        return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0);
     }
 
     /**
@@ -205,6 +270,27 @@ abstract class TemporalRule extends FieldRule
                 return $strictly || ($orEqual && $ordering === 0);
             },
             $message,
+        );
+    }
+
+    /**
+     * Append one of the four rules ordering the value against another field.
+     *
+     * @param  string                   $rule    Rule name, also the language file key
+     * @param  string                   $field   Name of the other field
+     * @param  string|null              $message Message for this rule only
+     * @param  Closure(int): bool       $holds   Whether the spaceship result of the value against the other passes
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    private function withOrderTo(string $rule, string $field, ?string $message, Closure $holds): static
+    {
+        // The other side is null only when that field was empty without a default.
+        return $this->withFieldComparison(
+            $rule,
+            $field,
+            $message,
+            static fn (DateTimeImmutable $own, mixed $other): bool => !$other instanceof DateTimeImmutable || $holds($own <=> $other),
         );
     }
 }

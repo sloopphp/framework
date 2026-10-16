@@ -11,8 +11,9 @@ namespace Sloop\Validation;
  * value did not have the declared type), and it doubles as the key of the
  * default message in the language file. Parameter names match the
  * placeholders of that message; `{label}` is not among them, and the
- * placeholder of same() / different() holds the other field's name where the
- * message shows its label.
+ * placeholder of a comparison with another field (same(), different(),
+ * afterField() and the like) holds the other field's name where the message
+ * shows its label.
  */
 final readonly class ValidationError
 {
