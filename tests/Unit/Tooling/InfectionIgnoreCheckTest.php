@@ -33,6 +33,13 @@ final class InfectionIgnoreCheckTest extends TestCase
 
                 return $closure($limit);
             }
+
+            #[Attr]
+            // A comment between the attribute and the modifiers.
+            final
+            public function attributed(): void
+            {
+            }
         }
         PHP;
 
@@ -111,7 +118,7 @@ final class InfectionIgnoreCheckTest extends TestCase
         $this->assertSame(['Plus' => ['ignore' => ['App\Sample::plain']]], $with['mutators']);
     }
 
-    public function testAMethodSpansItsSignatureAndBodyButNotThePropertiesOrAClosureName(): void
+    public function testAMethodSpansItsAttributesSignatureAndBodyButNotThePropertiesOrAClosureName(): void
     {
         $file = $this->rootDir . '/src/App/Sample.php';
 
@@ -120,6 +127,9 @@ final class InfectionIgnoreCheckTest extends TestCase
         $this->assertSame('plain', MethodSpans::methodAt($file, 11), 'body');
         $this->assertSame('withDefault', MethodSpans::methodAt($file, 15), 'parameter default in a multi-line signature');
         $this->assertSame('withDefault', MethodSpans::methodAt($file, 17), 'arrow function inside the method');
+        $this->assertNull(MethodSpans::methodAt($file, 21), 'line between two methods');
+        $this->assertSame('attributed', MethodSpans::methodAt($file, 22), 'attribute line');
+        $this->assertSame('attributed', MethodSpans::methodAt($file, 24), 'modifier on its own line');
     }
 
     public function testAHiddenMutantThatATestKillsIsReportedUnderItsEntry(): void

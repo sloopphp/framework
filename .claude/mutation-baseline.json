@@ -146,18 +146,6 @@
             "diff": "-        return \\function_exists('apcu_enabled') && apcu_enabled();\n+        return \\function_exists('apcu_enabled') || apcu_enabled();"
         },
         {
-            "file": "src/Sloop/Foundation/Application.php",
-            "method": "Application::createServerRequestFromGlobals",
-            "mutator": "NotIdentical",
-            "diff": "-        if ($rawBody !== false && $rawBody !== '') {\n+        if ($rawBody !== false && $rawBody === '') {"
-        },
-        {
-            "file": "src/Sloop/Foundation/Application.php",
-            "method": "Application::createServerRequestFromGlobals",
-            "mutator": "NotIdentical",
-            "diff": "-        if ($rawBody !== false && $rawBody !== '') {\n+        if ($rawBody === false && $rawBody !== '') {"
-        },
-        {
             "file": "src/Sloop/Foundation/Path.php",
             "method": "Path::join",
             "mutator": "Concat",

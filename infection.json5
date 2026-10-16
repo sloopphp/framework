@@ -177,13 +177,7 @@
             // written to the log.
             "ignore": [
                 "Sloop\\Database\\Connection::shouldMeasureElapsed",
-                // Application::createServerRequestFromGlobals::684 attaches the raw
-                // body read from php://input, which a PHPUnit process cannot fill:
-                // it is always '' there, so changing the && gives the same
-                // request. (NotIdentical on the same line is not ignored: turning
-                // `!== ''` into `=== ''` is killed in some runs and not in others,
-                // so an ignore would hide a kill. Both of its mutants are in
-                // .claude/mutation-baseline.json instead.)
+                // Application::createServerRequestFromGlobals::684: see NotIdentical.
                 "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
             ]
         },
@@ -195,18 +189,24 @@
         },
         "NotIdentical": {
             // StringRule::email::413: see IncrementInteger (needs a live DNS lookup).
+            // Application::createServerRequestFromGlobals::684 attaches the raw body
+            // read from php://input, which a PHPUnit process cannot fill: it is
+            // always '' there, so every change to the condition gives the same
+            // request. No mutant on the line is killed, so the pin hides nothing
+            // a test detects.
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::413"
+                "Sloop\\Validation\\StringRule::email::413",
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
             ]
         },
         "LogicalAndNegation": {
-            // Application::createServerRequestFromGlobals::684: see LogicalAnd.
+            // Application::createServerRequestFromGlobals::684: see NotIdentical.
             "ignore": [
                 "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
             ]
         },
         "LogicalAndAllSubExprNegation": {
-            // Application::createServerRequestFromGlobals::684: see LogicalAnd.
+            // Application::createServerRequestFromGlobals::684: see NotIdentical.
             "ignore": [
                 "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
             ]
@@ -242,10 +242,7 @@
             // those are the tests of the rules that do not override the
             // method, for which private and protected behave the same. Made
             // private by hand, it fails DecimalRuleTest, so the full suite
-            // does detect it. (output and comparable used to be listed for the
-            // same reason; the tests covering them now kill the mutant, so
-            // .claude/infection-ignore-check.php reported them and they were
-            // dropped.)
+            // does detect it.
             "ignore": [
                 "Sloop\\Validation\\FieldRule::typeParams"
             ]

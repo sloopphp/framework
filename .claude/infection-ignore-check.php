@@ -219,7 +219,9 @@ final readonly class IgnoreEntries
  *
  * Infection gives a mutant the method of the node it mutates, which includes the
  * signature: a parameter default or a visibility keyword belongs to its method.
- * The span therefore starts at the `function` keyword, not at the body. (The
+ * The span therefore starts where the declaration does, at its first attribute
+ * or modifier, as the start line of the parser's ClassMethod node does, not at
+ * the body. (The
  * ScopeIndex of mutation-baseline.php starts at the body and is left as it is,
  * since its names are part of the baseline's identities.)
  */
@@ -231,6 +233,13 @@ final class MethodSpans
      * @var array<string, list<array{int, int, string}>>
      */
     private static array $cache = [];
+
+    /**
+     * Tokens that can stand between a method's attributes and its `function` keyword.
+     *
+     * @var list<int>
+     */
+    private const array MODIFIERS = [\T_PUBLIC, \T_PROTECTED, \T_PRIVATE, \T_STATIC, \T_ABSTRACT, \T_FINAL];
 
     /**
      * The name of the innermost named function that spans the line, or null.
@@ -280,11 +289,65 @@ final class MethodSpans
             $open = self::bodyOpen($tokens, $nameAt);
             $end  = $open === null ? null : self::closingLine($tokens, $open);
             if ($end !== null) {
-                $spans[] = [$token->line, $end, $tokens[$nameAt]->text];
+                $spans[] = [self::declarationStart($tokens, $index), $end, $tokens[$nameAt]->text];
             }
         }
 
         return $spans;
+    }
+
+    /**
+     * Line of the first attribute or modifier of the declaration whose `function` keyword is at $function.
+     *
+     * @param  list<\PhpToken> $tokens   Tokens of the file
+     * @param  int             $function Index of the `function` keyword
+     * @return int
+     */
+    private static function declarationStart(array $tokens, int $function): int
+    {
+        $start = $tokens[$function]->line;
+        $index = $function - 1;
+        while ($index >= 0) {
+            $token = $tokens[$index];
+            if ($token->isIgnorable()) {
+                $index--;
+            } elseif ($token->is(self::MODIFIERS)) {
+                $start = $token->line;
+                $index--;
+            } elseif ($token->text === ']' && ($open = self::attributeOpen($tokens, $index)) !== null) {
+                $start = $tokens[$open]->line;
+                $index = $open - 1;
+            } else {
+                break;
+            }
+        }
+
+        return $start;
+    }
+
+    /**
+     * Index of the "#[" that opens the attribute group closed by the "]" at $close.
+     *
+     * @param  list<\PhpToken> $tokens Tokens of the file
+     * @param  int             $close  Index of a closing bracket
+     * @return int|null        Null when the bracket closes something other than an attribute group
+     */
+    private static function attributeOpen(array $tokens, int $close): ?int
+    {
+        $depth = 0;
+        for ($index = $close; $index >= 0; $index--) {
+            $token  = $tokens[$index];
+            $depth += match (true) {
+                $token->text === ']'                         => 1,
+                $token->text === '[', $token->is(\T_ATTRIBUTE) => -1,
+                default                                      => 0,
+            };
+            if ($depth === 0) {
+                return $token->is(\T_ATTRIBUTE) ? $index : null;
+            }
+        }
+
+        return null;
     }
 
     /**
