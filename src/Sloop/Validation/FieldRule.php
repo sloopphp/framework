@@ -25,8 +25,9 @@ use UnexpectedValueException;
  * value, then what it holds, then every other declared rule. An empty value
  * fails required() or yields the declared default; a value of the wrong type
  * or the wrong size stops before what it holds is read. The rules that look
- * at other fields (requiredWith(), requiredIf(), same(), different() and
- * when()) are judged by Validator after every field has gone through these.
+ * at other fields (requiredWith(), requiredIf(), same(), different(), the
+ * other comparisons with another field and when()) are judged by Validator
+ * after every field has gone through these.
  *
  * A subclass that can have a default declares default() with a native type
  * and passes the value on to withDefault().
@@ -527,7 +528,7 @@ abstract class FieldRule
     }
 
     /**
-     * The declared same() / different() rules.
+     * Declared rules comparing this field with another field.
      *
      * @internal Read by Validator, which evaluates them once every field has its value, and by ListRule, which refuses them.
      *
@@ -745,9 +746,9 @@ abstract class FieldRule
      * Append a rule on the size of the value, which runs before what it holds is read.
      *
      * A failure here ends the field: the value is not handed to the caller and
-     * same() / different() do not run. Use it only where reading what the value
-     * holds is pointless once the rule has failed; anything else belongs in
-     * withCheck().
+     * the comparisons with another field do not run. Use it only where reading
+     * what the value holds is pointless once the rule has failed; anything else
+     * belongs in withCheck().
      *
      * @param  string                                                 $rule    Rule name, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name

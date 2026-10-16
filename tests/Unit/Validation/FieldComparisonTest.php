@@ -140,6 +140,24 @@ final class FieldComparisonTest extends TestCase
         $this->assertSame(['afterOrEqualField'], $failures);
     }
 
+    public function testTimesWritingLessComparedWithThePartsTheirFormatLeavesOut(): void
+    {
+        // '09:30' under H:i is 09:30:00, which comes before 09:30:30.
+        $start = Rule::time('H:i:s');
+
+        $this->assertSame(['afterField'], self::endFailures($start, Rule::time('H:i')->afterField('start'), ['start' => '09:30:30', 'end' => '09:30']));
+        $this->assertSame([], self::endFailures($start, Rule::time('H:i')->beforeField('start'), ['start' => '09:30:30', 'end' => '09:30']));
+    }
+
+    public function testOrderComparisonsAreRefusedInsideWhen(): void
+    {
+        $changed = 'when() can only add rules on the value; the closure changed something else about the field.';
+        $date    = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::date()->when('kind', 'x', static fn (DateRule $r): DateRule => $r->before(new DateTimeImmutable('2030-01-01'))->afterField('start')));
+        $time    = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::time()->when('kind', 'x', static fn (TimeRule $r): TimeRule => $r->after(TimeOfDay::of(9, 0))->beforeOrEqualField('start')));
+
+        $this->assertSame([$changed, $changed], [$date->getMessage(), $time->getMessage()]);
+    }
+
     public function testFailureNamesTheOtherFieldByItsLabel(): void
     {
         $result = new Validator([
@@ -374,6 +392,7 @@ final class FieldComparisonTest extends TestCase
         yield 'date against string'     => [Rule::date()->beforeOrEqualField('start'), Rule::string(), 'beforeOrEqualField(), which needs a date() field'];
         yield 'string against int'      => [Rule::string()->notContainsField('start'), Rule::int(), 'notContainsField(), which needs a string() field'];
         yield 'string against date'     => [Rule::string()->notContainsField('start'), Rule::date(), 'notContainsField(), which needs a string() field'];
+        yield 'date against file'       => [Rule::date()->afterField('start'), Rule::file(), 'afterField(), which needs a date() field'];
     }
 
     /**

@@ -20,8 +20,9 @@ use InvalidArgumentException;
  * not stop the others; what runs for one field, and in what order, is described
  * on FieldRule. The rules that look at another field run after all fields, so
  * the order of the fields does not matter: first requiredWith() / requiredIf(),
- * each field after the fields it names, then same() / different() and when(),
- * which see the fields as the first step left them.
+ * each field after the fields it names, then same(), different() and the
+ * other comparisons with another field, and when(), which see the fields as
+ * the first step left them.
  */
 final readonly class Validator
 {
@@ -120,7 +121,7 @@ final readonly class Validator
      *
      * The message comes from the rule's `message:`, then the field's
      * message(), then the language file. `{label}` is the field's label, and
-     * `{other}` of same() / different() is the other field's label.
+     * `{other}` of a comparison with another field is that field's label.
      *
      * @param  string            $field   Field name
      * @param  Failure           $failure Failed rule
@@ -193,7 +194,7 @@ final readonly class Validator
     }
 
     /**
-     * Add the failures of same() / different() and of the rules of each when() that applies.
+     * Add the failures of the comparisons with another field and of the rules of each when() that applies.
      *
      * Every field sees the others as judgeRequired() left them, so a failure
      * added here by one field does not change what another field sees.
@@ -363,14 +364,14 @@ final readonly class Validator
                     'Field "' . $field . '" compares with "' . $comparison->other . '", which has no rule.',
                 );
             }
-            if (!$rules[$comparison->other]->comparesByValue()) {
-                throw new InvalidArgumentException(
-                    'Field "' . $field . '" compares with "' . $comparison->other . '", whose value no two inputs can share.',
-                );
-            }
             if ($comparison->otherRule !== null && !$rules[$comparison->other] instanceof $comparison->otherRule) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" compares with "' . $comparison->other . '" in ' . $comparison->rule . '(), which needs a ' . $comparison->otherType . '() field.',
+                );
+            }
+            if (!$rules[$comparison->other]->comparesByValue()) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" compares with "' . $comparison->other . '", whose value no two inputs can share.',
                 );
             }
         }

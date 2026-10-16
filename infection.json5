@@ -183,7 +183,7 @@
             "ignore": [
                 // DecimalLiteral::compare::79: see IncrementInteger.
                 "Sloop\\Validation\\DecimalLiteral::compare::79",
-                // StringRule::email::392: see IncrementInteger.
+                // StringRule::email::405: see IncrementInteger.
                 "Sloop\\Validation\\StringRule::email::405",
                 "Sloop\\Support\\Str::random",
                 // Same millisecond-conversion literal as IncrementInteger above,
@@ -234,13 +234,13 @@
             ]
         },
         "Plus": {
-            // StringRule::email::392: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::405: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::405"
             ]
         },
         "NotIdentical": {
-            // StringRule::email::392: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::405: see IncrementInteger (needs a live DNS lookup).
             // Application::createServerRequestFromGlobals::684 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
@@ -264,7 +264,7 @@
             ]
         },
         "UnwrapSubstr": {
-            // StringRule::email::392: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::405: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::405"
             ]

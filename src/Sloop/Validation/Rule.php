@@ -170,7 +170,7 @@ final class Rule
      * @param  FieldRule<covariant mixed>                                                $element       Rules every element must satisfy
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
      * @return ListRule
-     * @throws \InvalidArgumentException                                                 When the element declares same() or different()
+     * @throws \InvalidArgumentException                                                 When the element declares same(), different() or another comparison with another field
      */
     public static function list(FieldRule $element, ArraySanitize|Closure ...$sanitizers): ListRule
     {
