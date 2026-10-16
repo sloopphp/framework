@@ -30,7 +30,7 @@ final class MigratorTest extends MigrationIntegrationTestCase
     {
         parent::setUp();
 
-        $this->directory = sys_get_temp_dir() . '/sloop_test_migrator_' . uniqid();
+        $this->directory = sys_get_temp_dir() . '/sloop_test_migrator_' . bin2hex(random_bytes(8));
         mkdir($this->directory);
         $this->connection->setMigrationsTable(self::HISTORY_TABLE);
     }

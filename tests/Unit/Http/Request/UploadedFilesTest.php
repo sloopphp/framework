@@ -19,7 +19,7 @@ final class UploadedFilesTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tmpDir = sys_get_temp_dir() . '/sloop_uploads_' . uniqid();
+        $this->tmpDir = sys_get_temp_dir() . '/sloop_uploads_' . bin2hex(random_bytes(8));
         mkdir($this->tmpDir);
     }
 

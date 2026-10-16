@@ -87,7 +87,10 @@ final class ApplicationTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tmpDir = sys_get_temp_dir() . '/sloop_app_test_' . uniqid();
+        // uniqid() repeats across processes that start in the same microsecond, as
+        // Infection's parallel runs do; a shared directory let one test read
+        // another's routes file.
+        $this->tmpDir = sys_get_temp_dir() . '/sloop_app_test_' . bin2hex(random_bytes(8));
         mkdir($this->tmpDir);
         mkdir($this->tmpDir . '/config');
         mkdir($this->tmpDir . '/routes');

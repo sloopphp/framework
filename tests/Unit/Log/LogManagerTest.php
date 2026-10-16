@@ -173,7 +173,7 @@ final class LogManagerTest extends TestCase
 
     public function testDailyDriverCreatesRotatingFileHandler(): void
     {
-        $path    = sys_get_temp_dir() . '/sloop_test_' . uniqid() . '.log';
+        $path    = sys_get_temp_dir() . '/sloop_test_' . bin2hex(random_bytes(8)) . '.log';
         $manager = new LogManager(channels: [
             'app' => [
                 'driver' => 'daily',
@@ -192,7 +192,7 @@ final class LogManagerTest extends TestCase
 
     public function testDailyDriverDefaultsToUnlimitedRetention(): void
     {
-        $path    = sys_get_temp_dir() . '/sloop_test_' . uniqid() . '.log';
+        $path    = sys_get_temp_dir() . '/sloop_test_' . bin2hex(random_bytes(8)) . '.log';
         $manager = new LogManager(channels: [
             'app' => [
                 'driver' => 'daily',
@@ -716,7 +716,7 @@ final class LogManagerTest extends TestCase
 
     public function testDailyDriverDefaultsToDebugLevelWhenLevelKeyOmitted(): void
     {
-        $path    = sys_get_temp_dir() . '/sloop_test_' . uniqid() . '.log';
+        $path    = sys_get_temp_dir() . '/sloop_test_' . bin2hex(random_bytes(8)) . '.log';
         $manager = new LogManager(channels: [
             'app' => [
                 'driver' => 'daily',
