@@ -24,6 +24,8 @@ final readonly class Comparison
      * @param string|null                                   $message   Message given with `message:`, if any
      * @param class-string<FieldRule<covariant mixed>>|null $otherRule Rule class the other field must have; null when any field compares
      * @param string|null                                   $otherType Factory name of that class, for the message refusing another type
+     * @param bool                                          $bounded   Whether the field must bound its length in code points or bytes, and the comparison is
+     *                                                                 skipped when the field fails a length rule; true where the cost grows with the product of both lengths
      */
     public function __construct(
         public string $rule,
@@ -31,6 +33,7 @@ final readonly class Comparison
         public ?string $message,
         public ?string $otherRule = null,
         public ?string $otherType = null,
+        public bool $bounded = false,
     ) {
     }
 

@@ -233,6 +233,13 @@ final class StringRule extends FieldRule
      * and which would make normalizing it slow; the value itself is checked
      * for such a run first, as for notContains().
      *
+     * The search takes time in the product of both lengths, so the field
+     * must also declare maxLength() or exactLength() counted in
+     * LengthUnit::Codepoints or LengthUnit::Bytes (grapheme clusters bound
+     * nothing: one can hold any number of code points), or the Validator
+     * refuses it when it is built. A value that fails maxLength() or
+     * exactLength() is not searched.
+     *
      * @param  string                   $field      Name of the other field
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
      * @param  string|null              $message    Message for this rule only
@@ -249,6 +256,7 @@ final class StringRule extends FieldRule
             // normalizing would take quadratic time on is refused unread rather than searched.
             static fn (string $own, mixed $other): bool => !\is_string($other) || $other === ''
                 || (CombiningRun::allows($other) && self::absentFrom([$other], $ignoreCase)($own)),
+            true,
         );
     }
 

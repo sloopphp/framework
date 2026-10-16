@@ -14,8 +14,10 @@ use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\DateRule;
 use Sloop\Validation\DateTimeRule;
 use Sloop\Validation\FieldRule;
+use Sloop\Validation\LengthUnit;
 use Sloop\Validation\Rule;
 use Sloop\Validation\Sanitize;
+use Sloop\Validation\StringRule;
 use Sloop\Validation\TimeRule;
 use Sloop\Validation\ValidationError;
 use Sloop\Validation\ValidationMessages;
@@ -49,6 +51,14 @@ final class FieldComparisonTest extends TestCase
         $errors = new Validator(['start' => $start, 'end' => $end])->validate($data)->errors();
 
         return array_map(static fn (ValidationError $e): string => $e->rule, $errors['end'] ?? []);
+    }
+
+    /**
+     * A string rule with the bound on its length that notContainsField() requires.
+     */
+    private static function bounded(): StringRule
+    {
+        return Rule::string()->maxLength(1000, unit: LengthUnit::Codepoints);
     }
 
     /**
@@ -226,7 +236,7 @@ final class FieldComparisonTest extends TestCase
     {
         $this->assertSame([], self::endFailures(Rule::date(), Rule::date()->afterField('start'), ['end' => '2026-01-01']));
         $this->assertSame([], self::endFailures(Rule::time(), Rule::time()->beforeField('start'), ['end' => '09:00']));
-        $this->assertSame([], self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['end' => 'x']));
+        $this->assertSame([], self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['end' => 'x']));
     }
 
     public function testComparisonUsesTheDefaultOfAnEmptyOtherField(): void
@@ -236,7 +246,7 @@ final class FieldComparisonTest extends TestCase
         $this->assertSame(['afterField'], self::endFailures($start, Rule::date()->afterField('start'), ['end' => '2026-01-01']));
         $this->assertSame([], self::endFailures($start, Rule::date()->afterField('start'), ['end' => '2026-01-03']));
         $this->assertSame(['beforeField'], self::endFailures(Rule::time()->default(TimeOfDay::of(9, 0)), Rule::time()->beforeField('start'), ['end' => '10:00']));
-        $this->assertSame(['notContainsField'], self::endFailures(Rule::string()->default('adm'), Rule::string()->notContainsField('start'), ['end' => 'xadmx']));
+        $this->assertSame(['notContainsField'], self::endFailures(Rule::string()->default('adm'), self::bounded()->notContainsField('start'), ['end' => 'xadmx']));
     }
 
     public function testComparisonIsSkippedWhenThisFieldIsEmpty(): void
@@ -277,7 +287,7 @@ final class FieldComparisonTest extends TestCase
     {
         $validator = new Validator([
             'username' => Rule::string()->label('User name'),
-            'password' => Rule::string()->notContainsField('username'),
+            'password' => self::bounded()->notContainsField('username'),
         ]);
 
         self::assertErrorsSame(
@@ -290,14 +300,14 @@ final class FieldComparisonTest extends TestCase
 
     public function testNotContainsFieldComparesWithTheSanitizedValueOfTheOtherField(): void
     {
-        $failures = self::endFailures(Rule::string(Sanitize::Trim), Rule::string()->notContainsField('start'), ['start' => '  bob  ', 'end' => 'xbobx']);
+        $failures = self::endFailures(Rule::string(Sanitize::Trim), self::bounded()->notContainsField('start'), ['start' => '  bob  ', 'end' => 'xbobx']);
 
         $this->assertSame(['notContainsField'], $failures);
     }
 
     public function testNotContainsFieldIgnoresCaseWhenAsked(): void
     {
-        $failures = self::endFailures(Rule::string(), Rule::string()->notContainsField('start', ignoreCase: true), ['start' => 'alice', 'end' => 'xALICEx']);
+        $failures = self::endFailures(Rule::string(), self::bounded()->notContainsField('start', ignoreCase: true), ['start' => 'alice', 'end' => 'xALICEx']);
 
         $this->assertSame(['notContainsField'], $failures);
     }
@@ -305,36 +315,91 @@ final class FieldComparisonTest extends TestCase
     public function testNotContainsFieldMatchesTheWayNotContainsDoes(): void
     {
         // A decomposed é holds the precomposed one, and a combining mark after it does not hide it.
-        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['start' => "r\u{E9}sum\u{E9}", 'end' => "re\u{301}sume\u{301}"]));
-        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['start' => 'admin', 'end' => "admin\u{303}"]));
-        $this->assertSame([], self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['start' => 'e', 'end' => "\u{E9}"]));
+        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['start' => "r\u{E9}sum\u{E9}", 'end' => "re\u{301}sume\u{301}"]));
+        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['start' => 'admin', 'end' => "admin\u{303}"]));
+        $this->assertSame([], self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['start' => 'e', 'end' => "\u{E9}"]));
     }
 
     public function testNotContainsFieldPassesWhenTheOtherFieldDefaultsToAnEmptyString(): void
     {
-        $this->assertSame([], self::endFailures(Rule::string()->default(''), Rule::string()->notContainsField('start'), ['end' => 'x']));
+        $this->assertSame([], self::endFailures(Rule::string()->default(''), self::bounded()->notContainsField('start'), ['end' => 'x']));
     }
 
     public function testNotContainsFieldFailsUnsearchedWhenTheOtherFieldHasALongRunOfCombiningMarks(): void
     {
         $longest = 'a' . str_repeat("\u{301}", 30);
 
-        $this->assertSame([], self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['start' => $longest, 'end' => 'x']));
-        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['start' => $longest . "\u{301}", 'end' => 'x']));
+        $this->assertSame([], self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['start' => $longest, 'end' => 'x']));
+        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['start' => $longest . "\u{301}", 'end' => 'x']));
     }
 
     public function testNotContainsFieldChecksItsOwnValueForALongRunOfCombiningMarks(): void
     {
-        $failures = self::endFailures(Rule::string(), Rule::string()->notContainsField('start'), ['start' => 'b', 'end' => 'a' . str_repeat("\u{301}", 31)]);
+        $failures = self::endFailures(Rule::string(), self::bounded()->notContainsField('start'), ['start' => 'b', 'end' => 'a' . str_repeat("\u{301}", 31)]);
 
         $this->assertSame(['combiningRun'], $failures);
+    }
+
+    /**
+     * @return iterable<string, array{StringRule}>
+     */
+    public static function boundsOnTheLength(): iterable
+    {
+        yield 'maxLength in code points' => [Rule::string()->maxLength(64, unit: LengthUnit::Codepoints)];
+        yield 'maxLength in bytes'       => [Rule::string()->maxLength(64, unit: LengthUnit::Bytes)];
+        yield 'exactLength in bytes'     => [Rule::string()->exactLength(5, unit: LengthUnit::Bytes)];
+    }
+
+    #[DataProvider('boundsOnTheLength')]
+    public function testNotContainsFieldAcceptsALengthBoundInCodePointsOrBytes(StringRule $rule): void
+    {
+        $this->assertSame(['notContainsField'], self::endFailures(Rule::string(), $rule->notContainsField('start'), ['start' => 'bob', 'end' => 'xbobx']));
+    }
+
+    /**
+     * @return iterable<string, array{StringRule}>
+     */
+    public static function noBoundOnTheLength(): iterable
+    {
+        yield 'no length rule'           => [Rule::string()];
+        yield 'maxLength in graphemes'   => [Rule::string()->maxLength(64)];
+        yield 'exactLength in graphemes' => [Rule::string()->exactLength(5)];
+        yield 'minLength in bytes only'  => [Rule::string()->minLength(1, unit: LengthUnit::Bytes)];
+        yield 'bound only inside when()' => [Rule::string()->when('kind', 'x', static fn (StringRule $r): StringRule => $r->maxLength(64, unit: LengthUnit::Bytes))];
+    }
+
+    #[DataProvider('noBoundOnTheLength')]
+    public function testNotContainsFieldWithoutALengthBoundInCodePointsOrBytesIsRefused(StringRule $rule): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => new Validator(['start' => Rule::string(), 'kind' => Rule::string(), 'end' => $rule->notContainsField('start')]));
+
+        $this->assertSame(
+            'Field "end" uses notContainsField(), which needs maxLength() or exactLength() on the same field counted in LengthUnit::Codepoints or LengthUnit::Bytes: '
+            . 'the search takes time in the product of both lengths, and grapheme clusters bound neither.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testNotContainsFieldDoesNotSearchAValueThatFailedItsLength(): void
+    {
+        $end = Rule::string()->maxLength(4, unit: LengthUnit::Codepoints)->notContainsField('start');
+
+        $this->assertSame(['maxLength'], self::endFailures(Rule::string(), $end, ['start' => 'bob', 'end' => 'xbobx']));
+        $this->assertSame(['exactLength'], self::endFailures(Rule::string(), Rule::string()->exactLength(3, unit: LengthUnit::Bytes)->notContainsField('start'), ['start' => 'b', 'end' => 'abcd']));
+    }
+
+    public function testOtherComparisonsStillRunAlongsideALengthFailure(): void
+    {
+        $end = Rule::string()->maxLength(1, unit: LengthUnit::Codepoints)->same('start');
+
+        $this->assertSame(['maxLength', 'same'], self::endFailures(Rule::string(), $end, ['start' => 'a', 'end' => 'bc']));
     }
 
     public function testNotContainsFieldMessageArgumentReplacesTheDefault(): void
     {
         $errors = new Validator([
             'start' => Rule::string(),
-            'end'   => Rule::string()->notContainsField('start', message: 'no {other}'),
+            'end'   => self::bounded()->notContainsField('start', message: 'no {other}'),
         ])->validate(['start' => 'a', 'end' => 'a'])->errors();
 
         $this->assertSame('no start', $errors['end'][0]->message);
@@ -355,7 +420,7 @@ final class FieldComparisonTest extends TestCase
         yield 'afterOrEqualField'  => [static fn (): FieldRule => Rule::dateTime()->afterOrEqualField('v'), 'afterOrEqualField'];
         yield 'beforeField'        => [static fn (): FieldRule => Rule::time()->beforeField('v'), 'beforeField'];
         yield 'beforeOrEqualField' => [static fn (): FieldRule => Rule::date()->beforeOrEqualField('v'), 'beforeOrEqualField'];
-        yield 'notContainsField'   => [static fn (): FieldRule => Rule::string()->notContainsField('v'), 'notContainsField'];
+        yield 'notContainsField'   => [static fn (): FieldRule => self::bounded()->notContainsField('v'), 'notContainsField'];
     }
 
     /**
@@ -390,8 +455,8 @@ final class FieldComparisonTest extends TestCase
         yield 'dateTime against date'   => [Rule::dateTime()->beforeField('start'), Rule::date(), 'beforeField(), which needs a dateTime() field'];
         yield 'time against date'       => [Rule::time()->afterOrEqualField('start'), Rule::date(), 'afterOrEqualField(), which needs a time() field'];
         yield 'date against string'     => [Rule::date()->beforeOrEqualField('start'), Rule::string(), 'beforeOrEqualField(), which needs a date() field'];
-        yield 'string against int'      => [Rule::string()->notContainsField('start'), Rule::int(), 'notContainsField(), which needs a string() field'];
-        yield 'string against date'     => [Rule::string()->notContainsField('start'), Rule::date(), 'notContainsField(), which needs a string() field'];
+        yield 'string against int'      => [self::bounded()->notContainsField('start'), Rule::int(), 'notContainsField(), which needs a string() field'];
+        yield 'string against date'     => [self::bounded()->notContainsField('start'), Rule::date(), 'notContainsField(), which needs a string() field'];
         yield 'date against file'       => [Rule::date()->afterField('start'), Rule::file(), 'afterField(), which needs a date() field'];
     }
 

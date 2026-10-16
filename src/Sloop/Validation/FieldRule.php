@@ -411,20 +411,22 @@ abstract class FieldRule
         $sized = $typed;
 
         [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed);
+        $checked      = $this->run($this->checks, $typed);
+        $lengthFailed = self::failedLength($checked);
 
         return new FieldOutcome(
             $this->output($typed),
             $comparable,
             [
                 ...$failures,
-                ...$this->run($this->checks, $typed),
+                ...$checked,
                 ...($failures === [] ? $this->run($this->elementChecks, $elements) : []),
             ],
             // The Validator knows which when() applies only once every field
             // has its value, so it runs them through this, with the typed
             // value kept here; a when() that does not apply never runs.
             runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === []),
-            compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other),
+            compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other, $lengthFailed),
         );
     }
 
@@ -879,12 +881,13 @@ abstract class FieldRule
      * @param  string                    $field   Name of the other field
      * @param  string|null               $message Message for this rule only
      * @param  Closure(T, mixed): bool   $test    Whether this field's typed value passes against the other field's validated value (null when that one was empty without a default)
+     * @param  bool                      $bounded Whether the field must bound its length in code points or bytes (see Comparison)
      * @return static
      * @throws \InvalidArgumentException When the message template is malformed
      */
-    protected function withFieldComparison(string $rule, string $field, ?string $message, Closure $test): static
+    protected function withFieldComparison(string $rule, string $field, ?string $message, Closure $test, bool $bounded = false): static
     {
-        $copy = $this->withComparison(new Comparison($rule, $field, $message, static::class, $this->typeRule()));
+        $copy = $this->withComparison(new Comparison($rule, $field, $message, static::class, $this->typeRule(), $bounded));
 
         $copy->comparisonTests[\count($copy->comparisons) - 1] = $test;
 
@@ -894,19 +897,66 @@ abstract class FieldRule
     /**
      * Whether the comparison at the given position holds against the other field.
      *
-     * @param  int          $index      Position of the comparison
-     * @param  T            $typed      This field's typed value
-     * @param  mixed        $comparable This field's comparable value
-     * @param  FieldOutcome $other      Outcome of the other field
+     * @param  int          $index        Position of the comparison
+     * @param  T            $typed        This field's typed value
+     * @param  mixed        $comparable   This field's comparable value
+     * @param  FieldOutcome $other        Outcome of the other field
+     * @param  bool         $lengthFailed Whether the field failed maxLength() or exactLength()
      * @return bool
      */
-    private function holds(int $index, mixed $typed, mixed $comparable, FieldOutcome $other): bool
+    private function holds(int $index, mixed $typed, mixed $comparable, FieldOutcome $other, bool $lengthFailed): bool
     {
+        // A value already refused for its length is not searched: the bound is what keeps the search short.
+        if ($lengthFailed && $this->comparisons[$index]->bounded) {
+            return true;
+        }
+
         $test = $this->comparisonTests[$index] ?? null;
 
         return $test === null
             ? $this->comparisons[$index]->passes($comparable, $other->comparable)
             : $test($typed, $other->value);
+    }
+
+    /**
+     * Whether the failures include a rule on the length of the value.
+     *
+     * @param  list<Failure> $failures Failures of the declared rules
+     * @return bool
+     */
+    private static function failedLength(array $failures): bool
+    {
+        foreach ($failures as $failure) {
+            if ($failure->rule === 'maxLength' || $failure->rule === 'exactLength') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the field declares maxLength() or exactLength() counted in code points or bytes.
+     *
+     * A length in grapheme clusters bounds nothing: one cluster can hold any
+     * number of code points (a letter followed by zero width joiners).
+     *
+     * @internal Read by Validator for the comparisons that need a bound on the length.
+     *
+     * @return bool
+     */
+    public function boundsLength(): bool
+    {
+        foreach ($this->checks as $check) {
+            $unit = $check->params['unit'] ?? null;
+            if (($check->rule === 'maxLength' || $check->rule === 'exactLength')
+                && ($unit === LengthUnit::Codepoints->value || $unit === LengthUnit::Bytes->value)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

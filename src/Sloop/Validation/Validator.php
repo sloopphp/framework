@@ -46,6 +46,7 @@ final readonly class Validator
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
      * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
      *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
+     *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; or fields required on each other include two with a default
      */
@@ -344,7 +345,8 @@ final readonly class Validator
      * @param  FieldRule<covariant mixed>                $rule  Rules of that field
      * @return void
      * @throws InvalidArgumentException                  When a comparison names its own field or a field that has no rule, either side's value cannot be compared,
-     *                                                   or an order or containment comparison names a field of another type
+     *                                                   an order or containment comparison names a field of another type, or notContainsField()
+     *                                                   is declared without a length bound in code points or bytes
      */
     private static function assertComparisons(array $rules, string $field, FieldRule $rule): void
     {
@@ -352,6 +354,12 @@ final readonly class Validator
             if ($comparison->other === $field) {
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" compares with itself in ' . $comparison->rule . '(), which gives the same result for every input.',
+                );
+            }
+            if ($comparison->bounded && !$rule->boundsLength()) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" uses ' . $comparison->rule . '(), which needs maxLength() or exactLength() on the same field counted in '
+                    . 'LengthUnit::Codepoints or LengthUnit::Bytes: the search takes time in the product of both lengths, and grapheme clusters bound neither.',
                 );
             }
             if (!$rule->comparesByValue()) {
