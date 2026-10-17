@@ -17,10 +17,14 @@ use TypeError;
  * Accepts only strings of valid UTF-8; an int or any other type is a type
  * failure (no implicit conversion). Lengths are counted in grapheme clusters
  * unless a rule is given another LengthUnit. A field with chars(), notChars(),
- * minCharClasses() or notContains() first fails a value with more than 30
- * combining characters in a row, as the rule combiningRun, and runs no other
- * rule on it (see CombiningRun). A message: given to those rules does not apply
- * to combiningRun; the field's message() does.
+ * minCharClasses(), notContains() or notContainsField() first fails a value
+ * with more than 30 combining characters in a row, as the rule combiningRun,
+ * and runs no other rule on it (see CombiningRun). The first four, added
+ * inside when(), bring combiningRun with them: it runs only while the
+ * condition holds and stops only the rules of that when(). Each when() checks
+ * it on its own, and when the field's own rules check it too, the field's
+ * check runs first and stops the field. A message: given to those rules does
+ * not apply to combiningRun; the field's message() does.
  *
  * @extends FieldRule<string>
  */
@@ -471,13 +475,14 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Add the combiningRun rule once, ahead of every other rule of the field.
+     * Add the combiningRun rule once, ahead of every other rule of the field
+     * (inside when(), ahead of the other rules of that when()).
      *
-     * chars(), notChars(), minCharClasses() and notContains() call this.
+     * chars(), notChars(), minCharClasses(), notContains() and notContainsField() call this.
      * Normalizing a long run of combining characters takes time quadratic in
      * its length, so a value with a run longer than 30 (see CombiningRun)
      * fails here, before anything is normalized, and no other rule of the
-     * field runs on it.
+     * field (or of that when()) runs on it.
      *
      * @return self
      */
@@ -489,6 +494,19 @@ final class StringRule extends FieldRule
 
         $copy               = $this->withSizeCheck('combiningRun', [], CombiningRun::allows(...), null);
         $copy->combiningRun = true;
+
+        return $copy;
+    }
+
+    /**
+     * This rule without the mark that the combiningRun rule has been added.
+     *
+     * @return static
+     */
+    protected function withoutRuleMarks(): static
+    {
+        $copy               = clone $this;
+        $copy->combiningRun = false;
 
         return $copy;
     }
