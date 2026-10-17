@@ -16,6 +16,7 @@
         "ext-filter": "*",
         "ext-intl": "*",
         "ext-mbstring": "*",
+        "ext-openssl": "*",
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
         "lib-icu": ">=62",

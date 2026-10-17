@@ -177,8 +177,8 @@
             // written to the log.
             "ignore": [
                 "Sloop\\Database\\Connection::shouldMeasureElapsed",
-                // Application::createServerRequestFromGlobals::684: see NotIdentical.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
+                // Application::createServerRequestFromGlobals::781: see NotIdentical.
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::781"
             ]
         },
         "Plus": {
@@ -189,26 +189,26 @@
         },
         "NotIdentical": {
             // StringRule::email::433: see IncrementInteger (needs a live DNS lookup).
-            // Application::createServerRequestFromGlobals::684 attaches the raw body
+            // Application::createServerRequestFromGlobals::781 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
             // a test detects.
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::433",
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::781"
             ]
         },
         "LogicalAndNegation": {
-            // Application::createServerRequestFromGlobals::684: see NotIdentical.
+            // Application::createServerRequestFromGlobals::781: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::781"
             ]
         },
         "LogicalAndAllSubExprNegation": {
-            // Application::createServerRequestFromGlobals::684: see NotIdentical.
+            // Application::createServerRequestFromGlobals::781: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::781"
             ]
         },
         "UnwrapSubstr": {
@@ -403,7 +403,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::170",
+                "Sloop\\Foundation\\Application::dispatchRoute::174",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.
