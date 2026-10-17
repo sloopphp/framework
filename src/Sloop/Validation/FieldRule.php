@@ -392,7 +392,7 @@ abstract class FieldRule
 
             return $this->default === null
                 ? new FieldOutcome(null, null, [], empty: true)
-                : new FieldOutcome($this->output($this->default), $this->comparable($this->default), [], empty: true);
+                : new FieldOutcome($this->outputOfDefault($this->default), $this->comparableOfDefault($this->default), [], empty: true);
         }
 
         $typed = $this->coerce($value);
@@ -518,16 +518,64 @@ abstract class FieldRule
     /**
      * Prepare a value a container declares as the default of this field.
      *
-     * Rule::decimal() does not override this:
-     * shape(['n' => decimal(10, 2)])->default(['n' => '1.5']) reaches the
-     * caller as '1.5', where decimal(10, 2)->default('1.5') gives '1.50'.
+     * The value goes through what default() does with it and is refused
+     * where default() would refuse it, so that a list or a shape hands it to
+     * the caller the way it would hand out the same value as an input. A type
+     * without default() refuses every value.
      *
-     * @param  mixed $value Value the container's default holds for this field
+     * @param  mixed                    $value Value the container's default holds for this field, not empty
      * @return mixed
+     * @throws InvalidArgumentException When default() would refuse the value
      */
     protected function prepareDefault(mixed $value): mixed
     {
-        return $value;
+        throw new InvalidArgumentException($this->typeRule() . '() has no default.');
+    }
+
+    /**
+     * The exception for a default of the wrong type.
+     *
+     * @param  string                   $expected What default() takes, with its article
+     * @param  mixed                    $value    Value given
+     * @return InvalidArgumentException
+     */
+    protected static function refusedDefault(string $expected, mixed $value): InvalidArgumentException
+    {
+        return new InvalidArgumentException('default() needs ' . $expected . ', got ' . get_debug_type($value) . '.');
+    }
+
+    /**
+     * The default as declared, or null when there is none.
+     *
+     * @internal Read by ListRule and ShapeRule for an element or a key their default says nothing for.
+     *
+     * @return mixed
+     */
+    protected function declaredDefault(): mixed
+    {
+        return $this->default;
+    }
+
+    /**
+     * Turn the default this field holds into the value handed to the caller.
+     *
+     * @param  mixed $default Default as declared or prepared
+     * @return mixed
+     */
+    protected function outputOfDefault(mixed $default): mixed
+    {
+        return $this->output($default);
+    }
+
+    /**
+     * Turn the default this field holds into the value same() / different() compare with `===`.
+     *
+     * @param  mixed $default Default as declared or prepared
+     * @return mixed
+     */
+    protected function comparableOfDefault(mixed $default): mixed
+    {
+        return $this->comparable($default);
     }
 
     /**

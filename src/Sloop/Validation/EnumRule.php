@@ -66,11 +66,15 @@ final class EnumRule extends FieldRule
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed
-     * @throws InvalidArgumentException When the value is a case of another enum
+     * @throws InvalidArgumentException When the value is not a case of the enum of this field
      */
     protected function prepareDefault(mixed $value): mixed
     {
-        return $value instanceof BackedEnum ? $this->caseOf($value) : $value;
+        if (!$value instanceof BackedEnum) {
+            throw self::refusedDefault('a case of ' . $this->enum, $value);
+        }
+
+        return $this->caseOf($value);
     }
 
     /**

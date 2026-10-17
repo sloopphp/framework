@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Validation;
 
+use BcMath\Number;
 use Closure;
 use DateTime;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Support\TimeOfDay;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
@@ -890,14 +892,145 @@ final class ArrayRuleTest extends TestCase
         );
     }
 
-    public function testADefaultNamingSomethingOfAnotherTypeIsKeptAsItIs(): void
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>, mixed, string}>
+     */
+    public static function elementsOfAnotherType(): iterable
     {
-        // The type of what a default names is not checked, here or anywhere
-        // else a default is declared; this holds the behaviour still while
-        // that is so.
-        $rule = Rule::shape(['d' => Rule::date()])->default(['d' => 'not a date']);
+        yield 'int' => [Rule::int(), '3', 'default() needs an int, got string.'];
+        yield 'float' => [Rule::float(), '1.5', 'default() needs a float, got string.'];
+        yield 'bool' => [Rule::bool(), 0, 'default() needs a bool, got int.'];
+        yield 'string' => [Rule::string(), 3, 'default() needs a string, got int.'];
+        yield 'decimal' => [Rule::decimal(10, 2), 1.5, 'default() needs an int or a decimal string, got float.'];
+        yield 'enum' => [Rule::enum(Payment::class), 'card', 'default() needs a case of ' . Payment::class . ', got string.'];
+        yield 'date' => [Rule::date(), '2026-01-02', 'default() needs a DateTimeInterface, got string.'];
+        yield 'dateTime' => [Rule::dateTime(), '2026-01-02T00:00:00Z', 'default() needs a DateTimeInterface, got string.'];
+        yield 'time' => [Rule::time(), '12:00', 'default() needs a ' . TimeOfDay::class . ', got string.'];
+        yield 'array' => [Rule::array(), 'a', 'default() needs an array, got string.'];
+        yield 'list' => [Rule::list(Rule::int()), 'a', 'default() needs an array, got string.'];
+        yield 'shape' => [Rule::shape(['a' => Rule::int()]), 'a', 'default() needs an array, got string.'];
+        yield 'file' => [Rule::file(), 'a', 'file() has no default.'];
+    }
 
-        $this->assertSame(['d' => 'not a date'], self::valueOf($rule, null));
+    /**
+     * @param FieldRule<covariant mixed> $element
+     */
+    #[DataProvider('elementsOfAnotherType')]
+    public function testADefaultNamingSomethingTheElementCannotHoldIsRefused(FieldRule $element, mixed $value, string $message): void
+    {
+        $this->assertSame($message, $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::list($element)->default([$value]),
+        )->getMessage());
+        $this->assertSame($message, $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::shape(['k' => $element])->default(['k' => $value]),
+        )->getMessage());
+    }
+
+    public function testADefaultNamingSomethingOfAnotherTypeInsideANestedContainerIsRefused(): void
+    {
+        $this->assertSame('default() needs an int, got string.', $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::list(Rule::shape(['n' => Rule::int()]))->default([['n' => '3']]),
+        )->getMessage());
+        $this->assertSame('default() needs an int, got string.', $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::shape(['l' => Rule::list(Rule::int())])->default(['l' => ['3']]),
+        )->getMessage());
+    }
+
+    public function testADefaultNamingADecimalItsElementCannotHoldIsRefusedTheWayTheElementRefusesIt(): void
+    {
+        $message = 'The default of decimal(3, 2) must be a decimal that fits it, got 999.99.';
+
+        $this->assertSame($message, $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::list(Rule::decimal(3, 2))->default(['999.99']),
+        )->getMessage());
+        $this->assertSame($message, $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::decimal(3, 2)->default('999.99'),
+        )->getMessage());
+    }
+
+    public function testAFloatElementOfADefaultTakesAnInt(): void
+    {
+        $this->assertSame([1.0], self::valueOf(Rule::list(Rule::float())->default([1]), null));
+    }
+
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>, mixed, mixed}>
+     */
+    public static function elementsGivenByDefaultAndByInput(): iterable
+    {
+        yield 'decimal' => [Rule::decimal(10, 2), '1.5', '1.5'];
+        yield 'decimal as a number' => [Rule::decimal(10, 2)->asNumber(), '1.5', '1.5'];
+        yield 'decimal from an int' => [Rule::decimal(10, 2), 2, '2'];
+        yield 'date' => [Rule::date(), new DateTimeImmutable('2026-01-02'), '2026-01-02'];
+        yield 'dateTime' => [Rule::dateTime(), new DateTimeImmutable('2026-01-02T03:04:05+09:00'), '2026-01-02T03:04:05+09:00'];
+        yield 'time' => [Rule::time(), TimeOfDay::of(12, 30), '12:30'];
+        yield 'enum' => [Rule::enum(Payment::class), Payment::Card, 'card'];
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $element
+     */
+    #[DataProvider('elementsGivenByDefaultAndByInput')]
+    public function testAnElementOfADefaultReachesTheCallerAsTheSameInputWould(FieldRule $element, mixed $default, mixed $input): void
+    {
+        $this->assertEquals(
+            self::valueOf(Rule::list($element), [$input]),
+            self::valueOf(Rule::list($element)->default([$default]), null),
+        );
+        $this->assertEquals(
+            self::valueOf(Rule::shape(['k' => $element]), ['k' => $input]),
+            self::valueOf(Rule::shape(['k' => $element])->default(['k' => $default]), null),
+        );
+        $this->assertEquals(
+            self::valueOf(Rule::list(Rule::shape(['k' => $element])), [['k' => $input]]),
+            self::valueOf(Rule::list(Rule::shape(['k' => $element]))->default([['k' => $default]]), null),
+        );
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $element
+     */
+    #[DataProvider('elementsGivenByDefaultAndByInput')]
+    public function testAContainerDefaultComparesEqualToTheSameInput(FieldRule $element, mixed $default, mixed $input): void
+    {
+        $lists  = [
+            'a' => Rule::list($element)->default([$default]),
+            'b' => Rule::list($element)->same('a'),
+        ];
+        $shapes = [
+            'a' => Rule::shape(['k' => $element])->default(['k' => $default]),
+            'b' => Rule::shape(['k' => $element])->same('a'),
+        ];
+
+        $this->assertFalse(new Validator($lists)->validate(['b' => [$input]])->failed());
+        $this->assertFalse(new Validator($shapes)->validate(['b' => ['k' => $input]])->failed());
+    }
+
+    public function testAnEmptyElementAndAWrittenOneOfADefaultHaveTheSameType(): void
+    {
+        $value = self::valueOf(Rule::list(Rule::decimal(10, 2)->asNumber()->default('0'))->default(['1.5', null]), null);
+
+        $this->assertEquals([new Number('1.50'), new Number('0.00')], $value);
+    }
+
+    public function testTheComparisonsBetweenTheKeysOfAShapeDoNotRunOnItsDefault(): void
+    {
+        // A default goes through no rule, and a comparison between two keys
+        // is a rule of the shape's keys.
+        $rule = Rule::shape([
+            'from' => Rule::date(),
+            'to'   => Rule::date()->afterField('from'),
+        ])->default(['from' => new DateTimeImmutable('2026-02-01'), 'to' => new DateTimeImmutable('2026-01-01')]);
+
+        $value = self::valueOf($rule, null);
+        $this->assertIsArray($value);
+        $this->assertArrayHasKey('to', $value);
     }
 
     // ---------------------------------------------------------------

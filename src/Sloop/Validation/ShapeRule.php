@@ -71,6 +71,10 @@ final class ShapeRule extends ArrayRule
      * only a sanitizer would empty (`'  '` under Sanitize::Trim) counts as a
      * value here.
      *
+     * Every other key is taken the way the key's own default() takes a value,
+     * and refused where that would refuse it. The comparisons between the keys
+     * do not run on the default, as no rule does.
+     *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
      * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule refuses at declaration
@@ -86,11 +90,55 @@ final class ShapeRule extends ArrayRule
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed
-     * @throws InvalidArgumentException When $value is an array this shape does not take as a default
+     * @throws InvalidArgumentException When $value is not an array this shape takes as a default
      */
     protected function prepareDefault(mixed $value): mixed
     {
-        return \is_array($value) ? $this->fill($value) : $value;
+        if (!\is_array($value)) {
+            throw self::refusedDefault('an array', $value);
+        }
+
+        return $this->fill($value);
+    }
+
+    /**
+     * Hand out every key of the default the way the key hands out its own.
+     *
+     * @param  mixed $default Default as fill() returned it
+     * @return mixed
+     */
+    protected function outputOfDefault(mixed $default): mixed
+    {
+        if (!\is_array($default)) {
+            return $default;
+        }
+
+        $output = [];
+        foreach ($default as $key => $item) {
+            $output[$key] = $item === null ? null : $this->fields[$key]->outputOfDefault($item);
+        }
+
+        return $output;
+    }
+
+    /**
+     * Compare every key of the default the way the key compares its own.
+     *
+     * @param  mixed $default Default as fill() returned it
+     * @return mixed
+     */
+    protected function comparableOfDefault(mixed $default): mixed
+    {
+        if (!\is_array($default)) {
+            return $default;
+        }
+
+        $comparable = [];
+        foreach ($default as $key => $item) {
+            $comparable[$key] = $item === null ? null : $this->fields[$key]->comparableOfDefault($item);
+        }
+
+        return $comparable;
     }
 
     /**
@@ -121,13 +169,12 @@ final class ShapeRule extends ArrayRule
             // A key the default says nothing for takes what it would have taken
             // had the field come in without it. A required key has no such value:
             // every input without it fails, so there is nothing to fill with.
-            $outcome = $rule->evaluate(null);
-            if ($outcome->failures !== []) {
+            if ($rule->evaluate(null)->failures !== []) {
                 throw new InvalidArgumentException(
                     'The default of shape() has no value for "' . $key . '", which is required.',
                 );
             }
-            $filled[$key] = $outcome->value;
+            $filled[$key] = $rule->declaredDefault();
         }
 
         return $filled;
