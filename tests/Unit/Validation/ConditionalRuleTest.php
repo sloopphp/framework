@@ -14,6 +14,7 @@ use RuntimeException;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
+use Sloop\Validation\Chars;
 use Sloop\Validation\DecimalRule;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\FileRule;
@@ -537,6 +538,62 @@ final class ConditionalRuleTest extends TestCase
         ];
 
         $this->assertSame(['code' => ['minLength']], self::failedRulesOf($rules, ['kind' => 'x', 'code' => 'ab']));
+    }
+
+    /**
+     * @return iterable<string, array{Closure(StringRule): StringRule}>
+     */
+    public static function rulesOnTheCharacters(): iterable
+    {
+        yield 'chars' => [static fn (StringRule $r): StringRule => $r->chars([Chars::Alpha])];
+        yield 'notChars' => [static fn (StringRule $r): StringRule => $r->notChars([Chars::Numeric])];
+        yield 'minCharClasses' => [static fn (StringRule $r): StringRule => $r->minCharClasses(2, [Chars::Alpha, Chars::Numeric])];
+        yield 'notContains' => [static fn (StringRule $r): StringRule => $r->notContains(['bad'])];
+    }
+
+    /**
+     * @param Closure(StringRule): StringRule $then
+     */
+    #[DataProvider('rulesOnTheCharacters')]
+    public function testWhenChecksTheCombiningRunOfItsRulesOnTheCharactersOnlyWhileTheConditionHolds(Closure $then): void
+    {
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()->when('kind', 'x', $then),
+        ];
+        $long  = 'a' . str_repeat("\u{0301}", 31);
+
+        $this->assertSame(['name' => ['combiningRun']], self::failedRulesOf($rules, ['kind' => 'x', 'name' => $long]));
+        $this->assertSame([], self::failedRulesOf($rules, ['kind' => 'y', 'name' => $long]));
+    }
+
+    public function testACombiningRunFromWhenStopsOnlyTheRulesOfThatWhen(): void
+    {
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()
+                ->regex('/^b/')
+                ->when('kind', 'x', static fn (StringRule $r): StringRule => $r->chars([Chars::Alpha])->in(['a'])),
+        ];
+
+        $this->assertSame(
+            ['name' => ['regex', 'combiningRun']],
+            self::failedRulesOf($rules, ['kind' => 'x', 'name' => 'a' . str_repeat("\u{0301}", 31)]),
+        );
+    }
+
+    public function testACombiningRunTheFieldAlreadyChecksIsCheckedOnceAndWithoutTheCondition(): void
+    {
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()
+                ->chars([Chars::Alpha])
+                ->when('kind', 'x', static fn (StringRule $r): StringRule => $r->notContains(['bad'])->in(['a'])),
+        ];
+        $long  = 'a' . str_repeat("\u{0301}", 31);
+
+        $this->assertSame(['name' => ['combiningRun']], self::failedRulesOf($rules, ['kind' => 'x', 'name' => $long]));
+        $this->assertSame(['name' => ['combiningRun']], self::failedRulesOf($rules, ['kind' => 'y', 'name' => $long]));
     }
 
     public function testWhenAcceptsAListOfValues(): void

@@ -333,7 +333,8 @@ abstract class FieldRule
      * message(), same(), different() and the other comparisons with another
      * field, requiredWith(), requiredIf() and when() are refused. The added
      * rules run after the field's own, and like those, not when the field is
-     * empty.
+     * empty. A rule on the size of the value added here stops only the other
+     * rules added by the same when().
      *
      * The other field is compared as in requiredIf(). A failure added by
      * another field's when() does not stop the comparison.
@@ -352,7 +353,7 @@ abstract class FieldRule
         if (!$added instanceof static || $added::class !== static::class) {
             throw new InvalidArgumentException('when() needs the closure to return the rule it was given, with rules added.');
         }
-        if ((array) $added->withoutChecks() !== (array) $probe) {
+        if ((array) $added->withoutChecks()->withoutRuleMarks() !== (array) $probe->withoutRuleMarks()) {
             throw new InvalidArgumentException('when() can only add rules on the value; the closure changed something else about the field.');
         }
         if ($added->sizeChecks === [] && $added->checks === [] && $added->elementChecks === []) {
@@ -872,6 +873,20 @@ abstract class FieldRule
         $copy->elementChecks = [];
 
         return $copy;
+    }
+
+    /**
+     * This rule without the marks a type keeps about which of its rules were added.
+     *
+     * when() compares the rule its closure returns with the one it gave,
+     * leaving out the rules. A mark set while adding a rule is part of adding
+     * it, not a change to the field, so it is left out as well.
+     *
+     * @return static
+     */
+    protected function withoutRuleMarks(): static
+    {
+        return $this;
     }
 
     /**
