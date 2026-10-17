@@ -42,7 +42,7 @@ final class FloatRule extends FieldRule
     {
         // default() takes an int as well, the way a float parameter does.
         if (!\is_float($value) && !\is_int($value)) {
-            throw self::refusedDefault('a float', $value);
+            throw self::refusedDefault('a float or an int', $value);
         }
 
         return (float) $value;

@@ -693,7 +693,7 @@ final class ArrayRuleTest extends TestCase
     public function testAListInsideTheDefaultOfAShapeRefusesAnEmptyRequiredElement(): void
     {
         $this->assertSame(
-            'The default of list() has no value at position 1, which is required.',
+            'The default of shape() cannot hold its value for "l": The default of list() has no value at position 1, which is required.',
             $this->assertThrows(
                 InvalidArgumentException::class,
                 static fn (): mixed => Rule::shape(['l' => Rule::list(Rule::int()->required())])->default(['l' => [1, null]]),
@@ -883,7 +883,7 @@ final class ArrayRuleTest extends TestCase
         $held    = new DateTimeImmutable('2024-12-31');
         $message = 'date() reads dates with \'z\', which does not read back the local date 2024-12-31.';
 
-        $this->assertSame($message, $this->assertThrows(
+        $this->assertSame('The default of shape() cannot hold its value for "d": ' . $message, $this->assertThrows(
             InvalidArgumentException::class,
             static fn (): mixed => Rule::shape(['d' => Rule::date('z')])->default(['d' => $held]),
         )->getMessage());
@@ -897,7 +897,7 @@ final class ArrayRuleTest extends TestCase
     public function testADefaultNamingACaseOfAnotherEnumIsRefused(): void
     {
         $this->assertSame(
-            'default() needs a case of ' . Payment::class . ', got ' . Priority::class . '.',
+            'The default of shape() cannot hold its value for "s": default() needs a case of ' . Payment::class . ', got ' . Priority::class . '.',
             $this->assertThrows(
                 InvalidArgumentException::class,
                 static fn (): mixed => Rule::shape(['s' => Rule::enum(Payment::class)])->default(['s' => Priority::High]),
@@ -911,7 +911,7 @@ final class ArrayRuleTest extends TestCase
     public static function elementsOfAnotherType(): iterable
     {
         yield 'int' => [Rule::int(), '3', 'default() needs an int, got string.'];
-        yield 'float' => [Rule::float(), '1.5', 'default() needs a float, got string.'];
+        yield 'float' => [Rule::float(), '1.5', 'default() needs a float or an int, got string.'];
         yield 'bool' => [Rule::bool(), 0, 'default() needs a bool, got int.'];
         yield 'string' => [Rule::string(), 3, 'default() needs a string, got int.'];
         yield 'decimal' => [Rule::decimal(10, 2), 1.5, 'default() needs an int or a decimal string, got float.'];
@@ -931,11 +931,11 @@ final class ArrayRuleTest extends TestCase
     #[DataProvider('elementsOfAnotherType')]
     public function testADefaultNamingSomethingTheElementCannotHoldIsRefused(FieldRule $element, mixed $value, string $message): void
     {
-        $this->assertSame($message, $this->assertThrows(
+        $this->assertSame('The default of list() cannot hold its element at position 1: ' . $message, $this->assertThrows(
             InvalidArgumentException::class,
-            static fn (): mixed => Rule::list($element)->default([$value]),
+            static fn (): mixed => Rule::list($element)->default([null, $value]),
         )->getMessage());
-        $this->assertSame($message, $this->assertThrows(
+        $this->assertSame('The default of shape() cannot hold its value for "k": ' . $message, $this->assertThrows(
             InvalidArgumentException::class,
             static fn (): mixed => Rule::shape(['k' => $element])->default(['k' => $value]),
         )->getMessage());
@@ -943,21 +943,27 @@ final class ArrayRuleTest extends TestCase
 
     public function testADefaultNamingSomethingOfAnotherTypeInsideANestedContainerIsRefused(): void
     {
-        $this->assertSame('default() needs an int, got string.', $this->assertThrows(
-            InvalidArgumentException::class,
-            static fn (): mixed => Rule::list(Rule::shape(['n' => Rule::int()]))->default([['n' => '3']]),
-        )->getMessage());
-        $this->assertSame('default() needs an int, got string.', $this->assertThrows(
-            InvalidArgumentException::class,
-            static fn (): mixed => Rule::shape(['l' => Rule::list(Rule::int())])->default(['l' => ['3']]),
-        )->getMessage());
+        $this->assertSame(
+            'The default of list() cannot hold its element at position 0: The default of shape() cannot hold its value for "n": default() needs an int, got string.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::list(Rule::shape(['n' => Rule::int()]))->default([['n' => '3']]),
+            )->getMessage(),
+        );
+        $this->assertSame(
+            'The default of shape() cannot hold its value for "l": The default of list() cannot hold its element at position 0: default() needs an int, got string.',
+            $this->assertThrows(
+                InvalidArgumentException::class,
+                static fn (): mixed => Rule::shape(['l' => Rule::list(Rule::int())])->default(['l' => ['3']]),
+            )->getMessage(),
+        );
     }
 
     public function testADefaultNamingADecimalItsElementCannotHoldIsRefusedTheWayTheElementRefusesIt(): void
     {
         $message = 'The default of decimal(3, 2) must be a decimal that fits it, got 999.99.';
 
-        $this->assertSame($message, $this->assertThrows(
+        $this->assertSame('The default of list() cannot hold its element at position 0: ' . $message, $this->assertThrows(
             InvalidArgumentException::class,
             static fn (): mixed => Rule::list(Rule::decimal(3, 2))->default(['999.99']),
         )->getMessage());
@@ -1030,6 +1036,38 @@ final class ArrayRuleTest extends TestCase
         $value = self::valueOf(Rule::list(Rule::decimal(10, 2)->asNumber()->default('0'))->default(['1.5', null]), null);
 
         $this->assertSameValue([new Number('1.50'), new Number('0.00')], $value);
+    }
+
+    public function testTheDefaultIsBuiltOnceForEveryEmptyElementAndEveryEmptyField(): void
+    {
+        // Building it for every empty element made an input of many nulls
+        // cost the size of the default each time.
+        $rule = Rule::list(Rule::list(Rule::decimal(10, 2)->asNumber())->default(['1.5']));
+
+        $first  = self::valueOf($rule, [null, null]);
+        $second = self::valueOf($rule, [null]);
+        $this->assertIsArray($first);
+        $this->assertIsArray($second);
+        $this->assertIsArray($first[0]);
+        $this->assertIsArray($first[1]);
+        $this->assertIsArray($second[0]);
+        $this->assertSame($first[0][0], $first[1][0]);
+        $this->assertSame($first[0][0], $second[0][0]);
+    }
+
+    public function testACopyMadeAfterTheDefaultWasHandedOutBuildsItAgain(): void
+    {
+        $plain = Rule::shape(['n' => Rule::decimal(10, 2)])->default(['n' => '1']);
+        $this->assertSame(['n' => '1.00'], self::valueOf($plain, null));
+
+        $this->assertEquals(['n' => new Number('1.00')], self::valueOf(
+            Rule::shape(['n' => Rule::decimal(10, 2)->default('1')])->default([]),
+            null,
+        ));
+
+        $decimal = Rule::decimal(10, 2)->default('1');
+        $this->assertSame('1.00', self::valueOf($decimal, null));
+        $this->assertInstanceOf(Number::class, self::valueOf($decimal->asNumber(), null));
     }
 
     public function testTheComparisonsBetweenTheKeysOfAShapeDoNotRunOnItsDefault(): void

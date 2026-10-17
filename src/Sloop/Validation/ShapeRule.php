@@ -72,8 +72,9 @@ final class ShapeRule extends ArrayRule
      * value here.
      *
      * Every other key is taken the way the key's own default() takes a value,
-     * and refused where that would refuse it. The comparisons between the keys
-     * do not run on the default, as no rule does.
+     * and refused where that would refuse it. No rule runs on the default,
+     * including those between the keys: the comparisons, requiredWith(),
+     * requiredIf() and when().
      *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
@@ -115,7 +116,7 @@ final class ShapeRule extends ArrayRule
 
         $output = [];
         foreach ($default as $key => $item) {
-            $output[$key] = $item === null ? null : $this->fields[$key]->outputOfDefault($item);
+            $output[$key] = $item === null ? $this->fields[$key]->evaluate(null)->value : $this->fields[$key]->outputOfDefault($item);
         }
 
         return $output;
@@ -135,7 +136,7 @@ final class ShapeRule extends ArrayRule
 
         $comparable = [];
         foreach ($default as $key => $item) {
-            $comparable[$key] = $item === null ? null : $this->fields[$key]->comparableOfDefault($item);
+            $comparable[$key] = $item === null ? $this->fields[$key]->evaluate(null)->comparable : $this->fields[$key]->comparableOfDefault($item);
         }
 
         return $comparable;
@@ -162,7 +163,14 @@ final class ShapeRule extends ArrayRule
             // A key's own rule says what counts as nothing, the same test
             // validation runs, so a missing key reads as null and goes to it.
             if (!$rule->isEmpty($value[$key] ?? null)) {
-                $filled[$key] = $rule->prepareDefault($value[$key]);
+                try {
+                    $filled[$key] = $rule->prepareDefault($value[$key]);
+                } catch (InvalidArgumentException $e) {
+                    throw new InvalidArgumentException(
+                        'The default of shape() cannot hold its value for "' . $key . '": ' . $e->getMessage(),
+                        previous: $e,
+                    );
+                }
                 continue;
             }
 
@@ -174,7 +182,8 @@ final class ShapeRule extends ArrayRule
                     'The default of shape() has no value for "' . $key . '", which is required.',
                 );
             }
-            $filled[$key] = $rule->declaredDefault();
+            // Kept as null and read through the key's rule when handed out.
+            $filled[$key] = null;
         }
 
         return $filled;

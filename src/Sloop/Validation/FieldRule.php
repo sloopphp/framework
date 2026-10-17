@@ -65,6 +65,13 @@ abstract class FieldRule
     private mixed $default = null;
 
     /**
+     * What an empty field gives once the default has been handed out, built on first use.
+     *
+     * @var FieldOutcome|null
+     */
+    private ?FieldOutcome $defaultOutcome = null;
+
+    /**
      * Message used for every rule of this field that has no message of its own.
      *
      * @var string|null
@@ -161,6 +168,16 @@ abstract class FieldRule
                 );
             }
         }
+    }
+
+    /**
+     * Drop what was built from the default, which a copy may change.
+     *
+     * @return void
+     */
+    public function __clone(): void
+    {
+        $this->defaultOutcome = null;
     }
 
     /**
@@ -386,13 +403,7 @@ abstract class FieldRule
         }
 
         if ($this->isEmpty($value)) {
-            if ($this->required) {
-                return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage)]);
-            }
-
-            return $this->default === null
-                ? new FieldOutcome(null, null, [], empty: true)
-                : new FieldOutcome($this->outputOfDefault($this->default), $this->comparableOfDefault($this->default), [], empty: true);
+            return $this->emptyOutcome();
         }
 
         $typed = $this->coerce($value);
@@ -428,6 +439,31 @@ abstract class FieldRule
             // value kept here; a when() that does not apply never runs.
             runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === []),
             compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other, $lengthFailed),
+        );
+    }
+
+    /**
+     * What an empty value gives: the required failure, null, or the default.
+     *
+     * @return FieldOutcome
+     */
+    private function emptyOutcome(): FieldOutcome
+    {
+        if ($this->required) {
+            return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage)]);
+        }
+
+        if ($this->default === null) {
+            return new FieldOutcome(null, null, [], empty: true);
+        }
+
+        // Built once: a container's default can be large, and one input
+        // can leave a list element empty many times over.
+        return $this->defaultOutcome ??= new FieldOutcome(
+            $this->outputOfDefault($this->default),
+            $this->comparableOfDefault($this->default),
+            [],
+            empty: true,
         );
     }
 
@@ -519,8 +555,9 @@ abstract class FieldRule
      * Prepare a value a container declares as the default of this field.
      *
      * The value goes through what default() does with it and is refused
-     * where default() would refuse it. A type without default() refuses every
-     * value.
+     * where default() would refuse it, with the types checked strictly
+     * whatever the caller's strict_types. A type without default() refuses
+     * every value.
      *
      * @param  mixed                    $value Value the container's default holds for this field, not empty
      * @return mixed
@@ -541,18 +578,6 @@ abstract class FieldRule
     protected static function refusedDefault(string $expected, mixed $value): InvalidArgumentException
     {
         return new InvalidArgumentException('default() needs ' . $expected . ', got ' . get_debug_type($value) . '.');
-    }
-
-    /**
-     * The default as declared, or null when there is none.
-     *
-     * @internal Read by ListRule and ShapeRule for an element or a key their default says nothing for.
-     *
-     * @return mixed
-     */
-    protected function declaredDefault(): mixed
-    {
-        return $this->default;
     }
 
     /**

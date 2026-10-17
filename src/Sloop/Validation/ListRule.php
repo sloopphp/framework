@@ -129,7 +129,7 @@ final class ListRule extends ArrayRule
     protected function outputOfDefault(mixed $default): mixed
     {
         return \is_array($default)
-            ? array_map(fn (mixed $item): mixed => $item === null ? null : $this->element->outputOfDefault($item), $default)
+            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null)->value : $this->element->outputOfDefault($item), $default)
             : $default;
     }
 
@@ -142,7 +142,7 @@ final class ListRule extends ArrayRule
     protected function comparableOfDefault(mixed $default): mixed
     {
         return \is_array($default)
-            ? array_map(fn (mixed $item): mixed => $item === null ? null : $this->element->comparableOfDefault($item), $default)
+            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null)->comparable : $this->element->comparableOfDefault($item), $default)
             : $default;
     }
 
@@ -162,7 +162,14 @@ final class ListRule extends ArrayRule
         $prepared = [];
         foreach ($value as $position => $item) {
             if (!$this->element->isEmpty($item)) {
-                $prepared[] = $this->element->prepareDefault($item);
+                try {
+                    $prepared[] = $this->element->prepareDefault($item);
+                } catch (InvalidArgumentException $e) {
+                    throw new InvalidArgumentException(
+                        'The default of list() cannot hold its element at position ' . $position . ': ' . $e->getMessage(),
+                        previous: $e,
+                    );
+                }
                 continue;
             }
 
@@ -174,7 +181,8 @@ final class ListRule extends ArrayRule
                     'The default of list() has no value at position ' . $position . ', which is required.',
                 );
             }
-            $prepared[] = $this->element->declaredDefault();
+            // Kept as null and read through the element when handed out.
+            $prepared[] = null;
         }
 
         return $prepared;
