@@ -27,6 +27,19 @@ final class ArrayRuleTest extends TestCase
     use ThrowsAssertions;
     use ValidatesOneField;
 
+    private function assertSameValue(mixed $expected, mixed $actual): void
+    {
+        // assertEquals() reads a Number and a string, or 3 and '3', as equal,
+        // so the types are compared on their own.
+        $this->assertEquals($expected, $actual);
+        $this->assertSame(self::typesOf($expected), self::typesOf($actual));
+    }
+
+    private static function typesOf(mixed $value): mixed
+    {
+        return \is_array($value) ? array_map(self::typesOf(...), $value) : get_debug_type($value);
+    }
+
     // ---------------------------------------------------------------
     // Rule::array() — the value is an array, whatever it holds
     // ---------------------------------------------------------------
@@ -979,15 +992,15 @@ final class ArrayRuleTest extends TestCase
     #[DataProvider('elementsGivenByDefaultAndByInput')]
     public function testAnElementOfADefaultReachesTheCallerAsTheSameInputWould(FieldRule $element, mixed $default, mixed $input): void
     {
-        $this->assertEquals(
+        $this->assertSameValue(
             self::valueOf(Rule::list($element), [$input]),
             self::valueOf(Rule::list($element)->default([$default]), null),
         );
-        $this->assertEquals(
+        $this->assertSameValue(
             self::valueOf(Rule::shape(['k' => $element]), ['k' => $input]),
             self::valueOf(Rule::shape(['k' => $element])->default(['k' => $default]), null),
         );
-        $this->assertEquals(
+        $this->assertSameValue(
             self::valueOf(Rule::list(Rule::shape(['k' => $element])), [['k' => $input]]),
             self::valueOf(Rule::list(Rule::shape(['k' => $element]))->default([['k' => $default]]), null),
         );
@@ -1016,7 +1029,7 @@ final class ArrayRuleTest extends TestCase
     {
         $value = self::valueOf(Rule::list(Rule::decimal(10, 2)->asNumber()->default('0'))->default(['1.5', null]), null);
 
-        $this->assertEquals([new Number('1.50'), new Number('0.00')], $value);
+        $this->assertSameValue([new Number('1.50'), new Number('0.00')], $value);
     }
 
     public function testTheComparisonsBetweenTheKeysOfAShapeDoNotRunOnItsDefault(): void

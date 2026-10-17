@@ -519,9 +519,8 @@ abstract class FieldRule
      * Prepare a value a container declares as the default of this field.
      *
      * The value goes through what default() does with it and is refused
-     * where default() would refuse it, so that a list or a shape hands it to
-     * the caller the way it would hand out the same value as an input. A type
-     * without default() refuses every value.
+     * where default() would refuse it. A type without default() refuses every
+     * value.
      *
      * @param  mixed                    $value Value the container's default holds for this field, not empty
      * @return mixed
