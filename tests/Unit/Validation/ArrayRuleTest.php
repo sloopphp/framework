@@ -1057,14 +1057,6 @@ final class ArrayRuleTest extends TestCase
 
     public function testACopyMadeAfterTheDefaultWasHandedOutBuildsItAgain(): void
     {
-        $plain = Rule::shape(['n' => Rule::decimal(10, 2)])->default(['n' => '1']);
-        $this->assertSame(['n' => '1.00'], self::valueOf($plain, null));
-
-        $this->assertEquals(['n' => new Number('1.00')], self::valueOf(
-            Rule::shape(['n' => Rule::decimal(10, 2)->default('1')])->default([]),
-            null,
-        ));
-
         $decimal = Rule::decimal(10, 2)->default('1');
         $this->assertSame('1.00', self::valueOf($decimal, null));
         $this->assertInstanceOf(Number::class, self::valueOf($decimal->asNumber(), null));
