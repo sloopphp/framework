@@ -582,6 +582,21 @@ final class ConditionalRuleTest extends TestCase
         );
     }
 
+    public function testEveryWhenThatHoldsChecksTheCombiningRunOfItsOwnRules(): void
+    {
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()
+                ->when('kind', 'x', static fn (StringRule $r): StringRule => $r->chars([Chars::Alpha]))
+                ->when('kind', 'x', static fn (StringRule $r): StringRule => $r->notContains(['bad'])),
+        ];
+
+        $this->assertSame(
+            ['name' => ['combiningRun', 'combiningRun']],
+            self::failedRulesOf($rules, ['kind' => 'x', 'name' => 'a' . str_repeat("\u{0301}", 31)]),
+        );
+    }
+
     public function testARuleTakenFromTheClosureOfAnotherWhenStillBringsTheCombiningRun(): void
     {
         $before = Rule::string();

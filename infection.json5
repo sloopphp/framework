@@ -86,7 +86,7 @@
             // writes back never matches the input. Turning the || into &&
             // leaves only the second rejection, which no input can observe.
             "ignore": [
-                "Sloop\\Validation\\StringRule::clusters::690",
+                "Sloop\\Validation\\StringRule::clusters::691",
                 "Sloop\\Validation\\TimeRule::coerce::213"
             ]
         },
@@ -114,7 +114,7 @@
                 // reliably, so the domain extraction on this line is never
                 // compared against a live answer; only the negative path (a
                 // domain under .invalid) is tested.
-                "Sloop\\Validation\\StringRule::email::416",
+                "Sloop\\Validation\\StringRule::email::417",
                 // Connection::sleepBackoff / logQuerySuccess convert seconds to
                 // milliseconds with a literal 1000. Shifting it to 1001 changes
                 // a sleep duration or an elapsed-time reading by a tenth of a
@@ -140,8 +140,8 @@
         },
         "DecrementInteger": {
             "ignore": [
-                // StringRule::email::416: see IncrementInteger.
-                "Sloop\\Validation\\StringRule::email::416",
+                // StringRule::email::417: see IncrementInteger.
+                "Sloop\\Validation\\StringRule::email::417",
                 // Same millisecond-conversion literal as IncrementInteger above,
                 // in the opposite direction (1000 → 999).
                 "Sloop\\Database\\Connection::sleepBackoff",
@@ -182,20 +182,20 @@
             ]
         },
         "Plus": {
-            // StringRule::email::416: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::417: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::416"
+                "Sloop\\Validation\\StringRule::email::417"
             ]
         },
         "NotIdentical": {
-            // StringRule::email::416: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::417: see IncrementInteger (needs a live DNS lookup).
             // Application::createServerRequestFromGlobals::684 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
             // a test detects.
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::416",
+                "Sloop\\Validation\\StringRule::email::417",
                 "Sloop\\Foundation\\Application::createServerRequestFromGlobals::684"
             ]
         },
@@ -212,9 +212,9 @@
             ]
         },
         "UnwrapSubstr": {
-            // StringRule::email::416: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::417: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::416"
+                "Sloop\\Validation\\StringRule::email::417"
             ]
         },
         "CastFloat": {
@@ -345,7 +345,7 @@
                 // listed. Falling through walks the value's clusters against an
                 // empty list and counts nothing, so only the work differs.
                 // Pinned to the line so the final return stays covered.
-                "Sloop\\Validation\\StringRule::countListedKinds::640",
+                "Sloop\\Validation\\StringRule::countListedKinds::641",
                 // CombiningRun::edge returns the counts it cached for a code point.
                 // Falling through computes the same counts from the same NFKD form
                 // and caches them again, so only the work differs. Same shape as
