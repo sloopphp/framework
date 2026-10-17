@@ -62,6 +62,9 @@ final class ListRule extends ArrayRule
      * value only a sanitizer would empty (`'  '` under Sanitize::Trim) counts
      * as a value here.
      *
+     * Every other element is taken the way the element's own default() takes
+     * a value, and refused where that would refuse it.
+     *
      * @param  array<array-key, mixed>  $value Value to use for an empty field
      * @return static
      * @throws InvalidArgumentException When $value is not a list, holds an empty element where the element is required, or holds a value the element rule refuses at declaration
@@ -106,11 +109,41 @@ final class ListRule extends ArrayRule
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed
-     * @throws InvalidArgumentException When $value is an array this list does not take as a default
+     * @throws InvalidArgumentException When $value is not an array this list takes as a default
      */
     protected function prepareDefault(mixed $value): mixed
     {
-        return \is_array($value) ? $this->prepareElements($value) : $value;
+        if (!\is_array($value)) {
+            throw self::refusedDefault('an array', $value);
+        }
+
+        return $this->prepareElements($value);
+    }
+
+    /**
+     * Hand out every element of the default the way the element hands out its own.
+     *
+     * @param  mixed $default Default as prepareElements() returned it
+     * @return mixed
+     */
+    protected function outputOfDefault(mixed $default): mixed
+    {
+        return \is_array($default)
+            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null)->value : $this->element->outputOfDefault($item), $default)
+            : $default;
+    }
+
+    /**
+     * Compare every element of the default the way the element compares its own.
+     *
+     * @param  mixed $default Default as prepareElements() returned it
+     * @return mixed
+     */
+    protected function comparableOfDefault(mixed $default): mixed
+    {
+        return \is_array($default)
+            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null)->comparable : $this->element->comparableOfDefault($item), $default)
+            : $default;
     }
 
     /**
@@ -129,20 +162,27 @@ final class ListRule extends ArrayRule
         $prepared = [];
         foreach ($value as $position => $item) {
             if (!$this->element->isEmpty($item)) {
-                $prepared[] = $this->element->prepareDefault($item);
+                try {
+                    $prepared[] = $this->element->prepareDefault($item);
+                } catch (InvalidArgumentException $e) {
+                    throw new InvalidArgumentException(
+                        'The default of list() cannot hold its element at position ' . $position . ': ' . $e->getMessage(),
+                        previous: $e,
+                    );
+                }
                 continue;
             }
 
             // An empty element takes what it would have taken in an input, as
             // a key a shape's default says nothing for does. A required element
             // has no such value: every input holding it empty fails.
-            $outcome = $this->element->evaluate(null);
-            if ($outcome->failures !== []) {
+            if ($this->element->evaluate(null)->failures !== []) {
                 throw new InvalidArgumentException(
                     'The default of list() has no value at position ' . $position . ', which is required.',
                 );
             }
-            $prepared[] = $outcome->value;
+            // Kept as null and read through the element when handed out.
+            $prepared[] = null;
         }
 
         return $prepared;

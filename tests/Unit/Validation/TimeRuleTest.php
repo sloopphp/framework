@@ -301,7 +301,7 @@ final class TimeRuleTest extends TestCase
             static fn () => Rule::shape(['t' => Rule::time('g:i')])->default(['t' => TimeOfDay::of(15, 30)]),
         );
 
-        $this->assertSame('time() reads times with \'g:i\', which does not read back 15:30:00.', $thrown->getMessage());
+        $this->assertSame('The default of shape() cannot hold its value for "t": time() reads times with \'g:i\', which does not read back 15:30:00.', $thrown->getMessage());
     }
 
     // -------------------------------------------------------
