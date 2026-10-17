@@ -424,18 +424,10 @@
             ]
         },
         "CloneRemoval": {
-            // StringRule::withoutRuleMarks is called by when() on two throwaway
-            // copies, the probe and the closure's result without its rules, and
-            // neither is used after the comparison. Changing the copy in place
-            // instead of a clone changes nothing anyone reads.
-            "ignore": [
-                "Sloop\\Validation\\StringRule::withoutRuleMarks"
-            ]
-        },
-        "FalseValue": {
-            // StringRule::withoutRuleMarks sets the combiningRun mark to the same
-            // value on both sides of when()'s comparison, so true compares the
-            // same as false.
+            // StringRule::withoutRuleMarks is called by when() on two copies it
+            // has just made, the probe (from withoutRules()) and the closure's
+            // result without its rules (from withoutChecks()). Changing either
+            // in place instead of a clone changes nothing anyone else holds.
             "ignore": [
                 "Sloop\\Validation\\StringRule::withoutRuleMarks"
             ]

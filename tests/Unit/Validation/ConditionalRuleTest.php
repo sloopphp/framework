@@ -582,7 +582,34 @@ final class ConditionalRuleTest extends TestCase
         );
     }
 
-    public function testACombiningRunTheFieldAlreadyChecksIsCheckedOnceAndWithoutTheCondition(): void
+    public function testARuleTakenFromTheClosureOfAnotherWhenStillBringsTheCombiningRun(): void
+    {
+        $before = Rule::string();
+        $kept   = new class ($before) {
+            public function __construct(public StringRule $rule)
+            {
+            }
+        };
+        Rule::string()->chars([Chars::Alpha])->when('kind', 'x', static function (StringRule $r) use ($kept): StringRule {
+            $kept->rule = $r;
+
+            return $r->url();
+        });
+        $taken = $kept->rule;
+        self::assertNotSame($before, $taken);
+
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()->when('kind', 'x', static fn (StringRule $r): StringRule => $taken->chars([Chars::Alpha])),
+        ];
+
+        $this->assertSame(
+            ['name' => ['combiningRun']],
+            self::failedRulesOf($rules, ['kind' => 'x', 'name' => 'a' . str_repeat("\u{0301}", 31)]),
+        );
+    }
+
+    public function testAFieldThatChecksTheCombiningRunItselfFailsOnItWhetherOrNotTheConditionHolds(): void
     {
         $rules = [
             'kind' => Rule::string(),
