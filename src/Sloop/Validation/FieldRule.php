@@ -350,10 +350,12 @@ abstract class FieldRule
      * declared alongside it has failed, so a value of the wrong form never
      * reaches it. The rules judged later, once every field has its value
      * (same(), different() and the other comparisons with another field, and
-     * the rules when() adds), do not stop it. Several using() on one field do
-     * not stop one another, and a using() added by when() runs whatever the
-     * field's own using() returned. An exception the closure throws is not
-     * caught.
+     * the rules when() adds), do not stop a using() declared on the field
+     * itself. A using() added by when() waits for the field's own rules on
+     * the value and for the other rules of the same when(), but not for the
+     * rules another when() adds. Several using() do not stop one another, so
+     * a using() added by when() runs whatever the field's own using()
+     * returned. An exception the closure throws is not caught.
      *
      * The name is the rule's name in errors(). The language files hold only
      * the framework's rules, so give the message here or with message(); a

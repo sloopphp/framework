@@ -304,6 +304,22 @@ final class UsingTest extends TestCase
         self::assertSame([], $seen->seen);
     }
 
+    public function testUsingAddedByWhenIsNotStoppedByARuleAddedByAnotherWhen(): void
+    {
+        $seen  = new Recorder(true);
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()
+                ->when('kind', 'user', static fn (StringRule $r): StringRule => $r->in(['alice']))
+                ->when('kind', 'user', static fn (StringRule $r): StringRule => $r->using('seen', $seen->test(...), message: 'x')),
+        ];
+
+        $errors = new Validator($rules)->validate(['kind' => 'user', 'name' => 'bob'])->errors();
+
+        self::assertSame(['in'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['name']));
+        self::assertSame(['bob'], $seen->seen);
+    }
+
     public function testUsingAddedByWhenDoesNotRunWhileARuleOfTheFieldItselfFails(): void
     {
         $seen  = new Recorder(false);
