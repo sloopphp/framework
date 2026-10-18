@@ -189,8 +189,8 @@ final class CurrentTimeTest extends TestCase
 
         $this->assertSame([], self::failedAt(self::clockAt('2026-10-18T06:00:00', 'UTC'), $rule, '2026-10-19'));
         $this->assertSame(['afterNow'], self::failedAt(self::clockAt('2026-10-19T06:00:00', 'UTC'), $rule, '2026-10-19'));
-        // The same instant read in another zone, where it is already the next day.
         $this->assertSame([], self::failedAt(self::clockAt('2026-10-18T16:00:00', 'UTC'), $rule, '2026-10-19'));
+        // The same instant as the line above, read in a zone where it is already the next day.
         $this->assertSame(['afterNow'], self::failedAt(self::clockAt('2026-10-19T06:00:00', 'Pacific/Kiritimati'), $rule, '2026-10-19'));
     }
 
