@@ -54,7 +54,7 @@ final class PasswordHasherTest extends TestCase
     #[DataProvider('hasherAndPasswordProvider')]
     public function testVerifyRejectsAnotherPasswordOfTheSameLength(PasswordHasher $hasher, string $password): void
     {
-        // Same length, last byte changed: bcrypt's 72-byte guard does not decide this, the hash does.
+        // Same length (one byte for the empty password), last byte changed:bcrypt's 72-byte guard does not decide this, the hash does.
         $other = $password === '' ? 'x' : substr($password, 0, -1) . \chr(\ord($password[-1]) ^ 0x01);
         $hash  = $hasher->hash($password);
 
