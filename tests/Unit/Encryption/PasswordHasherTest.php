@@ -26,6 +26,28 @@ final class PasswordHasherTest extends TestCase
     // hash / verify
     // -------------------------------------------------------
 
+    // These two come first: when the costs are not passed on, every later
+    // bcrypt hash runs at PHP's cost 12, and a mutant that reaches them first
+    // can exceed Infection's timeout before any assertion names the cause.
+    public function testHashWithBcryptWritesABcryptHashWithTheConfiguredCost(): void
+    {
+        $hash = self::bcrypt()->hash('secret');
+
+        $this->assertIsString($hash);
+        $this->assertSame(['algo' => '2y', 'algoName' => 'bcrypt', 'options' => ['cost' => 4]], password_get_info($hash));
+    }
+
+    public function testHashWithArgon2idWritesAnArgon2idHashWithTheConfiguredParameters(): void
+    {
+        $hash = new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: 16, argon2Time: 2, argon2Threads: 2)->hash('secret');
+
+        $this->assertIsString($hash);
+        $this->assertSame(
+            ['algo' => 'argon2id', 'algoName' => 'argon2id', 'options' => ['memory_cost' => 16, 'time_cost' => 2, 'threads' => 2]],
+            password_get_info($hash),
+        );
+    }
+
     /**
      * @return array<string, array{PasswordHasher, string}>
      */
@@ -62,25 +84,6 @@ final class PasswordHasherTest extends TestCase
         $this->assertSame($password === '' ? 1 : \strlen($password), \strlen($other));
         $this->assertTrue($hasher->verify($password, $hash));
         $this->assertFalse($hasher->verify($other, $hash));
-    }
-
-    public function testHashWithBcryptWritesABcryptHashWithTheConfiguredCost(): void
-    {
-        $hash = self::bcrypt()->hash('secret');
-
-        $this->assertIsString($hash);
-        $this->assertSame(['algo' => '2y', 'algoName' => 'bcrypt', 'options' => ['cost' => 4]], password_get_info($hash));
-    }
-
-    public function testHashWithArgon2idWritesAnArgon2idHashWithTheConfiguredParameters(): void
-    {
-        $hash = new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: 16, argon2Time: 2, argon2Threads: 2)->hash('secret');
-
-        $this->assertIsString($hash);
-        $this->assertSame(
-            ['algo' => 'argon2id', 'algoName' => 'argon2id', 'options' => ['memory_cost' => 16, 'time_cost' => 2, 'threads' => 2]],
-            password_get_info($hash),
-        );
     }
 
     public function testConstructorDefaultsToPhpsCosts(): void
