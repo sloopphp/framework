@@ -205,9 +205,9 @@ final class RequestTest extends TestCase
         $request = $this->createRequest(query: ['n' => null], parsedBody: ['n' => null]);
 
         $this->assertSame([], $request->getArray('missing'));
-        $this->assertSame(['d'], $request->getArray('n', ['d']));
-        $this->assertSame(['d'], $request->postArray('n', ['d']));
-        $this->assertSame(['d'], $request->inputArray('missing', ['d']));
+        $this->assertSame(['d', 'e'], $request->getArray('n', ['d', 'e']));
+        $this->assertSame(['d', 'e'], $request->postArray('n', ['d', 'e']));
+        $this->assertSame(['d', 'e'], $request->inputArray('missing', ['d', 'e']));
     }
 
     public function testPostArrayReturnsDefaultWhenBodyIsNotArray(): void
