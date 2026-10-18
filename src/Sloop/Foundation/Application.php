@@ -597,13 +597,15 @@ final class Application implements RequestHandlerInterface
     /**
      * Read encryption.cipher, defaulting to AES-256-GCM when it is missing or null.
      *
+     * The name is matched without regard to case ('AES-256-GCM' names the same cipher).
+     *
      * @return Cipher
      * @throws InvalidConfigException If the entry names no supported cipher
      */
     private function readEncryptionCipher(): Cipher
     {
         $name   = (Config::isLoaded() ? Config::get('encryption.cipher') : null) ?? Cipher::Aes256Gcm->value;
-        $cipher = \is_string($name) ? Cipher::tryFrom($name) : null;
+        $cipher = \is_string($name) ? Cipher::tryFrom(strtolower($name)) : null;
         if ($cipher === null) {
             throw new InvalidConfigException(
                 'encryption.cipher must be one of: ' . implode(', ', array_column(Cipher::cases(), 'value')) . '.',

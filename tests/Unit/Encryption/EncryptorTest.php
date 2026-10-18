@@ -405,6 +405,36 @@ final class EncryptorTest extends TestCase
         }
     }
 
+    public function testStackTraceDoesNotContainTheKeys(): void
+    {
+        $badPreviousKey = substr(self::OTHER_KEY, 0, 62) . 'zz';
+        $ignoreArgs     = ini_set('zend.exception_ignore_args', '0');
+
+        try {
+            new Encryptor(self::KEY, [$badPreviousKey]);
+            $this->fail('Expected InvalidConfigException.');
+        } catch (InvalidConfigException $e) {
+            $exception = $e;
+        } finally {
+            ini_set('zend.exception_ignore_args', $ignoreArgs === false ? '1' : $ignoreArgs);
+        }
+
+        $this->assertStringNotContainsString(self::KEY, $exception->getTraceAsString());
+        $this->assertStringNotContainsString($badPreviousKey, $exception->getTraceAsString());
+
+        $arguments = [];
+        foreach ($exception->getTrace() as $frame) {
+            if (($frame['class'] ?? null) === Encryptor::class) {
+                $arguments = [...$arguments, ...($frame['args'] ?? [])];
+            }
+        }
+
+        $this->assertNotContains(self::KEY, $arguments);
+        $this->assertNotContains($badPreviousKey, $arguments);
+        $this->assertNotContains([$badPreviousKey], $arguments);
+        $this->assertNotEmpty(array_filter($arguments, static fn (mixed $argument): bool => $argument instanceof \SensitiveParameterValue));
+    }
+
     public function testDebugInfoShowsTheCipherAndTheNumberOfKeysOnly(): void
     {
         $this->assertSame(

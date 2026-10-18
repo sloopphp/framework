@@ -108,6 +108,28 @@ final class ApplicationEncryptionTest extends TestCase
         $this->assertStringStartsWith(Cipher::Aes256Cbc->prefix(), $encryptor->encrypt('value'));
     }
 
+    public function testEncryptorAcceptsTheCipherNameInAnyCase(): void
+    {
+        $this->writeEncryptionConfig("['key' => '" . self::KEY . "', 'cipher' => 'AES-256-Cbc']");
+
+        $encryptor = new Application($this->tmpDir)->container->get(Encryptor::class);
+
+        $this->assertInstanceOf(Encryptor::class, $encryptor);
+        $this->assertStringStartsWith(Cipher::Aes256Cbc->prefix(), $encryptor->encrypt('value'));
+    }
+
+    public function testEncryptorHasNoPreviousKeysWhenTheyAreNull(): void
+    {
+        $this->writeEncryptionConfig("['key' => '" . self::KEY . "', 'previous_keys' => null]");
+        $old = new Encryptor(self::OTHER_KEY)->encrypt('old');
+
+        $encryptor = new Application($this->tmpDir)->container->get(Encryptor::class);
+
+        $this->assertInstanceOf(Encryptor::class, $encryptor);
+        $this->assertSame('1 key(s), hidden', $encryptor->__debugInfo()['keys']);
+        $this->assertFalse($encryptor->decrypt($old));
+    }
+
     public function testEncryptorUsesGcmWhenTheCipherIsNotWritten(): void
     {
         $this->writeEncryptionConfig("['key' => '" . self::KEY . "', 'cipher' => null]");
@@ -185,7 +207,7 @@ final class ApplicationEncryptionTest extends TestCase
             'previous key not a string'      => ["['key' => '" . self::KEY . "', 'previous_keys' => [123]]", 'Previous encryption key #0 must be 64 hexadecimal characters (32 bytes).'],
             'previous key malformed, no key' => ["['previous_keys' => ['" . $short . "']]", 'Previous encryption key #0 must be 64 hexadecimal characters (32 bytes).'],
             'unknown cipher'                 => ["['key' => '" . self::KEY . "', 'cipher' => 'aes-128-cbc']", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
-            'unknown cipher, no key'         => ["['cipher' => 'AES-256-GCM']", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
+            'unknown cipher, no key'         => ["['cipher' => 'aes-256-ctr']", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
             'cipher not a string'            => ["['key' => '" . self::KEY . "', 'cipher' => 1]", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
         ];
     }
