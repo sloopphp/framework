@@ -137,6 +137,17 @@ final class ListRule extends ArrayRule
     }
 
     /**
+     * Copy every element of a default about to be handed out the way the element copies its own.
+     *
+     * @param  mixed $value Default as outputOfDefault() built it
+     * @return mixed
+     */
+    protected function freshCopy(mixed $value): mixed
+    {
+        return \is_array($value) ? array_map($this->element->freshCopy(...), $value) : $value;
+    }
+
+    /**
      * Compare every element of the default the way the element compares its own.
      *
      * @param  mixed                    $default Default as prepareElements() returned it
@@ -221,6 +232,7 @@ final class ListRule extends ArrayRule
      * @return array{list<Failure>, array<array-key, mixed>, list<mixed>, list<mixed>}
      * @throws \UnexpectedValueException                                               When a sanitizer closure returns the wrong type
      * @throws \RuntimeException                                                       When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws \InvalidArgumentException                                               When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     protected function validateChildren(mixed $typed, DateTimeImmutable $now): array
     {

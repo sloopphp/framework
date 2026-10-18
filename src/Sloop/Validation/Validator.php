@@ -172,7 +172,7 @@ final readonly class Validator
      * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
      * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
      * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
-     * @throws InvalidArgumentException                                         When a date limit or default cannot be read back as a date in the time zone of the validation
+     * @throws InvalidArgumentException                                         When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     public function evaluateFields(array $data, DateTimeImmutable $now): array
     {

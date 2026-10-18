@@ -375,6 +375,29 @@ final class CurrentTimeTest extends TestCase
         $this->assertSame('2026-01-01T00:00:00+00:00', $value('UTC'));
     }
 
+    public function testEachValidationIsHandedItsOwnDefaultObject(): void
+    {
+        // PHP still lets a caller set a property of its own on a
+        // DateTimeImmutable (deprecated, not refused), which a shared object
+        // would carry into the next validation.
+        $instant   = new DateTimeImmutable('2026-01-02T00:00:00Z');
+        $validator = new Validator([
+            'date'     => Rule::date()->default($instant),
+            'dateTime' => Rule::dateTime()->default($instant),
+            'list'     => Rule::list(Rule::date())->default([$instant]),
+            'shape'    => Rule::shape(['d' => Rule::dateTime()])->default(['d' => $instant]),
+        ], self::clockAt('2026-10-18T06:00:00', 'UTC'));
+
+        $first  = $validator->validate([])->values();
+        $second = $validator->validate([])->values();
+
+        $this->assertNotSame($first['date'], $second['date']);
+        $this->assertNotSame($first['dateTime'], $second['dateTime']);
+        $this->assertNotSame(self::listed($first['list'])[0], self::listed($second['list'])[0]);
+        $this->assertNotSame(self::listed($first['shape'])['d'], self::listed($second['shape'])['d']);
+        $this->assertEquals($first, $second);
+    }
+
     public function testDefaultOfAContainerIsTheDateItFallsOnInTheZoneOfTheClock(): void
     {
         $instant = new DateTimeImmutable('2026-01-02T00:00:00+09:00');

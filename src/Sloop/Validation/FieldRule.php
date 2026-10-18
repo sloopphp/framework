@@ -66,13 +66,12 @@ abstract class FieldRule
     private mixed $default = null;
 
     /**
-     * What an empty field gave the last time the default was handed out, with the name of the time zone it was built for.
+     * The default as last built for handing out, with the name of the time zone it was built for and what it compares by.
      *
      * A date is handed out as the start of that date where the clock reads,
-     * so the outcome is built again when the zone changes; only the last one
-     * is kept.
+     * so it is built again when the zone changes; only the last one is kept.
      *
-     * @var array{string, FieldOutcome}|null
+     * @var array{string, mixed, mixed}|null
      */
     private ?array $defaultOutcome = null;
 
@@ -400,7 +399,7 @@ abstract class FieldRule
      * @return FieldOutcome
      * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
      * @throws RuntimeException         When PCRE aborts while a Sanitize case is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
-     * @throws InvalidArgumentException When a date limit or default cannot be read back as a date in the time zone of the validation
+     * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     public function evaluate(mixed $raw, DateTimeImmutable $now): FieldOutcome
     {
@@ -414,15 +413,14 @@ abstract class FieldRule
         }
 
         $typed = $this->coerce($value);
+        if (!$typed instanceof TypeMismatch) {
+            $typed = $this->inFrame($typed, $now);
+        }
         if ($typed instanceof TypeMismatch) {
             $rule   = $typed->rule ?? $this->typeRule();
             $params = $typed->rule === null ? $this->typeParams() : $typed->params;
 
             return new FieldOutcome(null, null, [new Failure($rule, $params)]);
-        }
-        $typed = $this->inFrame($typed, $now);
-        if ($typed instanceof TypeMismatch) {
-            return new FieldOutcome(null, null, [new Failure($this->typeRule(), $this->typeParams())]);
         }
 
         // A value of the wrong size stops here, the way one of the wrong type does.
@@ -470,32 +468,34 @@ abstract class FieldRule
             return new FieldOutcome(null, null, [], empty: true);
         }
 
-        // Built once per time zone: a container's default can be large, and
-        // one input can leave a list element empty many times over.
+        // Kept for the last time zone only: a container's default can be
+        // large, and one input can leave a list element empty many times over.
         $zone = $now->getTimezone()->getName();
         if ($this->defaultOutcome === null || $this->defaultOutcome[0] !== $zone) {
-            $this->defaultOutcome = [$zone, new FieldOutcome(
+            $this->defaultOutcome = [
+                $zone,
                 $this->outputOfDefault($this->default, $now),
                 $this->comparableOfDefault($this->default, $now),
-                [],
-                empty: true,
-            )];
+            ];
         }
 
-        return $this->defaultOutcome[1];
+        // A fresh copy each time, so that what one caller does to the object
+        // it was handed (a property set on a date) does not reach the next.
+        return new FieldOutcome($this->freshCopy($this->defaultOutcome[1]), $this->defaultOutcome[2], [], empty: true);
     }
 
     /**
      * Run the rules one when() adds.
      *
-     * @param  int               $index          Position of the when() among those declared
-     * @param  T                 $sized          Value the rules on the size test, before what it holds was read
-     * @param  T                 $typed          Value the other rules test
-     * @param  T                 $elements       Value the rules reading the elements test
-     * @param  bool              $elementsPassed Whether every element passed, without which those rules do not run
-     * @param  DateTimeImmutable $now            Time of the validation
+     * @param  int                      $index          Position of the when() among those declared
+     * @param  T                        $sized          Value the rules on the size test, before what it holds was read
+     * @param  T                        $typed          Value the other rules test
+     * @param  T                        $elements       Value the rules reading the elements test
+     * @param  bool                     $elementsPassed Whether every element passed, without which those rules do not run
+     * @param  DateTimeImmutable        $now            Time of the validation
      * @return list<Failure>
-     * @throws RuntimeException  When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed, DateTimeImmutable $now): array
     {
@@ -512,11 +512,12 @@ abstract class FieldRule
      * Run a set of rules over a value, keeping every failure.
      *
      * @template V
-     * @param  list<Check<V>>    $checks Rules to run
-     * @param  V                 $typed  Value the rules test
-     * @param  DateTimeImmutable $now    Time of the validation
+     * @param  list<Check<V>>           $checks Rules to run
+     * @param  V                        $typed  Value the rules test
+     * @param  DateTimeImmutable        $now    Time of the validation
      * @return list<Failure>
-     * @throws RuntimeException  When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     private function run(array $checks, mixed $typed, DateTimeImmutable $now): array
     {
@@ -612,6 +613,22 @@ abstract class FieldRule
     protected function outputOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         return $this->output($default);
+    }
+
+    /**
+     * A copy of a default about to be handed out, so that no two callers share one object they can change.
+     *
+     * Only a DateTimeImmutable is copied: PHP lets a caller set a property of
+     * its own on one, which the next caller would otherwise find. The other
+     * objects a default can hold (an enum case, a TimeOfDay, a BcMath\Number)
+     * take no such property, so they are handed out as they are.
+     *
+     * @param  mixed $value Default as outputOfDefault() built it
+     * @return mixed
+     */
+    protected function freshCopy(mixed $value): mixed
+    {
+        return $value instanceof DateTimeImmutable ? clone $value : $value;
     }
 
     /**

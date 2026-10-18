@@ -126,6 +126,26 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Copy every key of a default about to be handed out the way the key copies its own.
+     *
+     * @param  mixed $value Default as outputOfDefault() built it
+     * @return mixed
+     */
+    protected function freshCopy(mixed $value): mixed
+    {
+        if (!\is_array($value)) {
+            return $value;
+        }
+
+        $copy = [];
+        foreach ($value as $key => $item) {
+            $copy[$key] = $this->fields[$key]->freshCopy($item);
+        }
+
+        return $copy;
+    }
+
+    /**
      * Compare every key of the default the way the key compares its own.
      *
      * @param  mixed                    $default Default as fill() returned it
@@ -223,6 +243,7 @@ final class ShapeRule extends ArrayRule
      * @return array{list<Failure>, array<array-key, mixed>, array<array-key, mixed>, array<array-key, mixed>}
      * @throws \RuntimeException                                                                               When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \UnexpectedValueException                                                                       When a sanitizer closure returns the wrong type
+     * @throws \InvalidArgumentException                                                                       When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     protected function validateChildren(mixed $typed, DateTimeImmutable $now): array
     {
