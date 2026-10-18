@@ -41,7 +41,7 @@ final class Request
      * Get a query string parameter as a string.
      *
      * @param  string          $key     Parameter name
-     * @param  string|null     $default Default value if not found
+     * @param  string|null     $default Default value when the key is missing or null
      * @return string|null
      * @throws DomainException When the value is not a string (HTTP 400)
      */
@@ -61,7 +61,7 @@ final class Request
      * the body is parsed, so it is returned as one.
      *
      * @param  string          $key     Parameter name
-     * @param  string|null     $default Default value if not found
+     * @param  string|null     $default Default value when the key is missing or null
      * @return string|null
      * @throws DomainException When the value is not a string (HTTP 400)
      */
@@ -78,7 +78,7 @@ final class Request
      * rejected without reading the body.
      *
      * @param  string          $key     Parameter name
-     * @param  string|null     $default Default value if not found
+     * @param  string|null     $default Default value when the key is missing or null
      * @return string|null
      * @throws DomainException When the value is not a string (HTTP 400)
      */
@@ -96,7 +96,7 @@ final class Request
      * Get a query string parameter that holds an array, as it was sent.
      *
      * @param  string                  $key     Parameter name
-     * @param  array<array-key, mixed> $default Default value if not found
+     * @param  array<array-key, mixed> $default Default value when the key is missing or null
      * @return array<array-key, mixed>
      * @throws DomainException         When the value is not an array (HTTP 400)
      */
@@ -112,7 +112,7 @@ final class Request
      * booleans of a JSON body.
      *
      * @param  string                  $key     Parameter name
-     * @param  array<array-key, mixed> $default Default value if not found
+     * @param  array<array-key, mixed> $default Default value when the key is missing or null
      * @return array<array-key, mixed>
      * @throws DomainException         When the value is not an array (HTTP 400)
      */
@@ -128,7 +128,7 @@ final class Request
      * input().
      *
      * @param  string                  $key     Parameter name
-     * @param  array<array-key, mixed> $default Default value if not found
+     * @param  array<array-key, mixed> $default Default value when the key is missing or null
      * @return array<array-key, mixed>
      * @throws DomainException         When the value is not an array (HTTP 400)
      */

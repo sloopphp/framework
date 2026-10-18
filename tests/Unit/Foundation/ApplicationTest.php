@@ -1105,9 +1105,28 @@ final class ApplicationTest extends TestCase
         $this->assertSame(['json' => 'Alice', 'post' => 'Alice', 'input' => 'Alice'], $data);
     }
 
-    public function testNonStringJsonValueReadAsAStringIsA400(): void
+    public function testNonStringJsonValueReadAsAStringIsA400ThatPassesBackThroughGlobalMiddleware(): void
     {
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
+        );
         $request = $this->jsonRequest('{"name":42}');
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request value \"name\" must be a string.', (string) $response->getBody());
+        $this->assertTrue($handler->hasWarningThatContains('The request value "name" must be a string.'));
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testArrayInTheQueryReadAsAStringIsA400(): void
+    {
+        $request = $this->jsonRequest('{}')->withQueryParams(['name' => ['x']]);
 
         $app = new Application($this->tmpDir);
         $this->captureLog($app);
