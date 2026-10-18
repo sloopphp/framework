@@ -126,26 +126,6 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
-     * Copy every key of a default about to be handed out the way the key copies its own.
-     *
-     * @param  mixed $value Default as outputOfDefault() built it
-     * @return mixed
-     */
-    protected function freshCopy(mixed $value): mixed
-    {
-        if (!\is_array($value)) {
-            return $value;
-        }
-
-        $copy = [];
-        foreach ($value as $key => $item) {
-            $copy[$key] = $this->fields[$key]->freshCopy($item);
-        }
-
-        return $copy;
-    }
-
-    /**
      * Compare every key of the default the way the key compares its own.
      *
      * @param  mixed                    $default Default as fill() returned it

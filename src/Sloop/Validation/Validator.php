@@ -117,7 +117,10 @@ final readonly class Validator
      */
     public function validate(array $data): ValidationResult
     {
-        [$outcomes, $failures] = $this->evaluateFields($data, $this->clock->now());
+        // A copy, so that each validation has a time object of its own even
+        // when the clock hands back the same one (FrozenClock does): the rules
+        // tell one validation from the next by it.
+        [$outcomes, $failures] = $this->evaluateFields($data, clone $this->clock->now());
 
         $values = [];
         $errors = [];

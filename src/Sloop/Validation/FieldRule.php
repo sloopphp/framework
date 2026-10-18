@@ -66,14 +66,17 @@ abstract class FieldRule
     private mixed $default = null;
 
     /**
-     * The default as last built for handing out, with the name of the time zone it was built for and what it compares by.
+     * The default as built for the last validation, with that validation's time and what the default compares by.
      *
-     * A date is handed out as the start of that date where the clock reads,
-     * so it is built again when the zone changes; only the last one is kept.
+     * Built once per validation: within one, a container's default can be
+     * large and one input can leave a list element empty many times over, so
+     * every empty element shares it. The next validation builds its own, so
+     * an object handed out (a date) is never shared with another validation,
+     * and a date follows the zone the clock reads then.
      *
-     * @var array{string, mixed, mixed}|null
+     * @var array{DateTimeImmutable, mixed, mixed}|null
      */
-    private ?array $defaultOutcome = null;
+    private ?array $builtDefault = null;
 
     /**
      * Message used for every rule of this field that has no message of its own.
@@ -181,7 +184,7 @@ abstract class FieldRule
      */
     public function __clone(): void
     {
-        $this->defaultOutcome = null;
+        $this->builtDefault = null;
     }
 
     /**
@@ -468,20 +471,17 @@ abstract class FieldRule
             return new FieldOutcome(null, null, [], empty: true);
         }
 
-        // Kept for the last time zone only: a container's default can be
-        // large, and one input can leave a list element empty many times over.
-        $zone = $now->getTimezone()->getName();
-        if ($this->defaultOutcome === null || $this->defaultOutcome[0] !== $zone) {
-            $this->defaultOutcome = [
-                $zone,
+        // The Validator hands every rule of one validation the same time
+        // object, and a different one to each validation.
+        if ($this->builtDefault === null || $this->builtDefault[0] !== $now) {
+            $this->builtDefault = [
+                $now,
                 $this->outputOfDefault($this->default, $now),
                 $this->comparableOfDefault($this->default, $now),
             ];
         }
 
-        // A fresh copy each time, so that what one caller does to the object
-        // it was handed (a property set on a date) does not reach the next.
-        return new FieldOutcome($this->freshCopy($this->defaultOutcome[1]), $this->defaultOutcome[2], [], empty: true);
+        return new FieldOutcome($this->builtDefault[1], $this->builtDefault[2], [], empty: true);
     }
 
     /**
@@ -613,22 +613,6 @@ abstract class FieldRule
     protected function outputOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         return $this->output($default);
-    }
-
-    /**
-     * A copy of a default about to be handed out, so that no two callers share one object they can change.
-     *
-     * Only a DateTimeImmutable is copied: PHP lets a caller set a property of
-     * its own on one, which the next caller would otherwise find. The other
-     * objects a default can hold (an enum case, a TimeOfDay, a BcMath\Number)
-     * take no such property, so they are handed out as they are.
-     *
-     * @param  mixed $value Default as outputOfDefault() built it
-     * @return mixed
-     */
-    protected function freshCopy(mixed $value): mixed
-    {
-        return $value instanceof DateTimeImmutable ? clone $value : $value;
     }
 
     /**

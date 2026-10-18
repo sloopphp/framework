@@ -1038,10 +1038,11 @@ final class ArrayRuleTest extends TestCase
         $this->assertSameValue([new Number('1.50'), new Number('0.00')], $value);
     }
 
-    public function testTheDefaultIsBuiltOnceForEveryEmptyElementAndEveryEmptyField(): void
+    public function testTheDefaultIsBuiltOnceForEveryEmptyElementOfOneValidation(): void
     {
         // Building it for every empty element made an input of many nulls
-        // cost the size of the default each time.
+        // cost the size of the default each time. The next validation builds
+        // its own, so that no object is shared between two validations.
         $rule = Rule::list(Rule::list(Rule::decimal(10, 2)->asNumber())->default(['1.5']));
 
         $first  = self::valueOf($rule, [null, null]);
@@ -1052,7 +1053,7 @@ final class ArrayRuleTest extends TestCase
         $this->assertIsArray($first[1]);
         $this->assertIsArray($second[0]);
         $this->assertSame($first[0][0], $first[1][0]);
-        $this->assertSame($first[0][0], $second[0][0]);
+        $this->assertNotSame($first[0][0], $second[0][0]);
     }
 
     public function testACopyMadeAfterTheDefaultWasHandedOutBuildsItAgain(): void

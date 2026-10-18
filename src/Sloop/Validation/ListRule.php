@@ -137,17 +137,6 @@ final class ListRule extends ArrayRule
     }
 
     /**
-     * Copy every element of a default about to be handed out the way the element copies its own.
-     *
-     * @param  mixed $value Default as outputOfDefault() built it
-     * @return mixed
-     */
-    protected function freshCopy(mixed $value): mixed
-    {
-        return \is_array($value) ? array_map($this->element->freshCopy(...), $value) : $value;
-    }
-
-    /**
      * Compare every element of the default the way the element compares its own.
      *
      * @param  mixed                    $default Default as prepareElements() returned it

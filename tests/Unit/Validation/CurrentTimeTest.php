@@ -398,6 +398,15 @@ final class CurrentTimeTest extends TestCase
         $this->assertEquals($first, $second);
     }
 
+    public function testEmptyElementsOfOneValidationShareTheDefault(): void
+    {
+        // Building the default for every empty element would cost its size each time.
+        $rule   = Rule::list(Rule::list(Rule::dateTime())->default([new DateTimeImmutable('2026-01-02T00:00:00Z')]));
+        $values = self::listed(new Validator(['l' => $rule], self::clockAt('2026-10-18T06:00:00', 'UTC'))->validate(['l' => [null, null]])->values()['l']);
+
+        $this->assertSame(self::listed($values[0])[0], self::listed($values[1])[0]);
+    }
+
     public function testDefaultOfAContainerIsTheDateItFallsOnInTheZoneOfTheClock(): void
     {
         $instant = new DateTimeImmutable('2026-01-02T00:00:00+09:00');
