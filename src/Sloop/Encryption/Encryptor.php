@@ -182,7 +182,7 @@ final readonly class Encryptor
      * @return string            Salt, IV, ciphertext and tag, concatenated
      * @throws \RuntimeException If OpenSSL fails to encrypt
      */
-    private function sealGcm(string $value, string $salt, string $prefix): string
+    private function sealGcm(#[\SensitiveParameter] string $value, string $salt, string $prefix): string
     {
         $key        = self::deriveGcmKey($this->keys[0], $salt);
         $iv         = random_bytes(self::GCM_IV_BYTES);
@@ -204,7 +204,7 @@ final readonly class Encryptor
      * @return string            Salt, IV, ciphertext and MAC, concatenated
      * @throws \RuntimeException If OpenSSL fails to encrypt
      */
-    private function sealCbc(string $value, string $salt, string $prefix): string
+    private function sealCbc(#[\SensitiveParameter] string $value, string $salt, string $prefix): string
     {
         [$encryptionKey, $macKey] = self::deriveCbcKeys($this->keys[0], $salt);
 
@@ -286,7 +286,7 @@ final readonly class Encryptor
      * @param  string $salt          HKDF salt from the payload
      * @return string
      */
-    private static function deriveGcmKey(string $configuredKey, string $salt): string
+    private static function deriveGcmKey(#[\SensitiveParameter] string $configuredKey, string $salt): string
     {
         return hash_hkdf('sha256', $configuredKey, self::KEY_BYTES, self::GCM_HKDF_INFO, $salt);
     }
@@ -298,7 +298,7 @@ final readonly class Encryptor
      * @param  string                $salt          HKDF salt from the payload
      * @return array{string, string} Encryption key and MAC key
      */
-    private static function deriveCbcKeys(string $configuredKey, string $salt): array
+    private static function deriveCbcKeys(#[\SensitiveParameter] string $configuredKey, string $salt): array
     {
         $material = hash_hkdf('sha256', $configuredKey, self::KEY_BYTES * 2, self::CBC_HKDF_INFO, $salt);
 

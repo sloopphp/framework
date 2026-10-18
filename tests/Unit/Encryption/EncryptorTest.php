@@ -246,8 +246,12 @@ final class EncryptorTest extends TestCase
      */
     public static function malformedPayloadProvider(): array
     {
-        $valid = new Encryptor(self::KEY)->encrypt('valid');
-        $body  = substr($valid, 3);
+        // The body must contain '-' or '_', or spelling it in the standard
+        // alphabet would leave it unchanged and still valid.
+        do {
+            $valid = new Encryptor(self::KEY)->encrypt('valid');
+            $body  = substr($valid, 3);
+        } while (strpbrk($body, '-_') === false);
 
         return [
             'empty string'            => [''],
