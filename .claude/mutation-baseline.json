@@ -146,6 +146,18 @@
             "diff": "-        return \\function_exists('apcu_enabled') && apcu_enabled();\n+        return \\function_exists('apcu_enabled') || apcu_enabled();"
         },
         {
+            "file": "src/Sloop/Encryption/Encryptor.php",
+            "method": "Encryptor::deriveCbcKeys",
+            "mutator": "UnwrapSubstr",
+            "diff": "-        return [substr($material, 0, self::KEY_BYTES), substr($material, self::KEY_BYTES)];\n+        return [$material, substr($material, self::KEY_BYTES)];"
+        },
+        {
+            "file": "src/Sloop/Encryption/Encryptor.php",
+            "method": "Encryptor::openGcm",
+            "mutator": "Plus",
+            "diff": "-        if (\\strlen($body) < self::SALT_BYTES + self::GCM_IV_BYTES + self::GCM_TAG_BYTES) {\n+        if (\\strlen($body) < self::SALT_BYTES - self::GCM_IV_BYTES + self::GCM_TAG_BYTES) {"
+        },
+        {
             "file": "src/Sloop/Foundation/Path.php",
             "method": "Path::join",
             "mutator": "Concat",

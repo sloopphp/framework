@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e6e4eff140b3af940dca0fca778772d3",
+    "content-hash": "fe249fa808a735fdc306c2d31dd55ff0",
     "packages": [
         {
             "name": "monolog/monolog",
@@ -7165,6 +7165,7 @@
         "ext-filter": "*",
         "ext-intl": "*",
         "ext-mbstring": "*",
+        "ext-openssl": "*",
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
         "lib-icu": ">=62"

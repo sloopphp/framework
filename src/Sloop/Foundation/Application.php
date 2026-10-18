@@ -22,6 +22,9 @@ use Sloop\Database\Replica\DeadReplicaCache;
 use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
+use Sloop\Encryption\Cipher;
+use Sloop\Encryption\Encryptor;
+use Sloop\Encryption\Exception\InvalidConfigException;
 use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
@@ -89,6 +92,7 @@ final class Application implements RequestHandlerInterface
 
         $this->registerCoreBindings();
         $this->loadConfig();
+        $this->bootEncryption();
         $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
@@ -514,6 +518,101 @@ final class Application implements RequestHandlerInterface
 
         $environment = getenv('APP_ENV');
         Config::load($configPath, \is_string($environment) ? $environment : null);
+    }
+
+    /**
+     * Register the Encryptor from the encryption config, checking the written entries now.
+     *
+     * A key, previous key or cipher that is written but malformed fails the
+     * boot, so a mistyped key surfaces at deploy time. A missing key does not:
+     * applications that never encrypt need no key, and resolving Encryptor
+     * throws instead.
+     *
+     * @return void
+     * @throws InvalidConfigException If encryption.key, encryption.previous_keys or encryption.cipher is malformed
+     */
+    private function bootEncryption(): void
+    {
+        $key          = $this->readEncryptionKey();
+        $previousKeys = $this->readPreviousEncryptionKeys();
+        $cipher       = $this->readEncryptionCipher();
+
+        if ($key === null) {
+            $this->container->singleton(Encryptor::class, static function (): never {
+                throw new InvalidConfigException(
+                    'The encryption key is not configured. Set encryption.key to 64 hexadecimal characters, for example the output of Encryptor::generateKey().',
+                );
+            });
+
+            return;
+        }
+
+        $this->container->instance(Encryptor::class, new Encryptor($key, $previousKeys, $cipher));
+    }
+
+    /**
+     * Read encryption.key, treating a missing, null or empty entry as not configured.
+     *
+     * @return string|null
+     * @throws InvalidConfigException If the entry is written but is not a string
+     */
+    private function readEncryptionKey(): ?string
+    {
+        $key = Config::isLoaded() ? Config::get('encryption.key') : null;
+        if ($key === null || $key === '') {
+            return null;
+        }
+
+        if (!\is_string($key)) {
+            throw new InvalidConfigException('encryption.key must be a string of 64 hexadecimal characters.');
+        }
+
+        return $key;
+    }
+
+    /**
+     * Read encryption.previous_keys, checking that every entry is a key.
+     *
+     * @return list<string>
+     * @throws InvalidConfigException If the entry is not a list, or one of its keys is not 64 hexadecimal characters
+     */
+    private function readPreviousEncryptionKeys(): array
+    {
+        $previousKeys = (Config::isLoaded() ? Config::get('encryption.previous_keys') : null) ?? [];
+        if (!\is_array($previousKeys) || !array_is_list($previousKeys)) {
+            throw new InvalidConfigException('encryption.previous_keys must be a list of keys.');
+        }
+
+        $checked = [];
+        foreach ($previousKeys as $index => $previousKey) {
+            if (!\is_string($previousKey) || !Encryptor::isValidKey($previousKey)) {
+                throw new InvalidConfigException('Previous encryption key #' . $index . ' must be 64 hexadecimal characters (32 bytes).');
+            }
+            $checked[] = $previousKey;
+        }
+
+        return $checked;
+    }
+
+    /**
+     * Read encryption.cipher, defaulting to AES-256-GCM when it is missing or null.
+     *
+     * The name is matched without regard to case ('AES-256-GCM' names the same cipher).
+     *
+     * @return Cipher
+     * @throws InvalidConfigException If the entry names no supported cipher
+     */
+    private function readEncryptionCipher(): Cipher
+    {
+        $name   = (Config::isLoaded() ? Config::get('encryption.cipher') : null) ?? Cipher::Aes256Gcm->value;
+        $cipher = \is_string($name) ? Cipher::tryFrom(strtolower($name)) : null;
+        if ($cipher === null) {
+            throw new InvalidConfigException(
+                'encryption.cipher must be one of: ' . implode(', ', array_column(Cipher::cases(), 'value')) . '.',
+            );
+        }
+
+        return $cipher;
     }
 
     /**
