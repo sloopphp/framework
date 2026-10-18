@@ -222,7 +222,7 @@ final class ShapeRule extends ArrayRule
      * @param  DateTimeImmutable                                                                               $now   Time of the validation, handed on to every key
      * @return array{list<Failure>, array<array-key, mixed>, array<array-key, mixed>, array<array-key, mixed>}
      * @throws \RuntimeException                                                                               When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
-     * @throws \UnexpectedValueException                                                                       When a sanitizer closure returns the wrong type
+     * @throws \UnexpectedValueException                                                                       When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws \InvalidArgumentException                                                                       When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
     protected function validateChildren(mixed $typed, DateTimeImmutable $now): array

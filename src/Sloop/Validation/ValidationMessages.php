@@ -109,6 +109,19 @@ final class ValidationMessages
     }
 
     /**
+     * Whether a rule name is one the framework's own rules use.
+     *
+     * @internal Read by FieldRule::using(), which refuses these names.
+     *
+     * @param  string $rule Rule name
+     * @return bool
+     */
+    public static function isFrameworkRule(string $rule): bool
+    {
+        return \array_key_exists($rule, self::defaults());
+    }
+
+    /**
      * Fill the placeholders of a message pattern.
      *
      * Lists are joined with ", ".

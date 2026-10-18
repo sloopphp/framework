@@ -112,7 +112,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
      * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
-     * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
+     * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws InvalidArgumentException  When Rule::date()'s format cannot read back, as a date in the clock's time zone, a limit or default (declared where the PHP default zone was another) or today's date (afterNow() and the like)
      */
     public function validate(array $data): ValidationResult
@@ -173,7 +173,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>                                          $data Input
      * @param  DateTimeImmutable                                                $now  Time of the validation
      * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
-     * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
+     * @throws \UnexpectedValueException                                        When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws InvalidArgumentException                                         When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
@@ -226,6 +226,7 @@ final readonly class Validator
      * @param  array<string, list<Failure>> $settled  Failures of each field after judgeRequired()
      * @return array<string, list<Failure>>
      * @throws \RuntimeException            When a rule added by when() cannot read a file's stream, or ICU cannot split a string into grapheme clusters or count them
+     * @throws \UnexpectedValueException    When a closure given to using() in a when() returns something other than a bool
      */
     private function judgeAgainstOthers(array $outcomes, array $settled): array
     {
