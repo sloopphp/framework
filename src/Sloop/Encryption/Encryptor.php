@@ -85,9 +85,9 @@ final readonly class Encryptor
         array $previousKeys = [],
         private Cipher $cipher = Cipher::Aes256Gcm,
     ) {
-        $keys = [self::toBytes($key, 'The encryption key')];
+        $keys = [HexKey::toBytes($key, 'The encryption key')];
         foreach ($previousKeys as $index => $previousKey) {
-            $keys[] = self::toBytes($previousKey, 'Previous encryption key #' . $index);
+            $keys[] = HexKey::toBytes($previousKey, 'Previous encryption key #' . $index);
         }
 
         $this->keys = $keys;
@@ -100,7 +100,7 @@ final readonly class Encryptor
      */
     public static function generateKey(): string
     {
-        return bin2hex(random_bytes(self::KEY_BYTES));
+        return HexKey::generate();
     }
 
     /**
@@ -113,7 +113,7 @@ final readonly class Encryptor
      */
     public static function isValidKey(#[\SensitiveParameter] string $key): bool
     {
-        return preg_match('/\A[0-9a-fA-F]{64}\z/', $key) === 1;
+        return HexKey::isValid($key);
     }
 
     /**
@@ -132,7 +132,7 @@ final readonly class Encryptor
             Cipher::Aes256Cbc => $this->sealCbc($value, $salt, $prefix),
         };
 
-        return $prefix . self::encodeBase64Url($body);
+        return $prefix . Base64Url::encode($body);
     }
 
     /**
@@ -149,7 +149,7 @@ final readonly class Encryptor
         }
 
         $prefix = $cipher->prefix();
-        $body   = self::decodeBase64Url(substr($payload, \strlen($prefix)));
+        $body   = Base64Url::decode(substr($payload, \strlen($prefix)));
         if ($body === false) {
             return false;
         }
@@ -303,54 +303,5 @@ final readonly class Encryptor
         $material = hash_hkdf('sha256', $configuredKey, self::KEY_BYTES * 2, self::CBC_HKDF_INFO, $salt);
 
         return [substr($material, 0, self::KEY_BYTES), substr($material, self::KEY_BYTES)];
-    }
-
-    /**
-     * Convert a hexadecimal key to raw bytes.
-     *
-     * @param  string                 $key   Key as 64 hexadecimal characters
-     * @param  string                 $label Name of the key for the exception message
-     * @return string
-     * @throws InvalidConfigException If the key is not 64 hexadecimal characters
-     */
-    private static function toBytes(#[\SensitiveParameter] string $key, string $label): string
-    {
-        $bytes = self::isValidKey($key) ? hex2bin($key) : false;
-        if ($bytes === false) {
-            throw new InvalidConfigException($label . ' must be 64 hexadecimal characters (32 bytes).');
-        }
-
-        return $bytes;
-    }
-
-    /**
-     * Encode bytes as base64url without padding.
-     *
-     * @param  string $bytes Raw bytes
-     * @return string
-     */
-    private static function encodeBase64Url(string $bytes): string
-    {
-        return rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
-    }
-
-    /**
-     * Decode unpadded base64url, accepting only the spelling encodeBase64Url() writes.
-     *
-     * @param  string       $encoded Encoded text
-     * @return string|false
-     */
-    private static function decodeBase64Url(string $encoded): string|false
-    {
-        if (preg_match('/\A[A-Za-z0-9_-]+\z/', $encoded) !== 1) {
-            return false;
-        }
-
-        $bytes = base64_decode(strtr($encoded, '-_', '+/'), true);
-        if ($bytes === false || self::encodeBase64Url($bytes) !== $encoded) {
-            return false;
-        }
-
-        return $bytes;
     }
 }
