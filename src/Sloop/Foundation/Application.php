@@ -25,6 +25,8 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Encryption\Cipher;
 use Sloop\Encryption\Encryptor;
 use Sloop\Encryption\Exception\InvalidConfigException;
+use Sloop\Encryption\PasswordAlgorithm;
+use Sloop\Encryption\PasswordHasher;
 use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
@@ -93,6 +95,7 @@ final class Application implements RequestHandlerInterface
         $this->registerCoreBindings();
         $this->loadConfig();
         $this->bootEncryption();
+        $this->bootHashing();
         $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
@@ -529,10 +532,12 @@ final class Application implements RequestHandlerInterface
      * throws instead.
      *
      * @return void
-     * @throws InvalidConfigException If encryption.key, encryption.previous_keys or encryption.cipher is malformed
+     * @throws InvalidConfigException If encryption is not an array or has an unsupported key, or encryption.key, encryption.previous_keys or encryption.cipher is malformed
      */
     private function bootEncryption(): void
     {
+        $this->assertConfigSection('encryption', ['key', 'previous_keys', 'cipher']);
+
         $key          = $this->readEncryptionKey();
         $previousKeys = $this->readPreviousEncryptionKeys();
         $cipher       = $this->readEncryptionCipher();
@@ -613,6 +618,99 @@ final class Application implements RequestHandlerInterface
         }
 
         return $cipher;
+    }
+
+    /**
+     * Register the PasswordHasher from the hashing config, checking every entry now.
+     *
+     * Missing or null entries take PHP's defaults (bcrypt, cost 12, argon2id
+     * 64 MiB / 4 passes / 1 thread), so an application without the config file
+     * still gets a working hasher.
+     *
+     * @return void
+     * @throws InvalidConfigException If a section is not an array or has an unsupported key, an entry is malformed, a cost is out of range, or argon2id is chosen and this PHP build lacks it
+     */
+    private function bootHashing(): void
+    {
+        $this->assertConfigSection('hashing', ['algorithm', 'bcrypt', 'argon2id']);
+        $this->assertConfigSection('hashing.bcrypt', ['cost']);
+        $this->assertConfigSection('hashing.argon2id', ['memory', 'time', 'threads']);
+
+        $this->container->instance(PasswordHasher::class, new PasswordHasher(
+            algorithm: $this->readHashingAlgorithm(),
+            bcryptCost: $this->readHashingInt('hashing.bcrypt.cost', 12),
+            argon2Memory: $this->readHashingInt('hashing.argon2id.memory', 65536),
+            argon2Time: $this->readHashingInt('hashing.argon2id.time', 4),
+            argon2Threads: $this->readHashingInt('hashing.argon2id.threads', 1),
+        ));
+    }
+
+    /**
+     * Check that a config section, when written, is an array with only the given keys.
+     *
+     * A misspelled key or a value written where a section belongs would
+     * otherwise be ignored and the default used without notice.
+     *
+     * @param  string                 $key         Config key of the section
+     * @param  list<string>           $allowedKeys Keys the section may contain
+     * @return void
+     * @throws InvalidConfigException If the section is not an array or has another key
+     */
+    private function assertConfigSection(string $key, array $allowedKeys): void
+    {
+        $section = Config::isLoaded() ? Config::get($key) : null;
+        if ($section === null) {
+            return;
+        }
+
+        if (!\is_array($section)) {
+            throw new InvalidConfigException($key . ' must be an array of settings.');
+        }
+
+        foreach (array_keys($section) as $name) {
+            if (!\in_array($name, $allowedKeys, true)) {
+                throw new InvalidConfigException($key . ' has an unsupported key "' . $name . '".');
+            }
+        }
+    }
+
+    /**
+     * Read hashing.algorithm, defaulting to bcrypt when it is missing or null.
+     *
+     * The name is matched without regard to case ('Argon2id' names the same algorithm).
+     *
+     * @return PasswordAlgorithm
+     * @throws InvalidConfigException If the entry names no supported algorithm
+     */
+    private function readHashingAlgorithm(): PasswordAlgorithm
+    {
+        $name      = (Config::isLoaded() ? Config::get('hashing.algorithm') : null) ?? PasswordAlgorithm::Bcrypt->value;
+        $algorithm = \is_string($name) ? PasswordAlgorithm::tryFrom(strtolower($name)) : null;
+        if ($algorithm === null) {
+            throw new InvalidConfigException(
+                'hashing.algorithm must be one of: ' . implode(', ', array_column(PasswordAlgorithm::cases(), 'value')) . '.',
+            );
+        }
+
+        return $algorithm;
+    }
+
+    /**
+     * Read an integer entry of the hashing config, using the default when it is missing or null.
+     *
+     * @param  string                 $key     Config key
+     * @param  int                    $default Value used when the entry is missing or null
+     * @return int
+     * @throws InvalidConfigException If the entry is written but is not an integer
+     */
+    private function readHashingInt(string $key, int $default): int
+    {
+        $value = (Config::isLoaded() ? Config::get($key) : null) ?? $default;
+        if (!\is_int($value)) {
+            throw new InvalidConfigException($key . ' must be an integer.');
+        }
+
+        return $value;
     }
 
     /**

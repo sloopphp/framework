@@ -206,6 +206,8 @@ final class ApplicationEncryptionTest extends TestCase
             'previous key too short'         => ["['key' => '" . self::KEY . "', 'previous_keys' => ['" . self::OTHER_KEY . "', '" . $short . "']]", 'Previous encryption key #1 must be 64 hexadecimal characters (32 bytes).'],
             'previous key not a string'      => ["['key' => '" . self::KEY . "', 'previous_keys' => [123]]", 'Previous encryption key #0 must be 64 hexadecimal characters (32 bytes).'],
             'previous key malformed, no key' => ["['previous_keys' => ['" . $short . "']]", 'Previous encryption key #0 must be 64 hexadecimal characters (32 bytes).'],
+            'unknown key'                    => ["['key' => '" . self::KEY . "', 'cipher_name' => 'aes-256-cbc']", 'encryption has an unsupported key "cipher_name".'],
+            'unknown key, no key'            => ["['previous_key' => []]", 'encryption has an unsupported key "previous_key".'],
             'unknown cipher'                 => ["['key' => '" . self::KEY . "', 'cipher' => 'aes-128-cbc']", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
             'unknown cipher, no key'         => ["['cipher' => 'aes-256-ctr']", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
             'cipher not a string'            => ["['key' => '" . self::KEY . "', 'cipher' => 1]", 'encryption.cipher must be one of: aes-256-gcm, aes-256-cbc.'],
