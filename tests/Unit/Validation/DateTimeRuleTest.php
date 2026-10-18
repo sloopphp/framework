@@ -189,6 +189,18 @@ final class DateTimeRuleTest extends TestCase
         $this->assertSame(['limit' => '2026-01-02T03:04:05+00:00'], $error->params);
     }
 
+    public function testComparisonParameterKeepsAFractionOfASecond(): void
+    {
+        // The value is within the same second as the limit, and the message
+        // has to say why it is not after it.
+        $error = self::onlyError(
+            Rule::dateTime()->after(new DateTimeImmutable('2026-01-02T03:04:05.500000Z')),
+            '2026-01-02T03:04:05.2Z',
+        );
+
+        $this->assertSame(['limit' => '2026-01-02T03:04:05.500000+00:00'], $error->params);
+    }
+
     public function testTwoFieldsNamingTheSameInstantInDifferentZonesCompareEqual(): void
     {
         $rules  = ['from' => Rule::dateTime(), 'to' => Rule::dateTime()->same('from')];

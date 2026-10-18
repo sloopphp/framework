@@ -15,17 +15,18 @@ use InvalidArgumentException;
  *
  * The input must match the declared format exactly; a value PHP would repair
  * (`2026-1-2`, `2026-02-30`) or read past (`2026-01-02 x`) is a type failure.
- * The validated value is the start of that date in the PHP default time zone,
- * because `Y-m-d` carries no offset of its own and the caller's own reading of
- * a bare date is the day as it falls where the application runs. That is
- * midnight, except in a zone whose clock skips it: America/Santiago goes from
- * 23:59:59 straight to 01:00 on the day its summer time starts, so a date of
- * that day is 01:00 there.
+ * The validated value is the start of that date in the time zone the
+ * Validator's clock reads (by default the PHP default time zone, read when
+ * validating), because `Y-m-d` carries no offset of its own and the caller's
+ * own reading of a bare date is the day as it falls where the application
+ * runs. That is midnight, except in a zone whose clock skips it:
+ * America/Santiago goes from 23:59:59 straight to 01:00 on the day its summer
+ * time starts, so a date of that day is 01:00 there.
  *
- * Comparisons reduce their limit to the date it falls on where the
- * application runs. The format itself may not carry a time: dateTime() is the
- * type for an instant, and it asks for an offset that a bare time would not
- * have.
+ * Comparisons reduce their limit, and a default, to the date it falls on in
+ * that same time zone, at each validation. The format itself may not carry a
+ * time: dateTime() is the type for an instant, and it asks for an offset that
+ * a bare time would not have.
  */
 final class DateRule extends TemporalRule
 {
@@ -72,17 +73,18 @@ final class DateRule extends TemporalRule
     /**
      * Use this date when the field is empty.
      *
-     * The value is reduced the same way a comparison limit is, so the default
-     * is a date the field could itself have produced.
+     * The value is reduced the same way a comparison limit is, at each
+     * validation, so the default is a date the field could itself have
+     * produced where the clock reads.
      *
      * @param  DateTimeInterface        $value Date to use for an empty field
      * @return self
      * @throws \LogicException          When the field is required or a default has already been declared
-     * @throws InvalidArgumentException When the declared format cannot read back the value's local date
+     * @throws InvalidArgumentException When the declared format cannot read back the value's date in the PHP default time zone (a validation where the clock reads another zone can still refuse it there)
      */
     public function default(DateTimeInterface $value): self
     {
-        return $this->withDefault($this->alignLimit($value));
+        return $this->withDefault($this->heldLimit($value));
     }
 
     /**
@@ -108,15 +110,54 @@ final class DateRule extends TemporalRule
     }
 
     /**
-     * Read the limit as a date in the PHP default time zone, dropping its time of day.
+     * Move a date read from the input to the start of that date where the clock reads.
+     *
+     * @param  DateTimeImmutable $typed Date as coerce() read it
+     * @param  DateTimeImmutable $now   Time of the validation
+     * @return DateTimeImmutable
+     */
+    protected function inFrame(mixed $typed, DateTimeImmutable $now): DateTimeImmutable
+    {
+        return self::startOf($typed, $now);
+    }
+
+    /**
+     * The default as the date it falls on where the clock reads.
+     *
+     * @param  mixed                    $default Default as declared, a DateTimeImmutable
+     * @param  DateTimeImmutable        $now     Time of the validation
+     * @return mixed
+     * @throws InvalidArgumentException When the declared format cannot read back that date
+     */
+    protected function outputOfDefault(mixed $default, DateTimeImmutable $now): mixed
+    {
+        return $default instanceof DateTimeInterface ? $this->alignLimit($default, $now->getTimezone()) : $default;
+    }
+
+    /**
+     * Compare the default by the date it falls on where the clock reads.
+     *
+     * @param  mixed                    $default Default as declared, a DateTimeImmutable
+     * @param  DateTimeImmutable        $now     Time of the validation
+     * @return mixed
+     * @throws InvalidArgumentException When the declared format cannot read back that date
+     */
+    protected function comparableOfDefault(mixed $default, DateTimeImmutable $now): mixed
+    {
+        return $default instanceof DateTimeInterface ? $this->comparable($this->alignLimit($default, $now->getTimezone())) : $default;
+    }
+
+    /**
+     * Read the limit as a date in the given time zone, dropping its time of day.
      *
      * @param  DateTimeInterface        $limit Limit as the caller declared it
+     * @param  DateTimeZone             $zone  Time zone the date is read in
      * @return DateTimeImmutable
      * @throws InvalidArgumentException When the declared format cannot read back the local date
      */
-    protected function alignLimit(DateTimeInterface $limit): DateTimeImmutable
+    protected function alignLimit(DateTimeInterface $limit, DateTimeZone $zone): DateTimeImmutable
     {
-        $local   = $this->localize($limit);
+        $local   = $this->localize($limit, $zone);
         $aligned = $this->coerce($local->format($this->format));
         // The constructor settled the format against one date, which does not
         // settle every date, so the limit goes through the same reading the
@@ -131,7 +172,7 @@ final class DateRule extends TemporalRule
             );
         }
 
-        return $aligned;
+        return self::startOf($aligned, $local);
     }
 
     /**
@@ -139,16 +180,17 @@ final class DateRule extends TemporalRule
      *
      * A limit is a point in time and names a different date either side of
      * midnight, so the one this field compares against is the date it falls on
-     * where the application runs, which is the frame the validated value is
-     * in. Reading it in the zone the caller happened to build it with would
-     * put the boundary a day out.
+     * where the clock reads, which is the frame the validated value is in.
+     * Reading it in the zone the caller happened to build it with would put
+     * the boundary a day out.
      *
      * @param  DateTimeInterface $limit Limit as the caller declared it
+     * @param  DateTimeZone      $zone  Time zone of the validation
      * @return string
      */
-    protected function describeLimit(DateTimeInterface $limit): string
+    protected function describeLimit(DateTimeInterface $limit, DateTimeZone $zone): string
     {
-        return $this->localize($limit)->format($this->format);
+        return $this->localize($limit, $zone)->format($this->format);
     }
 
     /**
@@ -170,15 +212,33 @@ final class DateRule extends TemporalRule
     }
 
     /**
-     * Read the limit where the application runs.
+     * Read the limit in the given time zone.
      *
      * @param  DateTimeInterface $limit Limit as the caller declared it
+     * @param  DateTimeZone      $zone  Time zone to read it in
      * @return DateTimeImmutable
      */
-    private function localize(DateTimeInterface $limit): DateTimeImmutable
+    private function localize(DateTimeInterface $limit, DateTimeZone $zone): DateTimeImmutable
     {
-        return DateTimeImmutable::createFromInterface($limit)
-            ->setTimezone(new DateTimeZone(date_default_timezone_get()));
+        return DateTimeImmutable::createFromInterface($limit)->setTimezone($zone);
+    }
+
+    /**
+     * The start of a date in the time zone of another point in time.
+     *
+     * Built from that point rather than parsed, so a zone whose clock skips
+     * midnight on the date yields the first time it has, as reading the date
+     * there would.
+     *
+     * @param  DateTimeImmutable $date  Date to keep; its time of day and zone are dropped
+     * @param  DateTimeImmutable $where Point in time whose zone the result is in
+     * @return DateTimeImmutable
+     */
+    private static function startOf(DateTimeImmutable $date, DateTimeImmutable $where): DateTimeImmutable
+    {
+        return $where
+            ->setDate((int) $date->format('Y'), (int) $date->format('n'), (int) $date->format('j'))
+            ->setTime(0, 0);
     }
 
     /**

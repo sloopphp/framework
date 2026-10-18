@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Validation;
 
 use Closure;
+use DateTimeImmutable;
 use InvalidArgumentException;
 
 /**
@@ -105,10 +106,12 @@ final class ShapeRule extends ArrayRule
     /**
      * Hand out every key of the default the way the key hands out its own.
      *
-     * @param  mixed $default Default as fill() returned it
+     * @param  mixed                    $default Default as fill() returned it
+     * @param  DateTimeImmutable        $now     Time of the validation
      * @return mixed
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    protected function outputOfDefault(mixed $default): mixed
+    protected function outputOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         if (!\is_array($default)) {
             return $default;
@@ -116,7 +119,7 @@ final class ShapeRule extends ArrayRule
 
         $output = [];
         foreach ($default as $key => $item) {
-            $output[$key] = $item === null ? $this->fields[$key]->evaluate(null)->value : $this->fields[$key]->outputOfDefault($item);
+            $output[$key] = $item === null ? $this->fields[$key]->evaluate(null, $now)->value : $this->fields[$key]->outputOfDefault($item, $now);
         }
 
         return $output;
@@ -125,10 +128,12 @@ final class ShapeRule extends ArrayRule
     /**
      * Compare every key of the default the way the key compares its own.
      *
-     * @param  mixed $default Default as fill() returned it
+     * @param  mixed                    $default Default as fill() returned it
+     * @param  DateTimeImmutable        $now     Time of the validation
      * @return mixed
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    protected function comparableOfDefault(mixed $default): mixed
+    protected function comparableOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         if (!\is_array($default)) {
             return $default;
@@ -136,7 +141,7 @@ final class ShapeRule extends ArrayRule
 
         $comparable = [];
         foreach ($default as $key => $item) {
-            $comparable[$key] = $item === null ? $this->fields[$key]->evaluate(null)->comparable : $this->fields[$key]->comparableOfDefault($item);
+            $comparable[$key] = $item === null ? $this->fields[$key]->evaluate(null, $now)->comparable : $this->fields[$key]->comparableOfDefault($item, $now);
         }
 
         return $comparable;
@@ -177,7 +182,7 @@ final class ShapeRule extends ArrayRule
             // A key the default says nothing for takes what it would have taken
             // had the field come in without it. A required key has no such value:
             // every input without it fails, so there is nothing to fill with.
-            if ($rule->evaluate(null)->failures !== []) {
+            if ($rule->isRequired()) {
                 throw new InvalidArgumentException(
                     'The default of shape() has no value for "' . $key . '", which is required.',
                 );
@@ -214,13 +219,14 @@ final class ShapeRule extends ArrayRule
      * Validate every declared key, keeping the failures of all of them.
      *
      * @param  array<array-key, mixed>                                                                         $typed Value of the declared type
+     * @param  DateTimeImmutable                                                                               $now   Time of the validation, handed on to every key
      * @return array{list<Failure>, array<array-key, mixed>, array<array-key, mixed>, array<array-key, mixed>}
      * @throws \RuntimeException                                                                               When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \UnexpectedValueException                                                                       When a sanitizer closure returns the wrong type
      */
-    protected function validateChildren(mixed $typed): array
+    protected function validateChildren(mixed $typed, DateTimeImmutable $now): array
     {
-        [$outcomes, $keyFailures] = $this->keys->evaluateFields($typed);
+        [$outcomes, $keyFailures] = $this->keys->evaluateFields($typed, $now);
 
         $failures   = [];
         $values     = [];

@@ -50,6 +50,13 @@ final class DateTimeRule extends TemporalRule
     private const string LIMIT_FORMAT = 'Y-m-d\TH:i:sP';
 
     /**
+     * Format used to report a comparison limit with a fraction of a second, in UTC.
+     *
+     * @var string
+     */
+    private const string LIMIT_FORMAT_FRACTION = 'Y-m-d\TH:i:s.uP';
+
+    /**
      * Use this instant when the field is empty.
      *
      * @param  DateTimeInterface $value Instant to use for an empty field
@@ -80,9 +87,10 @@ final class DateTimeRule extends TemporalRule
      * agree on the frame.
      *
      * @param  DateTimeInterface $limit Limit as the caller declared it
+     * @param  DateTimeZone      $zone  Time zone of the validation, which an instant does not depend on
      * @return DateTimeImmutable
      */
-    protected function alignLimit(DateTimeInterface $limit): DateTimeImmutable
+    protected function alignLimit(DateTimeInterface $limit, DateTimeZone $zone): DateTimeImmutable
     {
         return DateTimeImmutable::createFromInterface($limit)->setTimezone(new DateTimeZone('UTC'));
     }
@@ -107,14 +115,19 @@ final class DateTimeRule extends TemporalRule
     /**
      * Render the limit in UTC, so the same instant reads the same whatever zone it was declared in.
      *
+     * The fraction of a second is written only when there is one: the
+     * comparison counts microseconds, and a limit of 05.5 written as 05 would
+     * make a value of 05.2 read as later than the limit it failed to pass.
+     *
      * @param  DateTimeInterface $limit Limit as the caller declared it
+     * @param  DateTimeZone      $zone  Time zone of the validation, which an instant does not depend on
      * @return string
      */
-    protected function describeLimit(DateTimeInterface $limit): string
+    protected function describeLimit(DateTimeInterface $limit, DateTimeZone $zone): string
     {
-        return DateTimeImmutable::createFromInterface($limit)
-            ->setTimezone(new DateTimeZone('UTC'))
-            ->format(self::LIMIT_FORMAT);
+        $utc = DateTimeImmutable::createFromInterface($limit)->setTimezone(new DateTimeZone('UTC'));
+
+        return $utc->format($utc->format('u') === '000000' ? self::LIMIT_FORMAT : self::LIMIT_FORMAT_FRACTION);
     }
 
     /**

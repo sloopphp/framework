@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Validation;
 
 use Closure;
+use DateTimeImmutable;
 use InvalidArgumentException;
 
 /**
@@ -123,26 +124,30 @@ final class ListRule extends ArrayRule
     /**
      * Hand out every element of the default the way the element hands out its own.
      *
-     * @param  mixed $default Default as prepareElements() returned it
+     * @param  mixed                    $default Default as prepareElements() returned it
+     * @param  DateTimeImmutable        $now     Time of the validation
      * @return mixed
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    protected function outputOfDefault(mixed $default): mixed
+    protected function outputOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         return \is_array($default)
-            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null)->value : $this->element->outputOfDefault($item), $default)
+            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null, $now)->value : $this->element->outputOfDefault($item, $now), $default)
             : $default;
     }
 
     /**
      * Compare every element of the default the way the element compares its own.
      *
-     * @param  mixed $default Default as prepareElements() returned it
+     * @param  mixed                    $default Default as prepareElements() returned it
+     * @param  DateTimeImmutable        $now     Time of the validation
      * @return mixed
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    protected function comparableOfDefault(mixed $default): mixed
+    protected function comparableOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         return \is_array($default)
-            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null)->comparable : $this->element->comparableOfDefault($item), $default)
+            ? array_map(fn (mixed $item): mixed => $item === null ? $this->element->evaluate(null, $now)->comparable : $this->element->comparableOfDefault($item, $now), $default)
             : $default;
     }
 
@@ -176,7 +181,7 @@ final class ListRule extends ArrayRule
             // An empty element takes what it would have taken in an input, as
             // a key a shape's default says nothing for does. A required element
             // has no such value: every input holding it empty fails.
-            if ($this->element->evaluate(null)->failures !== []) {
+            if ($this->element->isRequired()) {
                 throw new InvalidArgumentException(
                     'The default of list() has no value at position ' . $position . ', which is required.',
                 );
@@ -212,18 +217,19 @@ final class ListRule extends ArrayRule
      * with null for an empty element, which they do not compare.
      *
      * @param  array<array-key, mixed>                                                 $typed Value of the declared type
+     * @param  DateTimeImmutable                                                       $now   Time of the validation, handed on to every element
      * @return array{list<Failure>, array<array-key, mixed>, list<mixed>, list<mixed>}
      * @throws \UnexpectedValueException                                               When a sanitizer closure returns the wrong type
      * @throws \RuntimeException                                                       When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      */
-    protected function validateChildren(mixed $typed): array
+    protected function validateChildren(mixed $typed, DateTimeImmutable $now): array
     {
         $failures   = [];
         $values     = [];
         $comparable = [];
         $elements   = [];
         foreach (array_values($typed) as $position => $item) {
-            $outcome = $this->element->evaluate($item);
+            $outcome = $this->element->evaluate($item, $now);
             foreach ($outcome->failures as $failure) {
                 $failures[] = $failure->under(
                     $position,
