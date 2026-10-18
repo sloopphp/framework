@@ -182,11 +182,15 @@ final class TimeRule extends FieldRule
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed
-     * @throws InvalidArgumentException When the format cannot write the value
+     * @throws InvalidArgumentException When the value is not a TimeOfDay, or the format cannot write it
      */
     protected function prepareDefault(mixed $value): mixed
     {
-        return $value instanceof TimeOfDay ? $this->alignLimit($value) : $value;
+        if (!$value instanceof TimeOfDay) {
+            throw self::refusedDefault('a ' . TimeOfDay::class, $value);
+        }
+
+        return $this->alignLimit($value);
     }
 
     /**

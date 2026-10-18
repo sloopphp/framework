@@ -52,6 +52,22 @@ final class StringRule extends FieldRule
     }
 
     /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field, not empty
+     * @return mixed
+     * @throws InvalidArgumentException When the value is not a string
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        if (!\is_string($value)) {
+            throw self::refusedDefault('a string', $value);
+        }
+
+        return $value;
+    }
+
+    /**
      * Fail when the value is shorter than given.
      *
      * @param  int                      $min     Minimum length

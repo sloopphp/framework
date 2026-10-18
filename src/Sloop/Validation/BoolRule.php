@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use InvalidArgumentException;
+
 /**
  * Rules for a field whose validated value is a bool.
  *
@@ -27,6 +29,22 @@ final class BoolRule extends FieldRule
     public function default(bool $value): self
     {
         return $this->withDefault($value);
+    }
+
+    /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field, not empty
+     * @return mixed
+     * @throws InvalidArgumentException When the value is not a bool
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        if (!\is_bool($value)) {
+            throw self::refusedDefault('a bool', $value);
+        }
+
+        return $value;
     }
 
     /**

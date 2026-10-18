@@ -148,11 +148,15 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed
-     * @throws InvalidArgumentException When the value cannot be brought into the frame of this field
+     * @throws InvalidArgumentException When the value is not a DateTimeInterface, or cannot be brought into the frame of this field
      */
     protected function prepareDefault(mixed $value): mixed
     {
-        return $value instanceof DateTimeInterface ? $this->alignLimit($value) : $value;
+        if (!$value instanceof DateTimeInterface) {
+            throw self::refusedDefault('a DateTimeInterface', $value);
+        }
+
+        return $this->alignLimit($value);
     }
 
     /**

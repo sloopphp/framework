@@ -32,6 +32,23 @@ final class FloatRule extends FieldRule
     }
 
     /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field, not empty
+     * @return mixed
+     * @throws InvalidArgumentException When the value is not a float or an int
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        // default() takes an int as well, the way a float parameter does.
+        if (!\is_float($value) && !\is_int($value)) {
+            throw self::refusedDefault('a float or an int', $value);
+        }
+
+        return (float) $value;
+    }
+
+    /**
      * Fail when the value is less than given.
      *
      * @param  int|float                $min     Smallest accepted value

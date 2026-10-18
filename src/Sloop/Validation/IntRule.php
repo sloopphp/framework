@@ -32,6 +32,22 @@ final class IntRule extends FieldRule
     }
 
     /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field, not empty
+     * @return mixed
+     * @throws InvalidArgumentException When the value is not an int
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        if (!\is_int($value)) {
+            throw self::refusedDefault('an int', $value);
+        }
+
+        return $value;
+    }
+
+    /**
      * Fail when the value is less than given.
      *
      * @param  int                      $min     Smallest accepted value

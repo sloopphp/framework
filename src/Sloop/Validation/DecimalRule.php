@@ -93,15 +93,23 @@ final class DecimalRule extends FieldRule
      */
     public function default(int|string $value): self
     {
-        $literal = DecimalLiteral::parse((string) $value);
-        if ($literal === null || !$this->fits($literal)) {
-            throw new InvalidArgumentException(
-                'The default of decimal(' . $this->precision . ', ' . $this->scale . ') must be a decimal that fits it, got '
-                . $value . '.',
-            );
+        return $this->withDefault($this->defaultLiteral($value));
+    }
+
+    /**
+     * Prepare a value a container declares as the default of this field.
+     *
+     * @param  mixed                    $value Value the container's default holds for this field, not empty
+     * @return mixed
+     * @throws InvalidArgumentException When the value is not an int or a decimal string, or does not fit $precision and $scale
+     */
+    protected function prepareDefault(mixed $value): mixed
+    {
+        if (!\is_int($value) && !\is_string($value)) {
+            throw self::refusedDefault('an int or a decimal string', $value);
         }
 
-        return $this->withDefault($literal->padded($this->scale));
+        return $this->defaultLiteral($value);
     }
 
     /**
@@ -224,6 +232,26 @@ final class DecimalRule extends FieldRule
     protected function comparable(mixed $value): string
     {
         return $value->format();
+    }
+
+    /**
+     * Read a default, padded to $scale fraction digits.
+     *
+     * @param  int|string               $value Default as declared
+     * @return DecimalLiteral
+     * @throws InvalidArgumentException When the value is not a decimal or does not fit $precision and $scale
+     */
+    private function defaultLiteral(int|string $value): DecimalLiteral
+    {
+        $literal = DecimalLiteral::parse((string) $value);
+        if ($literal === null || !$this->fits($literal)) {
+            throw new InvalidArgumentException(
+                'The default of decimal(' . $this->precision . ', ' . $this->scale . ') must be a decimal that fits it, got '
+                . $value . '.',
+            );
+        }
+
+        return $literal->padded($this->scale);
     }
 
     /**
