@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Validation;
 
+use BcMath\Number;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -12,6 +14,7 @@ use RuntimeException;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Validation\Stub\Recorder;
 use Sloop\Tests\Unit\Validation\Stub\UserDirectory;
+use Sloop\Validation\DecimalRule;
 use Sloop\Validation\IntRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\Sanitize;
@@ -94,6 +97,53 @@ final class UsingTest extends TestCase
         self::valueOf($rule, '042');
 
         self::assertSame([42], $seen->seen);
+    }
+
+    public function testUsingReceivesADecimalAsValuesHandsItOut(): void
+    {
+        $seen = new Recorder(true);
+        $rule = Rule::decimal(8, 2)->using('seen', $seen->test(...), message: 'x');
+
+        self::valueOf($rule, '12.5');
+
+        self::assertSame(['12.50'], $seen->seen);
+    }
+
+    public function testUsingReceivesTheNumberOfADecimalDeclaredAsNumber(): void
+    {
+        $seen = new Recorder(true);
+        $rule = Rule::decimal(8, 2)->asNumber()->using('seen', $seen->test(...), message: 'x');
+
+        self::valueOf($rule, '12.5');
+
+        self::assertCount(1, $seen->seen);
+        self::assertInstanceOf(Number::class, $seen->seen[0]);
+        self::assertSame('12.50', (string) $seen->seen[0]);
+    }
+
+    public function testUsingReceivesADateTimeInUtc(): void
+    {
+        $seen = new Recorder(true);
+        $rule = Rule::dateTime()->using('seen', $seen->test(...), message: 'x');
+
+        self::valueOf($rule, '2026-10-18T10:00:00+09:00');
+
+        self::assertCount(1, $seen->seen);
+        self::assertInstanceOf(DateTimeImmutable::class, $seen->seen[0]);
+        self::assertSame('2026-10-18T01:00:00+00:00', $seen->seen[0]->format(DATE_ATOM));
+    }
+
+    public function testUsingAddedByWhenReceivesTheValueAsValuesHandsItOut(): void
+    {
+        $seen  = new Recorder(true);
+        $rules = [
+            'kind'   => Rule::string(),
+            'amount' => Rule::decimal(8, 2)->when('kind', 'x', static fn (DecimalRule $r): DecimalRule => $r->using('seen', $seen->test(...), message: 'x')),
+        ];
+
+        new Validator($rules)->validate(['kind' => 'x', 'amount' => '3']);
+
+        self::assertSame(['3.00'], $seen->seen);
     }
 
     public function testUsingOnAListReceivesTheValidatedElements(): void
@@ -266,6 +316,36 @@ final class UsingTest extends TestCase
 
         self::assertSame(['maxLength'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['name']));
         self::assertSame([], $seen->seen);
+    }
+
+    public function testUsingAddedByWhenIsNotStoppedByAUsingOnTheFieldItself(): void
+    {
+        $seen  = new Recorder(true);
+        $rules = [
+            'kind' => Rule::string(),
+            'name' => Rule::string()
+                ->using('direct', static fn (string $v): bool => false, message: 'x')
+                ->when('kind', 'user', static fn (StringRule $r): StringRule => $r->using('inWhen', $seen->test(...), message: 'y')),
+        ];
+
+        $errors = new Validator($rules)->validate(['kind' => 'user', 'name' => 'bob'])->errors();
+
+        self::assertSame(['direct'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['name']));
+        self::assertSame(['bob'], $seen->seen);
+    }
+
+    public function testUsingIsNotStoppedByAComparisonWithAnotherField(): void
+    {
+        $seen  = new Recorder(false);
+        $rules = [
+            'password' => Rule::string(),
+            'confirm'  => Rule::string()->same('password')->using('seen', $seen->test(...), message: 'x'),
+        ];
+
+        $errors = new Validator($rules)->validate(['password' => 'a', 'confirm' => 'b'])->errors();
+
+        self::assertSame(['seen', 'same'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['confirm']));
+        self::assertSame(['b'], $seen->seen);
     }
 
     public function testUsingOnTheFieldItselfIsNotStoppedByARuleAddedByWhen(): void
