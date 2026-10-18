@@ -80,6 +80,7 @@ final class SignerTest extends TestCase
             'utf-8'          => ['署名する値'],
             'binary'         => ["\x00\xff\x80binary\x00"],
             'longer than 1k' => [str_repeat('x', 4096)],
+            '1 MiB'          => [str_repeat('x', 1024 * 1024)],
         ];
     }
 
