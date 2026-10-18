@@ -6,6 +6,8 @@ namespace Sloop\Http\Request;
 
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
+use Sloop\Error\DomainException;
+use Sloop\Http\HttpStatus;
 use Sloop\Support\Arr;
 
 /**
@@ -36,56 +38,108 @@ final class Request
     }
 
     /**
-     * Get a query string parameter.
+     * Get a query string parameter as a string.
      *
-     * @param  string $key     Parameter name
-     * @param  mixed  $default Default value if not found
-     * @return mixed
+     * @param  string          $key     Parameter name
+     * @param  string|null     $default Default value when the key is missing or null
+     * @return string|null
+     * @throws DomainException When the value is not a string (HTTP 400)
      */
-    public function get(string $key, mixed $default = null): mixed
+    public function get(string $key, ?string $default = null): ?string
     {
-        return $this->serverRequest->getQueryParams()[$key] ?? $default;
+        return $this->stringValue($key, $this->queryValue($key), $default);
     }
 
     /**
-     * Get a parsed body parameter.
+     * Get a parsed body parameter as a string.
      *
      * For a request Sloop builds from the globals, the parsed body holds the
      * JSON body when the request was sent with a JSON content type, and the
      * form values otherwise. A request built elsewhere holds whatever its
-     * builder put there.
+     * builder put there. A JSON number or boolean is not a string; read it
+     * with json(). An integer beyond the int range is read as a string when
+     * the body is parsed, so it is returned as one.
      *
-     * @param  string $key     Parameter name
-     * @param  mixed  $default Default value if not found
-     * @return mixed
+     * @param  string          $key     Parameter name
+     * @param  string|null     $default Default value when the key is missing or null
+     * @return string|null
+     * @throws DomainException When the value is not a string (HTTP 400)
      */
-    public function post(string $key, mixed $default = null): mixed
+    public function post(string $key, ?string $default = null): ?string
     {
-        $body = $this->serverRequest->getParsedBody();
-        if (\is_array($body)) {
-            return $body[$key] ?? $default;
-        }
-
-        return $default;
+        return $this->stringValue($key, $this->bodyValue($key), $default);
     }
 
     /**
-     * Get an input value from query string or parsed body.
+     * Get an input value from query string or parsed body as a string.
      *
-     * Query string is checked first, then parsed body.
+     * Query string is checked first, then parsed body. When the query string
+     * has the key, its value decides the result: a non-string value is
+     * rejected without reading the body.
      *
-     * @param  string $key     Parameter name
-     * @param  mixed  $default Default value if not found
-     * @return mixed
+     * @param  string          $key     Parameter name
+     * @param  string|null     $default Default value when the key is missing or null
+     * @return string|null
+     * @throws DomainException When the value is not a string (HTTP 400)
      */
-    public function input(string $key, mixed $default = null): mixed
+    public function input(string $key, ?string $default = null): ?string
     {
-        $query = $this->serverRequest->getQueryParams()[$key] ?? null;
+        $query = $this->queryValue($key);
         if ($query !== null) {
-            return $query;
+            return $this->stringValue($key, $query, $default);
         }
 
         return $this->post($key, $default);
+    }
+
+    /**
+     * Get a query string parameter that holds an array, as it was sent.
+     *
+     * @param  string                  $key     Parameter name
+     * @param  array<array-key, mixed> $default Default value when the key is missing or null
+     * @return array<array-key, mixed>
+     * @throws DomainException         When the value is not an array (HTTP 400)
+     */
+    public function getArray(string $key, array $default = []): array
+    {
+        return $this->arrayValue($key, $this->queryValue($key), $default);
+    }
+
+    /**
+     * Get a parsed body parameter that holds an array, as it was sent.
+     *
+     * The elements keep the types of the parsed body, such as the numbers and
+     * booleans of a JSON body.
+     *
+     * @param  string                  $key     Parameter name
+     * @param  array<array-key, mixed> $default Default value when the key is missing or null
+     * @return array<array-key, mixed>
+     * @throws DomainException         When the value is not an array (HTTP 400)
+     */
+    public function postArray(string $key, array $default = []): array
+    {
+        return $this->arrayValue($key, $this->bodyValue($key), $default);
+    }
+
+    /**
+     * Get an input value that holds an array from query string or parsed body.
+     *
+     * Query string is checked first, then parsed body, in the same way as
+     * input().
+     *
+     * @param  string                  $key     Parameter name
+     * @param  array<array-key, mixed> $default Default value when the key is missing or null
+     * @return array<array-key, mixed>
+     * @throws DomainException         When the value is not an array (HTTP 400)
+     */
+    public function inputArray(string $key, array $default = []): array
+    {
+        $query = $this->queryValue($key);
+        if ($query !== null) {
+            return $this->arrayValue($key, $query, $default);
+        }
+
+        return $this->postArray($key, $default);
     }
 
     /**
@@ -251,5 +305,73 @@ final class Request
     public function psrRequest(): ServerRequestInterface
     {
         return $this->serverRequest;
+    }
+
+    /**
+     * Get the raw query string value for a key.
+     *
+     * @param  string $key Parameter name
+     * @return mixed  The value, or null when the key is missing
+     */
+    private function queryValue(string $key): mixed
+    {
+        return $this->serverRequest->getQueryParams()[$key] ?? null;
+    }
+
+    /**
+     * Get the raw parsed body value for a key.
+     *
+     * @param  string $key Parameter name
+     * @return mixed  The value, or null when the key is missing or the body is not an array
+     */
+    private function bodyValue(string $key): mixed
+    {
+        $body = $this->serverRequest->getParsedBody();
+
+        return \is_array($body) ? $body[$key] ?? null : null;
+    }
+
+    /**
+     * Narrow a raw request value to a string.
+     *
+     * @param  string          $key     Parameter name, used in the error message
+     * @param  mixed           $value   Raw value, null when missing
+     * @param  string|null     $default Value returned when the raw value is null
+     * @return string|null
+     * @throws DomainException When the value is neither null nor a string (HTTP 400)
+     */
+    private function stringValue(string $key, mixed $value, ?string $default): ?string
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (!\is_string($value)) {
+            throw new DomainException('The request value "' . $key . '" must be a string.', HttpStatus::BadRequest);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Narrow a raw request value to an array.
+     *
+     * @param  string                  $key     Parameter name, used in the error message
+     * @param  mixed                   $value   Raw value, null when missing
+     * @param  array<array-key, mixed> $default Value returned when the raw value is null
+     * @return array<array-key, mixed>
+     * @throws DomainException         When the value is neither null nor an array (HTTP 400)
+     */
+    private function arrayValue(string $key, mixed $value, array $default): array
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (!\is_array($value)) {
+            throw new DomainException('The request value "' . $key . '" must be an array.', HttpStatus::BadRequest);
+        }
+
+        return $value;
     }
 }

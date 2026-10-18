@@ -1105,6 +1105,52 @@ final class ApplicationTest extends TestCase
         $this->assertSame(['json' => 'Alice', 'post' => 'Alice', 'input' => 'Alice'], $data);
     }
 
+    public function testNonStringJsonValueReadAsAStringIsA400ThatPassesBackThroughGlobalMiddleware(): void
+    {
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
+        );
+        $request = $this->jsonRequest('{"name":42}');
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request value \"name\" must be a string.', (string) $response->getBody());
+        $this->assertTrue($handler->hasWarningThatContains('The request value "name" must be a string.'));
+        $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+    }
+
+    public function testArrayInTheQueryReadAsAStringIsA400(): void
+    {
+        $request = $this->jsonRequest('{}')->withQueryParams(['name' => ['x']]);
+
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
+
+        $response = $app->run($request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request value \"name\" must be a string.', (string) $response->getBody());
+    }
+
+    public function testJsonIntegerBeyondIntRangeReachesPostAsAString(): void
+    {
+        $request = $this->jsonRequest('{"name":12345678901234567890}');
+
+        $response = new Application($this->tmpDir)->run($request);
+        $data     = $this->decodeJsonBody($response)['data'];
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(
+            ['json' => '12345678901234567890', 'post' => '12345678901234567890', 'input' => '12345678901234567890'],
+            $data,
+        );
+    }
+
     public function testMalformedJsonBodyIsA400ThatPassesBackThroughGlobalMiddleware(): void
     {
         file_put_contents(

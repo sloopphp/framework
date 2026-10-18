@@ -516,14 +516,16 @@ final class ConnectionTest extends TestCase
             },
             IsolationLevel::Default,
             3,
-            1,
+            25,
         );
 
-        // 2 retries × 1ms backoff: usleep guarantees at least the requested
+        // 2 retries × 25ms backoff: usleep guarantees at least the requested
         // duration, so the elapsed time gives a deterministic lower bound.
+        // With a 1ms backoff (a 2ms bound) the mutant that drops the sleep
+        // was killed in one Infection run and survived the next on the same code.
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
         $this->assertSame(3, $counter->value);
-        $this->assertGreaterThanOrEqual(2, $elapsedMs);
+        $this->assertGreaterThanOrEqual(50, $elapsedMs);
     }
 
     public function testTransactionDoesNotRetryWhenRollbackLeavesTransactionOpen(): void

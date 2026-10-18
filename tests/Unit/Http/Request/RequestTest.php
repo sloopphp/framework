@@ -10,6 +10,8 @@ use Nyholm\Psr7\UploadedFile;
 use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sloop\Error\DomainException;
+use Sloop\Http\HttpStatus;
 use Sloop\Http\Request\Request;
 
 final class RequestTest extends TestCase
@@ -45,6 +47,20 @@ final class RequestTest extends TestCase
         $psrRequest = $psrRequest->withUploadedFiles($uploadedFiles);
 
         return new Request($psrRequest, $routeParams);
+    }
+
+    private function assertBadRequest(\Closure $read, string $message): void
+    {
+        try {
+            $read();
+        } catch (DomainException $e) {
+            $this->assertSame(HttpStatus::BadRequest, $e->statusCode);
+            $this->assertSame($message, $e->getMessage());
+
+            return;
+        }
+
+        $this->fail('Expected a DomainException with status 400.');
     }
 
     public function testGetReturnsQueryParameter(): void
@@ -101,6 +117,128 @@ final class RequestTest extends TestCase
         $request = $this->createRequest();
 
         $this->assertSame('default', $request->input('missing', 'default'));
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function nonStringValueProvider(): array
+    {
+        return [
+            'list'   => [['x']],
+            'nested' => [['a' => ['b' => 'y']]],
+            'int'    => [42],
+            'float'  => [1.5],
+            'true'   => [true],
+            'false'  => [false],
+        ];
+    }
+
+    #[DataProvider('nonStringValueProvider')]
+    public function testGetRejectsANonStringQueryValueAsBadRequest(mixed $value): void
+    {
+        $request = $this->createRequest(query: ['q' => $value]);
+
+        $this->assertBadRequest(static fn () => $request->get('q'), 'The request value "q" must be a string.');
+    }
+
+    #[DataProvider('nonStringValueProvider')]
+    public function testPostRejectsANonStringBodyValueAsBadRequest(mixed $value): void
+    {
+        $request = $this->createRequest(method: 'POST', parsedBody: ['q' => $value]);
+
+        $this->assertBadRequest(static fn () => $request->post('q'), 'The request value "q" must be a string.');
+    }
+
+    #[DataProvider('nonStringValueProvider')]
+    public function testInputRejectsANonStringBodyValueAsBadRequest(mixed $value): void
+    {
+        $request = $this->createRequest(method: 'POST', parsedBody: ['q' => $value]);
+
+        $this->assertBadRequest(static fn () => $request->input('q'), 'The request value "q" must be a string.');
+    }
+
+    public function testInputRejectsAnArrayInTheQueryWithoutFallingBackToTheBody(): void
+    {
+        $request = $this->createRequest(query: ['q' => ['x']], parsedBody: ['q' => 'from_body']);
+
+        $this->assertBadRequest(static fn () => $request->input('q'), 'The request value "q" must be a string.');
+    }
+
+    public function testPostReturnsDefaultForANullBodyValue(): void
+    {
+        $request = $this->createRequest(method: 'POST', parsedBody: ['q' => null]);
+
+        $this->assertSame('fallback', $request->post('q', 'fallback'));
+    }
+
+    public function testGetArrayReturnsTheQueryArrayAsIs(): void
+    {
+        $request = $this->createRequest(query: ['q' => ['x', 'a' => ['b' => 'y']]]);
+
+        $this->assertSame(['x', 'a' => ['b' => 'y']], $request->getArray('q'));
+    }
+
+    public function testPostArrayReturnsTheBodyArrayWithItsJsonTypes(): void
+    {
+        $request = $this->createRequest(method: 'POST', parsedBody: ['tags' => [1, true, null, ['n' => 1.5]]]);
+
+        $this->assertSame([1, true, null, ['n' => 1.5]], $request->postArray('tags'));
+    }
+
+    public function testInputArrayPrioritizesQueryOverBody(): void
+    {
+        $request = $this->createRequest(query: ['q' => ['from_query']], parsedBody: ['q' => ['from_body']]);
+
+        $this->assertSame(['from_query'], $request->inputArray('q'));
+    }
+
+    public function testInputArrayFallsBackToBody(): void
+    {
+        $request = $this->createRequest(parsedBody: ['q' => ['from_body']]);
+
+        $this->assertSame(['from_body'], $request->inputArray('q'));
+    }
+
+    public function testArrayAccessorsReturnDefaultForMissingOrNullValue(): void
+    {
+        $request = $this->createRequest(query: ['n' => null], parsedBody: ['n' => null]);
+
+        $this->assertSame([], $request->getArray('missing'));
+        $this->assertSame(['d', 'e'], $request->getArray('n', ['d', 'e']));
+        $this->assertSame(['d', 'e'], $request->postArray('n', ['d', 'e']));
+        $this->assertSame(['d', 'e'], $request->inputArray('missing', ['d', 'e']));
+    }
+
+    public function testPostArrayReturnsDefaultWhenBodyIsNotArray(): void
+    {
+        $request = $this->createRequest();
+
+        $this->assertSame(['d'], $request->postArray('q', ['d']));
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function nonArrayValueProvider(): array
+    {
+        return [
+            'string' => ['x'],
+            'empty'  => [''],
+            'int'    => [42],
+            'true'   => [true],
+        ];
+    }
+
+    #[DataProvider('nonArrayValueProvider')]
+    public function testArrayAccessorsRejectANonArrayValueAsBadRequest(mixed $value): void
+    {
+        $request = $this->createRequest(query: ['q' => $value], parsedBody: ['b' => $value]);
+
+        $this->assertBadRequest(static fn () => $request->getArray('q'), 'The request value "q" must be an array.');
+        $this->assertBadRequest(static fn () => $request->postArray('b'), 'The request value "b" must be an array.');
+        $this->assertBadRequest(static fn () => $request->inputArray('q'), 'The request value "q" must be an array.');
+        $this->assertBadRequest(static fn () => $request->inputArray('b'), 'The request value "b" must be an array.');
     }
 
     public function testJsonReturnsEntireBodyWhenKeyIsNull(): void
