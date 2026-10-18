@@ -21,27 +21,14 @@ use InvalidArgumentException;
  *
  * A comparison limit is read in the frame of each validation, which for a
  * date is the time zone the Validator's clock reads. It is also read once in
- * the PHP default time zone when declared, so a limit the field could never
- * read is refused there.
+ * the PHP default time zone when declared, and refused there if the field
+ * cannot read it; one the field reads there but not in the zone of a later
+ * validation is refused by that validation.
  *
  * @extends FieldRule<DateTimeImmutable>
  */
 abstract class TemporalRule extends FieldRule
 {
-    /**
-     * The last limit each comparison brought into a frame, with what it was brought from.
-     *
-     * Keyed by the comparison's slot: the object id of a declared limit,
-     * `now` for the current time. Each slot keeps one entry, so a list of
-     * dates read in one validation brings its limit into the frame once
-     * rather than once per element (the Validator hands every element the
-     * same current-time object), and a new current time replaces the old
-     * one instead of piling up.
-     *
-     * @var array<string, array{DateTimeImmutable, string, DateTimeImmutable}>
-     */
-    private array $alignedLimits = [];
-
     /**
      * Fail unless the value is earlier than the given point in time.
      *
@@ -106,6 +93,9 @@ abstract class TemporalRule extends FieldRule
      * validation, and brought into the field's frame the way a limit given to
      * after() is: Rule::date() compares with today where the clock reads, so
      * a date passes from tomorrow on, and Rule::dateTime() with the instant.
+     * Validating throws InvalidArgumentException when Rule::date()'s format
+     * cannot write today's date and read it back (`y` past 2069); this applies
+     * to the other three as well.
      *
      * @param  string|null              $message Message for this rule only
      * @return static
@@ -303,11 +293,11 @@ abstract class TemporalRule extends FieldRule
         }
 
         foreach ($this->formats() as $format) {
-            // No time zone argument: a format carrying an offset takes it from
-            // the input, and one without falls back to the PHP default, which
-            // only decides the date read here; inFrame() moves it to where
-            // the clock reads.
-            $parsed = DateTimeImmutable::createFromFormat($format, $value);
+            // A format carrying an offset takes it from the input. One without
+            // is read in UTC, which skips no day, so the date read does not
+            // depend on the PHP default; inFrame() moves it to where the clock
+            // reads.
+            $parsed = DateTimeImmutable::createFromFormat($format, $value, new DateTimeZone('UTC'));
             // getLastErrors() answers false when the value went in cleanly.
             // Anything else means PHP repaired it (2026-02-30 comes back as
             // 2 March), which is a rejection here rather than a reading.
@@ -346,14 +336,14 @@ abstract class TemporalRule extends FieldRule
     private function withComparisonTo(string $rule, DateTimeInterface $limit, ?string $message, bool $orEqual): static
     {
         $held    = $this->heldLimit($limit);
-        $slot    = (string) spl_object_id($held);
+        $inFrame = new LimitInFrame($this->alignLimit(...));
         $earlier = str_starts_with($rule, 'before');
 
         return $this->withCheck(
             $rule,
             [],
-            fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
-                $value <=> $this->alignedOnce($slot, $held, $now->getTimezone()),
+            static fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
+                $value <=> $inFrame->in($held, $now->getTimezone()),
                 $earlier,
                 $orEqual,
             ),
@@ -373,13 +363,14 @@ abstract class TemporalRule extends FieldRule
      */
     private function withComparisonToNow(string $rule, ?string $message, bool $orEqual): static
     {
+        $inFrame = new LimitInFrame($this->alignLimit(...));
         $earlier = str_starts_with($rule, 'before');
 
         return $this->withCheck(
             $rule,
             [],
-            fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
-                $value <=> $this->alignedOnce('now', $now, $now->getTimezone()),
+            static fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
+                $value <=> $inFrame->in($now, $now->getTimezone()),
                 $earlier,
                 $orEqual,
             ),
@@ -404,29 +395,6 @@ abstract class TemporalRule extends FieldRule
         $this->alignLimit($limit, new DateTimeZone(date_default_timezone_get()));
 
         return DateTimeImmutable::createFromInterface($limit);
-    }
-
-    /**
-     * Bring a limit into the frame of the given zone, reusing the last result of the same slot for the same limit object and zone.
-     *
-     * @param  string                   $slot  Which comparison the limit belongs to
-     * @param  DateTimeImmutable        $limit Limit, or the current time
-     * @param  DateTimeZone             $zone  Time zone of the validation
-     * @return DateTimeImmutable
-     * @throws InvalidArgumentException When the limit cannot be brought into the frame
-     */
-    private function alignedOnce(string $slot, DateTimeImmutable $limit, DateTimeZone $zone): DateTimeImmutable
-    {
-        $zoneName = $zone->getName();
-        $cached   = $this->alignedLimits[$slot] ?? null;
-        if ($cached !== null && $cached[0] === $limit && $cached[1] === $zoneName) {
-            return $cached[2];
-        }
-
-        $aligned                    = $this->alignLimit($limit, $zone);
-        $this->alignedLimits[$slot] = [$limit, $zoneName, $aligned];
-
-        return $aligned;
     }
 
     /**

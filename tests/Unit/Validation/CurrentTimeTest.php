@@ -292,6 +292,43 @@ final class CurrentTimeTest extends TestCase
         $this->assertSame('2016-08-14T01:00:00-03:00', $value->format('Y-m-d\TH:i:sP'));
     }
 
+    public function testDateTheClockSkipsIsATypeFailure(): void
+    {
+        // Samoa went from 29 to 31 December 2011, so the 30th never happened there.
+        date_default_timezone_set('UTC');
+
+        $this->assertSame(['date'], self::failedAt(self::clockAt('2026-10-18T06:00:00', 'Pacific/Apia'), Rule::date(), '2011-12-30'));
+    }
+
+    public function testDateIsReadTheSameWhateverThePhpDefault(): void
+    {
+        // The PHP default skips the date, the clock's zone does not.
+        date_default_timezone_set('Pacific/Apia');
+        $result = new Validator(['v' => Rule::date()->afterOrEqual(new DateTimeImmutable('2011-12-30T12:00:00Z'))], self::clockAt('2026-10-18T06:00:00', 'UTC'))
+            ->validate(['v' => '2011-12-30']);
+
+        $this->assertSame([], $result->errors());
+        $this->assertSame('2011-12-30T00:00:00+00:00', self::formatted($result->values()['v']));
+    }
+
+    public function testWithoutAClockADateIsTheDateInThePhpDefaultWhenValidated(): void
+    {
+        date_default_timezone_set('UTC');
+        $validator = new Validator(['v' => Rule::date()]);
+        date_default_timezone_set('Asia/Tokyo');
+
+        $this->assertSame('2026-01-02T00:00:00+09:00', self::formatted($validator->validate(['v' => '2026-01-02'])->values()['v']));
+    }
+
+    public function testTodayTheFormatCannotWriteIsRefusedWhenValidating(): void
+    {
+        // `y` reads 70 as 1970, so 2075 cannot be written and read back.
+        $validator = new Validator(['v' => Rule::date('y-m-d')->afterNow()], self::clockAt('2075-01-01T06:00:00', 'UTC'));
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $validator->validate(['v' => '26-10-18']));
+        $this->assertSame('date() reads dates with \'y-m-d\', which does not read back the local date 2075-01-01.', $e->getMessage());
+    }
+
     public function testLimitDeclaredInOneTimeZoneIsReadInTheZoneOfTheValidation(): void
     {
         // 12:00 UTC on 2 January is 2 January in Tokyo, UTC and Los Angeles alike,

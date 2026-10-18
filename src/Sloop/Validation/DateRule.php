@@ -112,13 +112,19 @@ final class DateRule extends TemporalRule
     /**
      * Move a date read from the input to the start of that date where the clock reads.
      *
-     * @param  DateTimeImmutable $typed Date as coerce() read it
-     * @param  DateTimeImmutable $now   Time of the validation
-     * @return DateTimeImmutable
+     * A date the clock's zone skips altogether (Pacific/Apia went from 29 to
+     * 31 December 2011) is a type failure, as it would be had it been read
+     * there.
+     *
+     * @param  DateTimeImmutable              $typed Date as coerce() read it
+     * @param  DateTimeImmutable              $now   Time of the validation
+     * @return DateTimeImmutable|TypeMismatch
      */
-    protected function inFrame(mixed $typed, DateTimeImmutable $now): DateTimeImmutable
+    protected function inFrame(mixed $typed, DateTimeImmutable $now): DateTimeImmutable|TypeMismatch
     {
-        return self::startOf($typed, $now);
+        $start = self::startOf($typed, $now);
+
+        return $start->format('Y-m-d') === $typed->format('Y-m-d') ? $start : new TypeMismatch();
     }
 
     /**

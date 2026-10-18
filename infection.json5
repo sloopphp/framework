@@ -107,13 +107,6 @@
         },
         "IncrementInteger": {
             "ignore": [
-                // TemporalRule::alignedOnce compares the stored limit and zone name
-                // with the new ones. Reading the next position instead compares a
-                // string with an object, or an object with a string, which never
-                // matches, so every comparison brings its limit into the frame again
-                // and gets the same date. Only the work differs. The DecrementInteger
-                // entry on the same line is the same case.
-                "Sloop\\Validation\\TemporalRule::alignedOnce::422",
                 // CombiningRun::segmentHolds splits a segment into code points. In
                 // pairs, each pair's NFKD ends with the second one's non-starters
                 // added to the first one's when the second has no starter, so the
@@ -152,8 +145,6 @@
         },
         "DecrementInteger": {
             "ignore": [
-                // TemporalRule::alignedOnce::422: see IncrementInteger.
-                "Sloop\\Validation\\TemporalRule::alignedOnce::422",
                 // StringRule::email::433: see IncrementInteger.
                 "Sloop\\Validation\\StringRule::email::433",
                 // Same millisecond-conversion literal as IncrementInteger above,
@@ -208,9 +199,14 @@
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
             // a test detects.
+            // LimitInFrame::in::71 tests last that a result is kept, which is
+            // always so once the limit matches. Turning the test around makes
+            // every lookup miss, and the limit is brought into the frame again
+            // with the same result; only the work differs.
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::433",
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::916"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::916",
+                "Sloop\\Validation\\LimitInFrame::in::71"
             ]
         },
         "LogicalAndNegation": {
@@ -372,10 +368,10 @@
                 // and caches them again, so only the work differs. Same shape as
                 // the Str cache hits above.
                 "Sloop\\Validation\\CombiningRun::edge::289",
-                // TemporalRule::alignedOnce returns the limit it brought into the
-                // same frame for the last value. Falling through brings it into the
-                // frame again and stores the same date, so only the work differs.
-                "Sloop\\Validation\\TemporalRule::alignedOnce::423",
+                // LimitInFrame::in returns the limit it brought into the same frame
+                // for the last value. Falling through brings it into the frame again
+                // and keeps the same result, so only the work differs.
+                "Sloop\\Validation\\LimitInFrame::in::72",
                 // CombiningRun::allows returns false early on 31 code points of
                 // ALL_NON_STARTERS in a row. Falling through, NON_STARTER_SEGMENT
                 // finds the same run and segmentHolds() fails it, so only the length
@@ -459,12 +455,6 @@
         },
         "ArrayItemRemoval": {
             "ignore": [
-                // TemporalRule::alignedOnce stores the limit and the zone name with
-                // the date it brought into the frame. With one of them dropped, the
-                // positions shift and the stored entry never matches the next lookup,
-                // so the limit is brought into the frame every time and gives the same
-                // date. Only the work differs.
-                "Sloop\\Validation\\TemporalRule::alignedOnce::427",
                 // ConnectionManager::hasConnectionInTransaction scans the cached
                 // primary and replica connections. The primary group cannot
                 // contribute a hit today: while building a primary the group is

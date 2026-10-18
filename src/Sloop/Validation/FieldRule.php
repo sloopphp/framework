@@ -66,14 +66,15 @@ abstract class FieldRule
     private mixed $default = null;
 
     /**
-     * What an empty field gives once the default has been handed out, built on first use.
+     * What an empty field gave the last time the default was handed out, with the name of the time zone it was built for.
      *
-     * Keyed by the name of the time zone of the validation, since a date is
-     * handed out as the start of that date where the clock reads.
+     * A date is handed out as the start of that date where the clock reads,
+     * so the outcome is built again when the zone changes; only the last one
+     * is kept.
      *
-     * @var array<string, FieldOutcome>
+     * @var array{string, FieldOutcome}|null
      */
-    private array $defaultOutcomes = [];
+    private ?array $defaultOutcome = null;
 
     /**
      * Message used for every rule of this field that has no message of its own.
@@ -181,7 +182,7 @@ abstract class FieldRule
      */
     public function __clone(): void
     {
-        $this->defaultOutcomes = [];
+        $this->defaultOutcome = null;
     }
 
     /**
@@ -420,6 +421,9 @@ abstract class FieldRule
             return new FieldOutcome(null, null, [new Failure($rule, $params)]);
         }
         $typed = $this->inFrame($typed, $now);
+        if ($typed instanceof TypeMismatch) {
+            return new FieldOutcome(null, null, [new Failure($this->typeRule(), $this->typeParams())]);
+        }
 
         // A value of the wrong size stops here, the way one of the wrong type does.
         $failures = $this->run($this->sizeChecks, $typed, $now);
@@ -467,14 +471,18 @@ abstract class FieldRule
         }
 
         // Built once per time zone: a container's default can be large, and
-        // one input can leave a list element empty many times over. A rule
-        // validated through one clock keeps a single entry.
-        return $this->defaultOutcomes[$now->getTimezone()->getName()] ??= new FieldOutcome(
-            $this->outputOfDefault($this->default, $now),
-            $this->comparableOfDefault($this->default, $now),
-            [],
-            empty: true,
-        );
+        // one input can leave a list element empty many times over.
+        $zone = $now->getTimezone()->getName();
+        if ($this->defaultOutcome === null || $this->defaultOutcome[0] !== $zone) {
+            $this->defaultOutcome = [$zone, new FieldOutcome(
+                $this->outputOfDefault($this->default, $now),
+                $this->comparableOfDefault($this->default, $now),
+                [],
+                empty: true,
+            )];
+        }
+
+        return $this->defaultOutcome[1];
     }
 
     /**
@@ -744,11 +752,12 @@ abstract class FieldRule
      * Bring a value of the declared type into the frame of the validation.
      *
      * Runs right after coerce(). A type whose value does not depend on where
-     * the clock reads hands it back unchanged.
+     * the clock reads hands it back unchanged; one that cannot exist in that
+     * frame is a type failure.
      *
      * @param  T                 $typed Value coerce() produced
      * @param  DateTimeImmutable $now   Time of the validation
-     * @return T
+     * @return T|TypeMismatch
      */
     protected function inFrame(mixed $typed, DateTimeImmutable $now): mixed
     {

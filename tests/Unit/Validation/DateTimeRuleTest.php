@@ -178,6 +178,13 @@ final class DateTimeRuleTest extends TestCase
         $this->assertSame(['before'], self::failedRules(Rule::dateTime()->before($limit), '2026-01-02T03:04:05Z'));
     }
 
+    public function testOffsetsBeyondTheOnesInUseAreAccepted(): void
+    {
+        // The instant is fixed whatever the offset; no zone uses +15:00 or -13:00.
+        $this->assertSame([], self::failedRules(Rule::dateTime(), '2026-01-02T03:04:05+15:00'));
+        $this->assertSame([], self::failedRules(Rule::dateTime(), '2026-01-02T03:04:05-13:00'));
+    }
+
     public function testComparisonParameterIsReportedInUtc(): void
     {
         $error = self::onlyError(

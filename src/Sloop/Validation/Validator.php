@@ -113,7 +113,7 @@ final readonly class Validator
      * @return ValidationResult
      * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
-     * @throws InvalidArgumentException  When a date limit or default, declared where the clock read another time zone, cannot be read back as a date in the clock's time zone
+     * @throws InvalidArgumentException  When Rule::date()'s format cannot read back, as a date in the clock's time zone, a limit or default (declared where the PHP default zone was another) or today's date (afterNow() and the like)
      */
     public function validate(array $data): ValidationResult
     {
