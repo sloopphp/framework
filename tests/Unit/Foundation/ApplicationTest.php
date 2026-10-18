@@ -1105,6 +1105,19 @@ final class ApplicationTest extends TestCase
         $this->assertSame(['json' => 'Alice', 'post' => 'Alice', 'input' => 'Alice'], $data);
     }
 
+    public function testNonStringJsonValueReadAsAStringIsA400(): void
+    {
+        $request = $this->jsonRequest('{"name":42}');
+
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
+
+        $response = $app->run($request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request value \"name\" must be a string.', (string) $response->getBody());
+    }
+
     public function testMalformedJsonBodyIsA400ThatPassesBackThroughGlobalMiddleware(): void
     {
         file_put_contents(
