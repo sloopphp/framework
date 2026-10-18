@@ -29,6 +29,20 @@ use InvalidArgumentException;
 abstract class TemporalRule extends FieldRule
 {
     /**
+     * The last limit each comparison brought into a frame, with what it was brought from.
+     *
+     * Keyed by the comparison's slot: the object id of a declared limit,
+     * `now` for the current time. Each slot keeps one entry, so a list of
+     * dates read in one validation brings its limit into the frame once
+     * rather than once per element (the Validator hands every element the
+     * same current-time object), and a new current time replaces the old
+     * one instead of piling up.
+     *
+     * @var array<string, array{DateTimeImmutable, string, DateTimeImmutable}>
+     */
+    private array $alignedLimits = [];
+
+    /**
      * Fail unless the value is earlier than the given point in time.
      *
      * The limit is brought into the same frame as the value before the two are
@@ -332,13 +346,14 @@ abstract class TemporalRule extends FieldRule
     private function withComparisonTo(string $rule, DateTimeInterface $limit, ?string $message, bool $orEqual): static
     {
         $held    = $this->heldLimit($limit);
+        $slot    = (string) spl_object_id($held);
         $earlier = str_starts_with($rule, 'before');
 
         return $this->withCheck(
             $rule,
             [],
             fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
-                $value <=> $this->alignLimit($held, $now->getTimezone()),
+                $value <=> $this->alignedOnce($slot, $held, $now->getTimezone()),
                 $earlier,
                 $orEqual,
             ),
@@ -364,7 +379,7 @@ abstract class TemporalRule extends FieldRule
             $rule,
             [],
             fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
-                $value <=> $this->alignLimit($now, $now->getTimezone()),
+                $value <=> $this->alignedOnce('now', $now, $now->getTimezone()),
                 $earlier,
                 $orEqual,
             ),
@@ -389,6 +404,29 @@ abstract class TemporalRule extends FieldRule
         $this->alignLimit($limit, new DateTimeZone(date_default_timezone_get()));
 
         return DateTimeImmutable::createFromInterface($limit);
+    }
+
+    /**
+     * Bring a limit into the frame of the given zone, reusing the last result of the same slot for the same limit object and zone.
+     *
+     * @param  string                   $slot  Which comparison the limit belongs to
+     * @param  DateTimeImmutable        $limit Limit, or the current time
+     * @param  DateTimeZone             $zone  Time zone of the validation
+     * @return DateTimeImmutable
+     * @throws InvalidArgumentException When the limit cannot be brought into the frame
+     */
+    private function alignedOnce(string $slot, DateTimeImmutable $limit, DateTimeZone $zone): DateTimeImmutable
+    {
+        $zoneName = $zone->getName();
+        $cached   = $this->alignedLimits[$slot] ?? null;
+        if ($cached !== null && $cached[0] === $limit && $cached[1] === $zoneName) {
+            return $cached[2];
+        }
+
+        $aligned                    = $this->alignLimit($limit, $zone);
+        $this->alignedLimits[$slot] = [$limit, $zoneName, $aligned];
+
+        return $aligned;
     }
 
     /**

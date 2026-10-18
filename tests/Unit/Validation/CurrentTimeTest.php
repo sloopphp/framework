@@ -161,6 +161,39 @@ final class CurrentTimeTest extends TestCase
         );
     }
 
+    public function testFailureNamesTodayAsTheDateInTheZoneOfTheClock(): void
+    {
+        // 08:30 on 19 October in Tokyo is still the 18th in UTC, the PHP default here.
+        date_default_timezone_set('UTC');
+        $error = new Validator(['v' => Rule::date()->afterNow()], self::clockAt('2026-10-19T08:30:00', 'Asia/Tokyo'))
+            ->validate(['v' => '2026-10-19'])
+            ->errors()['v'][0];
+
+        $this->assertSame(['limit' => '2026-10-19'], $error->params);
+    }
+
+    public function testFailureNamesALimitAsItsDateInTheZoneOfTheClock(): void
+    {
+        // 23:00 UTC on 1 January is the 2nd in Tokyo and the 1st in UTC, the PHP default here.
+        date_default_timezone_set('UTC');
+        $error = new Validator(['v' => Rule::date()->after(new DateTimeImmutable('2026-01-01T23:00:00Z'))], self::clockAt('2026-10-18T06:00:00', 'Asia/Tokyo'))
+            ->validate(['v' => '2026-01-02'])
+            ->errors()['v'][0];
+
+        $this->assertSame(['limit' => '2026-01-02'], $error->params);
+    }
+
+    public function testOneRuleFollowsTheClockFromOneValidationToTheNext(): void
+    {
+        $rule = Rule::date()->afterNow();
+
+        $this->assertSame([], self::failedAt(self::clockAt('2026-10-18T06:00:00', 'UTC'), $rule, '2026-10-19'));
+        $this->assertSame(['afterNow'], self::failedAt(self::clockAt('2026-10-19T06:00:00', 'UTC'), $rule, '2026-10-19'));
+        // The same instant read in another zone, where it is already the next day.
+        $this->assertSame([], self::failedAt(self::clockAt('2026-10-18T16:00:00', 'UTC'), $rule, '2026-10-19'));
+        $this->assertSame(['afterNow'], self::failedAt(self::clockAt('2026-10-19T06:00:00', 'Pacific/Kiritimati'), $rule, '2026-10-19'));
+    }
+
     public function testFailureOfADateTimeNamesTheInstantInUtc(): void
     {
         $errors = new Validator(['v' => Rule::dateTime()->beforeOrEqualNow()], self::clockAt('2026-10-18T15:00:00', 'Asia/Tokyo'))
@@ -277,8 +310,9 @@ final class CurrentTimeTest extends TestCase
         // 23:00 UTC on 1 January is already 2 January in Tokyo.
         $rule = Rule::date()->after(new DateTimeImmutable('2026-01-01T23:00:00Z'));
 
-        $this->assertSame(['after'], self::failedAt(self::clockAt('2026-10-18T06:00:00', 'Asia/Tokyo'), $rule, '2026-01-02'));
+        // UTC first: a limit kept from the UTC validation would let the Tokyo one pass.
         $this->assertSame([], self::failedAt(self::clockAt('2026-10-18T06:00:00', 'UTC'), $rule, '2026-01-02'));
+        $this->assertSame(['after'], self::failedAt(self::clockAt('2026-10-18T06:00:00', 'Asia/Tokyo'), $rule, '2026-01-02'));
     }
 
     public function testLimitTheFormatCannotReadInTheZoneOfTheValidationIsRefusedThere(): void

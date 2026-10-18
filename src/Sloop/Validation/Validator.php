@@ -58,12 +58,12 @@ final readonly class Validator
      * Create a validator.
      *
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
+     * @param  ClockInterface|null                          $clock Clock the rules comparing with the current time read; null for the system clock
      * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
      *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; or fields required on each other include two with a default
-     * @param  ClockInterface|null                          $clock Clock the rules comparing with the current time read; null for the system clock
      */
     public function __construct(array $rules, ?ClockInterface $clock = null)
     {

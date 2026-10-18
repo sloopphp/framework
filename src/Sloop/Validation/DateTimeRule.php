@@ -82,9 +82,7 @@ final class DateTimeRule extends TemporalRule
      * Take the limit as the instant it already names, read in UTC.
      *
      * The instant is what the comparison uses, so the zone does not change the
-     * verdict. It is UTC because a default declared on a container reaches the
-     * caller through here rather than through output(), and the two have to
-     * agree on the frame.
+     * verdict; UTC is the frame output() hands values out in.
      *
      * @param  DateTimeInterface $limit Limit as the caller declared it
      * @param  DateTimeZone      $zone  Time zone of the validation, which an instant does not depend on
