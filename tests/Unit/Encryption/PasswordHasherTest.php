@@ -52,12 +52,16 @@ final class PasswordHasherTest extends TestCase
     }
 
     #[DataProvider('hasherAndPasswordProvider')]
-    public function testVerifyRejectsAnotherPassword(PasswordHasher $hasher, string $password): void
+    public function testVerifyRejectsAnotherPasswordOfTheSameLength(PasswordHasher $hasher, string $password): void
     {
-        $hash = $hasher->hash($password);
+        // Same length, last byte changed: bcrypt's 72-byte guard does not decide this, the hash does.
+        $other = $password === '' ? 'x' : substr($password, 0, -1) . \chr(\ord($password[-1]) ^ 0x01);
+        $hash  = $hasher->hash($password);
 
         $this->assertIsString($hash);
-        $this->assertFalse($hasher->verify($password . 'x', $hash));
+        $this->assertSame($password === '' ? 1 : \strlen($password), \strlen($other));
+        $this->assertTrue($hasher->verify($password, $hash));
+        $this->assertFalse($hasher->verify($other, $hash));
     }
 
     public function testHashWithBcryptWritesABcryptHashWithTheConfiguredCost(): void
