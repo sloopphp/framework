@@ -178,6 +178,13 @@ final class DateTimeRuleTest extends TestCase
         $this->assertSame(['before'], self::failedRules(Rule::dateTime()->before($limit), '2026-01-02T03:04:05Z'));
     }
 
+    public function testOffsetsBeyondTheOnesInUseAreAccepted(): void
+    {
+        // The instant is fixed whatever the offset; no zone uses +15:00 or -13:00.
+        $this->assertSame([], self::failedRules(Rule::dateTime(), '2026-01-02T03:04:05+15:00'));
+        $this->assertSame([], self::failedRules(Rule::dateTime(), '2026-01-02T03:04:05-13:00'));
+    }
+
     public function testComparisonParameterIsReportedInUtc(): void
     {
         $error = self::onlyError(
@@ -187,6 +194,18 @@ final class DateTimeRuleTest extends TestCase
 
         $this->assertSame('before', $error->rule);
         $this->assertSame(['limit' => '2026-01-02T03:04:05+00:00'], $error->params);
+    }
+
+    public function testComparisonParameterKeepsAFractionOfASecond(): void
+    {
+        // The value is within the same second as the limit, and the message
+        // has to say why it is not after it.
+        $error = self::onlyError(
+            Rule::dateTime()->after(new DateTimeImmutable('2026-01-02T03:04:05.500000Z')),
+            '2026-01-02T03:04:05.2Z',
+        );
+
+        $this->assertSame(['limit' => '2026-01-02T03:04:05.500000+00:00'], $error->params);
     }
 
     public function testTwoFieldsNamingTheSameInstantInDifferentZonesCompareEqual(): void

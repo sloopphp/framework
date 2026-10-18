@@ -60,6 +60,13 @@ final class DateRuleTest extends TestCase
         $this->assertSame('2016-08-14T01:00:00-03:00', $value->format('Y-m-d\TH:i:sP'));
     }
 
+    public function testYearZeroIsAccepted(): void
+    {
+        // PHP reads it and the date is fixed; a DATE column's range is the
+        // application's to declare with afterOrEqual().
+        $this->assertSame([], self::failedRules(Rule::date(), '0000-01-02'));
+    }
+
     public function testComparisonUsesTheSameZoneAsTheValue(): void
     {
         // Midnight in Tokyo is 15:00 the day before in UTC, so a limit read in

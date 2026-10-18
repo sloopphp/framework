@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Sloop\Validation;
 
 use BackedEnum;
+use DateTimeImmutable;
 use InvalidArgumentException;
+use Psr\Clock\ClockInterface;
+use Sloop\Clock\SystemClock;
 
 /**
  * Validates input arrays against a fixed set of field rules.
@@ -23,6 +26,10 @@ use InvalidArgumentException;
  * each field after the fields it names, then same(), different() and the
  * other comparisons with another field, and when(), which see the fields as
  * the first step left them.
+ *
+ * The rules comparing with the current time read it from the clock given to
+ * the constructor, once per validate(), so every field of one input is judged
+ * against the same moment. A test passes a FrozenClock to fix that moment.
  */
 final readonly class Validator
 {
@@ -41,16 +48,24 @@ final readonly class Validator
     private array $requiredOrder;
 
     /**
+     * Clock read once at the start of each validation.
+     *
+     * @var ClockInterface
+     */
+    private ClockInterface $clock;
+
+    /**
      * Create a validator.
      *
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
+     * @param  ClockInterface|null                          $clock Clock the rules comparing with the current time read; null for the system clock
      * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
      *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; or fields required on each other include two with a default
      */
-    public function __construct(array $rules)
+    public function __construct(array $rules, ?ClockInterface $clock = null)
     {
         $named = [];
         foreach ($rules as $field => $rule) {
@@ -69,10 +84,11 @@ final readonly class Validator
 
         $this->rules         = $named;
         $this->requiredOrder = self::requiredOrder($named);
+        $this->clock         = $clock ?? new SystemClock();
     }
 
     /**
-     * A copy of this validator with one more field; this validator is unchanged.
+     * A copy of this validator with one more field, reading the same clock; this validator is unchanged.
      *
      * @param  string                     $field Field name
      * @param  FieldRule<covariant mixed> $rule  Rules of the field
@@ -85,7 +101,7 @@ final readonly class Validator
             throw new InvalidArgumentException('Field "' . $field . '" already has rules.');
         }
 
-        return new self([...$this->rules, $field => $rule]);
+        return new self([...$this->rules, $field => $rule], $this->clock);
     }
 
     /**
@@ -97,10 +113,14 @@ final readonly class Validator
      * @return ValidationResult
      * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
+     * @throws InvalidArgumentException  When Rule::date()'s format cannot read back, as a date in the clock's time zone, a limit or default (declared where the PHP default zone was another) or today's date (afterNow() and the like)
      */
     public function validate(array $data): ValidationResult
     {
-        [$outcomes, $failures] = $this->evaluateFields($data);
+        // A copy, so that each validation has a time object of its own even
+        // when the clock hands back the same one (FrozenClock does): the rules
+        // tell one validation from the next by it.
+        [$outcomes, $failures] = $this->evaluateFields($data, clone $this->clock->now());
 
         $values = [];
         $errors = [];
@@ -151,16 +171,18 @@ final readonly class Validator
      * @internal Called by ShapeRule.
      *
      * @param  array<array-key, mixed>                                          $data Input
+     * @param  DateTimeImmutable                                                $now  Time of the validation
      * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
      * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
      * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws InvalidArgumentException                                         When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
-    public function evaluateFields(array $data): array
+    public function evaluateFields(array $data, DateTimeImmutable $now): array
     {
         $outcomes = [];
         $failures = [];
         foreach ($this->rules as $field => $rule) {
-            $outcomes[$field] = $rule->evaluate($data[$field] ?? null);
+            $outcomes[$field] = $rule->evaluate($data[$field] ?? null, $now);
             $failures[$field] = $outcomes[$field]->failures;
         }
 

@@ -7,6 +7,7 @@ namespace Sloop\Validation;
 use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use InvalidArgumentException;
 
 /**
@@ -18,6 +19,12 @@ use InvalidArgumentException;
  * silently repair: `2026-02-30` is reported as a type failure rather than
  * rolled forward to 2 March.
  *
+ * A comparison limit is read in the frame of each validation, which for a
+ * date is the time zone the Validator's clock reads. It is also read once in
+ * the PHP default time zone when declared, and refused there if the field
+ * cannot read it; one the field reads there but not in the zone of a later
+ * validation is refused by that validation.
+ *
  * @extends FieldRule<DateTimeImmutable>
  */
 abstract class TemporalRule extends FieldRule
@@ -27,8 +34,8 @@ abstract class TemporalRule extends FieldRule
      *
      * The limit is brought into the same frame as the value before the two are
      * compared. What that frame is follows from the type: Rule::date() reduces
-     * the limit to the date it names, Rule::dateTime() takes it as the instant
-     * it already is.
+     * the limit to the date it falls on where the Validator's clock reads,
+     * Rule::dateTime() takes it as the instant it already is.
      *
      * @param  DateTimeInterface        $limit   Point in time the value must precede
      * @param  string|null              $message Message for this rule only
@@ -77,6 +84,68 @@ abstract class TemporalRule extends FieldRule
     public function afterOrEqual(DateTimeInterface $limit, ?string $message = null): static
     {
         return $this->withComparisonTo('afterOrEqual', $limit, $message, true);
+    }
+
+    /**
+     * Fail unless the value is later than the current time.
+     *
+     * The current time is read from the Validator's clock, once per
+     * validation, and brought into the field's frame the way a limit given to
+     * after() is: Rule::date() compares with today where the clock reads, so
+     * a date passes from tomorrow on, and Rule::dateTime() with the instant.
+     * Validating throws InvalidArgumentException when Rule::date()'s format
+     * cannot write today's date and read it back (`y` past 2069); this applies
+     * to the other three as well.
+     *
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function afterNow(?string $message = null): static
+    {
+        return $this->withComparisonToNow('afterNow', $message, false);
+    }
+
+    /**
+     * Fail unless the value is later than or equal to the current time.
+     *
+     * For Rule::date(), today passes.
+     *
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function afterOrEqualNow(?string $message = null): static
+    {
+        return $this->withComparisonToNow('afterOrEqualNow', $message, true);
+    }
+
+    /**
+     * Fail unless the value is earlier than the current time.
+     *
+     * For Rule::date(), a date passes up to yesterday.
+     *
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function beforeNow(?string $message = null): static
+    {
+        return $this->withComparisonToNow('beforeNow', $message, false);
+    }
+
+    /**
+     * Fail unless the value is earlier than or equal to the current time.
+     *
+     * For Rule::date(), today passes.
+     *
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    public function beforeOrEqualNow(?string $message = null): static
+    {
+        return $this->withComparisonToNow('beforeOrEqualNow', $message, true);
     }
 
     /**
@@ -144,11 +213,13 @@ abstract class TemporalRule extends FieldRule
     }
 
     /**
-     * Bring a declared default into the frame the caller reads it in.
+     * Keep a declared default as the point in time it names, refusing one this field could not read.
+     *
+     * It is brought into the frame of each validation when handed out.
      *
      * @param  mixed                    $value Value the container's default holds for this field
      * @return mixed
-     * @throws InvalidArgumentException When the value is not a DateTimeInterface, or cannot be brought into the frame of this field
+     * @throws InvalidArgumentException When the value is not a DateTimeInterface, or cannot be brought into the frame of this field in the PHP default time zone
      */
     protected function prepareDefault(mixed $value): mixed
     {
@@ -156,7 +227,7 @@ abstract class TemporalRule extends FieldRule
             throw self::refusedDefault('a DateTimeInterface', $value);
         }
 
-        return $this->alignLimit($value);
+        return $this->heldLimit($value);
     }
 
     /**
@@ -176,10 +247,11 @@ abstract class TemporalRule extends FieldRule
      * cannot.
      *
      * @param  DateTimeInterface        $limit Limit as the caller declared it
+     * @param  DateTimeZone             $zone  Time zone of the validation
      * @return DateTimeImmutable
      * @throws InvalidArgumentException When the limit cannot be brought into the frame
      */
-    abstract protected function alignLimit(DateTimeInterface $limit): DateTimeImmutable;
+    abstract protected function alignLimit(DateTimeInterface $limit, DateTimeZone $zone): DateTimeImmutable;
 
     /**
      * Whether the input is written the way this field requires.
@@ -199,9 +271,10 @@ abstract class TemporalRule extends FieldRule
      * Render a comparison limit for the error parameters.
      *
      * @param  DateTimeInterface $limit Limit as the caller declared it
+     * @param  DateTimeZone      $zone  Time zone of the validation
      * @return string
      */
-    abstract protected function describeLimit(DateTimeInterface $limit): string;
+    abstract protected function describeLimit(DateTimeInterface $limit, DateTimeZone $zone): string;
 
     /**
      * Read a point in time from one of the accepted formats.
@@ -220,10 +293,11 @@ abstract class TemporalRule extends FieldRule
         }
 
         foreach ($this->formats() as $format) {
-            // No time zone argument: a format carrying an offset takes it from
-            // the input, and one without falls back to the PHP default either
-            // way, which is what a bare date means here.
-            $parsed = DateTimeImmutable::createFromFormat($format, $value);
+            // A format carrying an offset takes it from the input. One without
+            // is read in UTC, which skips no day, so the date read does not
+            // depend on the PHP default; inFrame() moves it to where the clock
+            // reads.
+            $parsed = DateTimeImmutable::createFromFormat($format, $value, new DateTimeZone('UTC'));
             // getLastErrors() answers false when the value went in cleanly.
             // Anything else means PHP repaired it (2026-02-30 comes back as
             // 2 March), which is a rejection here rather than a reading.
@@ -261,20 +335,81 @@ abstract class TemporalRule extends FieldRule
      */
     private function withComparisonTo(string $rule, DateTimeInterface $limit, ?string $message, bool $orEqual): static
     {
-        $aligned = $this->alignLimit($limit);
+        $held    = $this->heldLimit($limit);
+        $inFrame = new LimitInFrame($this->alignLimit(...));
         $earlier = str_starts_with($rule, 'before');
 
         return $this->withCheck(
             $rule,
-            ['limit' => $this->describeLimit($limit)],
-            static function (DateTimeImmutable $value) use ($aligned, $earlier, $orEqual): bool {
-                $ordering = $value <=> $aligned;
-                $strictly = $earlier ? $ordering < 0 : $ordering > 0;
-
-                return $strictly || ($orEqual && $ordering === 0);
-            },
+            [],
+            static fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
+                $value <=> $inFrame->in($held, $now->getTimezone()),
+                $earlier,
+                $orEqual,
+            ),
             $message,
+            fn (DateTimeImmutable $now): array => ['limit' => $this->describeLimit($held, $now->getTimezone())],
         );
+    }
+
+    /**
+     * Append one of the four rules comparing with the current time.
+     *
+     * @param  string                   $rule    Rule name, also the language file key
+     * @param  string|null              $message Message for this rule only
+     * @param  bool                     $orEqual Whether a value equal to the current time, in the field's frame, passes
+     * @return static
+     * @throws InvalidArgumentException When the message template is malformed
+     */
+    private function withComparisonToNow(string $rule, ?string $message, bool $orEqual): static
+    {
+        $inFrame = new LimitInFrame($this->alignLimit(...));
+        $earlier = str_starts_with($rule, 'before');
+
+        return $this->withCheck(
+            $rule,
+            [],
+            static fn (DateTimeImmutable $value, DateTimeImmutable $now): bool => self::orders(
+                $value <=> $inFrame->in($now, $now->getTimezone()),
+                $earlier,
+                $orEqual,
+            ),
+            $message,
+            fn (DateTimeImmutable $now): array => ['limit' => $this->describeLimit($now, $now->getTimezone())],
+        );
+    }
+
+    /**
+     * Keep a limit or default as the point in time it names, once this field has shown it can read it.
+     *
+     * Read in the PHP default time zone, the one a declaration is most
+     * likely to share with the validations that follow, so that a limit
+     * the field's format could never write is refused when declared.
+     *
+     * @param  DateTimeInterface        $limit Limit or default as the caller declared it
+     * @return DateTimeImmutable
+     * @throws InvalidArgumentException When the limit cannot be brought into the frame of this field in the PHP default time zone
+     */
+    protected function heldLimit(DateTimeInterface $limit): DateTimeImmutable
+    {
+        $this->alignLimit($limit, new DateTimeZone(date_default_timezone_get()));
+
+        return DateTimeImmutable::createFromInterface($limit);
+    }
+
+    /**
+     * Whether a spaceship result against the limit passes.
+     *
+     * @param  int  $ordering Value <=> limit
+     * @param  bool $earlier  Whether the value must come before the limit
+     * @param  bool $orEqual  Whether a value equal to the limit passes
+     * @return bool
+     */
+    private static function orders(int $ordering, bool $earlier, bool $orEqual): bool
+    {
+        $strictly = $earlier ? $ordering < 0 : $ordering > 0;
+
+        return $strictly || ($orEqual && $ordering === 0);
     }
 
     /**

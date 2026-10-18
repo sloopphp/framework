@@ -199,9 +199,14 @@
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
             // a test detects.
+            // LimitInFrame::in::71 tests last that a result is kept, which is
+            // always so once the limit matches. Turning the test around makes
+            // every lookup miss, and the limit is brought into the frame again
+            // with the same result; only the work differs.
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::433",
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::916"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::916",
+                "Sloop\\Validation\\LimitInFrame::in::71"
             ]
         },
         "LogicalAndNegation": {
@@ -363,6 +368,10 @@
                 // and caches them again, so only the work differs. Same shape as
                 // the Str cache hits above.
                 "Sloop\\Validation\\CombiningRun::edge::289",
+                // LimitInFrame::in returns the limit it brought into the same frame
+                // for the last value. Falling through brings it into the frame again
+                // and keeps the same result, so only the work differs.
+                "Sloop\\Validation\\LimitInFrame::in::72",
                 // CombiningRun::allows returns false early on 31 code points of
                 // ALL_NON_STARTERS in a row. Falling through, NON_STARTER_SEGMENT
                 // finds the same run and segmentHolds() fails it, so only the length

@@ -6,6 +6,7 @@ namespace Sloop\Validation;
 
 use BackedEnum;
 use Closure;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
@@ -65,11 +66,17 @@ abstract class FieldRule
     private mixed $default = null;
 
     /**
-     * What an empty field gives once the default has been handed out, built on first use.
+     * The default as built for the last validation, with that validation's time and what the default compares by.
      *
-     * @var FieldOutcome|null
+     * Built once per validation: within one, a container's default can be
+     * large and one input can leave a list element empty many times over, so
+     * every empty element shares it. The next validation builds its own, so
+     * an object handed out (a date) is never shared with another validation,
+     * and a date follows the zone the clock reads then.
+     *
+     * @var array{DateTimeImmutable, mixed, mixed}|null
      */
-    private ?FieldOutcome $defaultOutcome = null;
+    private ?array $builtDefault = null;
 
     /**
      * Message used for every rule of this field that has no message of its own.
@@ -168,16 +175,6 @@ abstract class FieldRule
                 );
             }
         }
-    }
-
-    /**
-     * Drop what was built from the default, which a copy may change.
-     *
-     * @return void
-     */
-    public function __clone(): void
-    {
-        $this->defaultOutcome = null;
     }
 
     /**
@@ -391,11 +388,13 @@ abstract class FieldRule
      *           element of its default, and by ShapeRule when its default says nothing for a key.
      *
      * @param  mixed                    $raw Raw input value; null when the key is missing
+     * @param  DateTimeImmutable        $now Time of the validation, read once from the Validator's clock
      * @return FieldOutcome
      * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
      * @throws RuntimeException         When PCRE aborts while a Sanitize case is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
-    public function evaluate(mixed $raw): FieldOutcome
+    public function evaluate(mixed $raw, DateTimeImmutable $now): FieldOutcome
     {
         $value = $raw;
         if (\is_string($value) && mb_check_encoding($value, 'UTF-8')) {
@@ -403,10 +402,13 @@ abstract class FieldRule
         }
 
         if ($this->isEmpty($value)) {
-            return $this->emptyOutcome();
+            return $this->emptyOutcome($now);
         }
 
         $typed = $this->coerce($value);
+        if (!$typed instanceof TypeMismatch) {
+            $typed = $this->inFrame($typed, $now);
+        }
         if ($typed instanceof TypeMismatch) {
             $rule   = $typed->rule ?? $this->typeRule();
             $params = $typed->rule === null ? $this->typeParams() : $typed->params;
@@ -415,15 +417,15 @@ abstract class FieldRule
         }
 
         // A value of the wrong size stops here, the way one of the wrong type does.
-        $failures = $this->run($this->sizeChecks, $typed);
+        $failures = $this->run($this->sizeChecks, $typed, $now);
         if ($failures !== []) {
             return new FieldOutcome(null, null, $failures);
         }
 
         $sized = $typed;
 
-        [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed);
-        $checked      = $this->run($this->checks, $typed);
+        [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed, $now);
+        $checked      = $this->run($this->checks, $typed, $now);
         $lengthFailed = self::failedLength($checked);
 
         return new FieldOutcome(
@@ -432,12 +434,12 @@ abstract class FieldRule
             [
                 ...$failures,
                 ...$checked,
-                ...($failures === [] ? $this->run($this->elementChecks, $elements) : []),
+                ...($failures === [] ? $this->run($this->elementChecks, $elements, $now) : []),
             ],
             // The Validator knows which when() applies only once every field
             // has its value, so it runs them through this, with the typed
             // value kept here; a when() that does not apply never runs.
-            runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === []),
+            runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === [], $now),
             compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other, $lengthFailed),
         );
     }
@@ -445,9 +447,11 @@ abstract class FieldRule
     /**
      * What an empty value gives: the required failure, null, or the default.
      *
+     * @param  DateTimeImmutable        $now Time of the validation
      * @return FieldOutcome
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    private function emptyOutcome(): FieldOutcome
+    private function emptyOutcome(DateTimeImmutable $now): FieldOutcome
     {
         if ($this->required) {
             return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage)]);
@@ -457,35 +461,40 @@ abstract class FieldRule
             return new FieldOutcome(null, null, [], empty: true);
         }
 
-        // Built once: a container's default can be large, and one input
-        // can leave a list element empty many times over.
-        return $this->defaultOutcome ??= new FieldOutcome(
-            $this->outputOfDefault($this->default),
-            $this->comparableOfDefault($this->default),
-            [],
-            empty: true,
-        );
+        // The Validator hands every rule of one validation the same time
+        // object, and a different one to each validation.
+        if ($this->builtDefault === null || $this->builtDefault[0] !== $now) {
+            $this->builtDefault = [
+                $now,
+                $this->outputOfDefault($this->default, $now),
+                $this->comparableOfDefault($this->default, $now),
+            ];
+        }
+
+        return new FieldOutcome($this->builtDefault[1], $this->builtDefault[2], [], empty: true);
     }
 
     /**
      * Run the rules one when() adds.
      *
-     * @param  int              $index          Position of the when() among those declared
-     * @param  T                $sized          Value the rules on the size test, before what it holds was read
-     * @param  T                $typed          Value the other rules test
-     * @param  T                $elements       Value the rules reading the elements test
-     * @param  bool             $elementsPassed Whether every element passed, without which those rules do not run
+     * @param  int                      $index          Position of the when() among those declared
+     * @param  T                        $sized          Value the rules on the size test, before what it holds was read
+     * @param  T                        $typed          Value the other rules test
+     * @param  T                        $elements       Value the rules reading the elements test
+     * @param  bool                     $elementsPassed Whether every element passed, without which those rules do not run
+     * @param  DateTimeImmutable        $now            Time of the validation
      * @return list<Failure>
-     * @throws RuntimeException When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
-    private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed): array
+    private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed, DateTimeImmutable $now): array
     {
         [$sizeChecks, $checks, $elementChecks] = $this->whenChecks[$index];
-        $sizeFailures = $this->run($sizeChecks, $sized);
+        $sizeFailures = $this->run($sizeChecks, $sized, $now);
 
         return $sizeFailures !== [] ? $sizeFailures : [
-            ...$this->run($checks, $typed),
-            ...($elementsPassed ? $this->run($elementChecks, $elements) : []),
+            ...$this->run($checks, $typed, $now),
+            ...($elementsPassed ? $this->run($elementChecks, $elements, $now) : []),
         ];
     }
 
@@ -493,17 +502,20 @@ abstract class FieldRule
      * Run a set of rules over a value, keeping every failure.
      *
      * @template V
-     * @param  list<Check<V>>   $checks Rules to run
-     * @param  V                $typed  Value the rules test
+     * @param  list<Check<V>>           $checks Rules to run
+     * @param  V                        $typed  Value the rules test
+     * @param  DateTimeImmutable        $now    Time of the validation
      * @return list<Failure>
-     * @throws RuntimeException When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
+     * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
-    private function run(array $checks, mixed $typed): array
+    private function run(array $checks, mixed $typed, DateTimeImmutable $now): array
     {
         $failures = [];
         foreach ($checks as $check) {
-            if (!($check->passes)($typed)) {
-                $failures[] = new Failure($check->rule, $check->params, $check->message);
+            if (!($check->passes)($typed, $now)) {
+                $params     = $check->paramsAt === null ? $check->params : ($check->paramsAt)($now);
+                $failures[] = new Failure($check->rule, $params, $check->message);
             }
         }
 
@@ -583,10 +595,12 @@ abstract class FieldRule
     /**
      * Turn the default this field holds into the value handed to the caller.
      *
-     * @param  mixed $default Default as declared or prepared
+     * @param  mixed                    $default Default as declared or prepared
+     * @param  DateTimeImmutable        $now     Time of the validation
      * @return mixed
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    protected function outputOfDefault(mixed $default): mixed
+    protected function outputOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         return $this->output($default);
     }
@@ -594,10 +608,12 @@ abstract class FieldRule
     /**
      * Turn the default this field holds into the value same() / different() compare with `===`.
      *
-     * @param  mixed $default Default as declared or prepared
+     * @param  mixed                    $default Default as declared or prepared
+     * @param  DateTimeImmutable        $now     Time of the validation
      * @return mixed
+     * @throws InvalidArgumentException When a date default cannot be read back as a date in the time zone of the validation
      */
-    protected function comparableOfDefault(mixed $default): mixed
+    protected function comparableOfDefault(mixed $default, DateTimeImmutable $now): mixed
     {
         return $this->comparable($default);
     }
@@ -651,6 +667,19 @@ abstract class FieldRule
     }
 
     /**
+     * Whether required() was declared, so that an empty value fails.
+     *
+     * Read by ListRule and ShapeRule, which refuse a default leaving a
+     * required element or key empty.
+     *
+     * @return bool
+     */
+    protected function isRequired(): bool
+    {
+        return $this->required;
+    }
+
+    /**
      * Whether a validated value of this field can be the given value.
      *
      * Only the types whose validated value is compared as it is answer yes;
@@ -694,9 +723,10 @@ abstract class FieldRule
      * the rules reading the elements receive.
      *
      * @param  T                                 $typed Value of the declared type
+     * @param  DateTimeImmutable                 $now   Time of the validation, handed on to the elements
      * @return array{list<Failure>, T, mixed, T} Failures of the elements, the value to carry on with, the value same() / different() compare, and the value the rules reading the elements receive
      */
-    protected function validateChildren(mixed $typed): array
+    protected function validateChildren(mixed $typed, DateTimeImmutable $now): array
     {
         return [[], $typed, $this->comparable($typed), $typed];
     }
@@ -708,6 +738,22 @@ abstract class FieldRule
      * @return T|TypeMismatch
      */
     abstract protected function coerce(mixed $value): mixed;
+
+    /**
+     * Bring a value of the declared type into the frame of the validation.
+     *
+     * Runs right after coerce(). A type whose value does not depend on where
+     * the clock reads hands it back unchanged; one that cannot exist in that
+     * frame is a type failure.
+     *
+     * @param  T                 $typed Value coerce() produced
+     * @param  DateTimeImmutable $now   Time of the validation
+     * @return T|TypeMismatch
+     */
+    protected function inFrame(mixed $typed, DateTimeImmutable $now): mixed
+    {
+        return $typed;
+    }
 
     /**
      * Rule name reported when the value does not have the declared type.
@@ -774,21 +820,22 @@ abstract class FieldRule
     /**
      * Append a rule.
      *
-     * @param  string                                                 $rule    Rule name, also the language file key
-     * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name
-     * @param  Closure(T): bool                                       $passes  Returns true when the value satisfies the rule
-     * @param  string|null                                            $message Message for this rule only
+     * @param  string                                                                                    $rule     Rule name, also the language file key
+     * @param  array<string, int|float|string|list<int|float|string>>                                    $params   Parameters keyed by placeholder name
+     * @param  Closure(T, DateTimeImmutable): bool                                                       $passes   Returns true when the value satisfies the rule, given the time of the validation
+     * @param  string|null                                                                               $message  Message for this rule only
+     * @param  (Closure(DateTimeImmutable): array<string, int|float|string|list<int|float|string>>)|null $paramsAt Builds the parameters from the time of the validation, in place of $params
      * @return static
-     * @throws \InvalidArgumentException                              When the message template is malformed
+     * @throws \InvalidArgumentException                                                                 When the message template is malformed
      */
-    protected function withCheck(string $rule, array $params, Closure $passes, ?string $message): static
+    protected function withCheck(string $rule, array $params, Closure $passes, ?string $message, ?Closure $paramsAt = null): static
     {
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
         }
 
         $copy           = clone $this;
-        $copy->checks[] = new Check($rule, $params, $passes, $message);
+        $copy->checks[] = new Check($rule, $params, $passes, $message, $paramsAt);
 
         return $copy;
     }
@@ -799,11 +846,11 @@ abstract class FieldRule
      * An element that failed has no validated value to read, so judging the
      * array on it would report a failure no input caused.
      *
-     * @param  string                    $rule    Rule name, also the language file key
-     * @param  Closure(T): bool          $passes  Returns true when the elements, as validateChildren() hands them to these rules, satisfy the rule
-     * @param  string|null               $message Message for this rule only
+     * @param  string                              $rule    Rule name, also the language file key
+     * @param  Closure(T, DateTimeImmutable): bool $passes  Returns true when the elements, as validateChildren() hands them to these rules, satisfy the rule, given the time of the validation
+     * @param  string|null                         $message Message for this rule only
      * @return static
-     * @throws \InvalidArgumentException When the message template is malformed
+     * @throws \InvalidArgumentException           When the message template is malformed
      */
     protected function withElementsCheck(string $rule, Closure $passes, ?string $message): static
     {
@@ -827,7 +874,7 @@ abstract class FieldRule
      *
      * @param  string                                                 $rule    Rule name, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name
-     * @param  Closure(T): bool                                       $passes  Returns true when the value satisfies the rule
+     * @param  Closure(T, DateTimeImmutable): bool                    $passes  Returns true when the value satisfies the rule, given the time of the validation
      * @param  string|null                                            $message Message for this rule only
      * @return static
      * @throws \InvalidArgumentException                              When the message template is malformed
