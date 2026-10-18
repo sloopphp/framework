@@ -1118,6 +1118,20 @@ final class ApplicationTest extends TestCase
         $this->assertStringContainsString('The request value \"name\" must be a string.', (string) $response->getBody());
     }
 
+    public function testJsonIntegerBeyondIntRangeReachesPostAsAString(): void
+    {
+        $request = $this->jsonRequest('{"name":12345678901234567890}');
+
+        $response = new Application($this->tmpDir)->run($request);
+        $data     = $this->decodeJsonBody($response)['data'];
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(
+            ['json' => '12345678901234567890', 'post' => '12345678901234567890', 'input' => '12345678901234567890'],
+            $data,
+        );
+    }
+
     public function testMalformedJsonBodyIsA400ThatPassesBackThroughGlobalMiddleware(): void
     {
         file_put_contents(

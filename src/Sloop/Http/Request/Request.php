@@ -57,7 +57,8 @@ final class Request
      * JSON body when the request was sent with a JSON content type, and the
      * form values otherwise. A request built elsewhere holds whatever its
      * builder put there. A JSON number or boolean is not a string; read it
-     * with json().
+     * with json(). An integer beyond the int range is read as a string when
+     * the body is parsed, so it is returned as one.
      *
      * @param  string          $key     Parameter name
      * @param  string|null     $default Default value if not found
@@ -72,8 +73,9 @@ final class Request
     /**
      * Get an input value from query string or parsed body as a string.
      *
-     * Query string is checked first, then parsed body. A value in the query
-     * string is used even when it is not a string, so the body is not read.
+     * Query string is checked first, then parsed body. When the query string
+     * has the key, its value decides the result: a non-string value is
+     * rejected without reading the body.
      *
      * @param  string          $key     Parameter name
      * @param  string|null     $default Default value if not found
