@@ -316,5 +316,8 @@ final class PasswordHasherTest extends TestCase
         $hasher = new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: 16, argon2Time: 1, argon2Threads: 2);
 
         $this->assertIsString($hasher->hash('x'));
+
+        // The largest thread count is accepted; hashing with it would need 128 GiB, so only construct it.
+        $this->assertSame(16777215, new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: 8 * 16777215, argon2Threads: 16777215)->argon2Threads);
     }
 }
