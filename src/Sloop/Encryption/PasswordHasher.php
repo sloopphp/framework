@@ -15,8 +15,8 @@ use Sloop\Encryption\Exception\InvalidConfigException;
  * verify() returns false when the stored hash is a bcrypt hash. Argon2id has
  * neither limit.
  *
- * verify() accepts bcrypt ($2a$, $2b$, $2y$), argon2i and argon2id hashes,
- * whichever of them the current settings write, so stored hashes keep
+ * verify() accepts bcrypt ($2a$, $2b$, $2y$), argon2i and argon2id hashes
+ * regardless of which one the current settings write, so stored hashes keep
  * working after the algorithm or the costs change; needsRehash() then tells
  * when to hash the password again with the current settings, typically right
  * after a successful login. Older crypt() formats (DES, MD5, SHA-256 and
