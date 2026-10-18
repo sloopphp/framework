@@ -24,9 +24,9 @@
 #
 # Usage:
 #   .claude/quality-gate.sh                    # run static checks and tests (about 30 to 50 seconds)
-#   .claude/quality-gate.sh --with-mutation    # also run infection (7 to 13 minutes)
+#   .claude/quality-gate.sh --with-mutation    # also run infection (about 7 to 13 minutes)
 #   .claude/quality-gate.sh --with-ignore-check # also check the ignore entries of infection.json5
-#                                               # (about 9 minutes alone; 3.5 to 6 minutes on top
+#                                               # (about 9 minutes alone; about 3.5 to 6 minutes on top
 #                                               # of a passing --with-mutation)
 #   .claude/quality-gate.sh --with-integration # also run Integration (needs docker)
 #   .claude/quality-gate.sh --all              # run everything
