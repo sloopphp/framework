@@ -25,8 +25,10 @@ use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Encryption\Cipher;
 use Sloop\Encryption\Encryptor;
 use Sloop\Encryption\Exception\InvalidConfigException;
+use Sloop\Encryption\HexKey;
 use Sloop\Encryption\PasswordAlgorithm;
 use Sloop\Encryption\PasswordHasher;
+use Sloop\Encryption\Signer;
 use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
@@ -95,6 +97,7 @@ final class Application implements RequestHandlerInterface
         $this->registerCoreBindings();
         $this->loadConfig();
         $this->bootEncryption();
+        $this->bootSigning();
         $this->bootHashing();
         $this->loadValidationMessages();
         $this->bootLog();
@@ -538,8 +541,8 @@ final class Application implements RequestHandlerInterface
     {
         $this->assertConfigSection('encryption', ['key', 'previous_keys', 'cipher']);
 
-        $key          = $this->readEncryptionKey();
-        $previousKeys = $this->readPreviousEncryptionKeys();
+        $key          = $this->readKey('encryption');
+        $previousKeys = $this->readPreviousKeys('encryption');
         $cipher       = $this->readEncryptionCipher();
 
         if ($key === null) {
@@ -556,42 +559,74 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
-     * Read encryption.key, treating a missing, null or empty entry as not configured.
+     * Register the Signer from the signing config, checking the written entries now.
      *
+     * The signing key is separate from the encryption key, so a leaked key
+     * exposes only one of the two. As with encryption, a written but malformed
+     * entry fails the boot and a missing key throws only when Signer is resolved.
+     *
+     * @return void
+     * @throws InvalidConfigException If signing is not an array or has an unsupported key, or signing.key or signing.previous_keys is malformed
+     */
+    private function bootSigning(): void
+    {
+        $this->assertConfigSection('signing', ['key', 'previous_keys']);
+
+        $key          = $this->readKey('signing');
+        $previousKeys = $this->readPreviousKeys('signing');
+
+        if ($key === null) {
+            $this->container->singleton(Signer::class, static function (): never {
+                throw new InvalidConfigException(
+                    'The signing key is not configured. Set signing.key to 64 hexadecimal characters, for example the output of Signer::generateKey().',
+                );
+            });
+
+            return;
+        }
+
+        $this->container->instance(Signer::class, new Signer($key, $previousKeys));
+    }
+
+    /**
+     * Read the key entry of a section, treating a missing, null or empty entry as not configured.
+     *
+     * @param  string                 $section Config section holding the key ('encryption' or 'signing')
      * @return string|null
      * @throws InvalidConfigException If the entry is written but is not a string
      */
-    private function readEncryptionKey(): ?string
+    private function readKey(string $section): ?string
     {
-        $key = Config::isLoaded() ? Config::get('encryption.key') : null;
+        $key = Config::isLoaded() ? Config::get($section . '.key') : null;
         if ($key === null || $key === '') {
             return null;
         }
 
         if (!\is_string($key)) {
-            throw new InvalidConfigException('encryption.key must be a string of 64 hexadecimal characters.');
+            throw new InvalidConfigException($section . '.key must be a string of 64 hexadecimal characters.');
         }
 
         return $key;
     }
 
     /**
-     * Read encryption.previous_keys, checking that every entry is a key.
+     * Read the previous_keys entry of a section, checking that every entry is a key.
      *
+     * @param  string                 $section Config section holding the keys ('encryption' or 'signing')
      * @return list<string>
      * @throws InvalidConfigException If the entry is not a list, or one of its keys is not 64 hexadecimal characters
      */
-    private function readPreviousEncryptionKeys(): array
+    private function readPreviousKeys(string $section): array
     {
-        $previousKeys = (Config::isLoaded() ? Config::get('encryption.previous_keys') : null) ?? [];
+        $previousKeys = (Config::isLoaded() ? Config::get($section . '.previous_keys') : null) ?? [];
         if (!\is_array($previousKeys) || !array_is_list($previousKeys)) {
-            throw new InvalidConfigException('encryption.previous_keys must be a list of keys.');
+            throw new InvalidConfigException($section . '.previous_keys must be a list of keys.');
         }
 
         $checked = [];
         foreach ($previousKeys as $index => $previousKey) {
-            if (!\is_string($previousKey) || !Encryptor::isValidKey($previousKey)) {
-                throw new InvalidConfigException('Previous encryption key #' . $index . ' must be 64 hexadecimal characters (32 bytes).');
+            if (!\is_string($previousKey) || !HexKey::isValid($previousKey)) {
+                throw new InvalidConfigException('Previous ' . $section . ' key #' . $index . ' must be 64 hexadecimal characters (32 bytes).');
             }
             $checked[] = $previousKey;
         }
