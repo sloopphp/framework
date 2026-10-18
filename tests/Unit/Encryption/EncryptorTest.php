@@ -267,6 +267,38 @@ final class EncryptorTest extends TestCase
     }
 
     // -------------------------------------------------------
+    // payload format
+    // -------------------------------------------------------
+
+    public function testDecryptReadsAGcmPayloadBuiltFromTheFormat(): void
+    {
+        $salt = str_repeat("\x11", 32);
+        $iv   = str_repeat("\x22", 12);
+        $key  = hash_hkdf('sha256', self::toBytes(self::KEY), 32, 'sloop.encryption.g1', $salt);
+        $tag  = '';
+        $body = openssl_encrypt('format check', 'aes-256-gcm', $key, \OPENSSL_RAW_DATA, $iv, $tag, 'g1.', 16);
+        self::assertIsString($body);
+
+        $payload = 'g1.' . self::encodeBody($salt . $iv . $body . $tag);
+
+        $this->assertSame('format check', new Encryptor(self::KEY)->decrypt($payload));
+    }
+
+    public function testDecryptReadsACbcPayloadBuiltFromTheFormat(): void
+    {
+        $salt     = str_repeat("\x33", 32);
+        $iv       = str_repeat("\x44", 16);
+        $material = hash_hkdf('sha256', self::toBytes(self::KEY), 64, 'sloop.encryption.c1', $salt);
+        $body     = openssl_encrypt('format check', 'aes-256-cbc', substr($material, 0, 32), \OPENSSL_RAW_DATA, $iv);
+        self::assertIsString($body);
+        $mac = hash_hmac('sha256', 'c1.' . $salt . $iv . $body, substr($material, 32), true);
+
+        $payload = 'c1.' . self::encodeBody($salt . $iv . $body . $mac);
+
+        $this->assertSame('format check', new Encryptor(self::KEY)->decrypt($payload));
+    }
+
+    // -------------------------------------------------------
     // generateKey
     // -------------------------------------------------------
 
@@ -355,6 +387,14 @@ final class EncryptorTest extends TestCase
         } catch (InvalidConfigException $e) {
             $this->assertStringNotContainsString($key, $e->getMessage());
         }
+    }
+
+    public function testDebugInfoShowsTheCipherAndTheNumberOfKeysOnly(): void
+    {
+        $this->assertSame(
+            ['cipher' => Cipher::Aes256Cbc, 'keys' => '2 key(s), hidden'],
+            new Encryptor(self::KEY, [self::OTHER_KEY], Cipher::Aes256Cbc)->__debugInfo(),
+        );
     }
 
     public function testDebugInfoDoesNotContainTheKeys(): void

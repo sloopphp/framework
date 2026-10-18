@@ -87,6 +87,17 @@ final class ApplicationEncryptionTest extends TestCase
         $this->assertSame('old', $encryptor->decrypt($old));
     }
 
+    public function testEncryptorUsesEveryPreviousKeyFromTheConfig(): void
+    {
+        $this->writeEncryptionConfig("['key' => '" . self::KEY . "', 'previous_keys' => ['" . Encryptor::generateKey() . "', '" . self::OTHER_KEY . "']]");
+        $oldest = new Encryptor(self::OTHER_KEY)->encrypt('oldest');
+
+        $encryptor = new Application($this->tmpDir)->container->get(Encryptor::class);
+
+        $this->assertInstanceOf(Encryptor::class, $encryptor);
+        $this->assertSame('oldest', $encryptor->decrypt($oldest));
+    }
+
     public function testEncryptorUsesTheCipherFromTheConfig(): void
     {
         $this->writeEncryptionConfig("['key' => '" . self::KEY . "', 'cipher' => 'aes-256-cbc']");
