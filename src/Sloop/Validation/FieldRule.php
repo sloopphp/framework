@@ -178,16 +178,6 @@ abstract class FieldRule
     }
 
     /**
-     * Drop what was built from the default, which a copy may change.
-     *
-     * @return void
-     */
-    public function __clone(): void
-    {
-        $this->builtDefault = null;
-    }
-
-    /**
      * Fail when the field is empty: missing, null or '', or what a type adds to
      * that, such as an upload carrying UPLOAD_ERR_NO_FILE.
      *
