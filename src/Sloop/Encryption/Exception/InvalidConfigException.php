@@ -7,12 +7,14 @@ namespace Sloop\Encryption\Exception;
 use LogicException;
 
 /**
- * Thrown when the encryption config is missing or malformed.
+ * Thrown when the encryption or hashing config is missing or malformed.
  *
  * Indicates a programmer error in config files: a key that is not 64
- * hexadecimal characters, an unknown cipher name, or a missing key when
- * encryption is used. A payload that cannot be decrypted is not an error
- * of this kind; Encryptor::decrypt() returns false for it.
+ * hexadecimal characters, an unknown cipher or hashing algorithm name, a
+ * missing key when encryption is used, a hashing cost out of range, or
+ * argon2id chosen on a PHP build without it. A payload that cannot be
+ * decrypted or a password that does not match is not an error of this kind;
+ * Encryptor::decrypt() and PasswordHasher::verify() return false for those.
  */
 final class InvalidConfigException extends LogicException
 {

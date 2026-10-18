@@ -79,7 +79,7 @@ final class PasswordHasherTest extends TestCase
         );
     }
 
-    public function testHashUsesPhpsDefaultCostsWhenNoneAreGiven(): void
+    public function testConstructorDefaultsToPhpsCosts(): void
     {
         $hasher = new PasswordHasher();
 
@@ -159,6 +159,17 @@ final class PasswordHasherTest extends TestCase
         }
     }
 
+    public function testArgon2idHashesAndVerifiesAPasswordOfOneMebibyte(): void
+    {
+        $password = str_repeat('long password ', 74899);
+        $hash     = self::argon2id()->hash($password);
+        $this->assertIsString($hash);
+
+        $this->assertGreaterThan(1024 * 1024, \strlen($password));
+        $this->assertTrue(self::argon2id()->verify($password, $hash));
+        $this->assertFalse(self::argon2id()->verify($password . 'x', $hash));
+    }
+
     public function testVerifyAgainstAnArgon2idHashAcceptsAPasswordBcryptCannotRepresent(): void
     {
         $password = str_repeat('a', 100) . "\0" . 'tail';
@@ -200,6 +211,37 @@ final class PasswordHasherTest extends TestCase
             'truncated bcrypt' => [substr($bcrypt, 0, 30)],
             'bcrypt prefix'    => ['$2y$'],
         ];
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function legacyCryptHashProvider(): array
+    {
+        $bcrypt = password_hash('secret', PASSWORD_BCRYPT, ['cost' => 4]);
+
+        return [
+            'DES'           => [crypt('secret', 'ab')],
+            'extended DES'  => [crypt('secret', '_J9..salt')],
+            'MD5 crypt'     => [crypt('secret', '$1$saltsalt$')],
+            'SHA-256 crypt' => [crypt('secret', '$5$saltsalt$')],
+            'SHA-512 crypt' => [crypt('secret', '$6$saltsalt$')],
+            'bcrypt $2x$'   => ['$2x$' . substr($bcrypt, 4)],
+        ];
+    }
+
+    #[DataProvider('legacyCryptHashProvider')]
+    public function testVerifyReturnsFalseForAnOlderCryptFormatEvenWithTheRightPassword(string $hash): void
+    {
+        $this->assertTrue(password_verify('secret', $hash), 'PHP itself accepts this format');
+        $this->assertFalse(self::bcrypt()->verify('secret', $hash));
+        $this->assertFalse(self::argon2id()->verify('secret', $hash));
+    }
+
+    #[DataProvider('legacyCryptHashProvider')]
+    public function testNeedsRehashIsTrueForAnOlderCryptFormat(string $hash): void
+    {
+        $this->assertTrue(self::bcrypt()->needsRehash($hash));
     }
 
     #[DataProvider('brokenHashProvider')]
@@ -287,7 +329,9 @@ final class PasswordHasherTest extends TestCase
     public static function invalidArgon2SettingsProvider(): array
     {
         return [
-            'time 0'                    => [8, 0, 1, 'The argon2id time cost must be at least 1, got 0.'],
+            'time 0'                    => [8, 0, 1, 'The argon2id time cost must be between 1 and 4294967295, got 0.'],
+            'time above the maximum'    => [8, 4294967296, 1, 'The argon2id time cost must be between 1 and 4294967295, got 4294967296.'],
+            'memory above the maximum'  => [4294967296, 1, 1, 'The argon2id memory cost must be at most 4294967295 KiB, got 4294967296.'],
             'threads 0'                 => [8, 1, 0, 'The argon2id thread count must be between 1 and 16777215, got 0.'],
             'threads above the maximum' => [1024, 1, 16777216, 'The argon2id thread count must be between 1 and 16777215, got 16777216.'],
             'memory 7'                  => [7, 1, 1, 'The argon2id memory cost must be at least 8 KiB per thread (8 for 1 thread), got 7.'],
@@ -317,7 +361,9 @@ final class PasswordHasherTest extends TestCase
 
         $this->assertIsString($hasher->hash('x'));
 
-        // The largest thread count is accepted; hashing with it would need 128 GiB, so only construct it.
+        // The largest values are accepted; hashing with them would need terabytes, so only construct them.
+        $this->assertSame(4294967295, new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: 4294967295)->argon2Memory);
+        $this->assertSame(4294967295, new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Time: 4294967295)->argon2Time);
         $this->assertSame(16777215, new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: 8 * 16777215, argon2Threads: 16777215)->argon2Threads);
     }
 }

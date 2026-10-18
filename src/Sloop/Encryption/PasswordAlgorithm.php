@@ -17,15 +17,18 @@ enum PasswordAlgorithm: string
     case Argon2id = 'argon2id';
 
     /**
-     * The PHP algorithm constant passed to password_hash() and password_needs_rehash().
+     * The PHP algorithm identifier passed to password_hash() and password_needs_rehash().
      *
-     * @return string
+     * The string is written out instead of using PASSWORD_ARGON2ID, which PHP
+     * does not define when it is built without argon2.
+     *
+     * @return non-empty-string
      */
     public function phpAlgorithm(): string
     {
         return match ($this) {
-            self::Bcrypt   => \PASSWORD_BCRYPT,
-            self::Argon2id => \PASSWORD_ARGON2ID,
+            self::Bcrypt   => '2y',
+            self::Argon2id => 'argon2id',
         };
     }
 

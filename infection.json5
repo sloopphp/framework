@@ -182,8 +182,8 @@
             // written to the log.
             "ignore": [
                 "Sloop\\Database\\Connection::shouldMeasureElapsed",
-                // Application::createServerRequestFromGlobals::846: see NotIdentical.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::846"
+                // Application::createServerRequestFromGlobals::881: see NotIdentical.
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::881"
             ]
         },
         "Plus": {
@@ -194,26 +194,26 @@
         },
         "NotIdentical": {
             // StringRule::email::433: see IncrementInteger (needs a live DNS lookup).
-            // Application::createServerRequestFromGlobals::846 attaches the raw body
+            // Application::createServerRequestFromGlobals::881 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
             // a test detects.
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::433",
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::846"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::881"
             ]
         },
         "LogicalAndNegation": {
-            // Application::createServerRequestFromGlobals::846: see NotIdentical.
+            // Application::createServerRequestFromGlobals::881: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::846"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::881"
             ]
         },
         "LogicalAndAllSubExprNegation": {
-            // Application::createServerRequestFromGlobals::846: see NotIdentical.
+            // Application::createServerRequestFromGlobals::881: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::846"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::881"
             ]
         },
         "UnwrapSubstr": {

@@ -532,10 +532,12 @@ final class Application implements RequestHandlerInterface
      * throws instead.
      *
      * @return void
-     * @throws InvalidConfigException If encryption.key, encryption.previous_keys or encryption.cipher is malformed
+     * @throws InvalidConfigException If encryption is not an array or has an unsupported key, or encryption.key, encryption.previous_keys or encryption.cipher is malformed
      */
     private function bootEncryption(): void
     {
+        $this->assertConfigSection('encryption', ['key', 'previous_keys', 'cipher']);
+
         $key          = $this->readEncryptionKey();
         $previousKeys = $this->readPreviousEncryptionKeys();
         $cipher       = $this->readEncryptionCipher();
@@ -626,10 +628,14 @@ final class Application implements RequestHandlerInterface
      * still gets a working hasher.
      *
      * @return void
-     * @throws InvalidConfigException If an entry is malformed, a cost is out of range, or argon2id is chosen and this PHP build lacks it
+     * @throws InvalidConfigException If a section is not an array or has an unsupported key, an entry is malformed, a cost is out of range, or argon2id is chosen and this PHP build lacks it
      */
     private function bootHashing(): void
     {
+        $this->assertConfigSection('hashing', ['algorithm', 'bcrypt', 'argon2id']);
+        $this->assertConfigSection('hashing.bcrypt', ['cost']);
+        $this->assertConfigSection('hashing.argon2id', ['memory', 'time', 'threads']);
+
         $this->container->instance(PasswordHasher::class, new PasswordHasher(
             algorithm: $this->readHashingAlgorithm(),
             bcryptCost: $this->readHashingInt('hashing.bcrypt.cost', 12),
@@ -637,6 +643,35 @@ final class Application implements RequestHandlerInterface
             argon2Time: $this->readHashingInt('hashing.argon2id.time', 4),
             argon2Threads: $this->readHashingInt('hashing.argon2id.threads', 1),
         ));
+    }
+
+    /**
+     * Check that a config section, when written, is an array with only the given keys.
+     *
+     * A misspelled key or a value written where a section belongs would
+     * otherwise be ignored and the default used without notice.
+     *
+     * @param  string                 $key         Config key of the section
+     * @param  list<string>           $allowedKeys Keys the section may contain
+     * @return void
+     * @throws InvalidConfigException If the section is not an array or has another key
+     */
+    private function assertConfigSection(string $key, array $allowedKeys): void
+    {
+        $section = Config::isLoaded() ? Config::get($key) : null;
+        if ($section === null) {
+            return;
+        }
+
+        if (!\is_array($section)) {
+            throw new InvalidConfigException($key . ' must be an array of settings.');
+        }
+
+        foreach (array_keys($section) as $name) {
+            if (!\in_array($name, $allowedKeys, true)) {
+                throw new InvalidConfigException($key . ' has an unsupported key "' . $name . '".');
+            }
+        }
     }
 
     /**

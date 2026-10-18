@@ -15,10 +15,13 @@ use Sloop\Encryption\Exception\InvalidConfigException;
  * verify() returns false when the stored hash is a bcrypt hash. Argon2id has
  * neither limit.
  *
- * verify() accepts any hash PHP can check, whichever algorithm made it, so
- * stored hashes keep working after the algorithm or the costs change;
- * needsRehash() then tells when to hash the password again with the current
- * settings, typically right after a successful login.
+ * verify() accepts bcrypt ($2a$, $2b$, $2y$), argon2i and argon2id hashes,
+ * whichever of them the current settings write, so stored hashes keep
+ * working after the algorithm or the costs change; needsRehash() then tells
+ * when to hash the password again with the current settings, typically right
+ * after a successful login. Older crypt() formats (DES, MD5, SHA-256 and
+ * SHA-512 crypt, and $2x$) are refused: they shorten the password or cut it
+ * at NUL, and SHA crypt's cost grows faster than the password's length.
  */
 final readonly class PasswordHasher
 {
@@ -48,6 +51,11 @@ final readonly class PasswordHasher
     private const int ARGON2_MAX_THREADS = 16_777_215;
 
     /**
+     * Largest argon2id memory cost (KiB) and time cost libargon2 accepts on a 64-bit build.
+     */
+    private const int ARGON2_MAX_COST = 4_294_967_295;
+
+    /**
      * Create a hasher.
      *
      * The defaults are PHP's own. The argon2id settings are checked whichever
@@ -55,8 +63,8 @@ final readonly class PasswordHasher
      *
      * @param  PasswordAlgorithm      $algorithm     Algorithm used by hash() for new hashes
      * @param  int                    $bcryptCost    Bcrypt cost, 4 to 31; each step doubles the time
-     * @param  int                    $argon2Memory  Argon2id memory cost in KiB, at least 8 per thread
-     * @param  int                    $argon2Time    Argon2id time cost (number of passes), at least 1
+     * @param  int                    $argon2Memory  Argon2id memory cost in KiB, at least 8 per thread and at most 4294967295
+     * @param  int                    $argon2Time    Argon2id time cost (number of passes), 1 to 4294967295
      * @param  int                    $argon2Threads Argon2id thread count, 1 to 16777215
      * @throws InvalidConfigException If a cost is out of range, or argon2id is chosen and this PHP build lacks it
      */
@@ -71,12 +79,16 @@ final readonly class PasswordHasher
             throw new InvalidConfigException('The bcrypt cost must be between ' . self::BCRYPT_MIN_COST . ' and ' . self::BCRYPT_MAX_COST . ', got ' . $bcryptCost . '.');
         }
 
-        if ($argon2Time < 1) {
-            throw new InvalidConfigException('The argon2id time cost must be at least 1, got ' . $argon2Time . '.');
+        if ($argon2Time < 1 || $argon2Time > self::ARGON2_MAX_COST) {
+            throw new InvalidConfigException('The argon2id time cost must be between 1 and ' . self::ARGON2_MAX_COST . ', got ' . $argon2Time . '.');
         }
 
         if ($argon2Threads < 1 || $argon2Threads > self::ARGON2_MAX_THREADS) {
             throw new InvalidConfigException('The argon2id thread count must be between 1 and ' . self::ARGON2_MAX_THREADS . ', got ' . $argon2Threads . '.');
+        }
+
+        if ($argon2Memory > self::ARGON2_MAX_COST) {
+            throw new InvalidConfigException('The argon2id memory cost must be at most ' . self::ARGON2_MAX_COST . ' KiB, got ' . $argon2Memory . '.');
         }
 
         $minMemory = self::ARGON2_MIN_MEMORY_PER_THREAD * $argon2Threads;
@@ -108,15 +120,19 @@ final readonly class PasswordHasher
     }
 
     /**
-     * Check a password against a stored hash made by any algorithm PHP supports.
+     * Check a password against a stored bcrypt, argon2i or argon2id hash.
      *
      * @param  string $password Password to check
      * @param  string $hash     Stored hash
-     * @return bool   False when the password does not match, the hash is malformed, or the hash is a bcrypt hash and the password is longer than 72 bytes or contains NUL
+     * @return bool   False when the password does not match, the hash is malformed or in another format, or the hash is a bcrypt hash and the password is longer than 72 bytes or contains NUL
      */
     public function verify(#[\SensitiveParameter] string $password, string $hash): bool
     {
-        if (str_starts_with($hash, '$2') && !self::fitsBcrypt($password)) {
+        if (self::isBcryptHash($hash)) {
+            if (!self::fitsBcrypt($password)) {
+                return false;
+            }
+        } elseif (!\in_array(password_get_info($hash)['algo'], ['argon2i', 'argon2id'], true)) {
             return false;
         }
 
@@ -126,7 +142,7 @@ final readonly class PasswordHasher
     /**
      * Whether a stored hash was made with another algorithm or other costs than the current ones.
      *
-     * A malformed hash also needs rehashing.
+     * A hash in no format PHP recognizes also needs rehashing.
      *
      * @param  string $hash Stored hash
      * @return bool
@@ -147,6 +163,19 @@ final readonly class PasswordHasher
             PasswordAlgorithm::Bcrypt   => ['cost' => $this->bcryptCost],
             PasswordAlgorithm::Argon2id => ['memory_cost' => $this->argon2Memory, 'time_cost' => $this->argon2Time, 'threads' => $this->argon2Threads],
         };
+    }
+
+    /**
+     * Whether a hash is in one of the bcrypt formats verify() accepts.
+     *
+     * $2x$ (crypt_blowfish's mode reproducing its sign-extension bug) is left out.
+     *
+     * @param  string $hash Stored hash
+     * @return bool
+     */
+    private static function isBcryptHash(string $hash): bool
+    {
+        return str_starts_with($hash, '$2a$') || str_starts_with($hash, '$2b$') || str_starts_with($hash, '$2y$');
     }
 
     /**

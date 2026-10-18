@@ -126,7 +126,13 @@ final class ApplicationHashingTest extends TestCase
             'threads as an array'      => ["['argon2id' => ['threads' => [1]]]", 'hashing.argon2id.threads must be an integer.'],
             'cost out of range'        => ["['bcrypt' => ['cost' => 3]]", 'The bcrypt cost must be between 4 and 31, got 3.'],
             'threads out of range'     => ["['argon2id' => ['threads' => 0]]", 'The argon2id thread count must be between 1 and 16777215, got 0.'],
-            'argon2id unused but bad'  => ["['algorithm' => 'bcrypt', 'argon2id' => ['time' => 0]]", 'The argon2id time cost must be at least 1, got 0.'],
+            'unknown top-level key'    => ["['hash_algorithm' => 'argon2id']", 'hashing has an unsupported key "hash_algorithm".'],
+            'bcrypt not an array'      => ["['bcrypt' => 5]", 'hashing.bcrypt must be an array of settings.'],
+            'unknown bcrypt key'       => ["['bcrypt' => ['cots' => 5]]", 'hashing.bcrypt has an unsupported key "cots".'],
+            'list instead of a map'    => ["['bcrypt' => [5]]", 'hashing.bcrypt has an unsupported key "0".'],
+            'argon2id not an array'    => ["['argon2id' => 'fast']", 'hashing.argon2id must be an array of settings.'],
+            'unknown argon2id key'     => ["['argon2id' => ['memory_cost' => 65536]]", 'hashing.argon2id has an unsupported key "memory_cost".'],
+            'argon2id unused but bad'  => ["['algorithm' => 'bcrypt', 'argon2id' => ['time' => 0]]", 'The argon2id time cost must be between 1 and 4294967295, got 0.'],
         ];
     }
 
