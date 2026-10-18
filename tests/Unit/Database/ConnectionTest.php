@@ -521,9 +521,8 @@ final class ConnectionTest extends TestCase
 
         // 2 retries × 25ms backoff: usleep guarantees at least the requested
         // duration, so the elapsed time gives a deterministic lower bound.
-        // The bound is far above what the three attempts take without the
-        // sleep, even on a loaded machine; with a 1ms backoff the mutant that
-        // drops the sleep survived when the run itself took over 2ms.
+        // With a 1ms backoff (a 2ms bound) the mutant that drops the sleep
+        // was killed in one Infection run and survived the next on the same code.
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
         $this->assertSame(3, $counter->value);
         $this->assertGreaterThanOrEqual(50, $elapsedMs);
