@@ -235,6 +235,23 @@ final class EncryptorTest extends TestCase
         $this->assertFalse($encryptor->decrypt('g1.' . substr($payload, 3)));
     }
 
+    public function testDecryptReturnsFalseForAPayloadSpelledInTheStandardBase64Alphabet(): void
+    {
+        $encryptor = new Encryptor(self::KEY);
+
+        // Only a body containing '-' or '_' changes when spelled with '+' and '/'.
+        for ($attempt = 0; $attempt < 100; $attempt++) {
+            $body = substr($encryptor->encrypt('standard alphabet'), 3);
+            if (strpbrk($body, '-_') !== false) {
+                $this->assertFalse($encryptor->decrypt('g1.' . strtr($body, '-_', '+/')));
+
+                return;
+            }
+        }
+
+        $this->fail('No payload with - or _ in 100 attempts.');
+    }
+
     #[DataProvider('malformedPayloadProvider')]
     public function testDecryptReturnsFalseForAMalformedPayload(string $payload): void
     {
@@ -246,12 +263,8 @@ final class EncryptorTest extends TestCase
      */
     public static function malformedPayloadProvider(): array
     {
-        // The body must contain '-' or '_', or spelling it in the standard
-        // alphabet would leave it unchanged and still valid.
-        do {
-            $valid = new Encryptor(self::KEY)->encrypt('valid');
-            $body  = substr($valid, 3);
-        } while (strpbrk($body, '-_') === false);
+        $valid = new Encryptor(self::KEY)->encrypt('valid');
+        $body  = substr($valid, 3);
 
         return [
             'empty string'            => [''],
@@ -262,7 +275,6 @@ final class EncryptorTest extends TestCase
             'uppercase prefix'        => ['G1.' . $body],
             'missing separator'       => ['g1' . $body],
             'padding appended'        => [$valid . '='],
-            'standard base64 chars'   => ['g1.' . strtr($body, '-_', '+/')],
             'whitespace inside'       => ['g1.' . substr($body, 0, 10) . ' ' . substr($body, 10)],
             'trailing newline'        => [$valid . "\n"],
             'non-canonical last char' => ['g1.' . self::nonCanonicalTail($body)],
