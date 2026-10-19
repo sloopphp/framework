@@ -23,10 +23,11 @@ final class AnyArrayRule extends ArrayRule
      * array.
      *
      * @param  string|null               $message Message for this rule only
+     * @param  string|null               $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws \InvalidArgumentException When the message template is malformed
+     * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function distinct(?string $message = null): static
+    public function distinct(?string $message = null, ?string $flag = null): static
     {
         return $this->withElementsCheck('distinct', static function (array $value): bool {
             $compared = [];
@@ -37,7 +38,7 @@ final class AnyArrayRule extends ArrayRule
             }
 
             return !DistinctValues::hasDuplicate($compared);
-        }, $message);
+        }, $message, flag: $flag);
     }
 
     /**

@@ -23,12 +23,14 @@ final readonly class RequiredCondition
      * @param non-empty-list<string>                 $fields  Fields the condition looks at, in the order they were given
      * @param list<string|int|float|bool|BackedEnum> $values  Values that make requiredIf() hold; empty for requiredWith()
      * @param string|null                            $message Message given with `message:`, if any
+     * @param string|null                            $flag    Flag raised when the condition makes the field fail, given with `flag:`
      */
     public function __construct(
         public string $rule,
         public array $fields,
         public array $values,
         public ?string $message,
+        public ?string $flag = null,
     ) {
     }
 }

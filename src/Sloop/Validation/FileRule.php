@@ -53,10 +53,11 @@ final class FileRule extends FieldRule
      *
      * @param  int                      $max     Largest accepted size in bytes
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $max is below 1 or the message template is malformed
+     * @throws InvalidArgumentException When $max is below 1, or the message template or the flag name is malformed
      */
-    public function maxSize(int $max, ?string $message = null): self
+    public function maxSize(int $max, ?string $message = null, ?string $flag = null): self
     {
         if ($max < 1) {
             throw new InvalidArgumentException('maxSize() needs at least 1 byte, got ' . $max . '.');
@@ -73,6 +74,7 @@ final class FileRule extends FieldRule
                 return $size !== null && $size <= $max;
             },
             $message,
+            flag: $flag,
         );
     }
 
@@ -88,10 +90,11 @@ final class FileRule extends FieldRule
      *
      * @param  list<string>             $types   Accepted media types, such as `image/png`
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $types is empty or the message template is malformed
+     * @throws InvalidArgumentException When $types is empty, or the message template or the flag name is malformed
      */
-    public function mimeTypes(array $types, ?string $message = null): self
+    public function mimeTypes(array $types, ?string $message = null, ?string $flag = null): self
     {
         if ($types === []) {
             throw new InvalidArgumentException('mimeTypes() needs at least one media type.');
@@ -102,6 +105,7 @@ final class FileRule extends FieldRule
             ['types' => $types],
             static fn (UploadedFileInterface $file): bool => \in_array(self::sniff($file), $types, true),
             $message,
+            flag: $flag,
         );
     }
 
@@ -114,10 +118,11 @@ final class FileRule extends FieldRule
      *
      * @param  string         $field   Unused
      * @param  string|null    $message Unused
+     * @param  string|null    $flag    Unused
      * @return never
      * @throws LogicException Always
      */
-    public function same(string $field, ?string $message = null): never
+    public function same(string $field, ?string $message = null, ?string $flag = null): never
     {
         throw new LogicException('Rule::file() has no same(): two uploads never hold the same value.');
     }
@@ -127,10 +132,11 @@ final class FileRule extends FieldRule
      *
      * @param  string         $field   Unused
      * @param  string|null    $message Unused
+     * @param  string|null    $flag    Unused
      * @return never
      * @throws LogicException Always
      */
-    public function different(string $field, ?string $message = null): never
+    public function different(string $field, ?string $message = null, ?string $flag = null): never
     {
         throw new LogicException('Rule::file() has no different(): two uploads never hold the same value.');
     }

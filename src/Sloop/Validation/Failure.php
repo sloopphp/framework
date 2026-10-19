@@ -29,6 +29,7 @@ final readonly class Failure
      * @param list<string|int>                                       $path       Keys from the declared field down to the value that failed
      * @param list<string>                                           $labelPath  The same steps as they appear in a message
      * @param string|null                                            $otherLabel Label of the field a comparison named, which only the validator holding both sides can resolve
+     * @param string|null                                            $flag       Flag the rule raises when it fails, given with `flag:`
      */
     public function __construct(
         public string $rule,
@@ -37,6 +38,7 @@ final readonly class Failure
         public array $path = [],
         public array $labelPath = [],
         public ?string $otherLabel = null,
+        public ?string $flag = null,
     ) {
     }
 
@@ -60,6 +62,7 @@ final readonly class Failure
             [$key, ...$this->path],
             [$label, ...$this->labelPath],
             $this->otherLabel,
+            $this->flag,
         );
     }
 }

@@ -54,6 +54,13 @@ abstract class FieldRule
     private ?string $requiredMessage = null;
 
     /**
+     * Flag given to required() with `flag:`.
+     *
+     * @var string|null
+     */
+    private ?string $requiredFlag = null;
+
+    /**
      * Whether default() was called.
      *
      * @var bool
@@ -191,11 +198,12 @@ abstract class FieldRule
      * that, such as an upload carrying UPLOAD_ERR_NO_FILE.
      *
      * @param  string|null               $message Message for this rule only
+     * @param  string|null               $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
      * @throws LogicException            When a default has been declared, since the default would never be used, or requiredWith() / requiredIf() has, since the field would always be required
-     * @throws \InvalidArgumentException When the message template is malformed
+     * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function required(?string $message = null): static
+    public function required(?string $message = null, ?string $flag = null): static
     {
         if ($this->hasDefault) {
             throw new LogicException('A field cannot be both required and have a default.');
@@ -210,6 +218,7 @@ abstract class FieldRule
         $copy                  = clone $this;
         $copy->required        = true;
         $copy->requiredMessage = $message;
+        $copy->requiredFlag    = self::checkedFlag($flag);
 
         return $copy;
     }
@@ -268,12 +277,13 @@ abstract class FieldRule
      *
      * @param  string                    $field   Name of the other field
      * @param  string|null               $message Message for this rule only
+     * @param  string|null               $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws \InvalidArgumentException When the message template is malformed
+     * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function same(string $field, ?string $message = null): static
+    public function same(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparison(new Comparison('same', $field, $message));
+        return $this->withComparison(new Comparison('same', $field, $message, flag: self::checkedFlag($flag)));
     }
 
     /**
@@ -281,12 +291,13 @@ abstract class FieldRule
      *
      * @param  string                    $field   Name of the other field
      * @param  string|null               $message Message for this rule only
+     * @param  string|null               $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws \InvalidArgumentException When the message template is malformed
+     * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function different(string $field, ?string $message = null): static
+    public function different(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparison(new Comparison('different', $field, $message));
+        return $this->withComparison(new Comparison('different', $field, $message, flag: self::checkedFlag($flag)));
     }
 
     /**
@@ -299,12 +310,13 @@ abstract class FieldRule
      *
      * @param  string|list<string>      $fields  Name of the other field, or a list of names (keys are ignored)
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
      * @throws LogicException           When the field is required
-     * @throws InvalidArgumentException When $fields is an empty list, or the message template is malformed
+     * @throws InvalidArgumentException When $fields is an empty list, or the message template or the flag name is malformed
      * @throws TypeError                When a name in the list is not a string
      */
-    public function requiredWith(string|array $fields, ?string $message = null): static
+    public function requiredWith(string|array $fields, ?string $message = null, ?string $flag = null): static
     {
         if ($fields === []) {
             throw new InvalidArgumentException('requiredWith() needs at least one field.');
@@ -320,7 +332,7 @@ abstract class FieldRule
             }
         }
 
-        return $this->withRequiredCondition(new RequiredCondition('requiredWith', $names, [], $message));
+        return $this->withRequiredCondition(new RequiredCondition('requiredWith', $names, [], $message, self::checkedFlag($flag)));
     }
 
     /**
@@ -336,14 +348,15 @@ abstract class FieldRule
      * @param  string                   $field   Name of the other field
      * @param  mixed                    $value   Value, or list of values, that makes this field required
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
      * @throws LogicException           When the field is required
-     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the message template is malformed
+     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the message template or the flag name is malformed
      */
-    public function requiredIf(string $field, mixed $value, ?string $message = null): static
+    public function requiredIf(string $field, mixed $value, ?string $message = null, ?string $flag = null): static
     {
         return $this->withRequiredCondition(
-            new RequiredCondition('requiredIf', [$field], self::conditionValues($value, 'requiredIf'), $message),
+            new RequiredCondition('requiredIf', [$field], self::conditionValues($value, 'requiredIf'), $message, self::checkedFlag($flag)),
         );
     }
 
@@ -378,10 +391,11 @@ abstract class FieldRule
      * @param  string                   $name    Rule name: a letter, then letters and digits, not one of the framework's rule names in any case
      * @param  Closure(O): mixed        $test    Takes the value as values() hands it out and returns true when it passes, false when it fails; anything else is refused at validation
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the name is malformed or one of the framework's rule names, or the message template is malformed
+     * @throws InvalidArgumentException When the name is malformed or one of the framework's rule names, or the message template or the flag name is malformed
      */
-    public function using(string $name, Closure $test, ?string $message = null): static
+    public function using(string $name, Closure $test, ?string $message = null, ?string $flag = null): static
     {
         if (preg_match('/\A[A-Za-z][A-Za-z0-9]*\z/', $name) !== 1) {
             throw new InvalidArgumentException(
@@ -397,6 +411,7 @@ abstract class FieldRule
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
         }
+        $flag = self::checkedFlag($flag);
 
         $copy                = clone $this;
         $copy->usingChecks[] = new Check(
@@ -414,6 +429,7 @@ abstract class FieldRule
                 return $result;
             },
             $message,
+            flag: $flag,
         );
 
         return $copy;
@@ -541,7 +557,7 @@ abstract class FieldRule
     private function emptyOutcome(DateTimeImmutable $now): FieldOutcome
     {
         if ($this->required) {
-            return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage)]);
+            return new FieldOutcome(null, null, [new Failure('required', [], $this->requiredMessage, flag: $this->requiredFlag)]);
         }
 
         if ($this->default === null) {
@@ -611,7 +627,7 @@ abstract class FieldRule
         foreach ($checks as $check) {
             if (!($check->passes)($typed, $now)) {
                 $params     = $check->paramsAt === null ? $check->params : ($check->paramsAt)($now);
-                $failures[] = new Failure($check->rule, $params, $check->message);
+                $failures[] = new Failure($check->rule, $params, $check->message, flag: $check->flag);
             }
         }
 
@@ -666,6 +682,45 @@ abstract class FieldRule
     protected function childUsingWithoutMessage(): ?string
     {
         return null;
+    }
+
+    /**
+     * Names of the flags the rules of this field declare, the rules inside what it holds included.
+     *
+     * @internal Read by Validator, which refuses a flag no rule declares.
+     *
+     * @return list<string>
+     */
+    public function declaredFlags(): array
+    {
+        $declared = [$this->requiredFlag];
+        foreach ([$this->sizeChecks, $this->checks, $this->elementChecks, $this->usingChecks, ...array_merge(...$this->whenChecks)] as $checks) {
+            foreach ($checks as $check) {
+                $declared[] = $check->flag;
+            }
+        }
+        foreach ([...$this->comparisons, ...$this->requiredConditions] as $rule) {
+            $declared[] = $rule->flag;
+        }
+
+        $flags = $this->childFlags();
+        foreach ($declared as $flag) {
+            if ($flag !== null) {
+                $flags[] = $flag;
+            }
+        }
+
+        return $flags;
+    }
+
+    /**
+     * Names of the flags the rules inside what this field holds declare.
+     *
+     * @return list<string>
+     */
+    protected function childFlags(): array
+    {
+        return [];
     }
 
     /**
@@ -956,17 +1011,18 @@ abstract class FieldRule
      * @param  Closure(T, DateTimeImmutable): bool                                                       $passes   Returns true when the value satisfies the rule, given the time of the validation
      * @param  string|null                                                                               $message  Message for this rule only
      * @param  (Closure(DateTimeImmutable): array<string, int|float|string|list<int|float|string>>)|null $paramsAt Builds the parameters from the time of the validation, in place of $params
+     * @param  string|null                                                                               $flag     Flag the result raises when this rule fails
      * @return static
-     * @throws \InvalidArgumentException                                                                 When the message template is malformed
+     * @throws \InvalidArgumentException                                                                 When the message template or the flag name is malformed
      */
-    protected function withCheck(string $rule, array $params, Closure $passes, ?string $message, ?Closure $paramsAt = null): static
+    protected function withCheck(string $rule, array $params, Closure $passes, ?string $message, ?Closure $paramsAt = null, ?string $flag = null): static
     {
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
         }
 
         $copy           = clone $this;
-        $copy->checks[] = new Check($rule, $params, $passes, $message, $paramsAt);
+        $copy->checks[] = new Check($rule, $params, $passes, $message, $paramsAt, self::checkedFlag($flag));
 
         return $copy;
     }
@@ -980,17 +1036,18 @@ abstract class FieldRule
      * @param  string                              $rule    Rule name, also the language file key
      * @param  Closure(T, DateTimeImmutable): bool $passes  Returns true when the elements, as validateChildren() hands them to these rules, satisfy the rule, given the time of the validation
      * @param  string|null                         $message Message for this rule only
+     * @param  string|null                         $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws \InvalidArgumentException           When the message template is malformed
+     * @throws \InvalidArgumentException           When the message template or the flag name is malformed
      */
-    protected function withElementsCheck(string $rule, Closure $passes, ?string $message): static
+    protected function withElementsCheck(string $rule, Closure $passes, ?string $message, ?string $flag = null): static
     {
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
         }
 
         $copy                  = clone $this;
-        $copy->elementChecks[] = new Check($rule, [], $passes, $message);
+        $copy->elementChecks[] = new Check($rule, [], $passes, $message, flag: self::checkedFlag($flag));
 
         return $copy;
     }
@@ -1007,17 +1064,18 @@ abstract class FieldRule
      * @param  array<string, int|float|string|list<int|float|string>> $params  Parameters keyed by placeholder name
      * @param  Closure(T, DateTimeImmutable): bool                    $passes  Returns true when the value satisfies the rule, given the time of the validation
      * @param  string|null                                            $message Message for this rule only
+     * @param  string|null                                            $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws \InvalidArgumentException                              When the message template is malformed
+     * @throws \InvalidArgumentException                              When the message template or the flag name is malformed
      */
-    protected function withSizeCheck(string $rule, array $params, Closure $passes, ?string $message): static
+    protected function withSizeCheck(string $rule, array $params, Closure $passes, ?string $message, ?string $flag = null): static
     {
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
         }
 
         $copy               = clone $this;
-        $copy->sizeChecks[] = new Check($rule, $params, $passes, $message);
+        $copy->sizeChecks[] = new Check($rule, $params, $passes, $message, flag: self::checkedFlag($flag));
 
         return $copy;
     }
@@ -1088,6 +1146,24 @@ abstract class FieldRule
     }
 
     /**
+     * Check a flag name given with `flag:`.
+     *
+     * @param  string|null              $flag Flag name, or null when none was given
+     * @return string|null
+     * @throws InvalidArgumentException When the name is not a letter followed by letters and digits
+     */
+    private static function checkedFlag(?string $flag): ?string
+    {
+        if ($flag !== null && preg_match('/\A[A-Za-z][A-Za-z0-9]*\z/', $flag) !== 1) {
+            throw new InvalidArgumentException(
+                'A flag needs a name made of a letter followed by letters and digits, got "' . $flag . '".',
+            );
+        }
+
+        return $flag;
+    }
+
+    /**
      * This rule with nothing declared on it beyond its type, for a when() closure to add to.
      *
      * @return static
@@ -1097,6 +1173,7 @@ abstract class FieldRule
         $copy                  = $this->withoutChecks();
         $copy->required        = false;
         $copy->requiredMessage = null;
+        $copy->requiredFlag    = null;
         $copy->hasDefault      = false;
         $copy->default         = null;
         $copy->fieldMessage    = null;
@@ -1150,12 +1227,13 @@ abstract class FieldRule
      * @param  string|null               $message Message for this rule only
      * @param  Closure(T, mixed): bool   $test    Whether this field's typed value passes against the other field's validated value (null when that one was empty without a default)
      * @param  bool                      $bounded Whether the field must bound its length in code points or bytes (see Comparison)
+     * @param  string|null               $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws \InvalidArgumentException When the message template is malformed
+     * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
-    protected function withFieldComparison(string $rule, string $field, ?string $message, Closure $test, bool $bounded = false): static
+    protected function withFieldComparison(string $rule, string $field, ?string $message, Closure $test, bool $bounded = false, ?string $flag = null): static
     {
-        $copy = $this->withComparison(new Comparison($rule, $field, $message, static::class, $this->typeRule(), $bounded));
+        $copy = $this->withComparison(new Comparison($rule, $field, $message, static::class, $this->typeRule(), $bounded, self::checkedFlag($flag)));
 
         $copy->comparisonTests[\count($copy->comparisons) - 1] = $test;
 

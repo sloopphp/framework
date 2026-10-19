@@ -24,7 +24,8 @@ use TypeError;
  * condition holds and stops only the rules of that when(). Each when() checks
  * it on its own, and when the field's own rules check it too, the field's
  * check runs first and stops the field. A message: given to those rules does
- * not apply to combiningRun; the field's message() does.
+ * not apply to combiningRun; the field's message() does. A flag: given to them
+ * is not raised by combiningRun either, and combiningRun takes no flag.
  *
  * @extends FieldRule<string, string>
  */
@@ -73,14 +74,15 @@ final class StringRule extends FieldRule
      * @param  int                      $min     Minimum length
      * @param  string|null              $message Message for this rule only
      * @param  LengthUnit               $unit    Unit the length is counted in
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $min is negative or the message template is malformed
+     * @throws InvalidArgumentException When $min is negative, or the message template or the flag name is malformed
      */
-    public function minLength(int $min, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
+    public function minLength(int $min, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         self::assertLength($min);
 
-        return $this->withCheck('minLength', ['min' => $min, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) >= $min, $message);
+        return $this->withCheck('minLength', ['min' => $min, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) >= $min, $message, flag: $flag);
     }
 
     /**
@@ -89,14 +91,15 @@ final class StringRule extends FieldRule
      * @param  int                      $max     Maximum length
      * @param  string|null              $message Message for this rule only
      * @param  LengthUnit               $unit    Unit the length is counted in
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $max is negative or the message template is malformed
+     * @throws InvalidArgumentException When $max is negative, or the message template or the flag name is malformed
      */
-    public function maxLength(int $max, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
+    public function maxLength(int $max, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         self::assertLength($max);
 
-        return $this->withCheck('maxLength', ['max' => $max, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) <= $max, $message);
+        return $this->withCheck('maxLength', ['max' => $max, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) <= $max, $message, flag: $flag);
     }
 
     /**
@@ -105,14 +108,15 @@ final class StringRule extends FieldRule
      * @param  int                      $length  Required length
      * @param  string|null              $message Message for this rule only
      * @param  LengthUnit               $unit    Unit the length is counted in
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $length is negative or the message template is malformed
+     * @throws InvalidArgumentException When $length is negative, or the message template or the flag name is malformed
      */
-    public function exactLength(int $length, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
+    public function exactLength(int $length, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         self::assertLength($length);
 
-        return $this->withCheck('exactLength', ['length' => $length, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) === $length, $message);
+        return $this->withCheck('exactLength', ['length' => $length, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) === $length, $message, flag: $flag);
     }
 
     /**
@@ -121,16 +125,17 @@ final class StringRule extends FieldRule
      * @param  int                      $size    Block size, at least 1
      * @param  string|null              $message Message for this rule only
      * @param  LengthUnit               $unit    Unit the length is counted in
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $size is less than 1 or the message template is malformed
+     * @throws InvalidArgumentException When $size is less than 1, or the message template or the flag name is malformed
      */
-    public function blockSize(int $size, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes): self
+    public function blockSize(int $size, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         if ($size < 1) {
             throw new InvalidArgumentException('Block size must be at least 1, got ' . $size . '.');
         }
 
-        return $this->withCheck('blockSize', ['size' => $size, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) % $size === 0, $message);
+        return $this->withCheck('blockSize', ['size' => $size, 'unit' => $unit->value], static fn (string $value): bool => $unit->length($value) % $size === 0, $message, flag: $flag);
     }
 
     /**
@@ -141,14 +146,15 @@ final class StringRule extends FieldRule
      *
      * @param  string                   $pattern PCRE pattern with delimiters
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When the pattern does not compile or the message template is malformed
+     * @throws InvalidArgumentException When the pattern does not compile, or the message template or the flag name is malformed
      */
-    public function regex(string $pattern, ?string $message = null): self
+    public function regex(string $pattern, ?string $message = null, ?string $flag = null): self
     {
         self::assertPattern($pattern);
 
-        return $this->withCheck('regex', ['pattern' => $pattern], static fn (string $value): bool => preg_match($pattern, $value) === 1, $message);
+        return $this->withCheck('regex', ['pattern' => $pattern], static fn (string $value): bool => preg_match($pattern, $value) === 1, $message, flag: $flag);
     }
 
     /**
@@ -156,14 +162,15 @@ final class StringRule extends FieldRule
      *
      * @param  list<string>             $values  Accepted values, compared with `===`
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty or the message template is malformed
+     * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
-    public function in(array $values, ?string $message = null): self
+    public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($values, 'in');
 
-        return $this->withCheck('in', ['values' => $values], static fn (string $value): bool => \in_array($value, $values, true), $message);
+        return $this->withCheck('in', ['values' => $values], static fn (string $value): bool => \in_array($value, $values, true), $message, flag: $flag);
     }
 
     /**
@@ -171,14 +178,15 @@ final class StringRule extends FieldRule
      *
      * @param  list<string>             $values  Rejected values, compared with `===`
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty or the message template is malformed
+     * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
-    public function notIn(array $values, ?string $message = null): self
+    public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($values, 'notIn');
 
-        return $this->withCheck('notIn', ['values' => $values], static fn (string $value): bool => !\in_array($value, $values, true), $message);
+        return $this->withCheck('notIn', ['values' => $values], static fn (string $value): bool => !\in_array($value, $values, true), $message, flag: $flag);
     }
 
     /**
@@ -212,11 +220,12 @@ final class StringRule extends FieldRule
      * @param  list<string>             $needles    Strings the value must not contain (keys are ignored)
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
      * @param  string|null              $message    Message for this rule only
+     * @param  string|null              $flag       Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $needles is empty, a needle is empty, not valid UTF-8 or has more than 30 combining characters in a row, or the message template is malformed
+     * @throws InvalidArgumentException When $needles is empty, a needle is empty, not valid UTF-8 or has more than 30 combining characters in a row, or the message template or the flag name is malformed
      * @throws TypeError                When a needle is not a string
      */
-    public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null): self
+    public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
         $values = [];
@@ -231,7 +240,7 @@ final class StringRule extends FieldRule
             $values[] = $needle;
         }
 
-        return $this->withCombiningRun()->withCheck('notContains', ['values' => $values], self::absentFrom($values, $ignoreCase), $message);
+        return $this->withCombiningRun()->withCheck('notContains', ['values' => $values], self::absentFrom($values, $ignoreCase), $message, flag: $flag);
     }
 
     /**
@@ -263,10 +272,11 @@ final class StringRule extends FieldRule
      * @param  string                   $field      Name of the other field
      * @param  bool                     $ignoreCase Treat upper and lower case as the same
      * @param  string|null              $message    Message for this rule only
+     * @param  string|null              $flag       Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function notContainsField(string $field, bool $ignoreCase = false, ?string $message = null): self
+    public function notContainsField(string $field, bool $ignoreCase = false, ?string $message = null, ?string $flag = null): self
     {
         return $this->withCombiningRun()->withFieldComparison(
             'notContainsField',
@@ -277,6 +287,7 @@ final class StringRule extends FieldRule
             static fn (string $own, mixed $other): bool => !\is_string($other) || $other === ''
                 || (CombiningRun::allows($other) && self::absentFrom([$other], $ignoreCase)($own)),
             true,
+            $flag,
         );
     }
 
@@ -291,11 +302,12 @@ final class StringRule extends FieldRule
      *
      * @param  list<CharSet|string>     $sets    Allowed character sets and listed characters; the value may mix characters from all of them
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template or the flag name is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
-    public function chars(array $sets, ?string $message = null): self
+    public function chars(array $sets, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($sets, 'chars');
         [$class, $names, $listed] = self::readSets($sets, 'chars');
@@ -311,7 +323,7 @@ final class StringRule extends FieldRule
             $passes = static fn (string $value): bool => self::eachClusterAllowed($value, $class === '' ? null : $pattern, $clusters);
         }
 
-        return $this->withCombiningRun()->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message);
+        return $this->withCombiningRun()->withCheck('chars', ['chars' => $names, 'listed' => $listed], $passes, $message, flag: $flag);
     }
 
     /**
@@ -332,11 +344,12 @@ final class StringRule extends FieldRule
      *
      * @param  list<CharSet|string>     $sets    Rejected character sets and listed characters
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template or the flag name is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
-    public function notChars(array $sets, ?string $message = null): self
+    public function notChars(array $sets, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($sets, 'notChars');
         [$class, $names, $listed] = self::readSets($sets, 'notChars');
@@ -362,7 +375,7 @@ final class StringRule extends FieldRule
             }
 
             return true;
-        }, $message);
+        }, $message, flag: $flag);
     }
 
     /**
@@ -377,11 +390,12 @@ final class StringRule extends FieldRule
      * @param  int                      $min     Minimum number of kinds the value must use
      * @param  list<CharSet|string>     $sets    The kinds to count
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template is malformed
+     * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template or the flag name is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
-    public function minCharClasses(int $min, array $sets, ?string $message = null): self
+    public function minCharClasses(int $min, array $sets, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($sets, 'minCharClasses');
         if ($min < 1) {
@@ -407,7 +421,7 @@ final class StringRule extends FieldRule
             }
 
             return $used >= $min;
-        }, $message);
+        }, $message, flag: $flag);
     }
 
     /**
@@ -415,10 +429,11 @@ final class StringRule extends FieldRule
      *
      * @param  bool                     $dns     Also require an MX record for the domain (a DNS lookup per value)
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function email(bool $dns = false, ?string $message = null): self
+    public function email(bool $dns = false, ?string $message = null, ?string $flag = null): self
     {
         return $this->withCheck('email', [], static function (string $value) use ($dns): bool {
             if (filter_var($value, \FILTER_VALIDATE_EMAIL) === false) {
@@ -431,7 +446,7 @@ final class StringRule extends FieldRule
             $at = strrpos($value, '@');
 
             return $at !== false && checkdnsrr(substr($value, $at + 1), 'MX');
-        }, $message);
+        }, $message, flag: $flag);
     }
 
     /**
@@ -439,10 +454,11 @@ final class StringRule extends FieldRule
      *
      * @param  list<string>             $schemes Accepted schemes, compared case-insensitively
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $schemes is empty or the message template is malformed
+     * @throws InvalidArgumentException When $schemes is empty, or the message template or the flag name is malformed
      */
-    public function url(array $schemes = ['http', 'https'], ?string $message = null): self
+    public function url(array $schemes = ['http', 'https'], ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($schemes, 'url');
         $accepted = array_map(strtolower(...), $schemes);
@@ -454,19 +470,20 @@ final class StringRule extends FieldRule
             $scheme = parse_url($value, \PHP_URL_SCHEME);
 
             return \is_string($scheme) && \in_array(strtolower($scheme), $accepted, true);
-        }, $message);
+        }, $message, flag: $flag);
     }
 
     /**
      * Fail unless the value is an IPv4 or IPv6 address.
      *
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function ip(?string $message = null): self
+    public function ip(?string $message = null, ?string $flag = null): self
     {
-        return $this->withCheck('ip', [], static fn (string $value): bool => filter_var($value, \FILTER_VALIDATE_IP) !== false, $message);
+        return $this->withCheck('ip', [], static fn (string $value): bool => filter_var($value, \FILTER_VALIDATE_IP) !== false, $message, flag: $flag);
     }
 
     /**

@@ -26,6 +26,7 @@ final readonly class Comparison
      * @param string|null                                   $otherType Factory name of that class, for the message refusing another type
      * @param bool                                          $bounded   Whether the field must bound its length in code points or bytes, and the comparison is
      *                                                                 skipped when the field fails a length rule; true where the cost grows with the product of both lengths
+     * @param string|null                                   $flag      Flag raised when the comparison fails, given with `flag:`
      */
     public function __construct(
         public string $rule,
@@ -34,6 +35,7 @@ final readonly class Comparison
         public ?string $otherRule = null,
         public ?string $otherType = null,
         public bool $bounded = false,
+        public ?string $flag = null,
     ) {
     }
 
