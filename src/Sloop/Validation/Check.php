@@ -24,6 +24,7 @@ final readonly class Check
      * @param Closure(T, DateTimeImmutable): bool                                                       $passes   Returns true when the value satisfies the rule, given the time of the validation
      * @param string|null                                                                               $message  Message given with `message:`, if any
      * @param (Closure(DateTimeImmutable): array<string, int|float|string|list<int|float|string>>)|null $paramsAt Builds the parameters from the time of the validation, in place of $params; null when they do not depend on it
+     * @param string|null                                                                               $flag     Flag raised when the rule fails, given with `flag:`
      */
     public function __construct(
         public string $rule,
@@ -31,6 +32,7 @@ final readonly class Check
         public Closure $passes,
         public ?string $message,
         public ?Closure $paramsAt = null,
+        public ?string $flag = null,
     ) {
     }
 }

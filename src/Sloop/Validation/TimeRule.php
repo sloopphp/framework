@@ -50,12 +50,13 @@ final class TimeRule extends FieldRule
      *
      * @param  TimeOfDay                $limit   Time the value must precede
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the format cannot write the limit
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
-    public function before(TimeOfDay $limit, ?string $message = null): static
+    public function before(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('before', $limit, $message, false);
+        return $this->withComparisonTo('before', $limit, $message, false, $flag);
     }
 
     /**
@@ -63,12 +64,13 @@ final class TimeRule extends FieldRule
      *
      * @param  TimeOfDay                $limit   Latest accepted time
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the format cannot write the limit
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
-    public function beforeOrEqual(TimeOfDay $limit, ?string $message = null): static
+    public function beforeOrEqual(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('beforeOrEqual', $limit, $message, true);
+        return $this->withComparisonTo('beforeOrEqual', $limit, $message, true, $flag);
     }
 
     /**
@@ -76,12 +78,13 @@ final class TimeRule extends FieldRule
      *
      * @param  TimeOfDay                $limit   Time the value must follow
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the format cannot write the limit
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
-    public function after(TimeOfDay $limit, ?string $message = null): static
+    public function after(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('after', $limit, $message, false);
+        return $this->withComparisonTo('after', $limit, $message, false, $flag);
     }
 
     /**
@@ -89,12 +92,13 @@ final class TimeRule extends FieldRule
      *
      * @param  TimeOfDay                $limit   Earliest accepted time
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the format cannot write the limit
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
-    public function afterOrEqual(TimeOfDay $limit, ?string $message = null): static
+    public function afterOrEqual(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('afterOrEqual', $limit, $message, true);
+        return $this->withComparisonTo('afterOrEqual', $limit, $message, true, $flag);
     }
 
     /**
@@ -113,12 +117,13 @@ final class TimeRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function afterField(string $field, ?string $message = null): static
+    public function afterField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0);
+        return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0, $flag);
     }
 
     /**
@@ -126,12 +131,13 @@ final class TimeRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function afterOrEqualField(string $field, ?string $message = null): static
+    public function afterOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0);
+        return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0, $flag);
     }
 
     /**
@@ -139,12 +145,13 @@ final class TimeRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function beforeField(string $field, ?string $message = null): static
+    public function beforeField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0);
+        return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0, $flag);
     }
 
     /**
@@ -152,12 +159,13 @@ final class TimeRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function beforeOrEqualField(string $field, ?string $message = null): static
+    public function beforeOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0);
+        return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0, $flag);
     }
 
     /**
@@ -298,10 +306,11 @@ final class TimeRule extends FieldRule
      * @param  TimeOfDay                $limit   Limit as the caller declared it
      * @param  string|null              $message Message for this rule only
      * @param  bool                     $orEqual Whether a value equal to the limit passes
+     * @param  string|null              $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the format cannot write the limit
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
-    private function withComparisonTo(string $rule, TimeOfDay $limit, ?string $message, bool $orEqual): static
+    private function withComparisonTo(string $rule, TimeOfDay $limit, ?string $message, bool $orEqual, ?string $flag): static
     {
         $aligned = $this->alignLimit($limit);
         $earlier = str_starts_with($rule, 'before');
@@ -316,6 +325,7 @@ final class TimeRule extends FieldRule
                 return $strictly || ($orEqual && $ordering === 0);
             },
             $message,
+            flag: $flag,
         );
     }
 
@@ -398,10 +408,11 @@ final class TimeRule extends FieldRule
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
      * @param  Closure(int): bool       $holds   Whether the result of comparing the value with the other passes
+     * @param  string|null              $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    private function withOrderTo(string $rule, string $field, ?string $message, Closure $holds): static
+    private function withOrderTo(string $rule, string $field, ?string $message, Closure $holds, ?string $flag): static
     {
         // The other side is null only when that field was empty without a default.
         return $this->withFieldComparison(
@@ -409,6 +420,7 @@ final class TimeRule extends FieldRule
             $field,
             $message,
             static fn (TimeOfDay $own, mixed $other): bool => !$other instanceof TimeOfDay || $holds($own->compareTo($other)),
+            flag: $flag,
         );
     }
 

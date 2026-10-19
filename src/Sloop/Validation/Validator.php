@@ -54,6 +54,13 @@ final class Validator
     private array $requiredOrder;
 
     /**
+     * Flags the rules declare with `flag:`, as keys.
+     *
+     * @var array<string, true>
+     */
+    private array $flags;
+
+    /**
      * Clock read once at the start of each validation.
      *
      * @var ClockInterface
@@ -132,8 +139,16 @@ final class Validator
             self::assertConditions($named, $field, $rule);
         }
 
+        $flags = [];
+        foreach ($named as $rule) {
+            foreach ($rule->declaredFlags() as $flag) {
+                $flags[$flag] = true;
+            }
+        }
+
         $this->rules         = $named;
         $this->requiredOrder = self::requiredOrder($named);
+        $this->flags         = $flags;
         $this->clock         = $clock ?? new SystemClock();
     }
 
@@ -174,6 +189,7 @@ final class Validator
 
         $values = [];
         $errors = [];
+        $raised = [];
         foreach ($failures as $field => $fieldFailures) {
             if ($fieldFailures === []) {
                 $values[$field] = $outcomes[$field]->value;
@@ -181,10 +197,13 @@ final class Validator
             }
             foreach ($fieldFailures as $failure) {
                 $errors[$this->key($field, $failure)][] = $this->error($field, $failure);
+                if ($failure->flag !== null) {
+                    $raised[$failure->flag] = true;
+                }
             }
         }
 
-        return new ValidationResult($values, $errors);
+        return new ValidationResult($values, $errors, $raised, $this->flags);
     }
 
     /**
@@ -294,6 +313,7 @@ final class Validator
                         ['other' => $other],
                         $comparison->message,
                         otherLabel: $this->label($other),
+                        flag: $comparison->flag,
                     );
                 }
             }
@@ -341,7 +361,7 @@ final class Validator
         foreach ($condition->fields as $other) {
             if ($condition->rule === 'requiredWith') {
                 if (self::isFilled($other, $outcomes, $failures)) {
-                    return new Failure('requiredWith', ['other' => $other], $condition->message, otherLabel: $this->label($other));
+                    return new Failure('requiredWith', ['other' => $other], $condition->message, otherLabel: $this->label($other), flag: $condition->flag);
                 }
                 continue;
             }
@@ -352,6 +372,7 @@ final class Validator
                     ['other' => $other, 'value' => self::describe($matched)],
                     $condition->message,
                     otherLabel: $this->label($other),
+                    flag: $condition->flag,
                 );
             }
         }

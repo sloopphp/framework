@@ -268,4 +268,20 @@ final class ShapeRule extends ArrayRule
 
         return null;
     }
+
+    /**
+     * Names of the flags the rules of the keys declare.
+     *
+     * @return list<string>
+     */
+    #[\Override]
+    protected function childFlags(): array
+    {
+        $flags = [];
+        foreach ($this->fields as $rule) {
+            $flags = [...$flags, ...$rule->declaredFlags()];
+        }
+
+        return $flags;
+    }
 }

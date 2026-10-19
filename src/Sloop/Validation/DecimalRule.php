@@ -117,14 +117,15 @@ final class DecimalRule extends FieldRule
      *
      * @param  int|string               $min     Smallest accepted value; a string keeps fraction digits exact
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $min is not a decimal or the message template is malformed
+     * @throws InvalidArgumentException When $min is not a decimal, or the message template or the flag name is malformed
      */
-    public function min(int|string $min, ?string $message = null): self
+    public function min(int|string $min, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($min);
 
-        return $this->withCheck('min', ['min' => $min], static fn (DecimalLiteral $value): bool => $value->compare($bound) >= 0, $message);
+        return $this->withCheck('min', ['min' => $min], static fn (DecimalLiteral $value): bool => $value->compare($bound) >= 0, $message, flag: $flag);
     }
 
     /**
@@ -132,14 +133,15 @@ final class DecimalRule extends FieldRule
      *
      * @param  int|string               $max     Largest accepted value; a string keeps fraction digits exact
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $max is not a decimal or the message template is malformed
+     * @throws InvalidArgumentException When $max is not a decimal, or the message template or the flag name is malformed
      */
-    public function max(int|string $max, ?string $message = null): self
+    public function max(int|string $max, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($max);
 
-        return $this->withCheck('max', ['max' => $max], static fn (DecimalLiteral $value): bool => $value->compare($bound) <= 0, $message);
+        return $this->withCheck('max', ['max' => $max], static fn (DecimalLiteral $value): bool => $value->compare($bound) <= 0, $message, flag: $flag);
     }
 
     /**
@@ -148,10 +150,11 @@ final class DecimalRule extends FieldRule
      * @param  int|string               $min     Smallest accepted value
      * @param  int|string               $max     Largest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When a bound is not a decimal, $min is greater than $max, or the message template is malformed
+     * @throws InvalidArgumentException When a bound is not a decimal, $min is greater than $max, or the message template or the flag name is malformed
      */
-    public function between(int|string $min, int|string $max, ?string $message = null): self
+    public function between(int|string $min, int|string $max, ?string $message = null, ?string $flag = null): self
     {
         $lower = self::bound($min);
         $upper = self::bound($max);
@@ -164,6 +167,7 @@ final class DecimalRule extends FieldRule
             ['min' => $min, 'max' => $max],
             static fn (DecimalLiteral $value): bool => $value->compare($lower) >= 0 && $value->compare($upper) <= 0,
             $message,
+            flag: $flag,
         );
     }
 

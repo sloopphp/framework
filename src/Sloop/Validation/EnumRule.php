@@ -82,14 +82,15 @@ final class EnumRule extends FieldRule
      *
      * @param  list<E>                  $cases   Accepted cases
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self<E>
-     * @throws InvalidArgumentException When $cases is empty, holds a case of another enum, or the message template is malformed
+     * @throws InvalidArgumentException When $cases is empty, holds a case of another enum, or the message template or the flag name is malformed
      */
-    public function in(array $cases, ?string $message = null): self
+    public function in(array $cases, ?string $message = null, ?string $flag = null): self
     {
         $this->assertCases($cases, 'in');
 
-        return $this->withCheck('in', ['values' => self::backingValues($cases)], static fn (BackedEnum $value): bool => \in_array($value, $cases, true), $message);
+        return $this->withCheck('in', ['values' => self::backingValues($cases)], static fn (BackedEnum $value): bool => \in_array($value, $cases, true), $message, flag: $flag);
     }
 
     /**
@@ -97,14 +98,15 @@ final class EnumRule extends FieldRule
      *
      * @param  list<E>                  $cases   Rejected cases
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self<E>
-     * @throws InvalidArgumentException When $cases is empty, holds a case of another enum, or the message template is malformed
+     * @throws InvalidArgumentException When $cases is empty, holds a case of another enum, or the message template or the flag name is malformed
      */
-    public function notIn(array $cases, ?string $message = null): self
+    public function notIn(array $cases, ?string $message = null, ?string $flag = null): self
     {
         $this->assertCases($cases, 'notIn');
 
-        return $this->withCheck('notIn', ['values' => self::backingValues($cases)], static fn (BackedEnum $value): bool => !\in_array($value, $cases, true), $message);
+        return $this->withCheck('notIn', ['values' => self::backingValues($cases)], static fn (BackedEnum $value): bool => !\in_array($value, $cases, true), $message, flag: $flag);
     }
 
     /**

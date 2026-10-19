@@ -88,10 +88,11 @@ final class ListRule extends ArrayRule
      * its own rules. The error is reported once, on the list.
      *
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the element is a type no two inputs can share (a file), or the message template is malformed
+     * @throws InvalidArgumentException When the element is a type no two inputs can share (a file), or the message template or the flag name is malformed
      */
-    public function distinct(?string $message = null): static
+    public function distinct(?string $message = null, ?string $flag = null): static
     {
         if (!$this->element->comparesByValue()) {
             throw new InvalidArgumentException('distinct() cannot compare the elements of this list: no two inputs can share their value.');
@@ -102,6 +103,7 @@ final class ListRule extends ArrayRule
             'distinct',
             static fn (array $compared): bool => !DistinctValues::hasDuplicate(array_filter($compared, static fn (mixed $item): bool => $item !== null)),
             $message,
+            flag: $flag,
         );
     }
 
@@ -256,5 +258,16 @@ final class ListRule extends ArrayRule
     protected function childUsingWithoutMessage(): ?string
     {
         return $this->element->usingWithoutMessage();
+    }
+
+    /**
+     * Names of the flags the rules of the element declare.
+     *
+     * @return list<string>
+     */
+    #[\Override]
+    protected function childFlags(): array
+    {
+        return $this->element->declaredFlags();
     }
 }

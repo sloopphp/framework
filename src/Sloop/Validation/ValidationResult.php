@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Validation;
 
+use InvalidArgumentException;
+
 /**
  * Outcome of one Validator::validate() call.
  *
@@ -16,12 +18,16 @@ final readonly class ValidationResult
     /**
      * Create a result.
      *
-     * @param array<string, mixed>                           $values Validated values of the fields that passed, keyed by field name
-     * @param array<string, non-empty-list<ValidationError>> $errors Errors keyed by field name, or by the path to the element that failed; what passed is absent
+     * @param array<string, mixed>                           $values        Validated values of the fields that passed, keyed by field name
+     * @param array<string, non-empty-list<ValidationError>> $errors        Errors keyed by field name, or by the path to the element that failed; what passed is absent
+     * @param array<string, true>                            $raisedFlags   Flags of the rules that failed, as keys
+     * @param array<string, true>                            $declaredFlags Flags the rules declare, as keys; hasFlag() refuses any other name
      */
     public function __construct(
         private array $values,
         private array $errors,
+        private array $raisedFlags = [],
+        private array $declaredFlags = [],
     ) {
     }
 
@@ -33,6 +39,46 @@ final readonly class ValidationResult
     public function failed(): bool
     {
         return $this->errors !== [];
+    }
+
+    /**
+     * Whether a rule declared with this flag failed.
+     *
+     * A flag is given to a rule with `flag:`, as in
+     * `Rule::string()->in($supported, flag: 'invalidVersion')`, and is raised
+     * only when that rule fails: another rule of the same field failing, the
+     * type included, does not raise it. Rules of several fields can share one
+     * flag; which field failed is in errors().
+     *
+     * @param  string                   $flag Flag name
+     * @return bool
+     * @throws InvalidArgumentException When no rule of the validator declares the flag, which is taken for a misspelt name
+     */
+    public function hasFlag(string $flag): bool
+    {
+        if (!isset($this->declaredFlags[$flag])) {
+            throw new InvalidArgumentException('No rule declares the flag "' . $flag . '".');
+        }
+
+        return isset($this->raisedFlags[$flag]);
+    }
+
+    /**
+     * Message of the first error, or null when validation passed.
+     *
+     * The first error is the first one errors() lists: the fields come in the
+     * order they were declared, and the errors of one field in the order its
+     * rules ran.
+     *
+     * @return string|null
+     */
+    public function firstMessage(): ?string
+    {
+        foreach ($this->errors as $errors) {
+            return $errors[0]->message;
+        }
+
+        return null;
     }
 
     /**

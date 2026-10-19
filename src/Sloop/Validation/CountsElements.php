@@ -23,16 +23,17 @@ trait CountsElements
      *
      * @param  int                      $min     Smallest accepted number of elements
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When $min is negative or the message template is malformed
+     * @throws InvalidArgumentException When $min is negative, or the message template or the flag name is malformed
      */
-    public function minCount(int $min, ?string $message = null): static
+    public function minCount(int $min, ?string $message = null, ?string $flag = null): static
     {
         if ($min < 0) {
             throw new InvalidArgumentException('minCount() needs a count of 0 or more, got ' . $min . '.');
         }
 
-        return $this->withSizeCheck('minCount', ['min' => $min], static fn (array $value): bool => \count($value) >= $min, $message);
+        return $this->withSizeCheck('minCount', ['min' => $min], static fn (array $value): bool => \count($value) >= $min, $message, flag: $flag);
     }
 
     /**
@@ -40,16 +41,17 @@ trait CountsElements
      *
      * @param  int                      $max     Largest accepted number of elements
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When $max is negative or the message template is malformed
+     * @throws InvalidArgumentException When $max is negative, or the message template or the flag name is malformed
      */
-    public function maxCount(int $max, ?string $message = null): static
+    public function maxCount(int $max, ?string $message = null, ?string $flag = null): static
     {
         if ($max < 0) {
             throw new InvalidArgumentException('maxCount() needs a count of 0 or more, got ' . $max . '.');
         }
 
-        return $this->withSizeCheck('maxCount', ['max' => $max], static fn (array $value): bool => \count($value) <= $max, $message);
+        return $this->withSizeCheck('maxCount', ['max' => $max], static fn (array $value): bool => \count($value) <= $max, $message, flag: $flag);
     }
 
     /**
@@ -58,10 +60,11 @@ trait CountsElements
      * @param  int                      $min     Smallest accepted number of elements
      * @param  int                      $max     Largest accepted number of elements
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When $min is negative, greater than $max, or the message template is malformed
+     * @throws InvalidArgumentException When $min is negative, greater than $max, or the message template or the flag name is malformed
      */
-    public function betweenCount(int $min, int $max, ?string $message = null): static
+    public function betweenCount(int $min, int $max, ?string $message = null, ?string $flag = null): static
     {
         if ($min < 0) {
             throw new InvalidArgumentException('betweenCount() needs a count of 0 or more, got ' . $min . '.');
@@ -75,6 +78,7 @@ trait CountsElements
             ['min' => $min, 'max' => $max],
             static fn (array $value): bool => \count($value) >= $min && \count($value) <= $max,
             $message,
+            flag: $flag,
         );
     }
 
@@ -83,15 +87,16 @@ trait CountsElements
      *
      * @param  int                      $count   Accepted number of elements
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When $count is negative or the message template is malformed
+     * @throws InvalidArgumentException When $count is negative, or the message template or the flag name is malformed
      */
-    public function exactCount(int $count, ?string $message = null): static
+    public function exactCount(int $count, ?string $message = null, ?string $flag = null): static
     {
         if ($count < 0) {
             throw new InvalidArgumentException('exactCount() needs a count of 0 or more, got ' . $count . '.');
         }
 
-        return $this->withSizeCheck('exactCount', ['count' => $count], static fn (array $value): bool => \count($value) === $count, $message);
+        return $this->withSizeCheck('exactCount', ['count' => $count], static fn (array $value): bool => \count($value) === $count, $message, flag: $flag);
     }
 }

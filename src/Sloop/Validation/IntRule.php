@@ -52,12 +52,13 @@ final class IntRule extends FieldRule
      *
      * @param  int                      $min     Smallest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function min(int $min, ?string $message = null): self
+    public function min(int $min, ?string $message = null, ?string $flag = null): self
     {
-        return $this->withCheck('min', ['min' => $min], static fn (int $value): bool => $value >= $min, $message);
+        return $this->withCheck('min', ['min' => $min], static fn (int $value): bool => $value >= $min, $message, flag: $flag);
     }
 
     /**
@@ -65,12 +66,13 @@ final class IntRule extends FieldRule
      *
      * @param  int                      $max     Largest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function max(int $max, ?string $message = null): self
+    public function max(int $max, ?string $message = null, ?string $flag = null): self
     {
-        return $this->withCheck('max', ['max' => $max], static fn (int $value): bool => $value <= $max, $message);
+        return $this->withCheck('max', ['max' => $max], static fn (int $value): bool => $value <= $max, $message, flag: $flag);
     }
 
     /**
@@ -79,10 +81,11 @@ final class IntRule extends FieldRule
      * @param  int                      $min     Smallest accepted value
      * @param  int                      $max     Largest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $min is greater than $max or the message template is malformed
+     * @throws InvalidArgumentException When $min is greater than $max, or the message template or the flag name is malformed
      */
-    public function between(int $min, int $max, ?string $message = null): self
+    public function between(int $min, int $max, ?string $message = null, ?string $flag = null): self
     {
         if ($min > $max) {
             throw new InvalidArgumentException('between() needs min <= max, got ' . $min . ' and ' . $max . '.');
@@ -93,6 +96,7 @@ final class IntRule extends FieldRule
             ['min' => $min, 'max' => $max],
             static fn (int $value): bool => $value >= $min && $value <= $max,
             $message,
+            flag: $flag,
         );
     }
 
@@ -101,16 +105,17 @@ final class IntRule extends FieldRule
      *
      * @param  list<int>                $values  Accepted values
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty or the message template is malformed
+     * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
-    public function in(array $values, ?string $message = null): self
+    public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
         if ($values === []) {
             throw new InvalidArgumentException('in() needs at least one value.');
         }
 
-        return $this->withCheck('in', ['values' => $values], static fn (int $value): bool => \in_array($value, $values, true), $message);
+        return $this->withCheck('in', ['values' => $values], static fn (int $value): bool => \in_array($value, $values, true), $message, flag: $flag);
     }
 
     /**
@@ -118,16 +123,17 @@ final class IntRule extends FieldRule
      *
      * @param  list<int>                $values  Rejected values
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty or the message template is malformed
+     * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
-    public function notIn(array $values, ?string $message = null): self
+    public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
         if ($values === []) {
             throw new InvalidArgumentException('notIn() needs at least one value.');
         }
 
-        return $this->withCheck('notIn', ['values' => $values], static fn (int $value): bool => !\in_array($value, $values, true), $message);
+        return $this->withCheck('notIn', ['values' => $values], static fn (int $value): bool => !\in_array($value, $values, true), $message, flag: $flag);
     }
 
     /**

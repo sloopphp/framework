@@ -53,14 +53,15 @@ final class FloatRule extends FieldRule
      *
      * @param  int|float                $min     Smallest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $min is not finite or the message template is malformed
+     * @throws InvalidArgumentException When $min is not finite, or the message template or the flag name is malformed
      */
-    public function min(int|float $min, ?string $message = null): self
+    public function min(int|float $min, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($min);
 
-        return $this->withCheck('min', ['min' => $min], static fn (float $value): bool => $value >= $bound, $message);
+        return $this->withCheck('min', ['min' => $min], static fn (float $value): bool => $value >= $bound, $message, flag: $flag);
     }
 
     /**
@@ -68,14 +69,15 @@ final class FloatRule extends FieldRule
      *
      * @param  int|float                $max     Largest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $max is not finite or the message template is malformed
+     * @throws InvalidArgumentException When $max is not finite, or the message template or the flag name is malformed
      */
-    public function max(int|float $max, ?string $message = null): self
+    public function max(int|float $max, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($max);
 
-        return $this->withCheck('max', ['max' => $max], static fn (float $value): bool => $value <= $bound, $message);
+        return $this->withCheck('max', ['max' => $max], static fn (float $value): bool => $value <= $bound, $message, flag: $flag);
     }
 
     /**
@@ -84,10 +86,11 @@ final class FloatRule extends FieldRule
      * @param  int|float                $min     Smallest accepted value
      * @param  int|float                $max     Largest accepted value
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When a bound is not finite, $min is greater than $max, or the message template is malformed
+     * @throws InvalidArgumentException When a bound is not finite, $min is greater than $max, or the message template or the flag name is malformed
      */
-    public function between(int|float $min, int|float $max, ?string $message = null): self
+    public function between(int|float $min, int|float $max, ?string $message = null, ?string $flag = null): self
     {
         $lower = self::bound($min);
         $upper = self::bound($max);
@@ -100,6 +103,7 @@ final class FloatRule extends FieldRule
             ['min' => $min, 'max' => $max],
             static fn (float $value): bool => $value >= $lower && $value <= $upper,
             $message,
+            flag: $flag,
         );
     }
 
@@ -108,14 +112,15 @@ final class FloatRule extends FieldRule
      *
      * @param  list<int|float>          $values  Accepted values; ints are compared as floats
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty, contains a non-finite number, or the message template is malformed
+     * @throws InvalidArgumentException When $values is empty, contains a non-finite number, or the message template or the flag name is malformed
      */
-    public function in(array $values, ?string $message = null): self
+    public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
         $candidates = self::candidates($values, 'in');
 
-        return $this->withCheck('in', ['values' => $values], static fn (float $value): bool => \in_array($value, $candidates, true), $message);
+        return $this->withCheck('in', ['values' => $values], static fn (float $value): bool => \in_array($value, $candidates, true), $message, flag: $flag);
     }
 
     /**
@@ -123,14 +128,15 @@ final class FloatRule extends FieldRule
      *
      * @param  list<int|float>          $values  Rejected values; ints are compared as floats
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty, contains a non-finite number, or the message template is malformed
+     * @throws InvalidArgumentException When $values is empty, contains a non-finite number, or the message template or the flag name is malformed
      */
-    public function notIn(array $values, ?string $message = null): self
+    public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
         $candidates = self::candidates($values, 'notIn');
 
-        return $this->withCheck('notIn', ['values' => $values], static fn (float $value): bool => !\in_array($value, $candidates, true), $message);
+        return $this->withCheck('notIn', ['values' => $values], static fn (float $value): bool => !\in_array($value, $candidates, true), $message, flag: $flag);
     }
 
     /**

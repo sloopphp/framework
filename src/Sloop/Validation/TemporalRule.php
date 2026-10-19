@@ -39,12 +39,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  DateTimeInterface        $limit   Point in time the value must precede
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the limit cannot be brought into the field's frame
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
-    public function before(DateTimeInterface $limit, ?string $message = null): static
+    public function before(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('before', $limit, $message, false);
+        return $this->withComparisonTo('before', $limit, $message, false, $flag);
     }
 
     /**
@@ -52,12 +53,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  DateTimeInterface        $limit   Latest accepted point in time
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the limit cannot be brought into the field's frame
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
-    public function beforeOrEqual(DateTimeInterface $limit, ?string $message = null): static
+    public function beforeOrEqual(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('beforeOrEqual', $limit, $message, true);
+        return $this->withComparisonTo('beforeOrEqual', $limit, $message, true, $flag);
     }
 
     /**
@@ -65,12 +67,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  DateTimeInterface        $limit   Point in time the value must follow
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the limit cannot be brought into the field's frame
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
-    public function after(DateTimeInterface $limit, ?string $message = null): static
+    public function after(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('after', $limit, $message, false);
+        return $this->withComparisonTo('after', $limit, $message, false, $flag);
     }
 
     /**
@@ -78,12 +81,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  DateTimeInterface        $limit   Earliest accepted point in time
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the limit cannot be brought into the field's frame
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
-    public function afterOrEqual(DateTimeInterface $limit, ?string $message = null): static
+    public function afterOrEqual(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonTo('afterOrEqual', $limit, $message, true);
+        return $this->withComparisonTo('afterOrEqual', $limit, $message, true, $flag);
     }
 
     /**
@@ -98,12 +102,13 @@ abstract class TemporalRule extends FieldRule
      * to the other three as well.
      *
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function afterNow(?string $message = null): static
+    public function afterNow(?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonToNow('afterNow', $message, false);
+        return $this->withComparisonToNow('afterNow', $message, false, $flag);
     }
 
     /**
@@ -112,12 +117,13 @@ abstract class TemporalRule extends FieldRule
      * For Rule::date(), today passes.
      *
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function afterOrEqualNow(?string $message = null): static
+    public function afterOrEqualNow(?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonToNow('afterOrEqualNow', $message, true);
+        return $this->withComparisonToNow('afterOrEqualNow', $message, true, $flag);
     }
 
     /**
@@ -126,12 +132,13 @@ abstract class TemporalRule extends FieldRule
      * For Rule::date(), a date passes up to yesterday.
      *
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function beforeNow(?string $message = null): static
+    public function beforeNow(?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonToNow('beforeNow', $message, false);
+        return $this->withComparisonToNow('beforeNow', $message, false, $flag);
     }
 
     /**
@@ -140,12 +147,13 @@ abstract class TemporalRule extends FieldRule
      * For Rule::date(), today passes.
      *
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function beforeOrEqualNow(?string $message = null): static
+    public function beforeOrEqualNow(?string $message = null, ?string $flag = null): static
     {
-        return $this->withComparisonToNow('beforeOrEqualNow', $message, true);
+        return $this->withComparisonToNow('beforeOrEqualNow', $message, true, $flag);
     }
 
     /**
@@ -165,12 +173,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function afterField(string $field, ?string $message = null): static
+    public function afterField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0);
+        return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0, $flag);
     }
 
     /**
@@ -178,12 +187,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function afterOrEqualField(string $field, ?string $message = null): static
+    public function afterOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0);
+        return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0, $flag);
     }
 
     /**
@@ -191,12 +201,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function beforeField(string $field, ?string $message = null): static
+    public function beforeField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0);
+        return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0, $flag);
     }
 
     /**
@@ -204,12 +215,13 @@ abstract class TemporalRule extends FieldRule
      *
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
+     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    public function beforeOrEqualField(string $field, ?string $message = null): static
+    public function beforeOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
-        return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0);
+        return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0, $flag);
     }
 
     /**
@@ -330,10 +342,11 @@ abstract class TemporalRule extends FieldRule
      * @param  DateTimeInterface        $limit   Limit as the caller declared it
      * @param  string|null              $message Message for this rule only
      * @param  bool                     $orEqual Whether a value equal to the limit passes
+     * @param  string|null              $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed, or the limit cannot be brought into the field's frame
+     * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
-    private function withComparisonTo(string $rule, DateTimeInterface $limit, ?string $message, bool $orEqual): static
+    private function withComparisonTo(string $rule, DateTimeInterface $limit, ?string $message, bool $orEqual, ?string $flag): static
     {
         $held    = $this->heldLimit($limit);
         $inFrame = new LimitInFrame($this->alignLimit(...));
@@ -349,6 +362,7 @@ abstract class TemporalRule extends FieldRule
             ),
             $message,
             fn (DateTimeImmutable $now): array => ['limit' => $this->describeLimit($held, $now->getTimezone())],
+            $flag,
         );
     }
 
@@ -358,10 +372,11 @@ abstract class TemporalRule extends FieldRule
      * @param  string                   $rule    Rule name, also the language file key
      * @param  string|null              $message Message for this rule only
      * @param  bool                     $orEqual Whether a value equal to the current time, in the field's frame, passes
+     * @param  string|null              $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    private function withComparisonToNow(string $rule, ?string $message, bool $orEqual): static
+    private function withComparisonToNow(string $rule, ?string $message, bool $orEqual, ?string $flag): static
     {
         $inFrame = new LimitInFrame($this->alignLimit(...));
         $earlier = str_starts_with($rule, 'before');
@@ -376,6 +391,7 @@ abstract class TemporalRule extends FieldRule
             ),
             $message,
             fn (DateTimeImmutable $now): array => ['limit' => $this->describeLimit($now, $now->getTimezone())],
+            $flag,
         );
     }
 
@@ -419,10 +435,11 @@ abstract class TemporalRule extends FieldRule
      * @param  string                   $field   Name of the other field
      * @param  string|null              $message Message for this rule only
      * @param  Closure(int): bool       $holds   Whether the spaceship result of the value against the other passes
+     * @param  string|null              $flag    Flag the result raises when this rule fails
      * @return static
-     * @throws InvalidArgumentException When the message template is malformed
+     * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
-    private function withOrderTo(string $rule, string $field, ?string $message, Closure $holds): static
+    private function withOrderTo(string $rule, string $field, ?string $message, Closure $holds, ?string $flag): static
     {
         // The other side is null only when that field was empty without a default.
         return $this->withFieldComparison(
@@ -430,6 +447,7 @@ abstract class TemporalRule extends FieldRule
             $field,
             $message,
             static fn (DateTimeImmutable $own, mixed $other): bool => !$other instanceof DateTimeImmutable || $holds($own <=> $other),
+            flag: $flag,
         );
     }
 }
