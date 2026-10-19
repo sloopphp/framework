@@ -114,8 +114,8 @@ final class SecurityHeadersMiddlewareTest extends TestCase
             'list instead of a map'     => [['nosniff'], 'Headers must be keyed by header name; got the integer key 0.'],
             'empty value'               => [['X-Frame-Options' => ''], 'The value of the header "X-Frame-Options" must be a non-empty string or null.'],
             'value not a string'        => [['X-Frame-Options' => 1], 'The value of the header "X-Frame-Options" must be a non-empty string or null.'],
-            'value with a line break'   => [['X-Test' => "a\r\nSet-Cookie: x=1"], 'The header "X-Test" has an invalid name or value: '],
-            'name with a space'         => [['X Test' => 'a'], 'The header "X Test" has an invalid name or value: '],
+            'value with a line break'   => [['X-Test' => "a\r\nSet-Cookie: x=1"], 'The header "X-Test" has an invalid name or value: Header values must be RFC 7230 compatible strings'],
+            'name with a space'         => [['X Test' => 'a'], 'The header "X Test" has an invalid name or value: Header name must be an RFC 7230 compatible string'],
             'name differing only in case' => [['X-Test' => 'a', 'x-test' => 'b'], 'The header "x-test" is given twice with different case ("X-Test").'],
             'null then a different case' => [['X-Test' => null, 'x-test' => 'b'], 'The header "x-test" is given twice with different case ("X-Test").'],
         ];

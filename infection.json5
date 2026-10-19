@@ -435,7 +435,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::180",
+                "Sloop\\Foundation\\Application::dispatchRoute::189",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.
