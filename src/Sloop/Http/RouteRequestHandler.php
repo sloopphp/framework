@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Http;
 
+use InvalidArgumentException;
+use LogicException;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -16,8 +19,13 @@ use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
 use Sloop\Http\Request\Request;
+use Sloop\Http\Request\ValidatedInput;
+use Sloop\Http\Request\ValidatedRequest;
+use Sloop\Http\Request\ValidatedRequestShape;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Routing\Route;
+use Sloop\Validation\ValidationResult;
+use Sloop\Validation\Validator;
 
 /**
  * Final request handler that executes the controller for a resolved route.
@@ -57,12 +65,14 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * withParsedBody, ...) are visible to the controller — matching the
      * behavior of global middleware.
      *
-     * @param  ServerRequestInterface $request PSR-7 request as passed through the route middleware chain
+     * @param  ServerRequestInterface   $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
-     * @throws RuntimeException       If the controller cannot be resolved as an object, a route parameter is missing, or a parameter type is unsupported
-     * @throws EntryNotFoundException If the controller or a typed dependency cannot be resolved by the container
-     * @throws ContainerException     If a circular dependency is detected during resolution
-     * @throws ReflectionException    If the controller action method cannot be reflected
+     * @throws RuntimeException         If the controller cannot be resolved as an object, a route parameter is missing, or a parameter type is unsupported
+     * @throws LogicException           If a ValidatedRequest subclass the action takes does not match its rules
+     * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass
+     * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
+     * @throws ContainerException       If a circular dependency is detected during resolution
+     * @throws ReflectionException      If the controller action method cannot be reflected
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -73,6 +83,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $sloopRequest = new Request($request, $this->params);
         $args         = $this->buildActionArguments($controller::class, $this->route->action, $sloopRequest);
+        if ($args instanceof ResponseInterface) {
+            return $args;
+        }
 
         $result = $controller->{$this->route->action}(...$args);
 
@@ -88,20 +101,23 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * When every parameter is untyped, falls back to the legacy positional
      * pattern `[Request, ...routeParams]`. Otherwise resolves each parameter
-     * by type: Request types receive the Sloop Request, builtin types come
-     * from route parameters (looked up by name, cast to the declared type),
-     * and other object types are resolved from the container.
+     * by type: Request types receive the Sloop Request, ValidatedRequest
+     * subclasses receive the validated input, builtin types come from route
+     * parameters (looked up by name, cast to the declared type), and other
+     * object types are resolved from the container.
      *
-     * @param  string                 $className    Controller class name
-     * @param  string                 $method       Action method name
-     * @param  Request                $sloopRequest Sloop request wrapping the current PSR-7 request
-     * @return array<int, mixed>      Positional arguments for the action
-     * @throws RuntimeException       If a route parameter is missing or a parameter type is unsupported
-     * @throws EntryNotFoundException If a typed object dependency cannot be resolved by the container
-     * @throws ContainerException     If a circular dependency is detected during dependency resolution
-     * @throws ReflectionException    If the action method cannot be reflected
+     * @param  string                              $className    Controller class name
+     * @param  string                              $method       Action method name
+     * @param  Request                             $sloopRequest Sloop request wrapping the current PSR-7 request
+     * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
+     * @throws RuntimeException                    If a route parameter is missing or a parameter type is unsupported
+     * @throws LogicException                      If a ValidatedRequest subclass does not match its rules
+     * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass
+     * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
+     * @throws ContainerException                  If a circular dependency is detected during dependency resolution
+     * @throws ReflectionException                 If the action method cannot be reflected
      */
-    private function buildActionArguments(string $className, string $method, Request $sloopRequest): array
+    private function buildActionArguments(string $className, string $method, Request $sloopRequest): array|ResponseInterface
     {
         $parameters = self::reflectParameters($className, $method);
 
@@ -111,10 +127,126 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $args = [];
         foreach ($parameters as $parameter) {
-            $args[] = $this->resolveParameter($parameter, $sloopRequest);
+            $class = self::validatedRequestClass($parameter);
+            if ($class === null) {
+                $args[] = $this->resolveParameter($parameter, $sloopRequest);
+                continue;
+            }
+
+            $validated = $this->validatedRequest($class, $sloopRequest);
+            if ($validated instanceof ResponseInterface) {
+                return $validated;
+            }
+            $args[] = $validated;
         }
 
         return $args;
+    }
+
+    /**
+     * The ValidatedRequest subclass a parameter declares, if it declares one.
+     *
+     * @param  ReflectionParameter                 $parameter Parameter to inspect
+     * @return class-string<ValidatedRequest>|null
+     */
+    private static function validatedRequestClass(ReflectionParameter $parameter): ?string
+    {
+        $type = $parameter->getType();
+        if (!$type instanceof ReflectionNamedType || $type->isBuiltin()) {
+            return null;
+        }
+        $name = $type->getName();
+
+        return is_a($name, ValidatedRequest::class, true) ? $name : null;
+    }
+
+    /**
+     * Validate the input of the request into a ValidatedRequest subclass.
+     *
+     * rules() receives its arguments the way an action does, except the
+     * Request and other ValidatedRequests: a validated request never reads
+     * the raw request.
+     *
+     * @param  class-string<ValidatedRequest>     $class        Subclass to fill
+     * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
+     * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
+     * @throws LogicException                     If the subclass does not match its rules, or rules() asks for the Request or a ValidatedRequest
+     * @throws RuntimeException                   If a route parameter rules() asks for is missing or its type is unsupported
+     * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
+     * @throws ContainerException                 If a circular dependency is detected during resolution
+     * @throws ReflectionException                If the subclass or its rules() cannot be reflected or invoked
+     * @throws InvalidArgumentException           If the Validator refuses the rules
+     */
+    private function validatedRequest(string $class, Request $sloopRequest): ValidatedRequest|ResponseInterface
+    {
+        $shape   = ValidatedRequestShape::of($class);
+        $request = new $class();
+
+        $arguments = [];
+        foreach ($shape->rulesParameters() as $parameter) {
+            $type = $parameter->getType();
+            if ($type instanceof ReflectionNamedType
+                && ($type->getName() === Request::class || is_a($type->getName(), ValidatedRequest::class, true))) {
+                throw new LogicException(
+                    $class . '::rules() cannot receive ' . $type->getName() . ': a validated request reads only its validated input.',
+                );
+            }
+            $arguments[] = $this->resolveParameter($parameter, $sloopRequest);
+        }
+        $rules = $shape->rules($request, $arguments);
+
+        $input = ValidatedInput::collect($sloopRequest->psrRequest(), array_keys($rules));
+        if (\is_string($input)) {
+            return $this->formatter->error($input, HttpStatus::BadRequest);
+        }
+
+        $result = new Validator($rules, $this->clock())->validate($input);
+        if ($result->failed()) {
+            return $this->formatter->error('Validation failed.', HttpStatus::UnprocessableEntity, self::errorBody($result));
+        }
+
+        $shape->fill($request, $result->values());
+
+        return $request;
+    }
+
+    /**
+     * The errors of a failed validation as the 422 response carries them.
+     *
+     * @param  ValidationResult                                                                                                          $result Failed result
+     * @return array<string, list<array{rule: string, params: array<string, int|float|string|list<int|float|string>>, message: string}>>
+     */
+    private static function errorBody(ValidationResult $result): array
+    {
+        $body = [];
+        foreach ($result->errors() as $key => $errors) {
+            foreach ($errors as $error) {
+                $body[$key][] = ['rule' => $error->rule, 'params' => $error->params, 'message' => $error->message];
+            }
+        }
+
+        return $body;
+    }
+
+    /**
+     * The clock registered in the container, or null for the Validator's own system clock.
+     *
+     * @return ClockInterface|null
+     * @throws RuntimeException       If the entry registered as the clock is not a ClockInterface
+     * @throws EntryNotFoundException If the registered clock cannot be resolved
+     * @throws ContainerException     If a circular dependency is detected during resolution
+     */
+    private function clock(): ?ClockInterface
+    {
+        if (!$this->container->has(ClockInterface::class)) {
+            return null;
+        }
+        $clock = $this->container->get(ClockInterface::class);
+        if (!$clock instanceof ClockInterface) {
+            throw new RuntimeException('The entry registered as ' . ClockInterface::class . ' is not a clock.');
+        }
+
+        return $clock;
     }
 
     /**

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Sloop\Foundation;
 
 use Nyholm\Psr7\ServerRequest;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
@@ -350,6 +352,7 @@ final class Application implements RequestHandlerInterface
         $this->container->instance(Router::class, $this->router);
         $this->container->instance(self::class, $this);
 
+        $this->container->singleton(ClockInterface::class, static fn (): SystemClock => new SystemClock());
         $this->container->singleton(ResponseFormatterInterface::class, fn (): ApiResponseFormatter => $this->createResponseFormatter());
         $this->container->singleton(TraceContext::class, fn (): TraceContext => new TraceContext());
         $this->container->singleton(LogManager::class, fn (Container $container): LogManager => $this->createLogManager($container));
