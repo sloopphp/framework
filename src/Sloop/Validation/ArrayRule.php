@@ -95,4 +95,17 @@ abstract class ArrayRule extends FieldRule
     {
         return $value;
     }
+
+    /**
+     * Type of the validated value as PHP names it.
+     *
+     * @internal Read by ValidatedRequest.
+     *
+     * @return string
+     */
+    #[\Override]
+    public function valueType(): string
+    {
+        return 'array';
+    }
 }

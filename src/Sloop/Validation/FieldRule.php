@@ -869,6 +869,27 @@ abstract class FieldRule
     }
 
     /**
+     * Whether the validated value can be null: the field is neither required() nor given a default().
+     *
+     * @internal Read by ValidatedRequest, whose property for such a field must accept null.
+     *
+     * @return bool
+     */
+    public function canBeNull(): bool
+    {
+        return !$this->required && !$this->hasDefault;
+    }
+
+    /**
+     * Type of the validated value as PHP names it: a builtin type, or a class or interface name.
+     *
+     * @internal Read by ValidatedRequest, which checks it against the type of the property receiving the value.
+     *
+     * @return string
+     */
+    abstract public function valueType(): string;
+
+    /**
      * Whether a validated value of this field can be the given value.
      *
      * Only the types whose validated value is compared as it is answer yes;

@@ -304,4 +304,17 @@ final class DecimalRule extends FieldRule
         return DecimalLiteral::parse((string) $bound)
             ?? throw new InvalidArgumentException('A decimal bound must be of the form -?\d+(\.\d+)?, got ' . $bound . '.');
     }
+
+    /**
+     * Type of the validated value as PHP names it.
+     *
+     * @internal Read by ValidatedRequest.
+     *
+     * @return string
+     */
+    #[\Override]
+    public function valueType(): string
+    {
+        return $this->asNumber ? Number::class : 'string';
+    }
 }
