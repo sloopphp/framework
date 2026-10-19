@@ -55,7 +55,8 @@
         },
         "files": [
             "src/Sloop/Helpers/path.php",
-            "src/Sloop/Helpers/env.php"
+            "src/Sloop/Helpers/env.php",
+            "src/Sloop/Helpers/html.php"
         ]
     },
     "autoload-dev": {
