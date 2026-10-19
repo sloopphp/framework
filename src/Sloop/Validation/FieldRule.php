@@ -343,12 +343,16 @@ abstract class FieldRule
      *
      * The closure receives the value as values() hands it out (a decimal's
      * string or BcMath\Number, a date and time in UTC; for an array type, the
-     * array of its validated elements), and returns true when the value passes.
+     * array of its validated elements, an empty element as its default), and
+     * returns true when the value passes.
      * Pass a static or service method as a first-class callable
      * (`$users->exists(...)`). The closure does not run when the field is
      * empty or takes its default, nor while any other rule on the value
-     * declared alongside it has failed, so a value of the wrong form never
-     * reaches it. The rules judged later, once every field has its value
+     * declared alongside it has failed, so a value that fails them never
+     * reaches it. A rule on the size added by when(), maxCount() included,
+     * judges a value whose elements have already been validated, so it does
+     * not bound how often the elements' using() runs; bound it on the field
+     * itself. The rules judged later, once every field has its value
      * (same(), different() and the other comparisons with another field, and
      * the rules when() adds), do not stop a using() declared on the field
      * itself. A using() added by when() waits for the field's own rules on
@@ -902,7 +906,7 @@ abstract class FieldRule
     /**
      * Append a rule.
      *
-     * @param  string                                                                                    $rule        Rule name, also the language file key
+     * @param  string                                                                                    $rule        Rule name; for a rule of the framework, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>>                                    $params      Parameters keyed by placeholder name
      * @param  Closure(T, DateTimeImmutable): bool                                                       $passes      Returns true when the value satisfies the rule, given the time of the validation
      * @param  string|null                                                                               $message     Message for this rule only

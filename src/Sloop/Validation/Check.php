@@ -19,7 +19,7 @@ final readonly class Check
     /**
      * Create a check.
      *
-     * @param string                                                                                    $rule        Rule name, also the language file key
+     * @param string                                                                                    $rule        Rule name; for a rule of the framework, also the language file key
      * @param array<string, int|float|string|list<int|float|string>>                                    $params      Parameters keyed by placeholder name
      * @param Closure(T, DateTimeImmutable): bool                                                       $passes      Returns true when the value satisfies the rule, given the time of the validation
      * @param string|null                                                                               $message     Message given with `message:`, if any

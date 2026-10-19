@@ -114,6 +114,7 @@ final readonly class Validator
      * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws InvalidArgumentException  When Rule::date()'s format cannot read back, as a date in the clock's time zone, a limit or default (declared where the PHP default zone was another) or today's date (afterNow() and the like)
+     * @throws \LogicException           When a rule given to using() fails and neither its `message:` nor the field's message() gives a message
      */
     public function validate(array $data): ValidationResult
     {
@@ -148,6 +149,7 @@ final readonly class Validator
      * @param  Failure           $failure Failed rule
      * @return ValidationError
      * @throws \RuntimeException When the message pattern cannot be formatted
+     * @throws \LogicException   When no message exists for the rule (a rule given to using() without one)
      */
     private function error(string $field, Failure $failure): ValidationError
     {

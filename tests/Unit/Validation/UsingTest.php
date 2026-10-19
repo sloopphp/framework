@@ -5,17 +5,20 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Validation;
 
 use BcMath\Number;
+use Closure;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Sloop\Support\TimeOfDay;
 use Sloop\Tests\Support\ThrowsAssertions;
+use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Tests\Unit\Validation\Stub\Recorder;
 use Sloop\Tests\Unit\Validation\Stub\UserDirectory;
 use Sloop\Validation\DecimalRule;
-use Sloop\Validation\IntRule;
+use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\Sanitize;
 use Sloop\Validation\StringRule;
@@ -489,11 +492,65 @@ final class UsingTest extends TestCase
         self::assertSame($thrown, $e);
     }
 
-    public function testUsingIsAvailableOnEveryType(): void
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>, mixed, Closure(mixed): bool}>
+     */
+    public static function valuesOfEachType(): iterable
     {
-        $rule = Rule::int()->using('even', static fn (int $v): bool => $v % 2 === 0, message: 'x');
+        yield 'bool' => [Rule::bool(), 'true', static fn (mixed $v): bool => $v === true];
+        yield 'float' => [Rule::float(), '1.5', static fn (mixed $v): bool => $v === 1.5];
+        yield 'enum' => [Rule::enum(Payment::class), 'card', static fn (mixed $v): bool => $v === Payment::Card];
+        yield 'date' => [Rule::date(), '2026-10-18', static fn (mixed $v): bool => $v instanceof DateTimeImmutable && $v->format('Y-m-d') === '2026-10-18'];
+        yield 'time' => [Rule::time(), '09:30', static fn (mixed $v): bool => $v instanceof TimeOfDay && $v->format('H:i') === '09:30'];
+        yield 'array' => [Rule::array(), ['a' => 1], static fn (mixed $v): bool => $v === ['a' => 1]];
+    }
 
-        self::assertInstanceOf(IntRule::class, $rule);
-        self::assertSame(['even'], self::failedRules($rule, '3'));
+    /**
+     * @param FieldRule<covariant mixed> $rule
+     * @param Closure(mixed): bool       $expected
+     */
+    #[DataProvider('valuesOfEachType')]
+    public function testUsingReceivesTheValueOfEachTypeAsValuesHandsItOut(FieldRule $rule, mixed $input, Closure $expected): void
+    {
+        $seen = new Recorder(true);
+
+        $value = self::valueOf($rule->using('seen', $seen->test(...), message: 'x'), $input);
+
+        self::assertCount(1, $seen->seen);
+        self::assertTrue($expected($seen->seen[0]));
+        self::assertEquals($value, $seen->seen[0]);
+    }
+
+    public function testUsingIsNotAppliedToTheDefaultOfAList(): void
+    {
+        $seen = new Recorder(false);
+        $rule = Rule::list(Rule::string()->using('element', $seen->test(...), message: 'x'))
+            ->default(['a'])
+            ->using('list', $seen->test(...), message: 'y');
+
+        self::assertSame(['a'], self::valueOf($rule, null));
+        self::assertSame([], $seen->seen);
+    }
+
+    public function testUsingIsNotAppliedToTheDefaultOfAShapeOrOfItsKeys(): void
+    {
+        $seen = new Recorder(false);
+        $rule = Rule::shape([
+            'a' => Rule::string()->default('x')->using('key', $seen->test(...), message: 'x'),
+            'b' => Rule::string()->using('other', $seen->test(...), message: 'x'),
+        ])->default(['b' => 'y']);
+
+        self::assertSame(['a' => 'x', 'b' => 'y'], self::valueOf($rule, null));
+        self::assertSame([], $seen->seen);
+    }
+
+    public function testUsingOnAListReceivesTheDefaultOfAnEmptyElement(): void
+    {
+        $seen = new Recorder(true);
+        $rule = Rule::list(Rule::string()->default('z'))->using('seen', $seen->test(...), message: 'x');
+
+        self::valueOf($rule, ['', 'a']);
+
+        self::assertSame([['z', 'a']], $seen->seen);
     }
 }
