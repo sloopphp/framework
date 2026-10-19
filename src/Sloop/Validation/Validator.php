@@ -34,7 +34,8 @@ use Sloop\Clock\SystemClock;
  *
  * A validator does not change once built: its properties are private and set
  * only while it is built. They are not readonly because forKeys() builds one
- * without the constructor, and a readonly property can be set only there.
+ * without the constructor, and PHPStan reports a readonly property set outside
+ * the constructor, which this project does not suppress.
  */
 final class Validator
 {

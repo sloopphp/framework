@@ -409,6 +409,7 @@ final class UsingTest extends TestCase
     public static function usingWithoutAnyMessage(): iterable
     {
         yield 'on the field' => [static fn (): FieldRule => Rule::string()->using('nameTaken', static fn (string $v): bool => false)];
+        yield 'on a field that also has a when()' => [static fn (): FieldRule => Rule::string()->using('nameTaken', static fn (string $v): bool => false)->when('v', 'x', static fn (StringRule $r): StringRule => $r->in(['a']))];
         yield 'added by when()' => [static fn (): FieldRule => Rule::string()->when('v', 'x', static fn (StringRule $r): StringRule => $r->using('nameTaken', static fn (string $v): bool => false))];
         yield 'on an element' => [static fn (): FieldRule => Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))];
         yield 'on a key' => [static fn (): FieldRule => Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)])];
