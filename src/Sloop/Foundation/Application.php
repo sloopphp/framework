@@ -34,6 +34,7 @@ use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
+use Sloop\Http\Middleware\SecurityHeadersMiddleware;
 use Sloop\Http\Request\FormBody;
 use Sloop\Http\Request\JsonBody;
 use Sloop\Http\Request\UploadedFiles;
@@ -83,6 +84,13 @@ final class Application implements RequestHandlerInterface
     private array $middleware = [];
 
     /**
+     * Security headers middleware, run outside all global middleware.
+     *
+     * @var SecurityHeadersMiddleware
+     */
+    private readonly SecurityHeadersMiddleware $securityHeaders;
+
+    /**
      * Create and boot the application.
      *
      * @param string $basePath Application root directory
@@ -99,6 +107,7 @@ final class Application implements RequestHandlerInterface
         $this->bootEncryption();
         $this->bootSigning();
         $this->bootHashing();
+        $this->securityHeaders = $this->bootSecurityHeaders();
         $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
@@ -656,6 +665,31 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
+     * Build the security headers middleware from security.headers, checking every entry now.
+     *
+     * A malformed entry would otherwise be rejected on every response, so it
+     * fails the boot instead. Without the config the default headers are sent.
+     *
+     * @return SecurityHeadersMiddleware
+     * @throws InvalidConfigException    If security is not an array or has an unsupported key, security.headers is not an array, or one of its entries is not a valid header
+     */
+    private function bootSecurityHeaders(): SecurityHeadersMiddleware
+    {
+        $this->assertConfigSection('security', ['headers']);
+
+        $headers = (Config::isLoaded() ? Config::get('security.headers') : null) ?? [];
+        if (!\is_array($headers)) {
+            throw new InvalidConfigException('security.headers must be an array of header names mapped to a value or null.');
+        }
+
+        try {
+            return new SecurityHeadersMiddleware($headers);
+        } catch (\InvalidArgumentException $e) {
+            throw new InvalidConfigException('security.headers: ' . $e->getMessage(), previous: $e);
+        }
+    }
+
+    /**
      * Register the PasswordHasher from the hashing config, checking every entry now.
      *
      * Missing or null entries take PHP's defaults (bcrypt, cost 12, argon2id
@@ -828,6 +862,10 @@ final class Application implements RequestHandlerInterface
     private function buildMiddlewareDispatcher(): MiddlewareDispatcher
     {
         $dispatcher = new MiddlewareDispatcher($this);
+
+        // Piped first so it is the outermost layer: responses that other
+        // global middleware return early (a CORS preflight) get the headers too.
+        $dispatcher->pipe($this->securityHeaders);
 
         foreach ($this->middleware as $middlewareClass) {
             $middleware = $this->container->get($middlewareClass);
