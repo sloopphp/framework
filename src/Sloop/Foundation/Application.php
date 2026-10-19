@@ -718,10 +718,16 @@ final class Application implements RequestHandlerInterface
         }
 
         try {
-            return new SecurityHeadersMiddleware($headers);
+            $middleware = new SecurityHeadersMiddleware($headers);
         } catch (\InvalidArgumentException $e) {
             throw new InvalidConfigException('security.headers: ' . $e->getMessage(), previous: $e);
         }
+
+        // Registered so that listing the class in config/middleware.php or on a
+        // route resolves this configured instance, not one with the defaults only.
+        $this->container->instance(SecurityHeadersMiddleware::class, $middleware);
+
+        return $middleware;
     }
 
     /**

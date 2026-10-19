@@ -49,7 +49,7 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
      * regardless of case; null removes a default.
      *
      * @param  array<array-key, mixed>   $overrides Header names mapped to a value or null
-     * @throws \InvalidArgumentException If a key is not a string, a name or value is not a valid header, a value is empty or neither a string nor null, or two names differ only in case
+     * @throws \InvalidArgumentException If a key is not a string, a name or value is not a valid header, a value is blank, contains a line break or is neither a string nor null, or two names differ only in case
      */
     public function __construct(array $overrides = [])
     {
@@ -78,7 +78,8 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
             );
 
             if ($value === null) {
-                // A misspelled name would leave the default in place without notice.
+                // A name that cannot be sent would otherwise be ignored here. A
+                // misspelled but valid name still passes and removes nothing.
                 self::assertValidName($name);
 
                 continue;
@@ -132,13 +133,22 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
      * @param  string                    $name  Header name
      * @param  mixed                     $value Header value
      * @return string
-     * @throws \InvalidArgumentException If the value is not a non-empty string, or the name or value is not a valid header
+     * @throws \InvalidArgumentException If the value is not a string, is blank, contains a line break, or the name or value is not a valid header
      */
     private static function validHeaderValue(string $name, mixed $value): string
     {
-        if (!\is_string($value) || $value === '') {
+        // The PSR-7 implementation trims spaces and tabs before its own check,
+        // so a blank value would be sent as an empty header.
+        if (!\is_string($value) || trim($value, " \t") === '') {
             throw new \InvalidArgumentException(
-                'The value of the header "' . $name . '" must be a non-empty string or null.',
+                'The value of the header "' . $name . '" must be a non-blank string or null.',
+            );
+        }
+
+        // The PSR-7 implementation's pattern lets one trailing line feed through.
+        if (strpbrk($value, "\r\n") !== false) {
+            throw new \InvalidArgumentException(
+                'The value of the header "' . $name . '" must not contain a line break.',
             );
         }
 

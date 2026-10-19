@@ -13,6 +13,7 @@ use Sloop\Config\Config;
 use Sloop\Encryption\Exception\InvalidConfigException;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
+use Sloop\Http\Middleware\CorsMiddleware;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Validation\ValidationMessages;
@@ -141,6 +142,62 @@ final class ApplicationSecurityHeadersTest extends TestCase
         $this->assertSame('no-referrer', $response->getHeaderLine('Referrer-Policy'));
     }
 
+    public function testAddsTheHeadersToACorsPreflight(): void
+    {
+        $this->writeRoutes();
+        $this->writeFile('config/middleware.php', '<?php return [\\Sloop\\Http\\Middleware\\CorsMiddleware::class];');
+
+        $app = new Application($this->tmpDir);
+        $app->container->bind(CorsMiddleware::class, static fn (): CorsMiddleware => new CorsMiddleware(['allowed_origins' => ['https://app.example']]));
+
+        $response = $app->run(new ServerRequest('OPTIONS', '/health', ['Origin' => 'https://app.example']));
+
+        $this->assertSame(204, $response->getStatusCode());
+        $this->assertSame('https://app.example', $response->getHeaderLine('Access-Control-Allow-Origin'));
+        $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+    }
+
+    public function testKeepsAHeaderARouteMiddlewareSet(): void
+    {
+        $this->writeFile('routes/api.php', '<?php
+            $router->get("/health", \\Sloop\\Tests\\Unit\\Foundation\\Stub\\HealthController::class, "check")
+                ->middleware(\\Sloop\\Tests\\Unit\\Foundation\\Stub\\SameOriginFrameMiddleware::class);
+        ');
+
+        $response = $this->get('/health');
+
+        $this->assertSame(['SAMEORIGIN'], $response->getHeader('X-Frame-Options'));
+        $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function alsoListedMiddlewareProvider(): array
+    {
+        return [
+            'in config/middleware.php' => ['<?php return [\\Sloop\\Http\\Middleware\\SecurityHeadersMiddleware::class];', '/health'],
+            'on a route'               => ['<?php return [];', '/routed'],
+        ];
+    }
+
+    #[DataProvider('alsoListedMiddlewareProvider')]
+    public function testTheConfiguredHeadersApplyWhenTheMiddlewareIsAlsoListed(string $middlewareConfig, string $path): void
+    {
+        $this->writeFile('routes/api.php', '<?php
+            $router->get("/health", \\Sloop\\Tests\\Unit\\Foundation\\Stub\\HealthController::class, "check");
+            $router->get("/routed", \\Sloop\\Tests\\Unit\\Foundation\\Stub\\HealthController::class, "check")
+                ->middleware(\\Sloop\\Http\\Middleware\\SecurityHeadersMiddleware::class);
+        ');
+        $this->writeFile('config/middleware.php', $middlewareConfig);
+        $this->writeFile('config/security.php', "<?php return ['headers' => ['X-Frame-Options' => null, 'Referrer-Policy' => 'same-origin']];");
+
+        $response = $this->get($path);
+
+        $this->assertFalse($response->hasHeader('X-Frame-Options'));
+        $this->assertSame(['same-origin'], $response->getHeader('Referrer-Policy'));
+    }
+
     public function testAppliesTheConfiguredHeaders(): void
     {
         $this->writeRoutes();
@@ -174,7 +231,7 @@ final class ApplicationSecurityHeadersTest extends TestCase
         return [
             'unknown key'           => ["['header' => []]", 'security has an unsupported key "header".'],
             'headers not an array'  => ["['headers' => 'nosniff']", 'security.headers must be an array of header names mapped to a value or null.'],
-            'invalid header value'  => ["['headers' => ['X-Frame-Options' => false]]", 'security.headers: The value of the header "X-Frame-Options" must be a non-empty string or null.'],
+            'invalid header value'  => ["['headers' => ['X-Frame-Options' => false]]", 'security.headers: The value of the header "X-Frame-Options" must be a non-blank string or null.'],
         ];
     }
 
