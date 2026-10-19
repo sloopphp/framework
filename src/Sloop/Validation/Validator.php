@@ -54,11 +54,11 @@ final class Validator
     private array $requiredOrder;
 
     /**
-     * Flags the rules declare with `flag:`, as keys.
+     * Flags the rules declare with `flag:`, as keys; empty in a validator built by forKeys(), which builds no result.
      *
      * @var array<string, true>
      */
-    private array $flags;
+    private array $flags = [];
 
     /**
      * Clock read once at the start of each validation.
@@ -83,6 +83,11 @@ final class Validator
     {
         $this->setUp($rules, $clock);
 
+        foreach ($this->rules as $rule) {
+            foreach ($rule->declaredFlags() as $flag) {
+                $this->flags[$flag] = true;
+            }
+        }
         foreach ($this->rules as $field => $rule) {
             $name = $rule->usingWithoutMessage();
             if ($name !== null) {
@@ -139,16 +144,8 @@ final class Validator
             self::assertConditions($named, $field, $rule);
         }
 
-        $flags = [];
-        foreach ($named as $rule) {
-            foreach ($rule->declaredFlags() as $flag) {
-                $flags[$flag] = true;
-            }
-        }
-
         $this->rules         = $named;
         $this->requiredOrder = self::requiredOrder($named);
-        $this->flags         = $flags;
         $this->clock         = $clock ?? new SystemClock();
     }
 

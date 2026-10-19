@@ -48,7 +48,10 @@ final readonly class ValidationResult
      * `Rule::string()->in($supported, flag: 'invalidVersion')`, and is raised
      * only when that rule fails: another rule of the same field failing, the
      * type included, does not raise it. Rules of several fields can share one
-     * flag; which field failed is in errors().
+     * flag; which field failed is in errors(). A flag that is down does not
+     * mean its rule passed: a rule that a failure before it kept from running
+     * (see FieldRule for what stops what) raises nothing, so ask failed()
+     * whether the input is valid.
      *
      * @param  string                   $flag Flag name
      * @return bool

@@ -167,7 +167,7 @@ final class ErrorFlagTest extends TestCase
         self::assertFalse($result->hasFlag('flagged'));
     }
 
-    public function testFlagIsDownWhenAnotherRuleOfTheFieldFails(): void
+    public function testFlagIsDownWhenRequiredFailsOnAnEmptyValue(): void
     {
         $result = self::validate(['v' => Rule::string()->required()->in(['1.0'], flag: 'invalidVersion')], []);
 

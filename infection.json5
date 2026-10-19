@@ -53,10 +53,10 @@
                 // listed character in NFC; notChars reads its values only through
                 // isset(). The method holds no other true literal.
                 "Sloop\\Validation\\StringRule::splitListed",
-                // Validator::setUp and validate build the sets of declared and
-                // raised flags, which ValidationResult::hasFlag() reads only
+                // Validator::__construct and validate build the sets of declared
+                // and raised flags, which ValidationResult::hasFlag() reads only
                 // through isset(). Neither method holds another true literal.
-                "Sloop\\Validation\\Validator::setUp",
+                "Sloop\\Validation\\Validator::__construct",
                 "Sloop\\Validation\\Validator::validate"
             ]
         },

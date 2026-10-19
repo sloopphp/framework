@@ -279,7 +279,9 @@ final class ShapeRule extends ArrayRule
     {
         $flags = [];
         foreach ($this->fields as $rule) {
-            $flags = [...$flags, ...$rule->declaredFlags()];
+            foreach ($rule->declaredFlags() as $flag) {
+                $flags[] = $flag;
+            }
         }
 
         return $flags;
