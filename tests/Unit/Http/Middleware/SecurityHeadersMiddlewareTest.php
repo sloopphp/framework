@@ -60,7 +60,6 @@ final class SecurityHeadersMiddlewareTest extends TestCase
                 'X-Content-Type-Options'  => ['nosniff'],
                 'X-Frame-Options'         => ['DENY'],
                 'Content-Security-Policy' => ["frame-ancestors 'none'"],
-                'Referrer-Policy'         => ['no-referrer'],
             ],
             $this->headersOf([]),
         );
@@ -68,11 +67,11 @@ final class SecurityHeadersMiddlewareTest extends TestCase
 
     public function testKeepsAHeaderTheHandlerAlreadySetWhateverItsCase(): void
     {
-        $headers = $this->headersOf([], ['x-frame-options' => 'SAMEORIGIN', 'Referrer-Policy' => 'same-origin']);
+        $headers = $this->headersOf([], ['x-frame-options' => 'SAMEORIGIN', 'Content-Security-Policy' => "frame-ancestors 'self'"]);
 
         $this->assertSame(['SAMEORIGIN'], $headers['x-frame-options']);
         $this->assertArrayNotHasKey('X-Frame-Options', $headers);
-        $this->assertSame(['same-origin'], $headers['Referrer-Policy']);
+        $this->assertSame(["frame-ancestors 'self'"], $headers['Content-Security-Policy']);
         $this->assertSame(['nosniff'], $headers['X-Content-Type-Options']);
     }
 
@@ -82,19 +81,19 @@ final class SecurityHeadersMiddlewareTest extends TestCase
 
         $this->assertSame(['SAMEORIGIN'], $headers['x-frame-options']);
         $this->assertArrayNotHasKey('X-Frame-Options', $headers);
-        $this->assertCount(4, $headers);
+        $this->assertCount(3, $headers);
     }
 
     public function testNullRemovesADefaultWhateverItsCase(): void
     {
-        $headers = $this->headersOf(['content-security-policy' => null, 'Referrer-Policy' => null]);
+        $headers = $this->headersOf(['content-security-policy' => null, 'X-FRAME-OPTIONS' => null]);
 
-        $this->assertSame(['X-Content-Type-Options', 'X-Frame-Options'], array_keys($headers));
+        $this->assertSame(['X-Content-Type-Options'], array_keys($headers));
     }
 
     public function testNullForAHeaderWithoutADefaultAddsNothing(): void
     {
-        $this->assertCount(4, $this->headersOf(['Permissions-Policy' => null]));
+        $this->assertCount(3, $this->headersOf(['Permissions-Policy' => null]));
     }
 
     public function testSendsAConfiguredHeaderTheSameOverHttpAndHttps(): void
@@ -113,7 +112,7 @@ final class SecurityHeadersMiddlewareTest extends TestCase
         $headers = $this->headersOf(['Strict-Transport-Security' => 'max-age=31536000; includeSubDomains']);
 
         $this->assertSame(['max-age=31536000; includeSubDomains'], $headers['Strict-Transport-Security']);
-        $this->assertCount(5, $headers);
+        $this->assertCount(4, $headers);
     }
 
     /**

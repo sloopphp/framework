@@ -80,7 +80,7 @@ final class ApplicationSecurityHeadersTest extends TestCase
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
         $this->assertSame('DENY', $response->getHeaderLine('X-Frame-Options'));
         $this->assertSame("frame-ancestors 'none'", $response->getHeaderLine('Content-Security-Policy'));
-        $this->assertSame('no-referrer', $response->getHeaderLine('Referrer-Policy'));
+        $this->assertFalse($response->hasHeader('Referrer-Policy'));
     }
 
     public function testSendsTheHeadersOnANotFoundResponse(): void
@@ -139,7 +139,7 @@ final class ApplicationSecurityHeadersTest extends TestCase
 
         $this->assertSame(401, $response->getStatusCode());
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
-        $this->assertSame('no-referrer', $response->getHeaderLine('Referrer-Policy'));
+        $this->assertSame('DENY', $response->getHeaderLine('X-Frame-Options'));
     }
 
     public function testAddsTheHeadersToACorsPreflight(): void
@@ -203,14 +203,14 @@ final class ApplicationSecurityHeadersTest extends TestCase
         $this->writeRoutes();
         $this->writeFile('config/security.php', "<?php return ['headers' => [
             'X-Frame-Options'           => 'SAMEORIGIN',
-            'Referrer-Policy'           => null,
+            'Content-Security-Policy'   => null,
             'Strict-Transport-Security' => 'max-age=31536000',
         ]];");
 
         $response = $this->get('/health');
 
         $this->assertSame('SAMEORIGIN', $response->getHeaderLine('X-Frame-Options'));
-        $this->assertFalse($response->hasHeader('Referrer-Policy'));
+        $this->assertFalse($response->hasHeader('Content-Security-Policy'));
         $this->assertSame('max-age=31536000', $response->getHeaderLine('Strict-Transport-Security'));
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
     }
