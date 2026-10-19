@@ -645,11 +645,13 @@ abstract class FieldRule
         if ($this->fieldMessage !== null) {
             return null;
         }
-        foreach ([$this->usingChecks, ...array_column($this->whenChecks, 3)] as $checks) {
-            foreach ($checks as $check) {
-                if ($check->message === null) {
-                    return $check->rule;
-                }
+        $usingChecks = $this->usingChecks;
+        foreach ($this->whenChecks as [, , , $whenUsingChecks]) {
+            $usingChecks = [...$usingChecks, ...$whenUsingChecks];
+        }
+        foreach ($usingChecks as $check) {
+            if ($check->message === null) {
+                return $check->rule;
             }
         }
 

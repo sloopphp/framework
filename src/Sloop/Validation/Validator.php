@@ -31,6 +31,10 @@ use Sloop\Clock\SystemClock;
  * The rules comparing with the current time read it from the clock given to
  * the constructor, once per validate(), so every field of one input is judged
  * against the same moment. A test passes a FrozenClock to fix that moment.
+ *
+ * A validator does not change once built: its properties are private and set
+ * only while it is built. They are not readonly because forKeys() builds one
+ * without the constructor, and a readonly property can be set only there.
  */
 final class Validator
 {

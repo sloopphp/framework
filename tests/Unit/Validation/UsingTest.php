@@ -493,6 +493,7 @@ final class UsingTest extends TestCase
             'in'        => ['in'],
             'capitalised' => ['Required'],
             'upper case'  => ['MIN'],
+            'camel case'  => ['MaxLength'],
         ];
     }
 
