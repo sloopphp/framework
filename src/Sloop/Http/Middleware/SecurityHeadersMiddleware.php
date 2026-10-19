@@ -28,7 +28,7 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
      *
      * @var array<string, string>
      */
-    public const array DEFAULT_HEADERS = [
+    private const array DEFAULT_HEADERS = [
         'X-Content-Type-Options'  => 'nosniff',
         'X-Frame-Options'         => 'DENY',
         'Content-Security-Policy' => "frame-ancestors 'none'",
@@ -78,6 +78,9 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
             );
 
             if ($value === null) {
+                // A misspelled name would leave the default in place without notice.
+                self::assertValidName($name);
+
                 continue;
             }
 
@@ -105,6 +108,19 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
         }
 
         return $response;
+    }
+
+    /**
+     * Check that a name given with null can be sent as a header name.
+     *
+     * @param  string                    $name Header name
+     * @return void
+     * @throws \InvalidArgumentException If the name is not a valid header name
+     */
+    private static function assertValidName(string $name): void
+    {
+        // The value only completes the call; any valid value would do.
+        self::validHeaderValue($name, 'checked');
     }
 
     /**
