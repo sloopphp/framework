@@ -6,7 +6,7 @@ use Sloop\Security\Html;
 
 if (!function_exists('e')) {
     /**
-     * Escape a string for HTML element text or a quoted attribute value.
+     * Escape a string for HTML element text or the quoted value of a plain text attribute.
      *
      * @param  string|null $value Value to escape; null yields an empty string
      * @return string
