@@ -203,7 +203,8 @@ final class Application implements RequestHandlerInterface
      *
      * The primary error boundary lives in handle(), so error responses pass
      * back through the global middleware stack. This catch is a last resort
-     * for exceptions thrown by the global middleware themselves.
+     * for exceptions thrown by the global middleware themselves; the error
+     * response it renders still receives the security headers.
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
@@ -217,8 +218,42 @@ final class Application implements RequestHandlerInterface
         try {
             return $this->buildMiddlewareDispatcher()->handle($serverRequest);
         } catch (\Throwable $e) {
-            return $this->renderException($e);
+            return $this->withSecurityHeaders($serverRequest, $this->renderException($e));
         }
+    }
+
+    /**
+     * Pass a response made outside the middleware stack through the security headers middleware.
+     *
+     * @param  ServerRequestInterface $request  Request the response answers
+     * @param  ResponseInterface      $response Response to add the headers to
+     * @return ResponseInterface
+     */
+    private function withSecurityHeaders(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        $handler = new readonly class ($response) implements RequestHandlerInterface {
+            /**
+             * Create a handler that answers every request with the given response.
+             *
+             * @param ResponseInterface $response Response to return
+             */
+            public function __construct(private ResponseInterface $response)
+            {
+            }
+
+            /**
+             * Return the response given to the constructor.
+             *
+             * @param  ServerRequestInterface $request Incoming request (unused)
+             * @return ResponseInterface
+             */
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return $this->response;
+            }
+        };
+
+        return $this->securityHeaders->process($request, $handler);
     }
 
     /**

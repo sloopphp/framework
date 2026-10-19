@@ -121,6 +121,26 @@ final class ApplicationSecurityHeadersTest extends TestCase
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
     }
 
+    public function testSendsTheHeadersOnAnErrorResponseForAnExceptionFromAGlobalMiddleware(): void
+    {
+        $this->writeRoutes();
+        $this->writeFile(
+            'config/middleware.php',
+            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\ThrowingMiddleware::class];',
+        );
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+        $manager->channel()->setHandlers([new TestHandler()]);
+
+        $response = $app->run(new ServerRequest('GET', '/health'));
+
+        $this->assertSame(401, $response->getStatusCode());
+        $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+        $this->assertSame('no-referrer', $response->getHeaderLine('Referrer-Policy'));
+    }
+
     public function testAppliesTheConfiguredHeaders(): void
     {
         $this->writeRoutes();

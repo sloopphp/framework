@@ -14,7 +14,9 @@ use LogicException;
  * missing key when encryption or signing is used, a config section that is
  * not an array or has an unsupported key, a hashing cost that is not an
  * integer or is out of range, argon2id chosen on a PHP build without it, or
- * a security header whose name or value cannot be sent.
+ * a security.headers entry that is malformed (an empty or non-string value,
+ * an integer key, a name given twice in different case, or a name or value
+ * that cannot be sent).
  * A payload that cannot be decrypted or verified, or a password that does
  * not match, is not an error of this kind; Encryptor::decrypt(),
  * Signer::verify() and PasswordHasher::verify() return false for those.

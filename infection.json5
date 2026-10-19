@@ -187,8 +187,8 @@
             // written to the log.
             "ignore": [
                 "Sloop\\Database\\Connection::shouldMeasureElapsed",
-                // Application::createServerRequestFromGlobals::954: see NotIdentical.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::954"
+                // Application::createServerRequestFromGlobals::989: see NotIdentical.
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::989"
             ]
         },
         "Plus": {
@@ -199,7 +199,7 @@
         },
         "NotIdentical": {
             // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
-            // Application::createServerRequestFromGlobals::954 attaches the raw body
+            // Application::createServerRequestFromGlobals::989 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
@@ -210,20 +210,20 @@
             // with the same result; only the work differs.
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::448",
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::954",
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::989",
                 "Sloop\\Validation\\LimitInFrame::in::71"
             ]
         },
         "LogicalAndNegation": {
-            // Application::createServerRequestFromGlobals::954: see NotIdentical.
+            // Application::createServerRequestFromGlobals::989: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::954"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::989"
             ]
         },
         "LogicalAndAllSubExprNegation": {
-            // Application::createServerRequestFromGlobals::954: see NotIdentical.
+            // Application::createServerRequestFromGlobals::989: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::954"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::989"
             ]
         },
         "UnwrapSubstr": {

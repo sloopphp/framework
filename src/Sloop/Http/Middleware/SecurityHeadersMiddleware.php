@@ -15,7 +15,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * The application places it outside all other global middleware, so CORS
  * preflight responses and error responses rendered by the application also
- * receive the headers. A header the handler already set is kept as it is.
+ * receive the headers, including the error response for an exception thrown
+ * by a global middleware. A header the handler already set is kept as it is.
  */
 final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
 {
