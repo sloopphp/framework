@@ -13,7 +13,7 @@ use InvalidArgumentException;
  * int becomes a float. `".5"`, `"1."`, an exponent, NAN, and INF are type
  * failures.
  *
- * @extends FieldRule<float>
+ * @extends FieldRule<float, float>
  */
 final class FloatRule extends FieldRule
 {
@@ -199,5 +199,17 @@ final class FloatRule extends FieldRule
     public function canHold(mixed $value): bool
     {
         return \is_float($value);
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  float $value Validated value
+     * @return float
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

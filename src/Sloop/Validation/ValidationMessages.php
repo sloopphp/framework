@@ -109,6 +109,22 @@ final class ValidationMessages
     }
 
     /**
+     * Whether a rule name is one the framework's own rules use, ignoring case.
+     *
+     * Case is ignored so that a name like "Required" is not taken for a rule of
+     * the application's own while it reads as the framework's.
+     *
+     * @internal Read by FieldRule::using(), which refuses these names.
+     *
+     * @param  string $rule Rule name
+     * @return bool
+     */
+    public static function isFrameworkRule(string $rule): bool
+    {
+        return \array_key_exists(strtolower($rule), array_change_key_case(self::defaults()));
+    }
+
+    /**
      * Fill the placeholders of a message pattern.
      *
      * Lists are joined with ", ".

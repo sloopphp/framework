@@ -23,7 +23,7 @@ use Psr\Http\Message\UploadedFileInterface;
  *
  * Sanitizers do not apply here: there is no string to clean.
  *
- * @extends FieldRule<UploadedFileInterface>
+ * @extends FieldRule<UploadedFileInterface, UploadedFileInterface>
  */
 final class FileRule extends FieldRule
 {
@@ -216,5 +216,17 @@ final class FileRule extends FieldRule
         $type = new finfo(\FILEINFO_MIME_TYPE)->buffer($head);
 
         return $type === false ? null : $type;
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  UploadedFileInterface $value Validated value
+     * @return UploadedFileInterface
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

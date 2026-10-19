@@ -219,7 +219,7 @@ final class ListRule extends ArrayRule
      * @param  array<array-key, mixed>                                                 $typed Value of the declared type
      * @param  DateTimeImmutable                                                       $now   Time of the validation, handed on to every element
      * @return array{list<Failure>, array<array-key, mixed>, list<mixed>, list<mixed>}
-     * @throws \UnexpectedValueException                                               When a sanitizer closure returns the wrong type
+     * @throws \UnexpectedValueException                                               When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws \RuntimeException                                                       When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \InvalidArgumentException                                               When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
@@ -245,5 +245,16 @@ final class ListRule extends ArrayRule
         }
 
         return [$failures, $values, $comparable, $elements];
+    }
+
+    /**
+     * The name of a rule given to using() inside what this field holds that has no message of its own, if any.
+     *
+     * @return string|null
+     */
+    #[\Override]
+    protected function childUsingWithoutMessage(): ?string
+    {
+        return $this->element->usingWithoutMessage();
     }
 }

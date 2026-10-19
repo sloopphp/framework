@@ -34,6 +34,8 @@ use UnexpectedValueException;
  * and passes the value on to withDefault().
  *
  * @template T
+ *
+ * @template-covariant O = mixed Type of the value values() hands out, which output() turns T into
  */
 abstract class FieldRule
 {
@@ -114,6 +116,13 @@ abstract class FieldRule
     private array $elementChecks = [];
 
     /**
+     * Rules given to using().
+     *
+     * @var list<Check<O>>
+     */
+    private array $usingChecks = [];
+
+    /**
      * Declared rules comparing this field with another field.
      *
      * @var list<Comparison>
@@ -147,7 +156,7 @@ abstract class FieldRule
     /**
      * Rules each when() adds: on the size of the value, on what it holds, and on its elements.
      *
-     * @var list<array{list<Check<T>>, list<Check<T>>, list<Check<T>>}>
+     * @var list<array{list<Check<T>>, list<Check<T>>, list<Check<T>>, list<Check<O>>}>
      */
     private array $whenChecks = [];
 
@@ -339,6 +348,78 @@ abstract class FieldRule
     }
 
     /**
+     * Add a rule of the application's own, decided by a closure.
+     *
+     * The closure receives the value as values() hands it out (a decimal's
+     * string or BcMath\Number, a date and time in UTC; for an array type, the
+     * array of its validated elements, an empty element as its default), and
+     * returns true when the value passes.
+     * Pass a static or service method as a first-class callable
+     * (`$users->exists(...)`). The closure does not run when the field is
+     * empty or takes its default, nor while any other rule on the value
+     * declared alongside it has failed, so a value that fails them never
+     * reaches it. A rule on the size added by when(), maxCount() included,
+     * judges a value whose elements have already been validated, so it does
+     * not bound how often the elements' using() runs; bound it on the field
+     * itself. The rules judged later, once every field has its value
+     * (same(), different() and the other comparisons with another field, and
+     * the rules when() adds), do not stop a using() declared on the field
+     * itself. A using() added by when() waits for the field's own rules on
+     * the value and for the other rules of the same when(), but not for the
+     * rules another when() adds. Several using() do not stop one another, so
+     * a using() added by when() runs whatever the field's own using()
+     * returned. An exception the closure throws is not caught.
+     *
+     * The name is the rule's name in errors(). The language files hold only
+     * the framework's rules, so give the message here or with message() on
+     * this field or on a field holding it; the Validator refuses a using()
+     * with neither when it is built.
+     *
+     * @param  string                   $name    Rule name: a letter, then letters and digits, not one of the framework's rule names in any case
+     * @param  Closure(O): mixed        $test    Takes the value as values() hands it out and returns true when it passes, false when it fails; anything else is refused at validation
+     * @param  string|null              $message Message for this rule only
+     * @return static
+     * @throws InvalidArgumentException When the name is malformed or one of the framework's rule names, or the message template is malformed
+     */
+    public function using(string $name, Closure $test, ?string $message = null): static
+    {
+        if (preg_match('/\A[A-Za-z][A-Za-z0-9]*\z/', $name) !== 1) {
+            throw new InvalidArgumentException(
+                'using() needs a rule name made of a letter followed by letters and digits, got "' . $name . '".',
+            );
+        }
+        if (ValidationMessages::isFrameworkRule($name)) {
+            throw new InvalidArgumentException(
+                'using() cannot take the name "' . $name . '", which a rule of the framework uses; give the rule a name of its own.',
+            );
+        }
+
+        if ($message !== null) {
+            ValidationMessages::assertValidPattern($message);
+        }
+
+        $copy                = clone $this;
+        $copy->usingChecks[] = new Check(
+            $name,
+            [],
+            /** @param O $value */
+            static function (mixed $value) use ($name, $test): bool {
+                $result = $test($value);
+                if (!\is_bool($result)) {
+                    throw new UnexpectedValueException(
+                        'The closure given to using("' . $name . '") must return a bool, got ' . get_debug_type($result) . '.',
+                    );
+                }
+
+                return $result;
+            },
+            $message,
+        );
+
+        return $copy;
+    }
+
+    /**
      * Apply more rules while another field has one of the given values.
      *
      * The closure receives this rule with no rules of its own and returns it
@@ -370,13 +451,13 @@ abstract class FieldRule
         if ((array) $added->withoutChecks()->withoutRuleMarks() !== (array) $probe) {
             throw new InvalidArgumentException('when() can only add rules on the value; the closure changed something else about the field.');
         }
-        if ($added->sizeChecks === [] && $added->checks === [] && $added->elementChecks === []) {
+        if ($added->sizeChecks === [] && $added->checks === [] && $added->elementChecks === [] && $added->usingChecks === []) {
             throw new InvalidArgumentException('when() needs the closure to add at least one rule.');
         }
 
         $copy               = clone $this;
         $copy->whens[]      = new WhenCondition($field, $values);
-        $copy->whenChecks[] = [$added->sizeChecks, $added->checks, $added->elementChecks];
+        $copy->whenChecks[] = [$added->sizeChecks, $added->checks, $added->elementChecks, $added->usingChecks];
 
         return $copy;
     }
@@ -390,7 +471,7 @@ abstract class FieldRule
      * @param  mixed                    $raw Raw input value; null when the key is missing
      * @param  DateTimeImmutable        $now Time of the validation, read once from the Validator's clock
      * @return FieldOutcome
-     * @throws UnexpectedValueException When a sanitizer closure returns the wrong type
+     * @throws UnexpectedValueException When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws RuntimeException         When PCRE aborts while a Sanitize case is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
@@ -427,19 +508,25 @@ abstract class FieldRule
         [$failures, $typed, $comparable, $elements] = $this->validateChildren($typed, $now);
         $checked      = $this->run($this->checks, $typed, $now);
         $lengthFailed = self::failedLength($checked);
+        $own          = [
+            ...$failures,
+            ...$checked,
+            ...($failures === [] ? $this->run($this->elementChecks, $elements, $now) : []),
+        ];
+        $ownPassed    = $own === [];
+        // The rules given to using() read the value as values() hands it out,
+        // not the type's working form (a decimal's DecimalLiteral, a date and
+        // time before it is moved to UTC).
+        $output = $this->output($typed);
 
         return new FieldOutcome(
-            $this->output($typed),
+            $output,
             $comparable,
-            [
-                ...$failures,
-                ...$checked,
-                ...($failures === [] ? $this->run($this->elementChecks, $elements, $now) : []),
-            ],
+            $ownPassed ? $this->run($this->usingChecks, $output, $now) : $own,
             // The Validator knows which when() applies only once every field
             // has its value, so it runs them through this, with the typed
             // value kept here; a when() that does not apply never runs.
-            runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === [], $now),
+            runWhen: fn (int $index): array => $this->runWhen($index, $sized, $typed, $elements, $failures === [], $ownPassed, $output, $now),
             compare: fn (int $index, FieldOutcome $other): bool => $this->holds($index, $sized, $comparable, $other, $lengthFailed),
         );
     }
@@ -482,20 +569,28 @@ abstract class FieldRule
      * @param  T                        $typed          Value the other rules test
      * @param  T                        $elements       Value the rules reading the elements test
      * @param  bool                     $elementsPassed Whether every element passed, without which those rules do not run
+     * @param  bool                     $ownPassed      Whether every rule declared on the field itself passed, without which the using() rules added here do not run
+     * @param  O                        $output         Value as values() hands it out, which the using() rules added here read
      * @param  DateTimeImmutable        $now            Time of the validation
      * @return list<Failure>
      * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
+     * @throws UnexpectedValueException When a closure given to using() returns something other than a bool
      */
-    private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed, DateTimeImmutable $now): array
+    private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed, bool $ownPassed, mixed $output, DateTimeImmutable $now): array
     {
-        [$sizeChecks, $checks, $elementChecks] = $this->whenChecks[$index];
+        [$sizeChecks, $checks, $elementChecks, $usingChecks] = $this->whenChecks[$index];
         $sizeFailures = $this->run($sizeChecks, $sized, $now);
+        if ($sizeFailures !== []) {
+            return $sizeFailures;
+        }
 
-        return $sizeFailures !== [] ? $sizeFailures : [
+        $failures = [
             ...$this->run($checks, $typed, $now),
             ...($elementsPassed ? $this->run($elementChecks, $elements, $now) : []),
         ];
+
+        return $failures === [] && $ownPassed ? $this->run($usingChecks, $output, $now) : $failures;
     }
 
     /**
@@ -508,6 +603,7 @@ abstract class FieldRule
      * @return list<Failure>
      * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
+     * @throws UnexpectedValueException When a closure given to using() returns something other than a bool
      */
     private function run(array $checks, mixed $typed, DateTimeImmutable $now): array
     {
@@ -532,6 +628,44 @@ abstract class FieldRule
     public function displayLabel(): ?string
     {
         return $this->displayLabel;
+    }
+
+    /**
+     * The name of a rule given to using() on this field or inside it that has no message, if any.
+     *
+     * A rule given to using() has no entry in the language files, so it needs
+     * `message:` or the message() of its field or of a field holding it.
+     *
+     * @internal Read by Validator when it is built.
+     *
+     * @return string|null
+     */
+    public function usingWithoutMessage(): ?string
+    {
+        if ($this->fieldMessage !== null) {
+            return null;
+        }
+        $usingChecks = $this->usingChecks;
+        foreach ($this->whenChecks as [, , , $whenUsingChecks]) {
+            $usingChecks = [...$usingChecks, ...$whenUsingChecks];
+        }
+        foreach ($usingChecks as $check) {
+            if ($check->message === null) {
+                return $check->rule;
+            }
+        }
+
+        return $this->childUsingWithoutMessage();
+    }
+
+    /**
+     * The name of a rule given to using() inside what this field holds that has no message of its own, if any.
+     *
+     * @return string|null
+     */
+    protected function childUsingWithoutMessage(): ?string
+    {
+        return null;
     }
 
     /**
@@ -775,13 +909,10 @@ abstract class FieldRule
     /**
      * Turn a validated value into the value handed to the caller.
      *
-     * @param  T     $value Validated value
-     * @return mixed
+     * @param  T $value Validated value
+     * @return O
      */
-    protected function output(mixed $value): mixed
-    {
-        return $value;
-    }
+    abstract protected function output(mixed $value): mixed;
 
     /**
      * Turn a validated value into the value same() / different() compare with `===`.
@@ -820,7 +951,7 @@ abstract class FieldRule
     /**
      * Append a rule.
      *
-     * @param  string                                                                                    $rule     Rule name, also the language file key
+     * @param  string                                                                                    $rule     Rule name; for a rule of the framework, also the language file key
      * @param  array<string, int|float|string|list<int|float|string>>                                    $params   Parameters keyed by placeholder name
      * @param  Closure(T, DateTimeImmutable): bool                                                       $passes   Returns true when the value satisfies the rule, given the time of the validation
      * @param  string|null                                                                               $message  Message for this rule only
@@ -990,6 +1121,7 @@ abstract class FieldRule
         $copy->checks        = [];
         $copy->sizeChecks    = [];
         $copy->elementChecks = [];
+        $copy->usingChecks   = [];
 
         return $copy;
     }

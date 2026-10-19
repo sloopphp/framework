@@ -8,6 +8,7 @@ use BackedEnum;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
+use ReflectionClass;
 use Sloop\Clock\SystemClock;
 
 /**
@@ -30,8 +31,13 @@ use Sloop\Clock\SystemClock;
  * The rules comparing with the current time read it from the clock given to
  * the constructor, once per validate(), so every field of one input is judged
  * against the same moment. A test passes a FrozenClock to fix that moment.
+ *
+ * A validator does not change once built: its properties are private and set
+ * only while it is built. They are not readonly because forKeys() builds one
+ * without the constructor, and PHPStan reports a readonly property set outside
+ * the constructor, which this project does not suppress.
  */
-final readonly class Validator
+final class Validator
 {
     /**
      * Field rules keyed by field name.
@@ -63,9 +69,53 @@ final readonly class Validator
      *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
-     *                                                      the named field's value; or fields required on each other include two with a default
+     *                                                      the named field's value; fields required on each other include two with a default;
+     *                                                      or a rule given to using() has no message, from `message:` or the message() of its field or of a field holding it
      */
     public function __construct(array $rules, ?ClockInterface $clock = null)
+    {
+        $this->setUp($rules, $clock);
+
+        foreach ($this->rules as $field => $rule) {
+            $name = $rule->usingWithoutMessage();
+            if ($name !== null) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" has a using("' . $name . '") rule without a message; '
+                    . 'give it with message: or with message() on the field.',
+                );
+            }
+        }
+    }
+
+    /**
+     * A validator for the keys of a shape, which leaves the messages of using() to the validator holding the shape.
+     *
+     * The shape's own message(), declared after its keys, can still give them
+     * one, so only the outermost validator can tell whether one is missing.
+     *
+     * @internal Called by ShapeRule.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Rules of each key
+     * @return self
+     * @throws InvalidArgumentException                  When the keys' rules are refused the way the constructor refuses them, apart from the messages of using()
+     */
+    public static function forKeys(array $rules): self
+    {
+        $validator = new ReflectionClass(self::class)->newInstanceWithoutConstructor();
+        $validator->setUp($rules, null);
+
+        return $validator;
+    }
+
+    /**
+     * Check the rules and keep them.
+     *
+     * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @param  ClockInterface|null                          $clock Clock, or null for the system clock
+     * @return void
+     * @throws InvalidArgumentException                     When the rules are refused the way the constructor describes, apart from the messages of using()
+     */
+    private function setUp(array $rules, ?ClockInterface $clock): void
     {
         $named = [];
         foreach ($rules as $field => $rule) {
@@ -112,7 +162,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>   $data Input, e.g. a decoded JSON body
      * @return ValidationResult
      * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
-     * @throws \UnexpectedValueException When a sanitizer closure returns the wrong type
+     * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws InvalidArgumentException  When Rule::date()'s format cannot read back, as a date in the clock's time zone, a limit or default (declared where the PHP default zone was another) or today's date (afterNow() and the like)
      */
     public function validate(array $data): ValidationResult
@@ -173,7 +223,7 @@ final readonly class Validator
      * @param  array<array-key, mixed>                                          $data Input
      * @param  DateTimeImmutable                                                $now  Time of the validation
      * @return array{array<string, FieldOutcome>, array<string, list<Failure>>} Outcome and failures of each field
-     * @throws \UnexpectedValueException                                        When a sanitizer closure returns the wrong type
+     * @throws \UnexpectedValueException                                        When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws \RuntimeException                                                When PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws InvalidArgumentException                                         When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      */
@@ -226,6 +276,7 @@ final readonly class Validator
      * @param  array<string, list<Failure>> $settled  Failures of each field after judgeRequired()
      * @return array<string, list<Failure>>
      * @throws \RuntimeException            When a rule added by when() cannot read a file's stream, or ICU cannot split a string into grapheme clusters or count them
+     * @throws \UnexpectedValueException    When a closure given to using() in a when() returns something other than a bool
      */
     private function judgeAgainstOthers(array $outcomes, array $settled): array
     {

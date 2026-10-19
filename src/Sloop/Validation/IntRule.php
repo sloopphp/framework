@@ -13,7 +13,7 @@ use InvalidArgumentException;
  * Whitespace, `+`, a decimal point, an exponent, a float (`42.0` included),
  * and a value outside the int range are type failures.
  *
- * @extends FieldRule<int>
+ * @extends FieldRule<int, int>
  */
 final class IntRule extends FieldRule
 {
@@ -162,5 +162,17 @@ final class IntRule extends FieldRule
     public function canHold(mixed $value): bool
     {
         return \is_int($value);
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  int $value Validated value
+     * @return int
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

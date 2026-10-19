@@ -23,7 +23,7 @@ use Sloop\Support\TimeOfDay;
  * Comparison limits and the default are brought down to what the format
  * writes, so against `H:i` a limit of 09:30:30 is 09:30.
  *
- * @extends FieldRule<TimeOfDay>
+ * @extends FieldRule<TimeOfDay, TimeOfDay>
  */
 final class TimeRule extends FieldRule
 {
@@ -410,5 +410,17 @@ final class TimeRule extends FieldRule
             $message,
             static fn (TimeOfDay $own, mixed $other): bool => !$other instanceof TimeOfDay || $holds($own->compareTo($other)),
         );
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  TimeOfDay $value Validated value
+     * @return TimeOfDay
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

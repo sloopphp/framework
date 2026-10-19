@@ -19,6 +19,7 @@ use Sloop\Validation\DecimalRule;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\FileRule;
 use Sloop\Validation\IntRule;
+use Sloop\Validation\ListRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\StringRule;
 use Sloop\Validation\ValidationError;
@@ -538,6 +539,16 @@ final class ConditionalRuleTest extends TestCase
         ];
 
         $this->assertSame(['code' => ['minLength']], self::failedRulesOf($rules, ['kind' => 'x', 'code' => 'ab']));
+    }
+
+    public function testWhenReportsEveryRuleOnTheSizeItAddsThatFails(): void
+    {
+        $rules = [
+            'kind'  => Rule::string(),
+            'items' => Rule::list(Rule::string())->when('kind', 'x', static fn (ListRule $r): ListRule => $r->minCount(3)->exactCount(4)),
+        ];
+
+        $this->assertSame(['items' => ['minCount', 'exactCount']], self::failedRulesOf($rules, ['kind' => 'x', 'items' => ['a', 'b']]));
     }
 
     /**

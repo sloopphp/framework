@@ -25,7 +25,7 @@ use InvalidArgumentException;
  * cannot read it; one the field reads there but not in the zone of a later
  * validation is refused by that validation.
  *
- * @extends FieldRule<DateTimeImmutable>
+ * @extends FieldRule<DateTimeImmutable, DateTimeImmutable>
  */
 abstract class TemporalRule extends FieldRule
 {
