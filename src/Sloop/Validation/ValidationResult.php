@@ -20,8 +20,8 @@ final readonly class ValidationResult
      *
      * @param array<string, mixed>                           $values        Validated values of the fields that passed, keyed by field name
      * @param array<string, non-empty-list<ValidationError>> $errors        Errors keyed by field name, or by the path to the element that failed; what passed is absent
-     * @param array<string, true>                            $raisedFlags   Flags of the rules that failed, as keys
-     * @param array<string, true>                            $declaredFlags Flags the rules declare, as keys; hasFlag() refuses any other name
+     * @param list<string>                                   $raisedFlags   Flags of the rules that failed
+     * @param list<string>                                   $declaredFlags Flags the rules declare; hasFlag() refuses any other name
      */
     public function __construct(
         private array $values,
@@ -56,11 +56,11 @@ final readonly class ValidationResult
      */
     public function hasFlag(string $flag): bool
     {
-        if (!isset($this->declaredFlags[$flag])) {
+        if (!isset(array_flip($this->declaredFlags)[$flag])) {
             throw new InvalidArgumentException('No rule declares the flag "' . $flag . '".');
         }
 
-        return isset($this->raisedFlags[$flag]);
+        return isset(array_flip($this->raisedFlags)[$flag]);
     }
 
     /**

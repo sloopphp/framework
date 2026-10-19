@@ -693,22 +693,24 @@ abstract class FieldRule
      */
     public function declaredFlags(): array
     {
-        $checks = [...$this->sizeChecks, ...$this->checks, ...$this->elementChecks, ...$this->usingChecks];
-        foreach ($this->whenChecks as [$whenSizeChecks, $whenChecks, $whenElementChecks, $whenUsingChecks]) {
-            $checks = [...$checks, ...$whenSizeChecks, ...$whenChecks, ...$whenElementChecks, ...$whenUsingChecks];
+        $declared = [$this->requiredFlag];
+        foreach ([$this->sizeChecks, $this->checks, $this->elementChecks, $this->usingChecks, ...array_merge(...$this->whenChecks)] as $checks) {
+            foreach ($checks as $check) {
+                $declared[] = $check->flag;
+            }
         }
-        $flags = [$this->requiredFlag];
-        foreach ($checks as $check) {
-            $flags[] = $check->flag;
-        }
-        foreach ($this->comparisons as $comparison) {
-            $flags[] = $comparison->flag;
-        }
-        foreach ($this->requiredConditions as $condition) {
-            $flags[] = $condition->flag;
+        foreach ([...$this->comparisons, ...$this->requiredConditions] as $rule) {
+            $declared[] = $rule->flag;
         }
 
-        return [...array_values(array_filter($flags, static fn (?string $flag): bool => $flag !== null)), ...$this->childFlags()];
+        $flags = $this->childFlags();
+        foreach ($declared as $flag) {
+            if ($flag !== null) {
+                $flags[] = $flag;
+            }
+        }
+
+        return $flags;
     }
 
     /**

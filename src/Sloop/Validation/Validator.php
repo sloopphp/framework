@@ -54,9 +54,9 @@ final class Validator
     private array $requiredOrder;
 
     /**
-     * Flags the rules declare with `flag:`, as keys.
+     * Flags the rules declare with `flag:`.
      *
-     * @var array<string, true>
+     * @var list<string>
      */
     private array $flags;
 
@@ -141,9 +141,7 @@ final class Validator
 
         $flags = [];
         foreach ($named as $rule) {
-            foreach ($rule->declaredFlags() as $flag) {
-                $flags[$flag] = true;
-            }
+            $flags = [...$flags, ...$rule->declaredFlags()];
         }
 
         $this->rules         = $named;
@@ -198,7 +196,7 @@ final class Validator
             foreach ($fieldFailures as $failure) {
                 $errors[$this->key($field, $failure)][] = $this->error($field, $failure);
                 if ($failure->flag !== null) {
-                    $raised[$failure->flag] = true;
+                    $raised[] = $failure->flag;
                 }
             }
         }

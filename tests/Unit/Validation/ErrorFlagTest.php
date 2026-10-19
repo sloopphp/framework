@@ -50,7 +50,7 @@ final class ErrorFlagTest extends TestCase
     // -------------------------------------------------------
 
     /**
-     * @return iterable<string, array{array<string, FieldRule<covariant mixed>>, array<string, mixed>, string}>
+     * @return iterable<string, array{\Closure(): array<string, FieldRule<covariant mixed>>, array<string, mixed>, string}>
      */
     public static function flaggedRules(): iterable
     {
@@ -60,96 +60,96 @@ final class ErrorFlagTest extends TestCase
         $date   = new DateTimeImmutable('2026-01-10');
         $noon   = TimeOfDay::of(12, 0);
 
-        yield 'required' => [['v' => Rule::string()->required(flag: $f)], [], 'required'];
-        yield 'same' => [['v' => Rule::string()->same('o', flag: $f), 'o' => Rule::string()], ['v' => 'a', 'o' => 'b'], 'same'];
-        yield 'different' => [['v' => Rule::string()->different('o', flag: $f), 'o' => Rule::string()], ['v' => 'a', 'o' => 'a'], 'different'];
-        yield 'requiredWith' => [['v' => Rule::string()->requiredWith('o', flag: $f), 'o' => Rule::string()], ['o' => 'a'], 'requiredWith'];
-        yield 'requiredIf' => [['v' => Rule::string()->requiredIf('o', 'a', flag: $f), 'o' => Rule::string()], ['o' => 'a'], 'requiredIf'];
-        yield 'using' => [['v' => Rule::string()->using('known', static fn (string $v): bool => false, 'x', flag: $f)], ['v' => 'a'], 'known'];
+        yield 'required' => [static fn (): array => ['v' => Rule::string()->required(flag: $f)], [], 'required'];
+        yield 'same' => [static fn (): array => ['v' => Rule::string()->same('o', flag: $f), 'o' => Rule::string()], ['v' => 'a', 'o' => 'b'], 'same'];
+        yield 'different' => [static fn (): array => ['v' => Rule::string()->different('o', flag: $f), 'o' => Rule::string()], ['v' => 'a', 'o' => 'a'], 'different'];
+        yield 'requiredWith' => [static fn (): array => ['v' => Rule::string()->requiredWith('o', flag: $f), 'o' => Rule::string()], ['o' => 'a'], 'requiredWith'];
+        yield 'requiredIf' => [static fn (): array => ['v' => Rule::string()->requiredIf('o', 'a', flag: $f), 'o' => Rule::string()], ['o' => 'a'], 'requiredIf'];
+        yield 'using' => [static fn (): array => ['v' => Rule::string()->using('known', static fn (string $v): bool => false, 'x', flag: $f)], ['v' => 'a'], 'known'];
 
-        yield 'string minLength' => [['v' => Rule::string()->minLength(3, flag: $f)], ['v' => 'ab'], 'minLength'];
-        yield 'string maxLength' => [['v' => Rule::string()->maxLength(1, flag: $f)], ['v' => 'ab'], 'maxLength'];
-        yield 'string exactLength' => [['v' => Rule::string()->exactLength(3, flag: $f)], ['v' => 'ab'], 'exactLength'];
-        yield 'string blockSize' => [['v' => Rule::string()->blockSize(4, flag: $f)], ['v' => 'abc'], 'blockSize'];
-        yield 'string regex' => [['v' => Rule::string()->regex('/\A\d+\z/', flag: $f)], ['v' => 'ab'], 'regex'];
-        yield 'string in' => [['v' => Rule::string()->in(['x'], flag: $f)], ['v' => 'ab'], 'in'];
-        yield 'string notIn' => [['v' => Rule::string()->notIn(['ab'], flag: $f)], ['v' => 'ab'], 'notIn'];
-        yield 'string notContains' => [['v' => Rule::string()->notContains(['b'], flag: $f)], ['v' => 'ab'], 'notContains'];
+        yield 'string minLength' => [static fn (): array => ['v' => Rule::string()->minLength(3, flag: $f)], ['v' => 'ab'], 'minLength'];
+        yield 'string maxLength' => [static fn (): array => ['v' => Rule::string()->maxLength(1, flag: $f)], ['v' => 'ab'], 'maxLength'];
+        yield 'string exactLength' => [static fn (): array => ['v' => Rule::string()->exactLength(3, flag: $f)], ['v' => 'ab'], 'exactLength'];
+        yield 'string blockSize' => [static fn (): array => ['v' => Rule::string()->blockSize(4, flag: $f)], ['v' => 'abc'], 'blockSize'];
+        yield 'string regex' => [static fn (): array => ['v' => Rule::string()->regex('/\A\d+\z/', flag: $f)], ['v' => 'ab'], 'regex'];
+        yield 'string in' => [static fn (): array => ['v' => Rule::string()->in(['x'], flag: $f)], ['v' => 'ab'], 'in'];
+        yield 'string notIn' => [static fn (): array => ['v' => Rule::string()->notIn(['ab'], flag: $f)], ['v' => 'ab'], 'notIn'];
+        yield 'string notContains' => [static fn (): array => ['v' => Rule::string()->notContains(['b'], flag: $f)], ['v' => 'ab'], 'notContains'];
         yield 'string notContainsField' => [
-            [
+            static fn (): array => [
                 'v' => Rule::string()->maxLength(10, unit: LengthUnit::Codepoints)->notContainsField('o', flag: $f),
                 'o' => Rule::string()->maxLength(10, unit: LengthUnit::Codepoints),
             ],
             ['v' => 'abc', 'o' => 'b'],
             'notContainsField',
         ];
-        yield 'string chars' => [['v' => Rule::string()->chars([Chars::Numeric], flag: $f)], ['v' => 'ab'], 'chars'];
-        yield 'string notChars' => [['v' => Rule::string()->notChars(['b'], flag: $f)], ['v' => 'ab'], 'notChars'];
-        yield 'string minCharClasses' => [['v' => Rule::string()->minCharClasses(2, [Chars::Alpha, Chars::Numeric], flag: $f)], ['v' => 'ab'], 'minCharClasses'];
-        yield 'string email' => [['v' => Rule::string()->email(flag: $f)], ['v' => 'ab'], 'email'];
-        yield 'string url' => [['v' => Rule::string()->url(flag: $f)], ['v' => 'ab'], 'url'];
-        yield 'string ip' => [['v' => Rule::string()->ip(flag: $f)], ['v' => 'ab'], 'ip'];
+        yield 'string chars' => [static fn (): array => ['v' => Rule::string()->chars([Chars::Numeric], flag: $f)], ['v' => 'ab'], 'chars'];
+        yield 'string notChars' => [static fn (): array => ['v' => Rule::string()->notChars(['b'], flag: $f)], ['v' => 'ab'], 'notChars'];
+        yield 'string minCharClasses' => [static fn (): array => ['v' => Rule::string()->minCharClasses(2, [Chars::Alpha, Chars::Numeric], flag: $f)], ['v' => 'ab'], 'minCharClasses'];
+        yield 'string email' => [static fn (): array => ['v' => Rule::string()->email(flag: $f)], ['v' => 'ab'], 'email'];
+        yield 'string url' => [static fn (): array => ['v' => Rule::string()->url(flag: $f)], ['v' => 'ab'], 'url'];
+        yield 'string ip' => [static fn (): array => ['v' => Rule::string()->ip(flag: $f)], ['v' => 'ab'], 'ip'];
 
-        yield 'int min' => [['v' => Rule::int()->min(5, flag: $f)], ['v' => 1], 'min'];
-        yield 'int max' => [['v' => Rule::int()->max(0, flag: $f)], ['v' => 1], 'max'];
-        yield 'int between' => [['v' => Rule::int()->between(2, 3, flag: $f)], ['v' => 1], 'between'];
-        yield 'int in' => [['v' => Rule::int()->in([2], flag: $f)], ['v' => 1], 'in'];
-        yield 'int notIn' => [['v' => Rule::int()->notIn([1], flag: $f)], ['v' => 1], 'notIn'];
+        yield 'int min' => [static fn (): array => ['v' => Rule::int()->min(5, flag: $f)], ['v' => 1], 'min'];
+        yield 'int max' => [static fn (): array => ['v' => Rule::int()->max(0, flag: $f)], ['v' => 1], 'max'];
+        yield 'int between' => [static fn (): array => ['v' => Rule::int()->between(2, 3, flag: $f)], ['v' => 1], 'between'];
+        yield 'int in' => [static fn (): array => ['v' => Rule::int()->in([2], flag: $f)], ['v' => 1], 'in'];
+        yield 'int notIn' => [static fn (): array => ['v' => Rule::int()->notIn([1], flag: $f)], ['v' => 1], 'notIn'];
 
-        yield 'float min' => [['v' => Rule::float()->min(5, flag: $f)], ['v' => 1.5], 'min'];
-        yield 'float max' => [['v' => Rule::float()->max(0, flag: $f)], ['v' => 1.5], 'max'];
-        yield 'float between' => [['v' => Rule::float()->between(2, 3, flag: $f)], ['v' => 1.5], 'between'];
-        yield 'float in' => [['v' => Rule::float()->in([2.5], flag: $f)], ['v' => 1.5], 'in'];
-        yield 'float notIn' => [['v' => Rule::float()->notIn([1.5], flag: $f)], ['v' => 1.5], 'notIn'];
+        yield 'float min' => [static fn (): array => ['v' => Rule::float()->min(5, flag: $f)], ['v' => 1.5], 'min'];
+        yield 'float max' => [static fn (): array => ['v' => Rule::float()->max(0, flag: $f)], ['v' => 1.5], 'max'];
+        yield 'float between' => [static fn (): array => ['v' => Rule::float()->between(2, 3, flag: $f)], ['v' => 1.5], 'between'];
+        yield 'float in' => [static fn (): array => ['v' => Rule::float()->in([2.5], flag: $f)], ['v' => 1.5], 'in'];
+        yield 'float notIn' => [static fn (): array => ['v' => Rule::float()->notIn([1.5], flag: $f)], ['v' => 1.5], 'notIn'];
 
-        yield 'decimal min' => [['v' => Rule::decimal(5, 2)->min(5, flag: $f)], ['v' => '1.00'], 'min'];
-        yield 'decimal max' => [['v' => Rule::decimal(5, 2)->max(0, flag: $f)], ['v' => '1.00'], 'max'];
-        yield 'decimal between' => [['v' => Rule::decimal(5, 2)->between(2, 3, flag: $f)], ['v' => '1.00'], 'between'];
+        yield 'decimal min' => [static fn (): array => ['v' => Rule::decimal(5, 2)->min(5, flag: $f)], ['v' => '1.00'], 'min'];
+        yield 'decimal max' => [static fn (): array => ['v' => Rule::decimal(5, 2)->max(0, flag: $f)], ['v' => '1.00'], 'max'];
+        yield 'decimal between' => [static fn (): array => ['v' => Rule::decimal(5, 2)->between(2, 3, flag: $f)], ['v' => '1.00'], 'between'];
 
-        yield 'enum in' => [['v' => Rule::enum(Payment::class)->in([Payment::Card], flag: $f)], ['v' => 'cash'], 'in'];
-        yield 'enum notIn' => [['v' => Rule::enum(Payment::class)->notIn([Payment::Cash], flag: $f)], ['v' => 'cash'], 'notIn'];
+        yield 'enum in' => [static fn (): array => ['v' => Rule::enum(Payment::class)->in([Payment::Card], flag: $f)], ['v' => 'cash'], 'in'];
+        yield 'enum notIn' => [static fn (): array => ['v' => Rule::enum(Payment::class)->notIn([Payment::Cash], flag: $f)], ['v' => 'cash'], 'notIn'];
 
-        yield 'date before' => [['v' => Rule::date()->before($date, flag: $f)], ['v' => '2026-01-10'], 'before'];
-        yield 'date beforeOrEqual' => [['v' => Rule::date()->beforeOrEqual($date, flag: $f)], ['v' => '2026-01-11'], 'beforeOrEqual'];
-        yield 'date after' => [['v' => Rule::date()->after($date, flag: $f)], ['v' => '2026-01-10'], 'after'];
-        yield 'date afterOrEqual' => [['v' => Rule::date()->afterOrEqual($date, flag: $f)], ['v' => '2026-01-09'], 'afterOrEqual'];
-        yield 'date afterNow' => [['v' => Rule::date()->afterNow(flag: $f)], ['v' => '2026-10-19'], 'afterNow'];
-        yield 'date afterOrEqualNow' => [['v' => Rule::date()->afterOrEqualNow(flag: $f)], ['v' => '2026-10-18'], 'afterOrEqualNow'];
-        yield 'date beforeNow' => [['v' => Rule::date()->beforeNow(flag: $f)], ['v' => '2026-10-19'], 'beforeNow'];
-        yield 'date beforeOrEqualNow' => [['v' => Rule::date()->beforeOrEqualNow(flag: $f)], ['v' => '2026-10-20'], 'beforeOrEqualNow'];
-        yield 'date afterField' => [['v' => Rule::date()->afterField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-10', 'o' => '2026-01-10'], 'afterField'];
-        yield 'date afterOrEqualField' => [['v' => Rule::date()->afterOrEqualField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-09', 'o' => '2026-01-10'], 'afterOrEqualField'];
-        yield 'date beforeField' => [['v' => Rule::date()->beforeField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-10', 'o' => '2026-01-10'], 'beforeField'];
-        yield 'date beforeOrEqualField' => [['v' => Rule::date()->beforeOrEqualField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-11', 'o' => '2026-01-10'], 'beforeOrEqualField'];
+        yield 'date before' => [static fn (): array => ['v' => Rule::date()->before($date, flag: $f)], ['v' => '2026-01-10'], 'before'];
+        yield 'date beforeOrEqual' => [static fn (): array => ['v' => Rule::date()->beforeOrEqual($date, flag: $f)], ['v' => '2026-01-11'], 'beforeOrEqual'];
+        yield 'date after' => [static fn (): array => ['v' => Rule::date()->after($date, flag: $f)], ['v' => '2026-01-10'], 'after'];
+        yield 'date afterOrEqual' => [static fn (): array => ['v' => Rule::date()->afterOrEqual($date, flag: $f)], ['v' => '2026-01-09'], 'afterOrEqual'];
+        yield 'date afterNow' => [static fn (): array => ['v' => Rule::date()->afterNow(flag: $f)], ['v' => '2026-10-19'], 'afterNow'];
+        yield 'date afterOrEqualNow' => [static fn (): array => ['v' => Rule::date()->afterOrEqualNow(flag: $f)], ['v' => '2026-10-18'], 'afterOrEqualNow'];
+        yield 'date beforeNow' => [static fn (): array => ['v' => Rule::date()->beforeNow(flag: $f)], ['v' => '2026-10-19'], 'beforeNow'];
+        yield 'date beforeOrEqualNow' => [static fn (): array => ['v' => Rule::date()->beforeOrEqualNow(flag: $f)], ['v' => '2026-10-20'], 'beforeOrEqualNow'];
+        yield 'date afterField' => [static fn (): array => ['v' => Rule::date()->afterField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-10', 'o' => '2026-01-10'], 'afterField'];
+        yield 'date afterOrEqualField' => [static fn (): array => ['v' => Rule::date()->afterOrEqualField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-09', 'o' => '2026-01-10'], 'afterOrEqualField'];
+        yield 'date beforeField' => [static fn (): array => ['v' => Rule::date()->beforeField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-10', 'o' => '2026-01-10'], 'beforeField'];
+        yield 'date beforeOrEqualField' => [static fn (): array => ['v' => Rule::date()->beforeOrEqualField('o', flag: $f), 'o' => Rule::date()], ['v' => '2026-01-11', 'o' => '2026-01-10'], 'beforeOrEqualField'];
 
-        yield 'time before' => [['v' => Rule::time()->before($noon, flag: $f)], ['v' => '12:00'], 'before'];
-        yield 'time beforeOrEqual' => [['v' => Rule::time()->beforeOrEqual($noon, flag: $f)], ['v' => '12:01'], 'beforeOrEqual'];
-        yield 'time after' => [['v' => Rule::time()->after($noon, flag: $f)], ['v' => '12:00'], 'after'];
-        yield 'time afterOrEqual' => [['v' => Rule::time()->afterOrEqual($noon, flag: $f)], ['v' => '11:59'], 'afterOrEqual'];
-        yield 'time afterField' => [['v' => Rule::time()->afterField('o', flag: $f), 'o' => Rule::time()], ['v' => '12:00', 'o' => '12:00'], 'afterField'];
-        yield 'time afterOrEqualField' => [['v' => Rule::time()->afterOrEqualField('o', flag: $f), 'o' => Rule::time()], ['v' => '11:59', 'o' => '12:00'], 'afterOrEqualField'];
-        yield 'time beforeField' => [['v' => Rule::time()->beforeField('o', flag: $f), 'o' => Rule::time()], ['v' => '12:00', 'o' => '12:00'], 'beforeField'];
-        yield 'time beforeOrEqualField' => [['v' => Rule::time()->beforeOrEqualField('o', flag: $f), 'o' => Rule::time()], ['v' => '12:01', 'o' => '12:00'], 'beforeOrEqualField'];
+        yield 'time before' => [static fn (): array => ['v' => Rule::time()->before($noon, flag: $f)], ['v' => '12:00'], 'before'];
+        yield 'time beforeOrEqual' => [static fn (): array => ['v' => Rule::time()->beforeOrEqual($noon, flag: $f)], ['v' => '12:01'], 'beforeOrEqual'];
+        yield 'time after' => [static fn (): array => ['v' => Rule::time()->after($noon, flag: $f)], ['v' => '12:00'], 'after'];
+        yield 'time afterOrEqual' => [static fn (): array => ['v' => Rule::time()->afterOrEqual($noon, flag: $f)], ['v' => '11:59'], 'afterOrEqual'];
+        yield 'time afterField' => [static fn (): array => ['v' => Rule::time()->afterField('o', flag: $f), 'o' => Rule::time()], ['v' => '12:00', 'o' => '12:00'], 'afterField'];
+        yield 'time afterOrEqualField' => [static fn (): array => ['v' => Rule::time()->afterOrEqualField('o', flag: $f), 'o' => Rule::time()], ['v' => '11:59', 'o' => '12:00'], 'afterOrEqualField'];
+        yield 'time beforeField' => [static fn (): array => ['v' => Rule::time()->beforeField('o', flag: $f), 'o' => Rule::time()], ['v' => '12:00', 'o' => '12:00'], 'beforeField'];
+        yield 'time beforeOrEqualField' => [static fn (): array => ['v' => Rule::time()->beforeOrEqualField('o', flag: $f), 'o' => Rule::time()], ['v' => '12:01', 'o' => '12:00'], 'beforeOrEqualField'];
 
-        yield 'file maxSize' => [['v' => Rule::file()->maxSize(1, flag: $f)], ['v' => $upload], 'maxSize'];
-        yield 'file mimeTypes' => [['v' => Rule::file()->mimeTypes(['image/gif'], flag: $f)], ['v' => $upload], 'mimeTypes'];
+        yield 'file maxSize' => [static fn (): array => ['v' => Rule::file()->maxSize(1, flag: $f)], ['v' => $upload], 'maxSize'];
+        yield 'file mimeTypes' => [static fn (): array => ['v' => Rule::file()->mimeTypes(['image/gif'], flag: $f)], ['v' => $upload], 'mimeTypes'];
 
-        yield 'list minCount' => [['v' => Rule::list(Rule::int())->minCount(2, flag: $f)], ['v' => [1]], 'minCount'];
-        yield 'list maxCount' => [['v' => Rule::list(Rule::int())->maxCount(0, flag: $f)], ['v' => [1]], 'maxCount'];
-        yield 'list betweenCount' => [['v' => Rule::list(Rule::int())->betweenCount(2, 3, flag: $f)], ['v' => [1]], 'betweenCount'];
-        yield 'list exactCount' => [['v' => Rule::list(Rule::int())->exactCount(2, flag: $f)], ['v' => [1]], 'exactCount'];
-        yield 'list distinct' => [['v' => Rule::list(Rule::int())->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
-        yield 'array distinct' => [['v' => Rule::array()->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
+        yield 'list minCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->minCount(2, flag: $f)], ['v' => [1]], 'minCount'];
+        yield 'list maxCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->maxCount(0, flag: $f)], ['v' => [1]], 'maxCount'];
+        yield 'list betweenCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->betweenCount(2, 3, flag: $f)], ['v' => [1]], 'betweenCount'];
+        yield 'list exactCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->exactCount(2, flag: $f)], ['v' => [1]], 'exactCount'];
+        yield 'list distinct' => [static fn (): array => ['v' => Rule::list(Rule::int())->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
+        yield 'array distinct' => [static fn (): array => ['v' => Rule::array()->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
     }
 
     /**
-     * @param array<string, FieldRule<covariant mixed>> $rules
-     * @param array<string, mixed>                      $data
+     * @param \Closure(): array<string, FieldRule<covariant mixed>> $rules
+     * @param array<string, mixed>                                  $data
      */
     #[DataProvider('flaggedRules')]
-    public function testFailedRuleRaisesItsFlag(array $rules, array $data, string $rule): void
+    public function testFailedRuleRaisesItsFlag(\Closure $rules, array $data, string $rule): void
     {
-        $result = self::validate($rules, $data);
+        $result = self::validate($rules(), $data);
 
         self::assertSame([$rule], array_map(static fn ($e): string => $e->rule, $result->errors()['v'] ?? []));
         self::assertTrue($result->hasFlag('flagged'));
@@ -251,6 +251,32 @@ final class ErrorFlagTest extends TestCase
         self::assertTrue(self::validate($rules, ['v' => [['n' => 0]]])->hasFlag('flagged'));
     }
 
+    public function testFlagOfTheFieldItselfIsKnownBesideTheFlagOfAWhen(): void
+    {
+        $rules = [
+            'v' => Rule::int()->min(1, flag: 'own')->when('t', 'x', static fn ($r) => $r->max(5, flag: 'added')),
+            't' => Rule::string(),
+        ];
+
+        $result = self::validate($rules, ['v' => 0]);
+
+        self::assertTrue($result->hasFlag('own'));
+        self::assertFalse($result->hasFlag('added'));
+    }
+
+    public function testFlagsOfEveryShapeKeyAreKnown(): void
+    {
+        $rules = ['v' => Rule::shape([
+            'a' => Rule::int()->min(1, flag: 'first'),
+            'b' => Rule::int()->min(1, flag: 'second'),
+        ])];
+
+        $result = self::validate($rules, ['v' => ['a' => 0, 'b' => 1]]);
+
+        self::assertTrue($result->hasFlag('first'));
+        self::assertFalse($result->hasFlag('second'));
+    }
+
     public function testFlagDeclaredInAWhenIsKnownWhenTheWhenDoesNotApply(): void
     {
         $rules = [
@@ -300,8 +326,6 @@ final class ErrorFlagTest extends TestCase
     }
 
     /**
-     * Each way a rule is declared checks its flag, not only the common path.
-     *
      * @return iterable<string, array{\Closure(string): mixed}>
      */
     public static function flagDeclarations(): iterable

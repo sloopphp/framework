@@ -24,7 +24,8 @@ use TypeError;
  * condition holds and stops only the rules of that when(). Each when() checks
  * it on its own, and when the field's own rules check it too, the field's
  * check runs first and stops the field. A message: given to those rules does
- * not apply to combiningRun; the field's message() does.
+ * not apply to combiningRun; the field's message() does. A flag: given to them
+ * is not raised by combiningRun either, and combiningRun takes no flag.
  *
  * @extends FieldRule<string, string>
  */
