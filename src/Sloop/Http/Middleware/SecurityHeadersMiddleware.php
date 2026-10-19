@@ -25,7 +25,7 @@ final readonly class SecurityHeadersMiddleware implements MiddlewareInterface
      *
      * Taken from the headers the OWASP REST Security Cheat Sheet lists for API
      * responses read by browsers, leaving out Cache-Control (it would stop public
-     * responses from being cached), Content-Type (each response sets its own) and
+     * responses from being cached), Content-Type (its value depends on the body) and
      * Strict-Transport-Security (sent only when configured).
      *
      * @var array<string, string>
