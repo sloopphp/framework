@@ -19,7 +19,7 @@ use ReflectionEnum;
  *
  * @template E of BackedEnum
  *
- * @extends FieldRule<E>
+ * @extends FieldRule<E, E>
  */
 final class EnumRule extends FieldRule
 {
@@ -192,5 +192,17 @@ final class EnumRule extends FieldRule
     public function canHold(mixed $value): bool
     {
         return $value instanceof $this->enum;
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  E $value Validated value
+     * @return E
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

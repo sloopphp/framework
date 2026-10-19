@@ -303,4 +303,16 @@ final class DateRule extends TemporalRule
             );
         }
     }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  DateTimeImmutable $value Validated value
+     * @return DateTimeImmutable
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
+    }
 }

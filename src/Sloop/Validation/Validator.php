@@ -8,6 +8,7 @@ use BackedEnum;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
+use ReflectionClass;
 use Sloop\Clock\SystemClock;
 
 /**
@@ -31,7 +32,7 @@ use Sloop\Clock\SystemClock;
  * the constructor, once per validate(), so every field of one input is judged
  * against the same moment. A test passes a FrozenClock to fix that moment.
  */
-final readonly class Validator
+final class Validator
 {
     /**
      * Field rules keyed by field name.
@@ -63,9 +64,53 @@ final readonly class Validator
      *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
-     *                                                      the named field's value; or fields required on each other include two with a default
+     *                                                      the named field's value; fields required on each other include two with a default;
+     *                                                      or a rule given to using() has no message, from `message:` or the message() of its field or of a field holding it
      */
     public function __construct(array $rules, ?ClockInterface $clock = null)
+    {
+        $this->setUp($rules, $clock);
+
+        foreach ($this->rules as $field => $rule) {
+            $name = $rule->usingWithoutMessage();
+            if ($name !== null) {
+                throw new InvalidArgumentException(
+                    'Field "' . $field . '" has a using("' . $name . '") rule without a message; '
+                    . 'give it with message: or with message() on the field.',
+                );
+            }
+        }
+    }
+
+    /**
+     * A validator for the keys of a shape, which leaves the messages of using() to the validator holding the shape.
+     *
+     * The shape's own message(), declared after its keys, can still give them
+     * one, so only the outermost validator can tell whether one is missing.
+     *
+     * @internal Called by ShapeRule.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Rules of each key
+     * @return self
+     * @throws InvalidArgumentException                  When the keys' rules are refused the way the constructor refuses them, apart from the messages of using()
+     */
+    public static function forKeys(array $rules): self
+    {
+        $validator = new ReflectionClass(self::class)->newInstanceWithoutConstructor();
+        $validator->setUp($rules, null);
+
+        return $validator;
+    }
+
+    /**
+     * Check the rules and keep them.
+     *
+     * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @param  ClockInterface|null                          $clock Clock, or null for the system clock
+     * @return void
+     * @throws InvalidArgumentException                     When the rules are refused the way the constructor describes, apart from the messages of using()
+     */
+    private function setUp(array $rules, ?ClockInterface $clock): void
     {
         $named = [];
         foreach ($rules as $field => $rule) {
@@ -114,7 +159,6 @@ final readonly class Validator
      * @throws \RuntimeException         When a message pattern cannot be formatted, PCRE aborts while a sanitizer is running, a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() returns the wrong type
      * @throws InvalidArgumentException  When Rule::date()'s format cannot read back, as a date in the clock's time zone, a limit or default (declared where the PHP default zone was another) or today's date (afterNow() and the like)
-     * @throws \LogicException           When a rule given to using() fails and neither its `message:` nor the field's message() gives a message
      */
     public function validate(array $data): ValidationResult
     {
@@ -149,7 +193,6 @@ final readonly class Validator
      * @param  Failure           $failure Failed rule
      * @return ValidationError
      * @throws \RuntimeException When the message pattern cannot be formatted
-     * @throws \LogicException   When no message exists for the rule (a rule given to using() without one)
      */
     private function error(string $field, Failure $failure): ValidationError
     {

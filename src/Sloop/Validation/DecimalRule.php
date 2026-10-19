@@ -23,7 +23,7 @@ use LogicException;
  * digits reliably, and a float whose shortest form has more fraction digits
  * than $scale fails instead of being rounded.
  *
- * @extends FieldRule<DecimalLiteral>
+ * @extends FieldRule<DecimalLiteral, string|Number>
  */
 final class DecimalRule extends FieldRule
 {

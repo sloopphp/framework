@@ -16,7 +16,7 @@ use UnexpectedValueException;
  * this field are looked at. The rules on how many elements the array holds are
  * in CountsElements, which the types whose size follows the input use.
  *
- * @extends FieldRule<array<array-key, mixed>>
+ * @extends FieldRule<array<array-key, mixed>, array<array-key, mixed>>
  */
 abstract class ArrayRule extends FieldRule
 {
@@ -82,5 +82,17 @@ abstract class ArrayRule extends FieldRule
     protected function typeRule(): string
     {
         return 'array';
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  array<array-key, mixed> $value Validated value
+     * @return array<array-key, mixed>
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

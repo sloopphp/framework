@@ -8,7 +8,6 @@ use BcMath\Number;
 use Closure;
 use DateTimeImmutable;
 use InvalidArgumentException;
-use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -40,6 +39,18 @@ final class UsingTest extends TestCase
     protected function tearDown(): void
     {
         ValidationMessages::reset();
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $rule
+     */
+    private static function onlyErrorAt(FieldRule $rule, mixed $input, string $key): ValidationError
+    {
+        $errors = new Validator(['v' => $rule])->validate(['v' => $input])->errors();
+        self::assertSame([$key], array_keys($errors));
+        self::assertCount(1, $errors[$key]);
+
+        return $errors[$key][0];
     }
 
     // -------------------------------------------------------
@@ -392,13 +403,50 @@ final class UsingTest extends TestCase
         self::assertSame('Bad v.', self::onlyError($rule, 'a')->message);
     }
 
-    public function testUsingWithoutAnyMessageFailsAtValidation(): void
+    /**
+     * @return iterable<string, array{Closure(): FieldRule<covariant mixed>}>
+     */
+    public static function usingWithoutAnyMessage(): iterable
     {
-        $rule = Rule::string()->using('nameTaken', static fn (string $v): bool => false);
+        yield 'on the field' => [static fn (): FieldRule => Rule::string()->using('nameTaken', static fn (string $v): bool => false)];
+        yield 'added by when()' => [static fn (): FieldRule => Rule::string()->when('v', 'x', static fn (StringRule $r): StringRule => $r->using('nameTaken', static fn (string $v): bool => false))];
+        yield 'on an element' => [static fn (): FieldRule => Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))];
+        yield 'on a key' => [static fn (): FieldRule => Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)])];
+        yield 'on a key of an element' => [static fn (): FieldRule => Rule::list(Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)]))];
+    }
 
-        $e = $this->assertThrows(LogicException::class, static fn () => new Validator(['v' => $rule])->validate(['v' => 'a']));
+    /**
+     * @param Closure(): FieldRule<covariant mixed> $declare
+     */
+    #[DataProvider('usingWithoutAnyMessage')]
+    public function testValidatorRefusesAUsingWithoutAnyMessageWhenBuilt(Closure $declare): void
+    {
+        $rule = $declare();
 
-        self::assertSame('No validation message for rule "nameTaken".', $e->getMessage());
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => new Validator(['v' => $rule]));
+
+        self::assertSame('Field "v" has a using("nameTaken") rule without a message; give it with message: or with message() on the field.', $e->getMessage());
+    }
+
+    public function testAShapeTakesAKeyUsingWithoutAMessageWhenTheShapeGivesOne(): void
+    {
+        $rule = Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)])->message('Bad {label}.');
+
+        self::assertSame('Bad k.', self::onlyErrorAt($rule, ['k' => 'a'], 'v.k')->message);
+    }
+
+    public function testAListTakesAnElementUsingWithoutAMessageWhenTheListGivesOne(): void
+    {
+        $rule = Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))->message('Bad {label}.');
+
+        self::assertSame('Bad 0.', self::onlyErrorAt($rule, ['a'], 'v.0')->message);
+    }
+
+    public function testAnElementTakesItsOwnMessageForItsUsing(): void
+    {
+        $rule = Rule::list(Rule::string()->message('Bad element.')->using('nameTaken', static fn (string $v): bool => false));
+
+        self::assertSame('Bad element.', self::onlyErrorAt($rule, ['a'], 'v.0')->message);
     }
 
     public function testUsingRefusesAMalformedMessage(): void
@@ -443,6 +491,8 @@ final class UsingTest extends TestCase
             'min'       => ['min'],
             'type name' => ['int'],
             'in'        => ['in'],
+            'capitalised' => ['Required'],
+            'upper case'  => ['MIN'],
         ];
     }
 

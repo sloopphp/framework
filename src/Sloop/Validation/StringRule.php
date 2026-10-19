@@ -26,7 +26,7 @@ use TypeError;
  * check runs first and stops the field. A message: given to those rules does
  * not apply to combiningRun; the field's message() does.
  *
- * @extends FieldRule<string>
+ * @extends FieldRule<string, string>
  */
 final class StringRule extends FieldRule
 {
@@ -949,5 +949,17 @@ final class StringRule extends FieldRule
     public function canHold(mixed $value): bool
     {
         return \is_string($value);
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  string $value Validated value
+     * @return string
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }

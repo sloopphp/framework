@@ -246,4 +246,15 @@ final class ListRule extends ArrayRule
 
         return [$failures, $values, $comparable, $elements];
     }
+
+    /**
+     * The name of a rule given to using() inside what this field holds that has no message of its own, if any.
+     *
+     * @return string|null
+     */
+    #[\Override]
+    protected function childUsingWithoutMessage(): ?string
+    {
+        return $this->element->usingWithoutMessage();
+    }
 }

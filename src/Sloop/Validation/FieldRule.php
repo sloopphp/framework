@@ -34,6 +34,8 @@ use UnexpectedValueException;
  * and passes the value on to withDefault().
  *
  * @template T
+ *
+ * @template-covariant O = mixed Type of the value values() hands out, which output() turns T into
  */
 abstract class FieldRule
 {
@@ -114,6 +116,13 @@ abstract class FieldRule
     private array $elementChecks = [];
 
     /**
+     * Rules given to using().
+     *
+     * @var list<Check<O>>
+     */
+    private array $usingChecks = [];
+
+    /**
      * Declared rules comparing this field with another field.
      *
      * @var list<Comparison>
@@ -147,7 +156,7 @@ abstract class FieldRule
     /**
      * Rules each when() adds: on the size of the value, on what it holds, and on its elements.
      *
-     * @var list<array{list<Check<T>>, list<Check<T>>, list<Check<T>>}>
+     * @var list<array{list<Check<T>>, list<Check<T>>, list<Check<T>>, list<Check<O>>}>
      */
     private array $whenChecks = [];
 
@@ -362,11 +371,12 @@ abstract class FieldRule
      * returned. An exception the closure throws is not caught.
      *
      * The name is the rule's name in errors(). The language files hold only
-     * the framework's rules, so give the message here or with message(); a
-     * failure with neither is a LogicException at validation.
+     * the framework's rules, so give the message here or with message() on
+     * this field or on a field holding it; the Validator refuses a using()
+     * with neither when it is built.
      *
-     * @param  string                   $name    Rule name: a letter, then letters and digits, not one of the framework's rule names
-     * @param  Closure                  $test    Takes the value as values() hands it out and returns true when it passes, false when it fails; anything else is refused at validation
+     * @param  string                   $name    Rule name: a letter, then letters and digits, not one of the framework's rule names in any case
+     * @param  Closure(O): mixed        $test    Takes the value as values() hands it out and returns true when it passes, false when it fails; anything else is refused at validation
      * @param  string|null              $message Message for this rule only
      * @return static
      * @throws InvalidArgumentException When the name is malformed or one of the framework's rule names, or the message template is malformed
@@ -384,9 +394,15 @@ abstract class FieldRule
             );
         }
 
-        return $this->withCheck(
+        if ($message !== null) {
+            ValidationMessages::assertValidPattern($message);
+        }
+
+        $copy                = clone $this;
+        $copy->usingChecks[] = new Check(
             $name,
             [],
+            /** @param O $value */
             static function (mixed $value) use ($name, $test): bool {
                 $result = $test($value);
                 if (!\is_bool($result)) {
@@ -398,8 +414,9 @@ abstract class FieldRule
                 return $result;
             },
             $message,
-            afterOthers: true,
         );
+
+        return $copy;
     }
 
     /**
@@ -434,13 +451,13 @@ abstract class FieldRule
         if ((array) $added->withoutChecks()->withoutRuleMarks() !== (array) $probe) {
             throw new InvalidArgumentException('when() can only add rules on the value; the closure changed something else about the field.');
         }
-        if ($added->sizeChecks === [] && $added->checks === [] && $added->elementChecks === []) {
+        if ($added->sizeChecks === [] && $added->checks === [] && $added->elementChecks === [] && $added->usingChecks === []) {
             throw new InvalidArgumentException('when() needs the closure to add at least one rule.');
         }
 
         $copy               = clone $this;
         $copy->whens[]      = new WhenCondition($field, $values);
-        $copy->whenChecks[] = [$added->sizeChecks, $added->checks, $added->elementChecks];
+        $copy->whenChecks[] = [$added->sizeChecks, $added->checks, $added->elementChecks, $added->usingChecks];
 
         return $copy;
     }
@@ -505,7 +522,7 @@ abstract class FieldRule
         return new FieldOutcome(
             $output,
             $comparable,
-            $ownPassed ? $this->run($this->checks, $output, $now, afterOthers: true) : $own,
+            $ownPassed ? $this->run($this->usingChecks, $output, $now) : $own,
             // The Validator knows which when() applies only once every field
             // has its value, so it runs them through this, with the typed
             // value kept here; a when() that does not apply never runs.
@@ -553,7 +570,7 @@ abstract class FieldRule
      * @param  T                        $elements       Value the rules reading the elements test
      * @param  bool                     $elementsPassed Whether every element passed, without which those rules do not run
      * @param  bool                     $ownPassed      Whether every rule declared on the field itself passed, without which the using() rules added here do not run
-     * @param  mixed                    $output         Value as values() hands it out, which the using() rules added here read
+     * @param  O                        $output         Value as values() hands it out, which the using() rules added here read
      * @param  DateTimeImmutable        $now            Time of the validation
      * @return list<Failure>
      * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
@@ -562,7 +579,7 @@ abstract class FieldRule
      */
     private function runWhen(int $index, mixed $sized, mixed $typed, mixed $elements, bool $elementsPassed, bool $ownPassed, mixed $output, DateTimeImmutable $now): array
     {
-        [$sizeChecks, $checks, $elementChecks] = $this->whenChecks[$index];
+        [$sizeChecks, $checks, $elementChecks, $usingChecks] = $this->whenChecks[$index];
         $sizeFailures = $this->run($sizeChecks, $sized, $now);
         if ($sizeFailures !== []) {
             return $sizeFailures;
@@ -573,32 +590,25 @@ abstract class FieldRule
             ...($elementsPassed ? $this->run($elementChecks, $elements, $now) : []),
         ];
 
-        return $failures === [] && $ownPassed ? $this->run($checks, $output, $now, afterOthers: true) : $failures;
+        return $failures === [] && $ownPassed ? $this->run($usingChecks, $output, $now) : $failures;
     }
 
     /**
      * Run a set of rules over a value, keeping every failure.
      *
-     * Only the rules whose afterOthers matches the argument run, so the
-     * using() rules of a set run in a pass of their own, after the others.
-     *
      * @template V
-     * @param  list<Check<V>>           $checks      Rules to run
-     * @param  V                        $typed       Value the rules test
-     * @param  DateTimeImmutable        $now         Time of the validation
-     * @param  bool                     $afterOthers Whether to run the rules given to using() rather than the others
+     * @param  list<Check<V>>           $checks Rules to run
+     * @param  V                        $typed  Value the rules test
+     * @param  DateTimeImmutable        $now    Time of the validation
      * @return list<Failure>
      * @throws RuntimeException         When a file's stream cannot be read, or ICU cannot split a string into grapheme clusters or count them
      * @throws InvalidArgumentException When Rule::date()'s format cannot read back a limit, a default or today's date in the time zone of the validation
      * @throws UnexpectedValueException When a closure given to using() returns something other than a bool
      */
-    private function run(array $checks, mixed $typed, DateTimeImmutable $now, bool $afterOthers = false): array
+    private function run(array $checks, mixed $typed, DateTimeImmutable $now): array
     {
         $failures = [];
         foreach ($checks as $check) {
-            if ($check->afterOthers !== $afterOthers) {
-                continue;
-            }
             if (!($check->passes)($typed, $now)) {
                 $params     = $check->paramsAt === null ? $check->params : ($check->paramsAt)($now);
                 $failures[] = new Failure($check->rule, $params, $check->message);
@@ -618,6 +628,42 @@ abstract class FieldRule
     public function displayLabel(): ?string
     {
         return $this->displayLabel;
+    }
+
+    /**
+     * The name of a rule given to using() on this field or inside it that has no message, if any.
+     *
+     * A rule given to using() has no entry in the language files, so it needs
+     * `message:` or the message() of its field or of a field holding it.
+     *
+     * @internal Read by Validator when it is built.
+     *
+     * @return string|null
+     */
+    public function usingWithoutMessage(): ?string
+    {
+        if ($this->fieldMessage !== null) {
+            return null;
+        }
+        foreach ([$this->usingChecks, ...array_column($this->whenChecks, 3)] as $checks) {
+            foreach ($checks as $check) {
+                if ($check->message === null) {
+                    return $check->rule;
+                }
+            }
+        }
+
+        return $this->childUsingWithoutMessage();
+    }
+
+    /**
+     * The name of a rule given to using() inside what this field holds that has no message of its own, if any.
+     *
+     * @return string|null
+     */
+    protected function childUsingWithoutMessage(): ?string
+    {
+        return null;
     }
 
     /**
@@ -861,13 +907,10 @@ abstract class FieldRule
     /**
      * Turn a validated value into the value handed to the caller.
      *
-     * @param  T     $value Validated value
-     * @return mixed
+     * @param  T $value Validated value
+     * @return O
      */
-    protected function output(mixed $value): mixed
-    {
-        return $value;
-    }
+    abstract protected function output(mixed $value): mixed;
 
     /**
      * Turn a validated value into the value same() / different() compare with `===`.
@@ -906,23 +949,22 @@ abstract class FieldRule
     /**
      * Append a rule.
      *
-     * @param  string                                                                                    $rule        Rule name; for a rule of the framework, also the language file key
-     * @param  array<string, int|float|string|list<int|float|string>>                                    $params      Parameters keyed by placeholder name
-     * @param  Closure(T, DateTimeImmutable): bool                                                       $passes      Returns true when the value satisfies the rule, given the time of the validation
-     * @param  string|null                                                                               $message     Message for this rule only
-     * @param  (Closure(DateTimeImmutable): array<string, int|float|string|list<int|float|string>>)|null $paramsAt    Builds the parameters from the time of the validation, in place of $params
-     * @param  bool                                                                                      $afterOthers Whether the rule runs only once every other rule declared alongside it has passed
+     * @param  string                                                                                    $rule     Rule name; for a rule of the framework, also the language file key
+     * @param  array<string, int|float|string|list<int|float|string>>                                    $params   Parameters keyed by placeholder name
+     * @param  Closure(T, DateTimeImmutable): bool                                                       $passes   Returns true when the value satisfies the rule, given the time of the validation
+     * @param  string|null                                                                               $message  Message for this rule only
+     * @param  (Closure(DateTimeImmutable): array<string, int|float|string|list<int|float|string>>)|null $paramsAt Builds the parameters from the time of the validation, in place of $params
      * @return static
      * @throws \InvalidArgumentException                                                                 When the message template is malformed
      */
-    protected function withCheck(string $rule, array $params, Closure $passes, ?string $message, ?Closure $paramsAt = null, bool $afterOthers = false): static
+    protected function withCheck(string $rule, array $params, Closure $passes, ?string $message, ?Closure $paramsAt = null): static
     {
         if ($message !== null) {
             ValidationMessages::assertValidPattern($message);
         }
 
         $copy           = clone $this;
-        $copy->checks[] = new Check($rule, $params, $passes, $message, $paramsAt, $afterOthers);
+        $copy->checks[] = new Check($rule, $params, $passes, $message, $paramsAt);
 
         return $copy;
     }
@@ -1077,6 +1119,7 @@ abstract class FieldRule
         $copy->checks        = [];
         $copy->sizeChecks    = [];
         $copy->elementChecks = [];
+        $copy->usingChecks   = [];
 
         return $copy;
     }

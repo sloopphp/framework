@@ -13,7 +13,7 @@ use InvalidArgumentException;
  * "true" / "false" (the words in any letter case). Nothing else is read as a
  * bool: "on", "yes", and 2 are type failures.
  *
- * @extends FieldRule<bool>
+ * @extends FieldRule<bool, bool>
  */
 final class BoolRule extends FieldRule
 {
@@ -93,5 +93,17 @@ final class BoolRule extends FieldRule
     public function canHold(mixed $value): bool
     {
         return \is_bool($value);
+    }
+
+    /**
+     * The validated value as it is.
+     *
+     * @param  bool $value Validated value
+     * @return bool
+     */
+    #[\Override]
+    protected function output(mixed $value): mixed
+    {
+        return $value;
     }
 }
