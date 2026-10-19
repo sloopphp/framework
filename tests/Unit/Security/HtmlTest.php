@@ -10,6 +10,11 @@ use Sloop\Security\Html;
 
 final class HtmlTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        ini_restore('default_charset');
+    }
+
     // -------------------------------------------------------
     // escape
     // -------------------------------------------------------
@@ -47,9 +52,23 @@ final class HtmlTest extends TestCase
         $this->assertSame("a\u{FFFD}(b", Html::escape("a\xC3(b"));
     }
 
+    public function testEscapeUsesUtf8RegardlessOfDefaultCharset(): void
+    {
+        ini_set('default_charset', 'ISO-8859-1');
+
+        $this->assertSame("a\u{FFFD}(b", Html::escape("a\xC3(b"));
+    }
+
     // -------------------------------------------------------
     // e() helper
     // -------------------------------------------------------
+
+    public function testHelperUsesUtf8RegardlessOfDefaultCharset(): void
+    {
+        ini_set('default_charset', 'ISO-8859-1');
+
+        $this->assertSame("a\u{FFFD}(b", e("a\xC3(b"));
+    }
 
     public function testHelperDelegatesToEscape(): void
     {
