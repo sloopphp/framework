@@ -272,6 +272,18 @@ final class ListRule extends ArrayRule
     }
 
     /**
+     * Rules of an element, whatever the key.
+     *
+     * @param  int|string                 $key Key inside the value
+     * @return FieldRule<covariant mixed>
+     */
+    #[\Override]
+    public function childRule(int|string $key): FieldRule
+    {
+        return $this->element;
+    }
+
+    /**
      * This list itself when it declares no upper bound on its count, otherwise the first unbounded list inside its element.
      *
      * @return string|null

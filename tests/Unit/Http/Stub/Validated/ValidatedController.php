@@ -256,4 +256,11 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function trimmed(TrimmedRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }

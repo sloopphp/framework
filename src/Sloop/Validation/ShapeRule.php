@@ -288,6 +288,18 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Rules of a declared key, or null for a key the shape does not declare.
+     *
+     * @param  int|string                      $key Key inside the value
+     * @return FieldRule<covariant mixed>|null
+     */
+    #[\Override]
+    public function childRule(int|string $key): ?FieldRule
+    {
+        return $this->fields[$key] ?? null;
+    }
+
+    /**
      * The first unbounded list inside the keys, prefixed with its key.
      *
      * @return string|null

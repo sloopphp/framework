@@ -6,7 +6,9 @@ namespace Sloop\Http\Request;
 
 use LogicException;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\UploadedFileInterface;
+use RuntimeException;
+use Sloop\Validation\FieldRule;
+use UnexpectedValueException;
 
 /**
  * Input a ValidatedRequest validates, gathered by the request method.
@@ -15,13 +17,15 @@ use Psr\Http\Message\UploadedFileInterface;
  * uploaded files. GET, HEAD and DELETE validate the query string as well,
  * since RFC 9110 gives content in those requests no defined meaning and
  * clients put what they send in either place. A field found in two of the
- * places is refused instead of one silently winning; an empty value (null,
- * '' or a file input left without a file, but not `[]`) counts as not sent,
- * as it does for the Validator. The body and the uploaded files are merged key by key, as
- * PHP splits one form between them, and a level keyed only by numbers is
- * put in the order of its keys. Only the fields with a rule are
- * gathered, so the key named in that refusal is always one the application
- * declared, never one a client made up.
+ * places is refused instead of one silently winning. Whether a value counts
+ * as sent is asked of the rule at its place, so an empty value is the one
+ * the Validator would take as empty: null or '' after the sanitizers, and a
+ * file input left without a file only where the rule is Rule::file(); `[]`
+ * is a value. The body and the uploaded files are merged key by key, as PHP
+ * splits one form between them, and a level keyed only by numbers is put in
+ * the order of its keys. Only the fields with a rule are gathered, so the
+ * key named in that refusal is always one the application declared, never
+ * one a client made up.
  *
  * @internal Used by RouteRequestHandler.
  */
@@ -37,33 +41,35 @@ final class ValidatedInput
     /**
      * Gather the input of the fields that have a rule.
      *
-     * @param  ServerRequestInterface      $request PSR-7 request
-     * @param  list<string>                $fields  Names of the fields with a rule
-     * @return array<string, mixed>|string The input of those fields sent with a value (an empty one is left out, which the Validator reads as empty), or the message of the 400 when one was sent twice
-     * @throws LogicException              When the parsed body is an object, which a middleware put there in place of an array
+     * @param  ServerRequestInterface                    $request PSR-7 request
+     * @param  array<string, FieldRule<covariant mixed>> $rules   Rules keyed by field name
+     * @return array<string, mixed>|string               The input of those fields sent with a value (an empty one is left out, which the Validator reads as empty), or the message of the 400 when one was sent twice
+     * @throws LogicException                            When the parsed body is an object, which a middleware put there in place of an array
+     * @throws UnexpectedValueException                  When a sanitizer closure returns something other than a string
+     * @throws RuntimeException                          When PCRE aborts while a Sanitize case is running
      */
-    public static function collect(ServerRequestInterface $request, array $fields): array|string
+    public static function collect(ServerRequestInterface $request, array $rules): array|string
     {
         $body  = self::body($request);
         $files = $request->getUploadedFiles();
         $query = \in_array($request->getMethod(), self::QUERY_METHODS, true) ? $request->getQueryParams() : [];
 
         $input = [];
-        foreach ($fields as $field) {
-            [$combined, $value] = self::combine($body[$field] ?? null, $files[$field] ?? null);
+        foreach ($rules as $field => $rule) {
+            [$combined, $value] = self::combine($body[$field] ?? null, $files[$field] ?? null, $rule);
             if (!$combined) {
                 return 'The request value "' . $field . '" was sent as both a form value and a file.';
             }
 
             $fromQuery = $query[$field] ?? null;
-            if (!self::isEmpty($fromQuery)) {
-                if (!self::isEmpty($value)) {
+            if (!self::isEmpty($fromQuery, $rule)) {
+                if (!self::isEmpty($value, $rule)) {
                     return 'The request value "' . $field . '" was sent in both the query string and the body.';
                 }
                 $value = $fromQuery;
             }
 
-            if (!self::isEmpty($value)) {
+            if (!self::isEmpty($value, $rule)) {
                 $input[$field] = self::inIndexOrder($value);
             }
         }
@@ -93,20 +99,23 @@ final class ValidatedInput
      *
      * PHP puts `user[name]` in the parsed body and `user[avatar]` in the
      * uploaded files, so one field of a form can arrive in both halves. The
-     * halves are merged key by key; an empty one (as the rules define it, so
-     * `[]` is not empty) gives way to the other, and two values with something
-     * in them at the same place cannot be merged.
+     * halves are merged key by key; an empty one, as the rule at that place
+     * defines it, gives way to the other, and two values with something in
+     * them at the same place cannot be merged.
      *
-     * @param  mixed              $form Value from the parsed body
-     * @param  mixed              $file Value from the uploaded files
-     * @return array{bool, mixed} Whether the halves could be merged, and the merged value
+     * @param  mixed                           $form Value from the parsed body
+     * @param  mixed                           $file Value from the uploaded files
+     * @param  FieldRule<covariant mixed>|null $rule Rule at this place, or null where none is declared
+     * @return array{bool, mixed}              Whether the halves could be merged, and the merged value
+     * @throws UnexpectedValueException        When a sanitizer closure returns something other than a string
+     * @throws RuntimeException                When PCRE aborts while a Sanitize case is running
      */
-    private static function combine(mixed $form, mixed $file): array
+    private static function combine(mixed $form, mixed $file, ?FieldRule $rule): array
     {
-        if (self::isEmpty($file)) {
+        if (self::isEmpty($file, $rule)) {
             return [true, $form];
         }
-        if (self::isEmpty($form)) {
+        if (self::isEmpty($form, $rule)) {
             return [true, $file];
         }
         if (!\is_array($form) || !\is_array($file)) {
@@ -114,7 +123,7 @@ final class ValidatedInput
         }
 
         foreach ($file as $key => $part) {
-            [$combined, $merged] = self::combine($form[$key] ?? null, $part);
+            [$combined, $merged] = self::combine($form[$key] ?? null, $part, $rule?->childRule($key));
             if (!$combined) {
                 return [false, null];
             }
@@ -152,17 +161,22 @@ final class ValidatedInput
     }
 
     /**
-     * Whether a value counts as not sent: null, '', or a file input left without a file.
+     * Whether a value counts as not sent, as the rule at its place takes it as empty.
      *
-     * The same values the rules take as empty.
+     * Where no rule is declared, only null and '' count.
      *
-     * @param  mixed $value Value to check
+     * @param  mixed                           $value Value to check
+     * @param  FieldRule<covariant mixed>|null $rule  Rule at the value's place
      * @return bool
+     * @throws UnexpectedValueException        When a sanitizer closure returns something other than a string
+     * @throws RuntimeException                When PCRE aborts while a Sanitize case is running
      */
-    private static function isEmpty(mixed $value): bool
+    private static function isEmpty(mixed $value, ?FieldRule $rule): bool
     {
-        return $value === null
-            || $value === ''
-            || ($value instanceof UploadedFileInterface && $value->getError() === UPLOAD_ERR_NO_FILE);
+        if ($rule === null) {
+            return $value === null || $value === '';
+        }
+
+        return $rule->isEmptyInput($value);
     }
 }

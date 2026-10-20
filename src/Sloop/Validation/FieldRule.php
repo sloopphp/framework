@@ -869,6 +869,42 @@ abstract class FieldRule
     }
 
     /**
+     * Whether a raw input value counts as empty for this field, judged as evaluate() judges it: after the string sanitizers.
+     *
+     * The sanitizers run here and again when the value is validated, so a
+     * sanitizer closure is called twice for the same value.
+     *
+     * @internal Read by ValidatedRequest, which takes an empty value as not sent when the same field arrives in two places.
+     *
+     * @param  mixed                    $raw Raw input value
+     * @return bool
+     * @throws UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
+     */
+    public function isEmptyInput(mixed $raw): bool
+    {
+        $value = $raw;
+        if (\is_string($value) && mb_check_encoding($value, 'UTF-8')) {
+            $value = $this->sanitize($value);
+        }
+
+        return $this->isEmpty($value);
+    }
+
+    /**
+     * Rules of what this field holds at a key: the element of a list, or a key of a shape.
+     *
+     * @internal Read by ValidatedRequest, which merges the body and the uploaded files key by key.
+     *
+     * @param  int|string                      $key Key inside the value
+     * @return FieldRule<covariant mixed>|null Null when this field declares no rules for what it holds there
+     */
+    public function childRule(int|string $key): ?FieldRule
+    {
+        return null;
+    }
+
+    /**
      * Whether the validated value can be null: the field is neither required() nor given a default().
      *
      * @internal Read by ValidatedRequest, whose property for such a field must accept null.

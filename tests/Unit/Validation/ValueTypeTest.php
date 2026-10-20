@@ -6,6 +6,7 @@ namespace Sloop\Tests\Unit\Validation;
 
 use BcMath\Number;
 use DateTimeImmutable;
+use Nyholm\Psr7\UploadedFile;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UploadedFileInterface;
@@ -13,6 +14,7 @@ use Sloop\Support\TimeOfDay;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
+use Sloop\Validation\Sanitize;
 
 final class ValueTypeTest extends TestCase
 {
@@ -78,6 +80,29 @@ final class ValueTypeTest extends TestCase
     public function testFindsTheFirstListWithoutAnUpperBound(FieldRule $rule, ?string $path): void
     {
         $this->assertSame($path, $rule->unboundedList());
+    }
+
+    public function testJudgesAnInputEmptyAfterTheSanitizers(): void
+    {
+        $this->assertTrue(Rule::string(Sanitize::Trim)->isEmptyInput('  '));
+        $this->assertFalse(Rule::string()->isEmptyInput('  '));
+        $this->assertTrue(Rule::string()->isEmptyInput(null));
+        $this->assertFalse(Rule::list(Rule::int())->isEmptyInput([]));
+        $this->assertTrue(Rule::file()->isEmptyInput(new UploadedFile('', 0, UPLOAD_ERR_NO_FILE)));
+        $this->assertFalse(Rule::string()->isEmptyInput(new UploadedFile('', 0, UPLOAD_ERR_NO_FILE)));
+        $this->assertFalse(Rule::string(Sanitize::Trim)->isEmptyInput("\xff  "));
+    }
+
+    public function testNamesTheRulesOfWhatAFieldHolds(): void
+    {
+        $element = Rule::int();
+        $key     = Rule::string();
+
+        $this->assertSame($element, Rule::list($element)->childRule(3));
+        $this->assertSame($key, Rule::shape(['a' => $key])->childRule('a'));
+        $this->assertNull(Rule::shape(['a' => $key])->childRule('b'));
+        $this->assertNull(Rule::int()->childRule('a'));
+        $this->assertNull(Rule::array()->childRule(0));
     }
 
     public function testAnOptionalFieldWithoutADefaultCanBeNull(): void

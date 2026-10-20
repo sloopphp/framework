@@ -48,6 +48,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotFieldRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesRecorder;
 use Sloop\Tests\Unit\Http\Stub\Validated\RuleWithoutPropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\StaticRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\TrimmedRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnboundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnionPropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedController;
@@ -520,6 +521,89 @@ final class ValidatedRequestTest extends TestCase
             [['public' => null, 'photo' => null], ['public' => $public, 'photo' => $one]],
             ValidatedController::$last->items,
         );
+    }
+
+    public function testKeepsARowThatTheFilesHalfSendsAsAnEmptyArray(): void
+    {
+        $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withUploadedFiles(['items' => [0 => [], 1 => ['photo' => $one]]]);
+
+        $this->dispatch('photoList', $request);
+
+        $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
+        $this->assertSame(
+            [['public' => null, 'photo' => null], ['public' => null, 'photo' => $one]],
+            ValidatedController::$last->items,
+        );
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, array<string, mixed>}>
+     */
+    public static function emptyAfterTheSanitizers(): array
+    {
+        return [
+            'blank query'  => [['name' => '  '], ['name' => 'Ann']],
+            'blank body'   => [['name' => 'Ann'], ['name' => '  ']],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     * @param array<string, mixed> $body
+     */
+    #[DataProvider('emptyAfterTheSanitizers')]
+    public function testJudgesAValueEmptyAfterTheSanitizersOfItsRule(array $query, array $body): void
+    {
+        $request = new ServerRequest('DELETE', '/dispatch')->withQueryParams($query)->withParsedBody($body);
+
+        $response = $this->dispatch('trimmed', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(TrimmedRequest::class, ValidatedController::$last);
+        $this->assertSame('Ann', ValidatedController::$last->name);
+    }
+
+    public function testLetsANestedValueBlankAfterTheSanitizersGiveWayToAFile(): void
+    {
+        $file    = new UploadedFile('x', 1, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['items' => [['note' => '  ']]])
+            ->withUploadedFiles(['items' => [['note' => $file]]]);
+
+        $response = $this->dispatch('trimmed', $request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(['items.0.note'], array_keys(self::errors($response)));
+    }
+
+    public function testMergesBelowAPlaceWhereNoRuleIsDeclared(): void
+    {
+        $file    = new UploadedFile('x', 1, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['meta' => ['a' => ['x' => '1']]])
+            ->withUploadedFiles(['meta' => ['a' => ['f' => $file]]]);
+
+        $response = $this->dispatch('trimmed', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(TrimmedRequest::class, ValidatedController::$last);
+        $this->assertSame(['a' => ['x' => '1', 'f' => $file]], ValidatedController::$last->meta);
+    }
+
+    public function testTakesAFileInputLeftWithoutAFileAsEmptyOnlyWhereTheRuleIsAFile(): void
+    {
+        $empty = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
+
+        $nested = $this->dispatch('trimmed', new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['items' => [['note' => 'x']]])
+            ->withUploadedFiles(['items' => [['note' => $empty]]]));
+        $top    = $this->dispatch('trimmed', new ServerRequest('POST', '/dispatch')->withUploadedFiles(['note' => $empty]));
+
+        $this->assertSame(400, $nested->getStatusCode());
+        $this->assertSame(422, $top->getStatusCode());
+        $this->assertSame(['note'], array_keys(self::errors($top)));
     }
 
     public function testOrdersAListSentOutOfOrderByItsIndexes(): void

@@ -195,7 +195,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         }
         $rules = $shape->rules($request, $arguments);
 
-        $input = ValidatedInput::collect($sloopRequest->psrRequest(), array_keys($rules));
+        $input = ValidatedInput::collect($sloopRequest->psrRequest(), $rules);
         if (\is_string($input)) {
             return $this->formatter->error($input, HttpStatus::BadRequest);
         }
