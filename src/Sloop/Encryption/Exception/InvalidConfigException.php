@@ -16,7 +16,10 @@ use LogicException;
  * integer or is out of range, argon2id chosen on a PHP build without it, or
  * a security.headers entry that is malformed (a blank or non-string value,
  * a value with a line break, an integer key, a name given twice in different
- * case, or a name or value that cannot be sent).
+ * case, or a name or value that cannot be sent), or a security.csrf entry
+ * that is malformed (an origin that is not scheme://host[:port] with http or
+ * https, or names the default port, or trusted_origins that is not a list of
+ * strings).
  * A payload that cannot be decrypted or verified, or a password that does
  * not match, is not an error of this kind; Encryptor::decrypt(),
  * Signer::verify() and PasswordHasher::verify() return false for those.
