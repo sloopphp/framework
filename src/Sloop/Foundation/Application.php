@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Sloop\Foundation;
 
 use Nyholm\Psr7\ServerRequest;
-use Nyholm\Psr7\Stream;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -38,6 +37,7 @@ use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Middleware\SecurityHeadersMiddleware;
 use Sloop\Http\Request\FormBody;
 use Sloop\Http\Request\JsonBody;
+use Sloop\Http\Request\RawBody;
 use Sloop\Http\Request\UploadedFiles;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
@@ -63,6 +63,13 @@ use Sloop\Validation\ValidationMessages;
  */
 final class Application implements RequestHandlerInterface
 {
+    /**
+     * Largest request body read from php://input when security.max_body_size is not set (1 MiB, as nginx).
+     *
+     * @var int
+     */
+    private const int DEFAULT_MAX_BODY_SIZE = 1_048_576;
+
     /**
      * DI container.
      *
@@ -92,6 +99,13 @@ final class Application implements RequestHandlerInterface
     private readonly SecurityHeadersMiddleware $securityHeaders;
 
     /**
+     * Largest request body read from php://input, in bytes.
+     *
+     * @var int<1, max>
+     */
+    private readonly int $maxBodySize;
+
+    /**
      * Create and boot the application.
      *
      * @param string $basePath Application root directory
@@ -110,6 +124,7 @@ final class Application implements RequestHandlerInterface
         $this->bootHashing();
         $this->securityHeaders = $this->bootSecurityHeaders();
         $this->bootCsrf();
+        $this->maxBodySize = $this->readMaxBodySize();
         $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
@@ -129,9 +144,10 @@ final class Application implements RequestHandlerInterface
      * This is also the error boundary: exceptions from route middleware and
      * controllers are converted into error responses here, so the error
      * response still flows back through the global middleware stack and
-     * receives its headers (traceparent, CORS, ...). A request whose JSON or
-     * form body could not be parsed is answered with a 400 here, before
-     * routing, for the same reason.
+     * receives its headers (traceparent, CORS, ...). A request whose body is
+     * larger than security.max_body_size is answered with a 413 here, and one
+     * whose JSON or form body could not be parsed with a 400, before routing,
+     * for the same reason. The size is checked first.
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
@@ -139,6 +155,15 @@ final class Application implements RequestHandlerInterface
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
+        if (RawBody::isTooLarge($request)) {
+            return $this->renderException(
+                new DomainException(
+                    'The request body is larger than ' . $this->maxBodySize . ' bytes.',
+                    HttpStatus::ContentTooLarge,
+                ),
+            );
+        }
+
         if (JsonBody::isMalformed($request)) {
             return $this->renderException(
                 new DomainException('The request body is not valid JSON.', HttpStatus::BadRequest),
@@ -205,22 +230,24 @@ final class Application implements RequestHandlerInterface
      *
      * The primary error boundary lives in handle(), so error responses pass
      * back through the global middleware stack. This catch is a last resort
-     * for exceptions thrown by the global middleware themselves; the error
-     * response it renders still receives the security headers.
+     * for exceptions thrown by the global middleware themselves, and for those
+     * thrown while the request is built from the globals (a URI that cannot be
+     * parsed); the error response it renders still receives the security headers.
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
-     * @throws \InvalidArgumentException   When no request is given and the one built from the globals is malformed
      * @throws \RuntimeException           When the response formatter cannot be resolved while rendering an error
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
     {
-        $serverRequest ??= $this->createServerRequestFromGlobals();
-
         try {
+            $serverRequest ??= $this->createServerRequestFromGlobals();
+
             return $this->buildMiddlewareDispatcher()->handle($serverRequest);
         } catch (\Throwable $e) {
-            return $this->withSecurityHeaders($serverRequest, $this->renderException($e));
+            // The security headers middleware does not look at the request,
+            // so a placeholder serves when none could be built.
+            return $this->withSecurityHeaders($serverRequest ?? new ServerRequest('GET', '/'), $this->renderException($e));
         }
     }
 
@@ -712,7 +739,7 @@ final class Application implements RequestHandlerInterface
      */
     private function bootSecurityHeaders(): SecurityHeadersMiddleware
     {
-        $this->assertConfigSection('security', ['headers', 'csrf']);
+        $this->assertConfigSection('security', ['headers', 'csrf', 'max_body_size']);
 
         $headers = (Config::isLoaded() ? Config::get('security.headers') : null) ?? [];
         if (!\is_array($headers)) {
@@ -762,6 +789,22 @@ final class Application implements RequestHandlerInterface
         }
 
         $this->container->instance(CsrfMiddleware::class, $middleware);
+    }
+
+    /**
+     * Read security.max_body_size, defaulting to 1 MiB when it is missing or null.
+     *
+     * @return int<1, max>
+     * @throws InvalidConfigException If the entry is not a positive integer
+     */
+    private function readMaxBodySize(): int
+    {
+        $size = (Config::isLoaded() ? Config::get('security.max_body_size') : null) ?? self::DEFAULT_MAX_BODY_SIZE;
+        if (!\is_int($size) || $size < 1) {
+            throw new InvalidConfigException('security.max_body_size must be a positive integer number of bytes.');
+        }
+
+        return $size;
     }
 
     /**
@@ -1003,10 +1046,13 @@ final class Application implements RequestHandlerInterface
      * puts only form bodies in $_POST; one that is not a JSON object or array
      * is marked, and handle() answers it with a 400. PHP fills $_POST and
      * $_FILES only for POST, so the form body of a PUT, PATCH or DELETE is read
-     * here, and one PHP refuses to read is marked the same way.
+     * here, and one PHP refuses to read is marked the same way. A body larger
+     * than security.max_body_size is marked and not attached, and handle()
+     * answers it with a 413.
      *
      * @return ServerRequestInterface
-     * @throws \InvalidArgumentException When the URI or a header value cannot be parsed, or an uploaded file carries an error code PHP does not define
+     * @throws DomainException           With status 400 when the URI or a header value the client sent cannot be parsed
+     * @throws \InvalidArgumentException When an uploaded file carries an error code PHP does not define
      */
     private function createServerRequestFromGlobals(): ServerRequestInterface
     {
@@ -1014,21 +1060,31 @@ final class Application implements RequestHandlerInterface
         $uri     = Arr::getString($_SERVER, 'REQUEST_URI', '/');
         $headers = \function_exists('getallheaders') ? getallheaders() : [];
 
+        try {
+            $request = new ServerRequest($method, $uri, $headers, null, '1.1', $_SERVER);
+        } catch (\InvalidArgumentException $e) {
+            // The URI and the headers come from the client.
+            throw new DomainException('The request URI or headers could not be read.', HttpStatus::BadRequest, previous: $e);
+        }
+
         // request_parse_body() finds nothing in php://input once something has
         // read it, so the form body is parsed before the raw body is taken.
         $request = FormBody::parse(
-            new ServerRequest($method, $uri, $headers, null, '1.1', $_SERVER)
+            $request
                 ->withQueryParams($_GET)
                 ->withParsedBody($_POST)
                 ->withCookieParams($_COOKIE)
                 ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES)),
             request_parse_body(...),
+            $this->maxBodySize,
         );
 
-        $rawBody = file_get_contents('php://input');
-        if ($rawBody !== false && $rawBody !== '') {
-            $request = $request->withBody(Stream::create($rawBody));
-        }
+        $request = RawBody::read(
+            $request,
+            /** @param int<1, max> $maxLength */
+            static fn (int $maxLength): string|false => file_get_contents('php://input', false, null, 0, $maxLength),
+            $this->maxBodySize,
+        );
 
         return JsonBody::parse($request);
     }

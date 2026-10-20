@@ -20,7 +20,8 @@ use LogicException;
  * that is malformed (an origin that is not a string or null, is not
  * scheme://host[:port] as browsers send it, names the default port, or for
  * the application's own origin uses a scheme other than http or https, or
- * trusted_origins that is not a list of strings).
+ * trusted_origins that is not a list of strings), or a
+ * security.max_body_size that is not a positive integer.
  * A payload that cannot be decrypted or verified, or a password that does
  * not match, is not an error of this kind; Encryptor::decrypt(),
  * Signer::verify() and PasswordHasher::verify() return false for those.

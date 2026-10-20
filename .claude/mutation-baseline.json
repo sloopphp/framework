@@ -189,9 +189,9 @@
         },
         {
             "file": "src/Sloop/Http/Request/FormBody.php",
-            "method": "FormBody::isForm",
+            "method": "FormBody::mediaType",
             "mutator": "IncrementInteger",
-            "diff": "-        return \\in_array(strtolower(trim(explode(';', $contentType, 2)[0])), self::FORM_TYPES, true);\n+        return \\in_array(strtolower(trim(explode(';', $contentType, 3)[0])), self::FORM_TYPES, true);"
+            "diff": "-        return strtolower(trim(explode(';', $contentType, 2)[0]));\n+        return strtolower(trim(explode(';', $contentType, 3)[0]));"
         },
         {
             "file": "src/Sloop/Http/Request/JsonBody.php",
