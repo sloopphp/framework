@@ -65,8 +65,9 @@ final class FormBody
      * warning is kept out of the output. With a Content-Length it returns no
      * values; without one (chunked under mod_php) it may return the fields of
      * what it read, which can run up to one 16 KiB read past the limit. The
-     * raw body stays readable, so RawBody then marks the request. A multipart body is parsed under PHP's
-     * own post_max_size, because the limit does not apply to its files.
+     * raw body stays readable, so RawBody then marks the request. A multipart
+     * body is parsed under PHP's own post_max_size, because the limit does
+     * not apply to its files.
      *
      * @param  ServerRequestInterface                                              $request Request built from the globals, before its body is read
      * @param  Closure(array<string, string>): array<int, array<array-key, mixed>> $parse   Reads the body as request_parse_body() does, with the given options: the values, then the files
