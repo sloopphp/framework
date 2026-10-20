@@ -63,9 +63,9 @@ final class FormBody
      * An urlencoded body longer than the limit is not parsed in full: the
      * parser is given the limit as its post_max_size and warns, and the
      * warning is kept out of the output. With a Content-Length it returns no
-     * values; without one (chunked under mod_php) it may return what it read
-     * up to the limit. The raw body stays readable, so
-     * RawBody then marks the request. A multipart body is parsed under PHP's
+     * values; without one (chunked under mod_php) it may return the fields of
+     * what it read, which can run up to one 16 KiB read past the limit. The
+     * raw body stays readable, so RawBody then marks the request. A multipart body is parsed under PHP's
      * own post_max_size, because the limit does not apply to its files.
      *
      * @param  ServerRequestInterface                                              $request Request built from the globals, before its body is read
