@@ -57,7 +57,11 @@
                 // and raised flags, which ValidationResult::hasFlag() reads only
                 // through isset(). Neither method holds another true literal.
                 "Sloop\\Validation\\Validator::__construct",
-                "Sloop\\Validation\\Validator::validate"
+                "Sloop\\Validation\\Validator::validate",
+                // CsrfMiddleware::__construct builds the set of trusted origins,
+                // which isTrusted() reads only through isset(). Pinned to the
+                // line: the true passed to configuredOrigin() above it is killed.
+                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct::93"
             ]
         },
         "LogicalOrAllSubExprNegation": {
@@ -187,8 +191,8 @@
             // written to the log.
             "ignore": [
                 "Sloop\\Database\\Connection::shouldMeasureElapsed",
-                // Application::createServerRequestFromGlobals::995: see NotIdentical.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::995"
+                // Application::createServerRequestFromGlobals::1029: see NotIdentical.
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1029"
             ]
         },
         "Plus": {
@@ -199,7 +203,7 @@
         },
         "NotIdentical": {
             // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
-            // Application::createServerRequestFromGlobals::995 attaches the raw body
+            // Application::createServerRequestFromGlobals::1029 attaches the raw body
             // read from php://input, which a PHPUnit process cannot fill: it is
             // always '' there, so every change to the condition gives the same
             // request. No mutant on the line is killed, so the pin hides nothing
@@ -210,20 +214,20 @@
             // with the same result; only the work differs.
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::448",
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::995",
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1029",
                 "Sloop\\Validation\\LimitInFrame::in::71"
             ]
         },
         "LogicalAndNegation": {
-            // Application::createServerRequestFromGlobals::995: see NotIdentical.
+            // Application::createServerRequestFromGlobals::1029: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::995"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1029"
             ]
         },
         "LogicalAndAllSubExprNegation": {
-            // Application::createServerRequestFromGlobals::995: see NotIdentical.
+            // Application::createServerRequestFromGlobals::1029: see NotIdentical.
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::995"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1029"
             ]
         },
         "UnwrapSubstr": {
@@ -324,6 +328,14 @@
             // Same segment-shape argument as PregMatchRemoveCaret above.
             "ignore": [
                 "Sloop\\Routing\\Route::compilePattern"
+            ]
+        },
+        "PregMatchRemoveFlags": {
+            // CsrfMiddleware::isCanonicalHost checks a host from parse_url(),
+            // which replaces control characters with "_", so the host never
+            // ends in a line feed and `$` without /D matches the same hosts.
+            "ignore": [
+                "Sloop\\Http\\Middleware\\CsrfMiddleware::isCanonicalHost::298"
             ]
         },
         "Concat": {
@@ -435,7 +447,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::189",
+                "Sloop\\Foundation\\Application::dispatchRoute::191",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.

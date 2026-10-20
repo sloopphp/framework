@@ -33,6 +33,7 @@ use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
+use Sloop\Http\Middleware\CsrfMiddleware;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Middleware\SecurityHeadersMiddleware;
 use Sloop\Http\Request\FormBody;
@@ -108,6 +109,7 @@ final class Application implements RequestHandlerInterface
         $this->bootSigning();
         $this->bootHashing();
         $this->securityHeaders = $this->bootSecurityHeaders();
+        $this->bootCsrf();
         $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
@@ -710,7 +712,7 @@ final class Application implements RequestHandlerInterface
      */
     private function bootSecurityHeaders(): SecurityHeadersMiddleware
     {
-        $this->assertConfigSection('security', ['headers']);
+        $this->assertConfigSection('security', ['headers', 'csrf']);
 
         $headers = (Config::isLoaded() ? Config::get('security.headers') : null) ?? [];
         if (!\is_array($headers)) {
@@ -728,6 +730,38 @@ final class Application implements RequestHandlerInterface
         $this->container->instance(SecurityHeadersMiddleware::class, $middleware);
 
         return $middleware;
+    }
+
+    /**
+     * Register the CSRF middleware built from security.csrf, checking every entry now.
+     *
+     * The middleware runs only where the application lists it, in
+     * config/middleware.php or on a route; both resolve this instance.
+     *
+     * @return void
+     * @throws InvalidConfigException If security.csrf has an unsupported key, origin is not a string or null, trusted_origins is not a list of strings, or an origin is malformed
+     */
+    private function bootCsrf(): void
+    {
+        $this->assertConfigSection('security.csrf', ['origin', 'trusted_origins']);
+
+        $origin = Config::isLoaded() ? Config::get('security.csrf.origin') : null;
+        if ($origin !== null && !\is_string($origin)) {
+            throw new InvalidConfigException('security.csrf.origin must be a string or null.');
+        }
+
+        $trusted = (Config::isLoaded() ? Config::get('security.csrf.trusted_origins') : null) ?? [];
+        if (!\is_array($trusted) || !array_is_list($trusted) || array_filter($trusted, \is_string(...)) !== $trusted) {
+            throw new InvalidConfigException('security.csrf.trusted_origins must be a list of origins.');
+        }
+
+        try {
+            $middleware = new CsrfMiddleware($origin, $trusted);
+        } catch (\InvalidArgumentException $e) {
+            throw new InvalidConfigException('security.csrf: ' . $e->getMessage(), previous: $e);
+        }
+
+        $this->container->instance(CsrfMiddleware::class, $middleware);
     }
 
     /**
