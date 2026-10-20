@@ -44,6 +44,25 @@ abstract class ArrayRule extends FieldRule
     }
 
     /**
+     * Whether validating an array value of this field reads its elements.
+     *
+     * A value over the field's own count limit fails before any element is
+     * read, unless an array sanitizer, which runs first, could shrink it.
+     *
+     * @internal Read by ValidatedRequest, which puts in index order only the part of the input the Validator reads.
+     *
+     * @param  array<array-key, mixed> $value Array sent for this field
+     * @return bool
+     */
+    #[\Override]
+    public function readsElementsOf(array $value): bool
+    {
+        $limit = $this->countLimit();
+
+        return $this->arraySanitizers !== [] || $limit === null || \count($value) <= $limit;
+    }
+
+    /**
      * Whether an array sanitizer given as a closure can reshape the value before its elements or keys are validated.
      *
      * The rules of what the field holds then cannot be told from where a value

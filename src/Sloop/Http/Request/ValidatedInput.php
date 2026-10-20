@@ -71,7 +71,7 @@ final class ValidatedInput
             }
 
             if ($sent) {
-                $input[$field] = self::inIndexOrder($value);
+                $input[$field] = self::inIndexOrder($value, $rule);
             }
         }
 
@@ -174,31 +174,41 @@ final class ValidatedInput
      *
      * The elements of a list then follow the indexes the client sent, whether
      * a row arrived in the body, in the files, or in both; their positions are
-     * still counted from 0 afterwards, as Rule::list() does. A level already
-     * in order is returned as it came, not copied, since the value can hold
-     * far more than the rule reads (keys a shape drops, elements past
-     * maxCount()).
+     * still counted from 0 afterwards, as Rule::list() does. Only the part the
+     * Validator reads is ordered, as the input can hold far more than that: a
+     * key a shape drops, the elements of a list over its own count limit, or
+     * an array where the rule holds no array, is left as it came, and a level
+     * already in order is not copied. Below a list or a shape whose array
+     * sanitizer is a closure, and inside Rule::array(), every level is
+     * ordered.
      *
-     * @param  mixed $value Value to order
+     * @param  mixed                           $value Value to order
+     * @param  FieldRule<covariant mixed>|null $rule  Rule at this place, or null where none is declared
      * @return mixed
      */
-    private static function inIndexOrder(mixed $value): mixed
+    private static function inIndexOrder(mixed $value, ?FieldRule $rule): mixed
     {
-        if (!\is_array($value)) {
+        if (!\is_array($value) || ($rule !== null && !$rule->readsElementsOf($value))) {
             return $value;
         }
         $numbered = true;
+        $dropped  = false;
         foreach ($value as $key => $part) {
             $numbered = $numbered && \is_int($key);
+            if ($rule !== null && $rule->dropsKey($key)) {
+                $dropped = true;
+                continue;
+            }
             if (!\is_array($part)) {
                 continue;
             }
-            $ordered = self::inIndexOrder($part);
+            $ordered = self::inIndexOrder($part, $rule?->childRule($key));
             if ($ordered !== $part) {
                 $value[$key] = $ordered;
             }
         }
-        if ($numbered && !array_is_list($value)) {
+        // A level holding a key the rule drops is a shape, whose keys are names, not positions.
+        if ($numbered && !$dropped && !array_is_list($value)) {
             ksort($value);
         }
 

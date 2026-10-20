@@ -918,6 +918,19 @@ abstract class FieldRule
     }
 
     /**
+     * Whether validating an array value of this field reads its elements: no for a type that holds no array, nor for one whose own count rule fails first.
+     *
+     * @internal Read by ValidatedRequest, which puts in index order only the part of the input the Validator reads.
+     *
+     * @param  array<array-key, mixed> $value Array sent for this field
+     * @return bool
+     */
+    public function readsElementsOf(array $value): bool
+    {
+        return false;
+    }
+
+    /**
      * Whether the validated value can be null: the field is neither required() nor given a default().
      *
      * @internal Read by ValidatedRequest, whose property for such a field must accept null.
@@ -979,6 +992,28 @@ abstract class FieldRule
         }
 
         return false;
+    }
+
+    /**
+     * The smallest number of elements maxCount(), exactCount() or betweenCount() declared on the field itself allows.
+     *
+     * @return int|null Null when none of them was declared
+     */
+    protected function countLimit(): ?int
+    {
+        $limit = null;
+        foreach ($this->sizeChecks as $check) {
+            $bound = match ($check->rule) {
+                'maxCount', 'betweenCount' => $check->params['max'] ?? null,
+                'exactCount'               => $check->params['count'] ?? null,
+                default                    => null,
+            };
+            if (\is_int($bound) && ($limit === null || $bound < $limit)) {
+                $limit = $bound;
+            }
+        }
+
+        return $limit;
     }
 
     /**
