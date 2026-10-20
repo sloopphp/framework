@@ -130,7 +130,7 @@ final class ValidatedInput
         }
         $kept = self::withoutDroppedKeys($file, $rule);
         if ($kept === []) {
-            // A file half holding no file, or only keys the rule drops, has nothing to merge.
+            // An empty file half, or one holding only keys the rule drops, has nothing to merge.
             return [true, $form];
         }
         if (!\is_array($form)) {
