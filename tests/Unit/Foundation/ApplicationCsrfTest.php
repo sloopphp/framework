@@ -172,7 +172,7 @@ final class ApplicationCsrfTest extends TestCase
             'trusted with string keys'  => ["['csrf' => ['trusted_origins' => ['app' => 'https://app.example']]]", 'security.csrf.trusted_origins must be a list of origins.'],
             'trusted with a non-string' => ["['csrf' => ['trusted_origins' => ['https://app.example', null]]]", 'security.csrf.trusted_origins must be a list of origins.'],
             'malformed origin'          => ["['csrf' => ['origin' => 'https://example.org/']]", 'security.csrf: The origin "https://example.org/" must be written as scheme://host or scheme://host:port with http or https and no path.'],
-            'malformed trusted origin'  => ["['csrf' => ['trusted_origins' => ['null']]]", 'security.csrf: The origin "null" must be written as scheme://host or scheme://host:port with http or https and no path.'],
+            'malformed trusted origin'  => ["['csrf' => ['trusted_origins' => ['null']]]", 'security.csrf: The origin "null" must be written as scheme://host or scheme://host:port and no path.'],
         ];
     }
 

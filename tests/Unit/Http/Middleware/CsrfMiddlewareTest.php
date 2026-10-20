@@ -100,6 +100,11 @@ final class CsrfMiddlewareTest extends TestCase
             'Referer of another host'                    => [['Referer' => 'https://attacker.example/?https://example.org', 'Host' => 'example.org']],
             'no Host'                                    => [['Origin' => 'https://example.org']],
             'two Host values'                            => [['Origin' => 'https://example.org', 'Host' => ['example.org', 'attacker.example']]],
+            'Origin with a path'                         => [['Origin' => 'https://example.org/', 'Host' => 'example.org']],
+            'Origin with user info before the host'      => [['Origin' => 'https://attacker.example\@example.org', 'Host' => 'example.org']],
+            'Referer with user info before the host'     => [['Referer' => 'https://attacker.example:443@example.org/', 'Host' => 'example.org']],
+            'Host with user info'                        => [['Origin' => 'https://example.org', 'Host' => 'attacker.example@example.org']],
+            'Host with a path'                           => [['Origin' => 'https://example.org', 'Host' => 'example.org/x']],
         ];
     }
 
@@ -298,43 +303,121 @@ final class CsrfMiddlewareTest extends TestCase
     }
 
     /**
-     * @return array<string, array{string, string}>
+     * @return array<string, array{string}>
      */
-    public static function malformedOriginProvider(): array
+    public static function misshapenOriginProvider(): array
     {
-        $shape = '" must be written as scheme://host or scheme://host:port with http or https and no path.';
-
         return [
-            'null'            => ['null', 'The origin "null' . $shape],
-            'no scheme'       => ['example.org', 'The origin "example.org' . $shape],
-            'other scheme'    => ['ftp://example.org', 'The origin "ftp://example.org' . $shape],
-            'trailing slash'  => ['https://example.org/', 'The origin "https://example.org/' . $shape],
-            'path'            => ['https://example.org/app', 'The origin "https://example.org/app' . $shape],
-            'query'           => ['https://example.org?a', 'The origin "https://example.org?a' . $shape],
-            'user info'       => ['https://user@example.org', 'The origin "https://user@example.org' . $shape],
-            'empty'           => ['', 'The origin "' . $shape],
-            'default https'   => ['https://example.org:443', 'The origin "https://example.org:443" must leave out the default port 443.'],
-            'default http'    => ['http://example.org:80', 'The origin "http://example.org:80" must leave out the default port 80.'],
+            'null'           => ['null'],
+            'no scheme'      => ['example.org'],
+            'trailing slash' => ['https://example.org/'],
+            'path'           => ['https://example.org/app'],
+            'query'          => ['https://example.org?a'],
+            'user info'      => ['https://user@example.org'],
+            'empty'          => [''],
         ];
     }
 
-    #[DataProvider('malformedOriginProvider')]
-    public function testRejectsAMalformedConfiguredOrigin(string $origin, string $message): void
+    #[DataProvider('misshapenOriginProvider')]
+    public function testRejectsAMisshapenConfiguredOrigin(string $origin): void
     {
         $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware($origin));
 
-        $this->assertSame($message, $e->getMessage());
+        $this->assertSame(
+            'The origin "' . $origin . '" must be written as scheme://host or scheme://host:port with http or https and no path.',
+            $e->getMessage(),
+        );
     }
 
-    #[DataProvider('malformedOriginProvider')]
-    public function testRejectsAMalformedTrustedOrigin(string $origin, string $message): void
+    #[DataProvider('misshapenOriginProvider')]
+    public function testRejectsAMisshapenTrustedOrigin(string $origin): void
     {
         $e = $this->assertThrows(
             \InvalidArgumentException::class,
             static fn () => new CsrfMiddleware(null, ['https://app.example', $origin]),
         );
 
-        $this->assertSame($message, $e->getMessage());
+        $this->assertSame('The origin "' . $origin . '" must be written as scheme://host or scheme://host:port and no path.', $e->getMessage());
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function unsendableOriginProvider(): array
+    {
+        $host = ' must write its host as browsers send it: ASCII letters, digits and hyphens (punycode for an'
+            . ' international name), a dotted IPv4 address or a compressed IPv6 address.';
+
+        return [
+            'international host'       => ['https://bücher.example', $host],
+            'space in the host'        => ['https://exa mple.org', $host],
+            'escaped host'             => ['https://exa%20mple.org', $host],
+            'hyphen at a label end'    => ['https://example-.org', $host],
+            'uncompressed IPv6'        => ['http://[0:0::1]:8080', $host],
+            'IPv6 with a stray letter' => ['http://[::1x]', $host],
+            'IPv4 in brackets'         => ['http://[192.0.2.1]', $host],
+            'unclosed bracket'         => ['http://[::1:8080', $host],
+            'short IPv4'               => ['http://127.1', $host],
+            'IPv4 with a leading zero' => ['http://127.0.0.01', $host],
+            'number as the last label' => ['https://example.123', $host],
+            'default https'            => ['https://example.org:443', ' must leave out the default port 443.'],
+            'default http'             => ['http://example.org:80', ' must leave out the default port 80.'],
+        ];
+    }
+
+    #[DataProvider('unsendableOriginProvider')]
+    public function testRejectsAConfiguredOriginBrowsersCannotSend(string $origin, string $reason): void
+    {
+        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware($origin));
+
+        $this->assertSame('The origin "' . $origin . '"' . $reason, $e->getMessage());
+    }
+
+    #[DataProvider('unsendableOriginProvider')]
+    public function testRejectsATrustedOriginBrowsersCannotSend(string $origin, string $reason): void
+    {
+        $e = $this->assertThrows(
+            \InvalidArgumentException::class,
+            static fn () => new CsrfMiddleware(null, ['https://app.example', $origin]),
+        );
+
+        $this->assertSame('The origin "' . $origin . '"' . $reason, $e->getMessage());
+    }
+
+    public function testRejectsAnOwnOriginWithASchemeOtherThanHttpOrHttps(): void
+    {
+        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware('capacitor://localhost'));
+
+        $this->assertSame(
+            'The origin "capacitor://localhost" must be written as scheme://host or scheme://host:port with http or https and no path.',
+            $e->getMessage(),
+        );
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function canonicalTrustedOriginProvider(): array
+    {
+        return [
+            'another scheme'                => ['capacitor://localhost', 'capacitor://localhost'],
+            'another scheme with a port 443' => ['app://example.org:443', 'app://example.org:443'],
+            'uppercase'                     => ['HTTPS://App.Example', 'https://app.example'],
+            'punycode'                      => ['https://xn--bcher-kva.example', 'https://xn--bcher-kva.example'],
+            'label starting with a digit'   => ['https://1password.example', 'https://1password.example'],
+            'IPv4'                          => ['http://192.0.2.1:8080', 'http://192.0.2.1:8080'],
+            'IPv6'                          => ['http://[2001:db8::1]', 'http://[2001:db8::1]'],
+            'trailing dot'                  => ['https://example.org.', 'https://example.org.'],
+        ];
+    }
+
+    #[DataProvider('canonicalTrustedOriginProvider')]
+    public function testPassesACrossSiteRequestFromATrustedOriginWrittenAsBrowsersSendIt(string $trusted, string $sent): void
+    {
+        $response = new CsrfMiddleware(null, [$trusted])
+            ->process($this->request('POST', ['Sec-Fetch-Site' => 'cross-site', 'Origin' => $sent]), $this->handler());
+
+        $this->assertSame(200, $response->getStatusCode());
     }
 
     public function testAcceptsAnOriginWithANonDefaultPort(): void

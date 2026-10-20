@@ -59,9 +59,9 @@
                 "Sloop\\Validation\\Validator::__construct",
                 "Sloop\\Validation\\Validator::validate",
                 // CsrfMiddleware::__construct builds the set of trusted origins,
-                // which isTrusted() reads only through isset(). The method holds
-                // no other true literal.
-                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct"
+                // which isTrusted() reads only through isset(). Pinned to the
+                // line: the true passed to configuredOrigin() above it is killed.
+                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct::93"
             ]
         },
         "LogicalOrAllSubExprNegation": {
@@ -328,6 +328,14 @@
             // Same segment-shape argument as PregMatchRemoveCaret above.
             "ignore": [
                 "Sloop\\Routing\\Route::compilePattern"
+            ]
+        },
+        "PregMatchRemoveFlags": {
+            // CsrfMiddleware::isCanonicalHost checks a host from parse_url(),
+            // which replaces control characters with "_", so the host never
+            // ends in a line feed and `$` without /D matches the same hosts.
+            "ignore": [
+                "Sloop\\Http\\Middleware\\CsrfMiddleware::isCanonicalHost::298"
             ]
         },
         "Concat": {

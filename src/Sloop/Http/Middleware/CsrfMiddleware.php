@@ -37,6 +37,27 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
     private const array DEFAULT_PORTS = ['http' => 80, 'https' => 443];
 
     /**
+     * URL parts an Origin header has.
+     *
+     * @var list<string>
+     */
+    private const array ORIGIN_PARTS = ['scheme', 'host', 'port'];
+
+    /**
+     * URL parts a Referer header may have; browsers leave out user info.
+     *
+     * @var list<string>
+     */
+    private const array REFERER_PARTS = ['scheme', 'host', 'port', 'path', 'query', 'fragment'];
+
+    /**
+     * URL parts a Host header has, read as //host[:port].
+     *
+     * @var list<string>
+     */
+    private const array HOST_PARTS = ['host', 'port'];
+
+    /**
      * Origin of the application, or null to compare with the Host header.
      *
      * @var array{scheme: string, host: string, port: int|null}|null
@@ -53,9 +74,11 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
     /**
      * Create the middleware.
      *
-     * Each origin is written as scheme://host or scheme://host:port with the
-     * scheme http or https and without the default port, the way browsers send
-     * the Origin header.
+     * Each origin is written as scheme://host or scheme://host:port the way
+     * browsers send the Origin header: an ASCII host (punycode for an
+     * international name, four decimal parts for IPv4, compressed IPv6) and no
+     * default port. The application's own origin uses http or https; a trusted
+     * origin may use another scheme (capacitor://localhost).
      *
      * @param  string|null               $origin         Origin of the application; null compares the host and port of the Host header instead
      * @param  list<string>              $trustedOrigins Origins allowed to send cross-site requests
@@ -63,11 +86,11 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
      */
     public function __construct(?string $origin = null, array $trustedOrigins = [])
     {
-        $this->origin = $origin === null ? null : self::configuredOrigin($origin);
+        $this->origin = $origin === null ? null : self::configuredOrigin($origin, true);
 
         $trusted = [];
         foreach ($trustedOrigins as $trustedOrigin) {
-            $trusted[self::serialize(self::configuredOrigin($trustedOrigin))] = true;
+            $trusted[self::serialize(self::configuredOrigin($trustedOrigin, false))] = true;
         }
 
         $this->trustedOrigins = $trusted;
@@ -110,15 +133,15 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
         if ($site !== []) {
             return match ($site) {
                 ['same-origin'], ['none']  => true,
-                ['same-site'], ['cross-site'] => $this->isTrusted(self::singleOrigin($request, 'Origin')),
+                ['same-site'], ['cross-site'] => $this->isTrusted(self::singleOrigin($request, 'Origin', self::ORIGIN_PARTS)),
                 // Two values or one the specification does not define.
                 default => false,
             };
         }
 
         $source = $request->hasHeader('Origin')
-            ? self::singleOrigin($request, 'Origin')
-            : self::singleOrigin($request, 'Referer');
+            ? self::singleOrigin($request, 'Origin', self::ORIGIN_PARTS)
+            : self::singleOrigin($request, 'Referer', self::REFERER_PARTS);
 
         return $this->isTrusted($source) || $this->isOwnOrigin($request, $source);
     }
@@ -159,7 +182,7 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
             return false;
         }
 
-        $target = self::parse('//' . $host[0]);
+        $target = self::parse('//' . $host[0], self::HOST_PARTS);
 
         return $target !== null && $target['host'] === $source['host'] && $target['port'] === $source['port'];
     }
@@ -169,16 +192,17 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
      *
      * @param  ServerRequestInterface                                   $request Incoming request
      * @param  string                                                   $name    Header name (Origin or Referer)
-     * @return array{scheme: string, host: string, port: int|null}|null Null when the header is missing, repeated, "null" or has no scheme and host
+     * @param  list<string>                                             $parts   URL parts the header may have
+     * @return array{scheme: string, host: string, port: int|null}|null Null when the header is missing, repeated, "null", has no scheme and host or has another part
      */
-    private static function singleOrigin(ServerRequestInterface $request, string $name): ?array
+    private static function singleOrigin(ServerRequestInterface $request, string $name, array $parts): ?array
     {
         $values = $request->getHeader($name);
         if (\count($values) !== 1) {
             return null;
         }
 
-        $origin = self::parse($values[0]);
+        $origin = self::parse($values[0], $parts);
 
         return $origin === null || $origin['scheme'] === '' ? null : $origin;
     }
@@ -186,20 +210,29 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
     /**
      * Split a URL into its lowercased scheme and host and its port.
      *
-     * @param  string                                                   $url URL, or //host[:port] for a Host header
-     * @return array{scheme: string, host: string, port: int|null}|null Null when it has no host
+     * A URL with a part outside the given ones (user info in an Origin, a
+     * path in a Host header) is not something a browser sends, so it gives null.
+     *
+     * @param  string                                                   $url   URL, or //host[:port] for a Host header
+     * @param  list<string>                                             $parts URL parts allowed besides the host
+     * @return array{scheme: string, host: string, port: int|null}|null Null when it has no host or has another part
      */
-    private static function parse(string $url): ?array
+    private static function parse(string $url, array $parts): ?array
     {
-        $parts = parse_url($url);
-        if ($parts === false || !isset($parts['host']) || $parts['host'] === '') {
+        $found = parse_url($url);
+        if (
+            $found === false
+            || !isset($found['host'])
+            || $found['host'] === ''
+            || array_diff(array_keys($found), $parts) !== []
+        ) {
             return null;
         }
 
         return [
-            'scheme' => strtolower($parts['scheme'] ?? ''),
-            'host'   => strtolower($parts['host']),
-            'port'   => $parts['port'] ?? null,
+            'scheme' => strtolower($found['scheme'] ?? ''),
+            'host'   => strtolower($found['host']),
+            'port'   => $found['port'] ?? null,
         ];
     }
 
@@ -207,34 +240,62 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
      * Parse an origin given in the configuration, checking that a browser can send it.
      *
      * @param  string                                              $origin Origin as written
+     * @param  bool                                                $web    Whether the scheme must be http or https (the application's own origin)
      * @return array{scheme: string, host: string, port: int|null}
-     * @throws \InvalidArgumentException                           If it is not scheme://host[:port] with http or https, or names the scheme's default port
+     * @throws \InvalidArgumentException                           If it is not scheme://host[:port], the scheme is not http or https when required, the host is not written as browsers send it, or it names the scheme's default port
      */
-    private static function configuredOrigin(string $origin): array
+    private static function configuredOrigin(string $origin, bool $web): array
     {
-        $parts  = parse_url($origin);
-        $parsed = self::parse($origin);
-
-        if (
-            $parts === false
-            || $parsed === null
-            || !isset(self::DEFAULT_PORTS[$parsed['scheme']])
-            || array_diff(array_keys($parts), ['scheme', 'host', 'port']) !== []
-        ) {
+        $parsed = self::parse($origin, self::ORIGIN_PARTS);
+        if ($parsed === null || $parsed['scheme'] === '' || ($web && !isset(self::DEFAULT_PORTS[$parsed['scheme']]))) {
             throw new \InvalidArgumentException(
-                'The origin "' . $origin . '" must be written as scheme://host or scheme://host:port with http or https and no path.',
+                'The origin "' . $origin . '" must be written as scheme://host or scheme://host:port'
+                    . ($web ? ' with http or https' : '') . ' and no path.',
+            );
+        }
+
+        if (!self::isCanonicalHost($parsed['host'])) {
+            throw new \InvalidArgumentException(
+                'The origin "' . $origin . '" must write its host as browsers send it: ASCII letters, digits and'
+                    . ' hyphens (punycode for an international name), a dotted IPv4 address or a compressed IPv6 address.',
             );
         }
 
         // Browsers leave the default port out of the Origin header, so an
         // origin naming it would never match.
-        if ($parsed['port'] === self::DEFAULT_PORTS[$parsed['scheme']]) {
+        if ($parsed['port'] !== null && $parsed['port'] === (self::DEFAULT_PORTS[$parsed['scheme']] ?? null)) {
             throw new \InvalidArgumentException(
                 'The origin "' . $origin . '" must leave out the default port ' . $parsed['port'] . '.',
             );
         }
 
         return $parsed;
+    }
+
+    /**
+     * Check that a lowercased host is written the way browsers serialize it in an Origin header.
+     *
+     * @param  string $host Lowercased host
+     * @return bool
+     */
+    private static function isCanonicalHost(string $host): bool
+    {
+        if (str_starts_with($host, '[')) {
+            $address = substr($host, 1, -1);
+            $packed  = str_ends_with($host, ']') ? inet_pton($address) : false;
+
+            return $packed !== false && \strlen($packed) === 16 && inet_ntop($packed) === $address;
+        }
+
+        // Browsers read a host whose last label is a number as an IPv4 address
+        // and write it back as four decimal parts.
+        if (preg_match('/(?:^|\.)\d+\.?$/', $host) === 1) {
+            $packed = inet_pton($host);
+
+            return $packed !== false && \strlen($packed) === 4 && inet_ntop($packed) === $host;
+        }
+
+        return preg_match('/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.?$/D', $host) === 1;
     }
 
     /**
