@@ -229,16 +229,28 @@ final class FormBodyTest extends TestCase
         $this->assertSame($expected, $given->getArrayCopy());
     }
 
-    public function testKeepsTheWarningThatTheBodyIsOverTheLimitOutOfTheOutput(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function overLimitWarningProvider(): array
+    {
+        return [
+            'with a Content-Length'    => ['POST Content-Length of 3002 bytes exceeds the limit of 100 bytes'],
+            'without a Content-Length' => ['Actual POST length does not match Content-Length, and exceeds 100 bytes'],
+        ];
+    }
+
+    #[DataProvider('overLimitWarningProvider')]
+    public function testKeepsTheWarningThatTheBodyIsOverTheLimitOutOfTheOutput(string $warning): void
     {
         error_clear_last();
 
         $request = FormBody::parse(
             $this->request('PUT', 'application/x-www-form-urlencoded'),
-            static function (): array {
+            static function () use ($warning): array {
                 // A warning whose message carries the words request_parse_body()
                 // uses when the body is over post_max_size.
-                file_get_contents('/nonexistent/POST Content-Length of 3002 bytes exceeds the limit');
+                file_get_contents('/nonexistent/' . $warning);
 
                 return [[], []];
             },

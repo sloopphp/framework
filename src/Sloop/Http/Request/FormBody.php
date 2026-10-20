@@ -60,9 +60,11 @@ final class FormBody
      * there once something else has read it, so this runs before the raw body
      * is read.
      *
-     * An urlencoded body longer than the limit is not parsed: the parser is
-     * given the limit as its post_max_size, returns no values and warns, and
-     * the warning is kept out of the output. The raw body stays readable, so
+     * An urlencoded body longer than the limit is not parsed in full: the
+     * parser is given the limit as its post_max_size and warns, and the
+     * warning is kept out of the output. With a Content-Length it returns no
+     * values; without one (chunked under mod_php) it may return what it read
+     * up to the limit. The raw body stays readable, so
      * RawBody then marks the request. A multipart body is parsed under PHP's
      * own post_max_size, because the limit does not apply to its files.
      *
@@ -83,10 +85,12 @@ final class FormBody
 
         // The parser warns, instead of throwing, when an urlencoded body is
         // over post_max_size; with display_errors on, the warning would come
-        // before the response. Only that warning is kept back: another one
+        // before the response. Only those warnings are kept back, one for a
+        // body with a Content-Length and one for a body without; another one
         // (input variables over max_input_vars) still reaches PHP's handler.
         set_error_handler(
-            static fn (int $errno, string $message): bool => str_contains($message, 'POST Content-Length of'),
+            static fn (int $errno, string $message): bool => str_contains($message, 'POST Content-Length of')
+                || str_contains($message, 'Actual POST length does not match Content-Length'),
             \E_WARNING,
         );
         try {
