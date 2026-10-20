@@ -287,9 +287,9 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
             return $packed !== false && \strlen($packed) === 16 && inet_ntop($packed) === $address;
         }
 
-        // Browsers read a host whose last label is a number as an IPv4 address
-        // and write it back as four decimal parts.
-        if (preg_match('/(?:^|\.)\d+\.?$/', $host) === 1) {
+        // Browsers read a host whose last label is a number (decimal, or 0x and
+        // hex digits) as an IPv4 address and write it back as four decimal parts.
+        if (preg_match('/(?:^|\.)(?:\d+|0x[0-9a-f]*)\.?$/', $host) === 1) {
             $packed = inet_pton($host);
 
             return $packed !== false && \strlen($packed) === 4 && inet_ntop($packed) === $host;

@@ -360,6 +360,8 @@ final class CsrfMiddlewareTest extends TestCase
             'short IPv4'               => ['http://127.1', $host],
             'IPv4 with a leading zero' => ['http://127.0.0.01', $host],
             'number as the last label' => ['https://example.123', $host],
+            'hex IPv4'                 => ['http://0x7f000001', $host],
+            'hex as the last label'    => ['https://example.0x', $host],
             'default https'            => ['https://example.org:443', ' must leave out the default port 443.'],
             'default http'             => ['http://example.org:80', ' must leave out the default port 80.'],
         ];
