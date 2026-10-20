@@ -897,7 +897,7 @@ abstract class FieldRule
      * @internal Read by ValidatedRequest, which merges the body and the uploaded files key by key.
      *
      * @param  int|string                      $key Key inside the value
-     * @return FieldRule<covariant mixed>|null Null when this field declares no rules for what it holds there
+     * @return FieldRule<covariant mixed>|null Null when this field declares no rules for what it holds there, or when an array sanitizer closure can reshape the value first
      */
     public function childRule(int|string $key): ?FieldRule
     {
@@ -905,7 +905,7 @@ abstract class FieldRule
     }
 
     /**
-     * Whether validating this field drops what it holds at a key: a key a shape does not declare.
+     * Whether a key can be left out when the body and the uploaded files are merged: one a shape does not declare, unless an array sanitizer closure can rename the keys first.
      *
      * @internal Read by ValidatedRequest, which does not merge from the uploaded files a key the rules drop.
      *
