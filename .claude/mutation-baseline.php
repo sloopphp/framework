@@ -791,23 +791,22 @@ final class MutationBaseline
     }
 
     /**
-     * Read the committed baseline as occurrence counts per identity.
+     * Read the committed baseline.
      *
-     * @param  string             $path Absolute path to the baseline file
-     * @return array<string, int> Allowed occurrence count per key
-     * @throws \RuntimeException  When the baseline is missing or unusable
+     * @param  string            $path Absolute path to the baseline file
+     * @return list<Mutant>      Allowed mutants, in the order the file lists them
+     * @throws \RuntimeException When the baseline is missing or unusable
      */
-    private static function readBaselineCounts(string $path): array
+    private static function readBaseline(string $path): array
     {
         $baseline = Json::readFile($path, 'Create it once with: .claude/mutation-baseline.php --update');
 
-        $counts = [];
+        $mutants = [];
         foreach (Json::asArray($baseline['allowed'] ?? null) as $entry) {
-            $key          = Mutant::fromBaselineEntry(Json::asArray($entry))->key();
-            $counts[$key] = ($counts[$key] ?? 0) + 1;
+            $mutants[] = Mutant::fromBaselineEntry(Json::asArray($entry));
         }
 
-        return $counts;
+        return $mutants;
     }
 
     /**
@@ -868,13 +867,9 @@ final class MutationBaseline
      */
     private static function check(string $path, array $allowed): int
     {
-        $baselineCounts = self::readBaselineCounts($path);
-        $allowedCounts  = self::countByKey($allowed);
-        $resolved       = \count(array_diff_key($baselineCounts, $allowedCounts));
-        if ($resolved > 0) {
-            echo $resolved, ' baseline entries no longer survive.', \PHP_EOL,
-            'Shrink the baseline with --update once the run is stable.', \PHP_EOL, \PHP_EOL;
-        }
+        $baseline       = self::readBaseline($path);
+        $baselineCounts = self::countByKey($baseline);
+        self::reportResolved($baseline, self::countByKey($allowed));
 
         // Compared by occurrence count, not by presence: a second identical
         // mutant in the same method is a regression even when the first one
@@ -910,6 +905,43 @@ final class MutationBaseline
         'so the baseline is where they belong, with the reason written down.', \PHP_EOL;
 
         return 1;
+    }
+
+    /**
+     * List the baseline entries that did not survive the latest run.
+     *
+     * Counted by occurrence, as the regression check is: when the baseline
+     * holds the same mutant twice and only one survived, the other is listed.
+     * Named, not only counted: resolved entries alone do not fail the run, so
+     * a count gives no lead on which entries to drop or which test now kills
+     * them.
+     *
+     * @param  list<Mutant>       $baseline      Mutants the baseline allows
+     * @param  array<string, int> $allowedCounts Occurrence count per key in the latest run
+     * @return void
+     */
+    private static function reportResolved(array $baseline, array $allowedCounts): void
+    {
+        $seen     = [];
+        $resolved = [];
+        foreach ($baseline as $mutant) {
+            $key        = $mutant->key();
+            $seen[$key] = ($seen[$key] ?? 0) + 1;
+            if ($seen[$key] > ($allowedCounts[$key] ?? 0)) {
+                $resolved[] = $mutant;
+            }
+        }
+
+        if ($resolved === []) {
+            return;
+        }
+
+        echo \count($resolved), ' baseline entries no longer survive:', \PHP_EOL, \PHP_EOL;
+        foreach ($resolved as $mutant) {
+            echo $mutant->describe(), \PHP_EOL, \PHP_EOL;
+        }
+
+        echo 'Shrink the baseline with --update once the run is stable.', \PHP_EOL, \PHP_EOL;
     }
 
     /**
