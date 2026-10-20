@@ -46,7 +46,7 @@ final class ValidatedRequestShape
      *
      * @param  class-string<ValidatedRequest> $class Subclass
      * @return self
-     * @throws LogicException                 When the class cannot be instantiated, has no rules() method, or declares a property that is not a typed `public private(set)` one or gives one an initial value other than null
+     * @throws LogicException                 When the class cannot be instantiated, has no rules() method or a static one, or declares a property that is not a typed `public private(set)` one or gives one an initial value other than null
      * @throws ReflectionException            When the class cannot be reflected
      */
     public static function of(string $class): self
@@ -59,7 +59,7 @@ final class ValidatedRequestShape
      *
      * @param  class-string<ValidatedRequest> $class Subclass
      * @return self
-     * @throws LogicException                 When the class cannot be instantiated, has no rules() method, or declares a property that is not a typed `public private(set)` one or gives one an initial value other than null
+     * @throws LogicException                 When the class cannot be instantiated, has no rules() method or a static one, or declares a property that is not a typed `public private(set)` one or gives one an initial value other than null
      * @throws ReflectionException            When the class cannot be reflected
      */
     private static function read(string $class): self
