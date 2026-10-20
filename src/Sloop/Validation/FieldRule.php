@@ -918,19 +918,6 @@ abstract class FieldRule
     }
 
     /**
-     * Whether ValidatedRequest puts an array value of this field in index order and descends into it: only where a declaration bounds how much it holds.
-     *
-     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering takes no more memory than validating.
-     *
-     * @param  array<array-key, mixed> $value Array sent for this field
-     * @return bool
-     */
-    public function ordersElementsOf(array $value): bool
-    {
-        return false;
-    }
-
-    /**
      * Whether the validated value can be null: the field is neither required() nor given a default().
      *
      * @internal Read by ValidatedRequest, whose property for such a field must accept null.
@@ -985,29 +972,13 @@ abstract class FieldRule
      */
     protected function boundsCount(): bool
     {
-        return $this->countLimit() !== null;
-    }
-
-    /**
-     * The smallest number of elements maxCount(), exactCount() or betweenCount() declared on the field itself allows.
-     *
-     * @return int|null Null when none of them was declared
-     */
-    protected function countLimit(): ?int
-    {
-        $limit = null;
         foreach ($this->sizeChecks as $check) {
-            $bound = match ($check->rule) {
-                'maxCount', 'betweenCount' => $check->params['max'] ?? null,
-                'exactCount'               => $check->params['count'] ?? null,
-                default                    => null,
-            };
-            if (\is_int($bound) && ($limit === null || $bound < $limit)) {
-                $limit = $bound;
+            if ($check->rule === 'maxCount' || $check->rule === 'exactCount' || $check->rule === 'betweenCount') {
+                return true;
             }
         }
 
-        return $limit;
+        return false;
     }
 
     /**

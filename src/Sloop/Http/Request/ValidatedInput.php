@@ -22,10 +22,10 @@ use UnexpectedValueException;
  * the Validator would take as empty: null or '' after the sanitizers, and a
  * file input left without a file only where the rule is Rule::file(); `[]`
  * is a value. The body and the uploaded files are merged key by key, as PHP
- * splits one form between them, and a level keyed only by numbers that a
- * declaration bounds is put in the order of its keys. Only the fields with a
- * rule are gathered, so the key named in that refusal is always one the
- * application declared, never one a client made up.
+ * splits one form between them; keys found only in the files come after the
+ * ones in the body, as nothing is reordered. Only the fields with a rule are
+ * gathered, so the key named in that refusal is always one the application
+ * declared, never one a client made up.
  *
  * @internal Used by RouteRequestHandler.
  */
@@ -71,7 +71,7 @@ final class ValidatedInput
             }
 
             if ($sent) {
-                $input[$field] = self::inIndexOrder($value, $rule);
+                $input[$field] = $value;
             }
         }
 
@@ -167,93 +167,6 @@ final class ValidatedInput
         }
 
         return $kept;
-    }
-
-    /**
-     * A value with every level keyed only by numbers put in the order of its keys.
-     *
-     * The elements of a list then follow the indexes the client sent, whether
-     * a row arrived in the body, in the files, or in both; their positions are
-     * still counted from 0 afterwards, as Rule::list() does. Only what a
-     * declaration bounds is ordered, so that ordering takes no more memory
-     * than validating: a list or Rule::array() level within its own count limit,
-     * and the keys a shape declares. Everything else is left as it came: a
-     * level over its count limit or with none, the contents of Rule::array(),
-     * whatever lies below an array sanitizer closure, a key a shape drops,
-     * and an array where the rule holds no array. A level already in order is
-     * not copied.
-     *
-     * @param  mixed                           $value Value to order
-     * @param  FieldRule<covariant mixed>|null $rule  Rule at this place, or null where none is declared
-     * @return mixed
-     */
-    private static function inIndexOrder(mixed $value, ?FieldRule $rule): mixed
-    {
-        if ($rule === null || !\is_array($value) || !$rule->ordersElementsOf($value)) {
-            return $value;
-        }
-        [$kept, $ordered, $numbered] = self::orderedChildren($value, $rule);
-        // A level holding a key the rule drops is a shape, whose keys are names, not positions.
-        // It is rebuilt from the kept keys, so that the keys the Validator drops are never copied.
-        if (\count($kept) < \count($value)) {
-            return $ordered === [] ? $value : self::withKeys($value, $kept, $ordered);
-        }
-        foreach ($ordered as $key => $child) {
-            $value[$key] = $child;
-        }
-        if ($numbered && !array_is_list($value)) {
-            ksort($value);
-        }
-
-        return $value;
-    }
-
-    /**
-     * The children of one level put in index order, with the keys the rule keeps.
-     *
-     * @param  array<array-key, mixed>                               $value Level to walk
-     * @param  FieldRule<covariant mixed>                            $rule  Rule at this level
-     * @return array{list<array-key>, array<array-key, mixed>, bool} The keys the rule keeps, the children that changed keyed by their key, and whether every key is a number
-     */
-    private static function orderedChildren(array $value, FieldRule $rule): array
-    {
-        $numbered = true;
-        $kept     = [];
-        $ordered  = [];
-        foreach ($value as $key => $part) {
-            $numbered = $numbered && \is_int($key);
-            if ($rule->dropsKey($key)) {
-                continue;
-            }
-            $kept[] = $key;
-            if (!\is_array($part)) {
-                continue;
-            }
-            $child = self::inIndexOrder($part, $rule->childRule($key));
-            if ($child !== $part) {
-                $ordered[$key] = $child;
-            }
-        }
-
-        return [$kept, $ordered, $numbered];
-    }
-
-    /**
-     * A new array holding only the given keys of a value, with some of their values replaced.
-     *
-     * @param  array<array-key, mixed> $value    Value to take the keys from
-     * @param  list<array-key>         $keys     Keys to keep, in order
-     * @param  array<array-key, mixed> $replaced Values that replace those of the same keys
-     * @return array<array-key, mixed>
-     */
-    private static function withKeys(array $value, array $keys, array $replaced): array
-    {
-        $result = [];
-        foreach ($keys as $key) {
-            $result[$key] = \array_key_exists($key, $replaced) ? $replaced[$key] : $value[$key];
-        }
-
-        return $result;
     }
 
     /**

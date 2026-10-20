@@ -502,7 +502,7 @@ final class ValidatedRequestTest extends TestCase
         $this->fail('InvalidArgumentException was not thrown.');
     }
 
-    public function testKeepsTheIndexesOfAListWhoseLowerElementCameOnlyWithTheFiles(): void
+    public function testPutsAListElementFoundOnlyInTheFilesAfterTheOnesInTheBody(): void
     {
         $zero    = new UploadedFile('zero', 4, UPLOAD_ERR_OK, 'zero.txt', 'text/plain');
         $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
@@ -515,7 +515,7 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
         $this->assertSame(
-            [['public' => null, 'photo' => $zero], ['public' => true, 'photo' => $one]],
+            [['public' => true, 'photo' => $one], ['public' => null, 'photo' => $zero]],
             ValidatedController::$last->items,
         );
     }
@@ -547,8 +547,11 @@ final class ValidatedRequestTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
+        // A row found in the body comes first, as nothing is reordered.
         $this->assertSame(
-            [['public' => null, 'photo' => null], ['public' => $public, 'photo' => $one]],
+            $public === null
+                ? [['public' => null, 'photo' => null], ['public' => null, 'photo' => $one]]
+                : [['public' => $public, 'photo' => $one], ['public' => null, 'photo' => null]],
             ValidatedController::$last->items,
         );
     }
@@ -678,7 +681,7 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(['note'], array_keys(self::errors($top)));
     }
 
-    public function testOrdersAListSentOutOfOrderByItsIndexes(): void
+    public function testValidatesAListInTheOrderItArrived(): void
     {
         $request = new ServerRequest('POST', '/dispatch')
             ->withParsedBody(['items' => [1 => ['public' => '1'], 0 => ['public' => '0']]]);
@@ -687,12 +690,12 @@ final class ValidatedRequestTest extends TestCase
 
         $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
         $this->assertSame(
-            [['public' => false, 'photo' => null], ['public' => true, 'photo' => null]],
+            [['public' => true, 'photo' => null], ['public' => false, 'photo' => null]],
             ValidatedController::$last->items,
         );
     }
 
-    public function testOrdersEveryLevelKeyedByNumbers(): void
+    public function testValidatesEveryLevelOfANestedListInTheOrderItArrived(): void
     {
         $request = new ServerRequest('POST', '/dispatch')
             ->withParsedBody(['matrix' => [1 => [2 => '6', 1 => '5', 0 => '4'], 0 => [2 => '3', 1 => '2', 0 => '1']]]);
@@ -700,17 +703,7 @@ final class ValidatedRequestTest extends TestCase
         $this->dispatch('matrix', $request);
 
         $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
-        $this->assertSame([[1, 2, 3], [4, 5, 6]], ValidatedController::$last->matrix);
-    }
-
-    public function testOrdersTheNumberedKeysOfABoundedArrayFieldButNotItsContents(): void
-    {
-        $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['map' => [10 => 'a', 2 => [3 => 'c', 1 => 'b']]]);
-
-        $this->dispatch('matrix', $request);
-
-        $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
-        $this->assertSame([2 => [3 => 'c', 1 => 'b'], 10 => 'a'], ValidatedController::$last->map);
+        $this->assertSame([[6, 5, 4], [3, 2, 1]], ValidatedController::$last->matrix);
     }
 
     public function testKeepsTheOrderOfALevelWhoseKeysAreNotAllNumbers(): void
