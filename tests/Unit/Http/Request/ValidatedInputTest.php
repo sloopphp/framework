@@ -45,10 +45,15 @@ final class ValidatedInputTest extends TestCase
                 [1 => 'b', 0 => 'a'],
                 [1 => 'b', 0 => 'a'],
             ],
-            'list over its count limit with an array sanitizer' => [
-                Rule::list(Rule::string(), ArraySanitize::RemoveEmpty)->maxCount(1),
+            'list over the smaller of two count limits, declared first' => [
+                Rule::list(Rule::string())->exactCount(1)->maxCount(3),
                 [1 => 'b', 0 => 'a'],
                 [1 => 'b', 0 => 'a'],
+            ],
+            'list sent over its count limit that an array sanitizer brings within it' => [
+                Rule::list(Rule::string(), ArraySanitize::RemoveEmpty)->maxCount(2),
+                [2 => 'c', 1 => '', 0 => 'a'],
+                [2 => 'c', 1 => '', 0 => 'a'],
             ],
             'list within its count limit with an array sanitizer' => [
                 Rule::list(Rule::string(), ArraySanitize::RemoveEmpty)->maxCount(2),
@@ -95,6 +100,11 @@ final class ValidatedInputTest extends TestCase
                 ['name' => 'a', 'junk' => [1 => 'b', 0 => 'a']],
                 ['name' => 'a', 'junk' => [1 => 'b', 0 => 'a']],
             ],
+            'shape: a declared key after a key it drops' => [
+                Rule::shape(['tags' => Rule::list(Rule::string())->maxCount(2)]),
+                ['junk' => 'x', 'tags' => [1 => 'b', 0 => 'a']],
+                ['junk' => 'x', 'tags' => [0 => 'a', 1 => 'b']],
+            ],
             'shape sent with numbered keys only' => [
                 Rule::shape(['name' => Rule::string()]),
                 [1 => 'b', 0 => 'a'],
@@ -102,8 +112,8 @@ final class ValidatedInputTest extends TestCase
             ],
             'shape with a closure array sanitizer' => [
                 Rule::shape(['name' => Rule::string()], static fn (array $value): array => $value),
-                ['junk' => [1 => 'b', 0 => 'a']],
-                ['junk' => [1 => 'b', 0 => 'a']],
+                [1 => 'b', 0 => 'a'],
+                [1 => 'b', 0 => 'a'],
             ],
             'a type that holds no array' => [
                 Rule::string(),

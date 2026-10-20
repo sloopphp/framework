@@ -314,7 +314,7 @@ final class ShapeRule extends ArrayRule
     /**
      * Whether ValidatedRequest descends into an array value of this field: a shape bounds what it reads by its declared keys, not by a count.
      *
-     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering costs no more than validating.
+     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering takes no more memory than validating.
      *
      * @param  array<array-key, mixed> $value Array sent for this field
      * @return bool

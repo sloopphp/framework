@@ -47,10 +47,11 @@ abstract class ArrayRule extends FieldRule
      * Whether ValidatedRequest puts an array value of this field in index order and descends into it.
      *
      * Only when the field's own count rule bounds the value as sent: a value
-     * over the limit, which the Validator refuses before reading any element,
-     * is left as it came, as is every value below an array sanitizer closure.
+     * over the limit is left as it came, even when an array sanitizer such as
+     * RemoveEmpty would bring it within the limit, as is every value below an
+     * array sanitizer closure.
      *
-     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering costs no more than validating.
+     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering takes no more memory than validating.
      *
      * @param  array<array-key, mixed> $value Array sent for this field
      * @return bool

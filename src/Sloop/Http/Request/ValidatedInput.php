@@ -175,8 +175,8 @@ final class ValidatedInput
      * The elements of a list then follow the indexes the client sent, whether
      * a row arrived in the body, in the files, or in both; their positions are
      * still counted from 0 afterwards, as Rule::list() does. Only what a
-     * declaration bounds is ordered, so that ordering costs no more than
-     * validating: a list or Rule::array() level within its own count limit,
+     * declaration bounds is ordered, so that ordering takes no more memory
+     * than validating: a list or Rule::array() level within its own count limit,
      * and the keys a shape declares. Everything else is left as it came: a
      * level over its count limit or with none, the contents of Rule::array(),
      * whatever lies below an array sanitizer closure, a key a shape drops,

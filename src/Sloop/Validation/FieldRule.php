@@ -920,7 +920,7 @@ abstract class FieldRule
     /**
      * Whether ValidatedRequest puts an array value of this field in index order and descends into it: only where a declaration bounds how much it holds.
      *
-     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering costs no more than validating.
+     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering takes no more memory than validating.
      *
      * @param  array<array-key, mixed> $value Array sent for this field
      * @return bool
