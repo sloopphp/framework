@@ -31,8 +31,9 @@ namespace Sloop\Http\Request;
  * with the errors. The input is the body (form values and files, or the JSON
  * body) for POST, PUT and PATCH; for GET, HEAD and DELETE it is the query
  * string together with the body, and a field sent in both is answered with
- * a 400 (as is a field sent as both a form value and a file). The parameters of rules() are resolved the way the action's are:
- * objects from the container, builtin types from the route parameters.
+ * a 400 (as is a field sent as both a form value and a file). The
+ * parameters of rules() are resolved the way the action's are: objects
+ * from the container, builtin types from the route parameters.
  *
  * The properties are `private(set)` rather than `readonly` because the
  * framework fills them after construction, which static analysers report for

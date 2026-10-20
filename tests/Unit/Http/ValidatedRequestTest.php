@@ -153,7 +153,6 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(['name'], array_keys(self::errors($response)));
     }
 
-
     /**
      * @return array<string, array{string}>
      */
@@ -196,6 +195,59 @@ final class ValidatedRequestTest extends TestCase
             ['error' => ['message' => 'The request value "name" was sent in both the query string and the body.', 'status' => 400]],
             self::body($response),
         );
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, array<string, mixed>, string}>
+     */
+    public static function emptyOnOneSide(): array
+    {
+        return [
+            'null in the body'          => [['name' => 'Ann'], ['name' => null], 'Ann'],
+            'empty string in the body'  => [['name' => 'Ann'], ['name' => ''], 'Ann'],
+            'empty string in the query' => [['name' => ''], ['name' => 'Bob'], 'Bob'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     * @param array<string, mixed> $body
+     */
+    #[DataProvider('emptyOnOneSide')]
+    public function testTakesTheValueWhenTheOtherPlaceSendsItEmpty(array $query, array $body, string $expected): void
+    {
+        $request = new ServerRequest('GET', '/dispatch')->withQueryParams($query)->withParsedBody($body);
+
+        $response = $this->dispatch('create', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(CreateUserRequest::class, ValidatedController::$last);
+        $this->assertSame($expected, ValidatedController::$last->name);
+    }
+
+    public function testTreatsAFieldSentEmptyInBothPlacesAsEmpty(): void
+    {
+        $request = new ServerRequest('GET', '/dispatch')
+            ->withQueryParams(['name' => 'Ann', 'age' => ''])
+            ->withParsedBody(['age' => null]);
+
+        $this->dispatch('create', $request);
+
+        $this->assertInstanceOf(CreateUserRequest::class, ValidatedController::$last);
+        $this->assertNull(ValidatedController::$last->age);
+    }
+
+    public function testTakesTheFileWhenTheFormValueIsEmpty(): void
+    {
+        $file    = new UploadedFile('content', 7, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['avatar' => ''])
+            ->withUploadedFiles(['avatar' => $file]);
+
+        $this->dispatch('upload', $request);
+
+        $this->assertInstanceOf(FileUploadRequest::class, ValidatedController::$last);
+        $this->assertSame($file, ValidatedController::$last->avatar);
     }
 
     public function testIgnoresAKeyWithoutARuleSentInBothPlaces(): void
