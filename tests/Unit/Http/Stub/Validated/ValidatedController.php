@@ -228,4 +228,11 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function photoList(PhotoListRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }

@@ -94,6 +94,9 @@ final class ValidatedInput
      * uploaded files, so one field of a form can arrive in both halves. The
      * halves are merged key by key; an empty one gives way to the other, and
      * two values with something in them at the same place cannot be merged.
+     * The merged keys are put back in order, so that the elements of a list
+     * keep the indexes the client sent even when a lower one came only with
+     * the files.
      *
      * @param  mixed              $form Value from the parsed body
      * @param  mixed              $file Value from the uploaded files
@@ -101,7 +104,7 @@ final class ValidatedInput
      */
     private static function combine(mixed $form, mixed $file): array
     {
-        if (self::isEmpty($file) || $file === []) {
+        if (self::holdsNoFile($file)) {
             return [true, $form];
         }
         if (self::isEmpty($form) || $form === []) {
@@ -118,8 +121,29 @@ final class ValidatedInput
             }
             $form[$key] = $merged;
         }
+        ksort($form);
 
         return [true, $form];
+    }
+
+    /**
+     * Whether the files half of a field holds no file: empty, or only file inputs left without a file, at any depth.
+     *
+     * @param  mixed $file Value from the uploaded files
+     * @return bool
+     */
+    private static function holdsNoFile(mixed $file): bool
+    {
+        if (!\is_array($file)) {
+            return self::isEmpty($file);
+        }
+        foreach ($file as $part) {
+            if (!self::holdsNoFile($part)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -33,7 +33,9 @@ namespace Sloop\Http\Request;
  * string together with the body, and a field sent in both is answered with
  * a 400 (as is a field sent as both a form value and a file). The
  * parameters of rules() are resolved the way the action's are: objects
- * from the container, builtin types from the route parameters.
+ * from the container, builtin types from the route parameters. It cannot
+ * take the Request or another ValidatedRequest, which would let it read the
+ * raw input.
  *
  * The properties are `private(set)` rather than `readonly` because the
  * framework fills them after construction, which static analysers report for

@@ -35,6 +35,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\NestedFormRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NoRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NotNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NullableRequiredRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\PhotoListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PrivateHelperBase;
 use Sloop\Tests\Unit\Http\Stub\Validated\PrivatePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
@@ -467,6 +468,38 @@ final class ValidatedRequestTest extends TestCase
             ->withUploadedFiles(['user' => ['avatar' => $file]]);
 
         $this->assertSame(400, $this->dispatch('nestedForm', $request)->getStatusCode());
+    }
+
+    public function testKeepsTheIndexesOfAListWhoseLowerElementCameOnlyWithTheFiles(): void
+    {
+        $zero    = new UploadedFile('zero', 4, UPLOAD_ERR_OK, 'zero.txt', 'text/plain');
+        $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['items' => [1 => ['public' => '1']]])
+            ->withUploadedFiles(['items' => [0 => ['photo' => $zero], 1 => ['photo' => $one]]]);
+
+        $response = $this->dispatch('photoList', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
+        $this->assertSame(
+            [['public' => null, 'photo' => $zero], ['public' => true, 'photo' => $one]],
+            ValidatedController::$last->items,
+        );
+    }
+
+    public function testTreatsNestedFileInputsLeftWithoutAFileAsNotSent(): void
+    {
+        $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
+        $request = new ServerRequest('DELETE', '/dispatch')
+            ->withQueryParams(['user' => ['name' => 'Ann']])
+            ->withUploadedFiles(['user' => ['avatar' => $empty]]);
+
+        $response = $this->dispatch('nestedForm', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(NestedFormRequest::class, ValidatedController::$last);
+        $this->assertSame(['name' => 'Ann', 'avatar' => null], ValidatedController::$last->user);
     }
 
     public function testTreatsAFileInputLeftWithoutAFileAsNotSent(): void
