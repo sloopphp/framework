@@ -905,6 +905,19 @@ abstract class FieldRule
     }
 
     /**
+     * Whether validating this field drops what it holds at a key: a key a shape does not declare.
+     *
+     * @internal Read by ValidatedRequest, which does not merge from the uploaded files a key the rules drop.
+     *
+     * @param  int|string $key Key inside the value
+     * @return bool
+     */
+    public function dropsKey(int|string $key): bool
+    {
+        return false;
+    }
+
+    /**
      * Whether the validated value can be null: the field is neither required() nor given a default().
      *
      * @internal Read by ValidatedRequest, whose property for such a field must accept null.

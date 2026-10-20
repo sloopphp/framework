@@ -105,6 +105,14 @@ final class ValueTypeTest extends TestCase
         $this->assertNull(Rule::array()->childRule(0));
     }
 
+    public function testDropsOnlyTheKeysAShapeDoesNotDeclare(): void
+    {
+        $this->assertTrue(Rule::shape(['a' => Rule::int()])->dropsKey('b'));
+        $this->assertFalse(Rule::shape(['a' => Rule::int()])->dropsKey('a'));
+        $this->assertFalse(Rule::array()->dropsKey('b'));
+        $this->assertFalse(Rule::list(Rule::int())->dropsKey(0));
+    }
+
     public function testAnOptionalFieldWithoutADefaultCanBeNull(): void
     {
         $this->assertTrue(Rule::int()->canBeNull());

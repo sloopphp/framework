@@ -300,6 +300,18 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Whether the key is one the shape does not declare, which validation drops.
+     *
+     * @param  int|string $key Key inside the value
+     * @return bool
+     */
+    #[\Override]
+    public function dropsKey(int|string $key): bool
+    {
+        return !isset($this->fields[$key]);
+    }
+
+    /**
      * The first unbounded list inside the keys, prefixed with its key.
      *
      * @return string|null

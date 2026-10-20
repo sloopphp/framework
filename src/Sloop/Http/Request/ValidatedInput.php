@@ -61,15 +61,16 @@ final class ValidatedInput
                 return 'The request value "' . $field . '" was sent as both a form value and a file.';
             }
 
-            $fromQuery = $query[$field] ?? null;
-            if (!self::isEmpty($fromQuery, $rule)) {
-                if (!self::isEmpty($value, $rule)) {
+            // Each value is judged once: the sanitizers of the rule run here and again when it is validated.
+            $sent = !self::isEmpty($value, $rule);
+            if (\array_key_exists($field, $query) && !self::isEmpty($query[$field], $rule)) {
+                if ($sent) {
                     return 'The request value "' . $field . '" was sent in both the query string and the body.';
                 }
-                $value = $fromQuery;
+                [$value, $sent] = [$query[$field], true];
             }
 
-            if (!self::isEmpty($value, $rule)) {
+            if ($sent) {
                 $input[$field] = self::inIndexOrder($value);
             }
         }
@@ -101,7 +102,9 @@ final class ValidatedInput
      * uploaded files, so one field of a form can arrive in both halves. The
      * halves are merged key by key; an empty one, as the rule at that place
      * defines it, gives way to the other, and two values with something in
-     * them at the same place cannot be merged.
+     * them at the same place cannot be merged. A key the rule drops (one a
+     * shape does not declare) is not merged from the files, as the Validator
+     * would drop it anyway.
      *
      * @param  mixed                           $form Value from the parsed body
      * @param  mixed                           $file Value from the uploaded files
@@ -123,6 +126,9 @@ final class ValidatedInput
         }
 
         foreach ($file as $key => $part) {
+            if ($rule !== null && $rule->dropsKey($key)) {
+                continue;
+            }
             [$combined, $merged] = self::combine($form[$key] ?? null, $part, $rule?->childRule($key));
             if (!$combined) {
                 return [false, null];

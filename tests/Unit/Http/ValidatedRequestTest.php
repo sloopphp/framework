@@ -544,8 +544,8 @@ final class ValidatedRequestTest extends TestCase
     public static function emptyAfterTheSanitizers(): array
     {
         return [
-            'blank query'  => [['name' => '  '], ['name' => 'Ann']],
-            'blank body'   => [['name' => 'Ann'], ['name' => '  ']],
+            'blank query' => [['name' => '  '], ['name' => 'Ann']],
+            'blank body'  => [['name' => 'Ann'], ['name' => '  ']],
         ];
     }
 
@@ -590,6 +590,21 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(TrimmedRequest::class, ValidatedController::$last);
         $this->assertSame(['a' => ['x' => '1', 'f' => $file]], ValidatedController::$last->meta);
+    }
+
+    public function testDoesNotMergeAKeyTheShapeDropsFromTheFiles(): void
+    {
+        $file    = new UploadedFile('x', 1, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $avatar  = new UploadedFile('y', 1, UPLOAD_ERR_OK, 'b.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => ['name' => 'Ann', 'x' => 'a']])
+            ->withUploadedFiles(['user' => ['x' => $file, 'avatar' => $avatar]]);
+
+        $response = $this->dispatch('nestedForm', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(NestedFormRequest::class, ValidatedController::$last);
+        $this->assertSame(['name' => 'Ann', 'avatar' => $avatar], ValidatedController::$last->user);
     }
 
     public function testTakesAFileInputLeftWithoutAFileAsEmptyOnlyWhereTheRuleIsAFile(): void

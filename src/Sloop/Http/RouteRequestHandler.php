@@ -26,6 +26,7 @@ use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Routing\Route;
 use Sloop\Validation\ValidationResult;
 use Sloop\Validation\Validator;
+use UnexpectedValueException;
 
 /**
  * Final request handler that executes the controller for a resolved route.
@@ -69,6 +70,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return ResponseInterface
      * @throws RuntimeException         If the controller cannot be resolved as an object, a route parameter is missing, a parameter type is unsupported, or the entry registered as the clock is not one
      * @throws LogicException           If a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws UnexpectedValueException If a sanitizer closure of a ValidatedRequest rule returns something other than a string
      * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
      * @throws ContainerException       If a circular dependency is detected during resolution
@@ -112,6 +114,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws RuntimeException                    If a route parameter is missing, a parameter type is unsupported, or the entry registered as the clock is not one
      * @throws LogicException                      If a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws UnexpectedValueException            If a sanitizer closure of a ValidatedRequest rule returns something other than a string
      * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
      * @throws ContainerException                  If a circular dependency is detected during dependency resolution
@@ -171,6 +174,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
      * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, or the parsed body is not an array
+     * @throws UnexpectedValueException           If a sanitizer closure of a ValidatedRequest rule returns something other than a string
      * @throws RuntimeException                   If a route parameter rules() asks for is missing or its type is unsupported, or the entry registered as the clock is not one
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
