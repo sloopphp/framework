@@ -30,6 +30,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\DefaultNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\FileUploadRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InjectedRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InnerUnboundedListRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\MatrixRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MutablePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NestedFormRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NoRulesRequest;
@@ -486,6 +487,72 @@ final class ValidatedRequestTest extends TestCase
             [['public' => null, 'photo' => $zero], ['public' => true, 'photo' => $one]],
             ValidatedController::$last->items,
         );
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, list<array<string, mixed>>}>
+     */
+    public static function rowsWithoutAFile(): array
+    {
+        return [
+            'another row has a form value' => [['items' => [1 => ['public' => '1']]], [['public' => true]]],
+            'no row has a form value'      => [[], [['public' => null]]],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>       $body
+     * @param list<array<string, mixed>> $expected
+     */
+    #[DataProvider('rowsWithoutAFile')]
+    public function testDropsARowHoldingOnlyAFileInputLeftWithoutAFile(array $body, array $expected): void
+    {
+        $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
+        $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody($body)
+            ->withUploadedFiles(['items' => [0 => ['photo' => $empty], 1 => ['photo' => $one]]]);
+
+        $response = $this->dispatch('photoList', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
+        $this->assertSame([[...$expected[0], 'photo' => $one]], ValidatedController::$last->items);
+    }
+
+    public function testOrdersAListSentOutOfOrderByItsIndexes(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['items' => [1 => ['public' => '1'], 0 => ['public' => '0']]]);
+
+        $this->dispatch('photoList', $request);
+
+        $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
+        $this->assertSame(
+            [['public' => false, 'photo' => null], ['public' => true, 'photo' => null]],
+            ValidatedController::$last->items,
+        );
+    }
+
+    public function testOrdersEveryLevelKeyedByNumbers(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['matrix' => [1 => [2 => '6', 1 => '5', 0 => '4'], 0 => [2 => '3', 1 => '2', 0 => '1']]]);
+
+        $this->dispatch('matrix', $request);
+
+        $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
+        $this->assertSame([[1, 2, 3], [4, 5, 6]], ValidatedController::$last->matrix);
+    }
+
+    public function testKeepsTheOrderOfALevelWhoseKeysAreNotAllNumbers(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['mixed' => ['b' => '2', 0 => '1']]);
+
+        $this->dispatch('matrix', $request);
+
+        $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
+        $this->assertSame([2, 1], ValidatedController::$last->mixed);
     }
 
     public function testTreatsNestedFileInputsLeftWithoutAFileAsNotSent(): void

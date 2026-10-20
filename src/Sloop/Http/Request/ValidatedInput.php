@@ -18,7 +18,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * places is refused instead of one silently winning; an empty value (null,
  * '' or a file input left without a file) counts as not sent, as it does for
  * the Validator. The body and the uploaded files are merged key by key, as
- * PHP splits one form between them. Only the fields with a rule are
+ * PHP splits one form between them, and a level keyed only by numbers is
+ * put in the order of its keys. Only the fields with a rule are
  * gathered, so the key named in that refusal is always one the application
  * declared, never one a client made up.
  *
@@ -49,7 +50,7 @@ final class ValidatedInput
 
         $input = [];
         foreach ($fields as $field) {
-            [$combined, $value] = self::combine($body[$field] ?? null, $files[$field] ?? null);
+            [$combined, $value] = self::combine($body[$field] ?? null, self::withoutEmptyFiles($files[$field] ?? null));
             if (!$combined) {
                 return 'The request value "' . $field . '" was sent as both a form value and a file.';
             }
@@ -63,7 +64,7 @@ final class ValidatedInput
             }
 
             if (!self::isEmpty($value)) {
-                $input[$field] = $value;
+                $input[$field] = self::inIndexOrder($value);
             }
         }
 
@@ -88,23 +89,46 @@ final class ValidatedInput
     }
 
     /**
+     * The files half of a field without the file inputs left without a file, or null when nothing is left.
+     *
+     * A file input left without a file counts as not sent, at any depth, so
+     * a row of a list that holds nothing else disappears the way a row of
+     * unchecked checkboxes does, whatever the other rows hold.
+     *
+     * @param  mixed $file Value from the uploaded files
+     * @return mixed
+     */
+    private static function withoutEmptyFiles(mixed $file): mixed
+    {
+        if (!\is_array($file)) {
+            return self::isEmpty($file) ? null : $file;
+        }
+        $kept = [];
+        foreach ($file as $key => $part) {
+            $part = self::withoutEmptyFiles($part);
+            if ($part !== null) {
+                $kept[$key] = $part;
+            }
+        }
+
+        return $kept === [] ? null : $kept;
+    }
+
+    /**
      * Put back together a form value and the uploaded files PHP split from it.
      *
      * PHP puts `user[name]` in the parsed body and `user[avatar]` in the
      * uploaded files, so one field of a form can arrive in both halves. The
      * halves are merged key by key; an empty one gives way to the other, and
      * two values with something in them at the same place cannot be merged.
-     * The merged keys are put back in order, so that the elements of a list
-     * keep the indexes the client sent even when a lower one came only with
-     * the files.
      *
      * @param  mixed              $form Value from the parsed body
-     * @param  mixed              $file Value from the uploaded files
+     * @param  mixed              $file Value from the uploaded files, without the file inputs left without a file
      * @return array{bool, mixed} Whether the halves could be merged, and the merged value
      */
     private static function combine(mixed $form, mixed $file): array
     {
-        if (self::holdsNoFile($file)) {
+        if ($file === null) {
             return [true, $form];
         }
         if (self::isEmpty($form) || $form === []) {
@@ -121,29 +145,35 @@ final class ValidatedInput
             }
             $form[$key] = $merged;
         }
-        ksort($form);
 
         return [true, $form];
     }
 
     /**
-     * Whether the files half of a field holds no file: empty, or only file inputs left without a file, at any depth.
+     * A value with every level keyed only by numbers put in the order of its keys.
      *
-     * @param  mixed $file Value from the uploaded files
-     * @return bool
+     * The elements of a list then follow the indexes the client sent, whether
+     * a row arrived in the body, in the files, or in both; their positions are
+     * still counted from 0 afterwards, as Rule::list() does.
+     *
+     * @param  mixed $value Value to order
+     * @return mixed
      */
-    private static function holdsNoFile(mixed $file): bool
+    private static function inIndexOrder(mixed $value): mixed
     {
-        if (!\is_array($file)) {
-            return self::isEmpty($file);
+        if (!\is_array($value)) {
+            return $value;
         }
-        foreach ($file as $part) {
-            if (!self::holdsNoFile($part)) {
-                return false;
-            }
+        $numbered = true;
+        foreach ($value as $key => $part) {
+            $value[$key] = self::inIndexOrder($part);
+            $numbered    = $numbered && \is_int($key);
+        }
+        if ($numbered) {
+            ksort($value);
         }
 
-        return true;
+        return $value;
     }
 
     /**

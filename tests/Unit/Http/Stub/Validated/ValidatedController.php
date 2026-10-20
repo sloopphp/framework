@@ -235,4 +235,11 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function matrix(MatrixRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }
