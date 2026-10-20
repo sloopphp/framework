@@ -107,7 +107,8 @@ final class ValidatedInput
      * would drop it anyway. Below a list or a shape whose array sanitizer is
      * a closure, which can rename keys or move elements before they are
      * validated, no rule is asked: the halves are merged as they arrive, and
-     * the closure receives them as one form would send them.
+     * the closure receives them as one form would send them, except that keys
+     * found only in the files come after the ones in the body.
      *
      * @param  mixed                           $form Value from the parsed body
      * @param  mixed                           $file Value from the uploaded files

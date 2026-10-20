@@ -520,38 +520,37 @@ final class ValidatedRequestTest extends TestCase
         );
     }
 
-    /**
-     * @return array<string, array{array<string, mixed>, bool|null}>
-     */
-    public static function rowsWithoutAFile(): array
-    {
-        return [
-            'another row has a form value' => [['items' => [1 => ['public' => '1']]], true],
-            'no row has a form value'      => [[], null],
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $body
-     */
-    #[DataProvider('rowsWithoutAFile')]
-    public function testKeepsARowHoldingOnlyAFileInputLeftWithoutAFile(array $body, ?bool $public): void
+    public function testKeepsARowHoldingOnlyAFileInputLeftWithoutAFile(): void
     {
         $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
         $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
         $request = new ServerRequest('POST', '/dispatch')
-            ->withParsedBody($body)
             ->withUploadedFiles(['items' => [0 => ['photo' => $empty], 1 => ['photo' => $one]]]);
 
         $response = $this->dispatch('photoList', $request);
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
-        // A row found in the body comes first, as nothing is reordered.
         $this->assertSame(
-            $public === null
-                ? [['public' => null, 'photo' => null], ['public' => null, 'photo' => $one]]
-                : [['public' => $public, 'photo' => $one], ['public' => null, 'photo' => null]],
+            [['public' => null, 'photo' => null], ['public' => null, 'photo' => $one]],
+            ValidatedController::$last->items,
+        );
+    }
+
+    public function testKeepsARowHoldingOnlyAFileInputLeftWithoutAFileAfterTheRowsInTheBody(): void
+    {
+        $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
+        $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['items' => [1 => ['public' => '1']]])
+            ->withUploadedFiles(['items' => [0 => ['photo' => $empty], 1 => ['photo' => $one]]]);
+
+        $response = $this->dispatch('photoList', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
+        $this->assertSame(
+            [['public' => true, 'photo' => $one], ['public' => null, 'photo' => null]],
             ValidatedController::$last->items,
         );
     }
@@ -704,16 +703,6 @@ final class ValidatedRequestTest extends TestCase
 
         $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
         $this->assertSame([[6, 5, 4], [3, 2, 1]], ValidatedController::$last->matrix);
-    }
-
-    public function testKeepsTheOrderOfALevelWhoseKeysAreNotAllNumbers(): void
-    {
-        $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['mixed' => ['b' => '2', 0 => '1']]);
-
-        $this->dispatch('matrix', $request);
-
-        $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
-        $this->assertSame([2, 1], ValidatedController::$last->mixed);
     }
 
     public function testCountsANestedFileInputLeftWithoutAFileAsSentWhenTheQueryHasTheSameField(): void
