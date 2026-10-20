@@ -105,6 +105,11 @@ final class ValidatedInputTest extends TestCase
                 ['junk' => 'x', 'tags' => [1 => 'b', 0 => 'a']],
                 ['tags' => [0 => 'a', 1 => 'b']],
             ],
+            'shape: every declared key kept when it is rebuilt without a key it drops' => [
+                Rule::shape(['name' => Rule::string(), 'tags' => Rule::list(Rule::string())->maxCount(2)]),
+                ['name' => 'n', 'junk' => 'x', 'tags' => [1 => 'b', 0 => 'a']],
+                ['name' => 'n', 'tags' => [0 => 'a', 1 => 'b']],
+            ],
             'shape sent with numbered keys only' => [
                 Rule::shape(['name' => Rule::string()]),
                 [1 => 'b', 0 => 'a'],
