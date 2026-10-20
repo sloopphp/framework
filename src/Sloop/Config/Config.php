@@ -41,8 +41,8 @@ final class Config
      *
      * Reads all PHP files in the base config directory, then merges
      * environment-specific overrides from the subdirectory matching
-     * the given environment name. A list in an override replaces the
-     * base list instead of being appended to it.
+     * the given environment name. An array with only integer keys in an
+     * override replaces the base array instead of being appended to it.
      *
      * @param  string           $configPath  Absolute path to the config directory
      * @param  string|null      $environment Environment name (e.g. 'production', 'testing')
@@ -254,12 +254,13 @@ final class Config
     /**
      * Merge environment overrides into the base configuration.
      *
-     * Associative arrays merge recursively. A list replaces a list (or a
-     * missing or non-array value) as a whole, so a list written for an
-     * environment does not keep the base entries. An empty array over a
-     * non-empty associative array changes nothing. Where the shapes differ
-     * (a list over an associative array or the reverse) the arrays merge,
-     * with numeric keys appended.
+     * Arrays with string keys merge recursively. An array whose keys are all
+     * integers (a list, a list with gaps such as array_filter() leaves, or a
+     * map of PDO attributes) replaces such an array, or a missing or
+     * non-array value, as a whole and keeps its keys, so the base entries do
+     * not stay. An empty array over an array with string keys changes
+     * nothing. Where the shapes differ (integer keys over string keys or the
+     * reverse) the arrays merge, with integer keys appended.
      *
      * @param  array<array-key, mixed> $base     Base configuration
      * @param  array<array-key, mixed> $override Environment overrides
@@ -270,10 +271,10 @@ final class Config
         foreach ($override as $key => $value) {
             $current = $base[$key] ?? null;
 
-            if (\is_array($value) && array_is_list($value) && (!\is_array($current) || array_is_list($current))) {
-                $base[$key] = $value;
-            } elseif (\is_int($key)) {
+            if (\is_int($key)) {
                 $base[] = $value;
+            } elseif (\is_array($value) && self::hasOnlyIntKeys($value) && (!\is_array($current) || self::hasOnlyIntKeys($current))) {
+                $base[$key] = $value;
             } elseif (\is_array($value) && \is_array($current)) {
                 $base[$key] = self::mergeOverride($current, $value);
             } else {
@@ -282,6 +283,23 @@ final class Config
         }
 
         return $base;
+    }
+
+    /**
+     * Check whether every key of the array is an integer (true for an empty array).
+     *
+     * @param  array<array-key, mixed> $array Array to check
+     * @return bool
+     */
+    private static function hasOnlyIntKeys(array $array): bool
+    {
+        foreach (array_keys($array) as $key) {
+            if (!\is_int($key)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

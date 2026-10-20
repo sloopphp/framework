@@ -419,6 +419,9 @@ final class ConfigTest extends TestCase
             'a list the environment does not mention' => ['lists.untouched', ['a', 'b']],
             'an associative array over a scalar'      => ['lists.scalar_to_assoc', ['key' => 'value']],
             'a scalar over an associative array'      => ['lists.assoc_to_scalar', 'single'],
+            'a list under a numeric key, appended'    => ['lists.mixed', ['a', 'key' => 'value', 1 => ['x']]],
+            'a list with gaps replacing a list'       => ['lists.gapped', [1 => 'prod']],
+            'an integer-keyed map replacing one'      => ['lists.int_map', [2 => 10]],
         ];
     }
 
