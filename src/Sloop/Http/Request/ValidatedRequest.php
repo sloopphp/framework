@@ -41,9 +41,11 @@ namespace Sloop\Http\Request;
  *
  * Each property's type must be the type of its field's validated value, and
  * must accept null when the field is neither required() nor given a
- * default(). A property without a rule, a rule without a property, or a
- * property that is not `public private(set)` is a mistake in the class,
- * reported with a LogicException when the class is first resolved.
+ * default(). A property without a rule, a rule without a property, a
+ * property that is not `public private(set)`, or a property given an
+ * initial value other than null (declare the default with default()
+ * instead) is a mistake in the class, reported with a LogicException when
+ * the class is first resolved.
  */
 abstract class ValidatedRequest
 {
