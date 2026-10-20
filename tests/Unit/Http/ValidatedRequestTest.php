@@ -231,10 +231,27 @@ final class ValidatedRequestTest extends TestCase
             ->withQueryParams(['name' => 'Ann', 'age' => ''])
             ->withParsedBody(['age' => null]);
 
-        $this->dispatch('create', $request);
+        $response = $this->dispatch('create', $request);
 
+        $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(CreateUserRequest::class, ValidatedController::$last);
         $this->assertNull(ValidatedController::$last->age);
+    }
+
+    public function testAnswers400WhenAFileAndTheQueryStringSendTheSameFieldOfADelete(): void
+    {
+        $file    = new UploadedFile('content', 7, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('DELETE', '/dispatch')
+            ->withQueryParams(['avatar' => 'x'])
+            ->withUploadedFiles(['avatar' => $file]);
+
+        $response = $this->dispatch('upload', $request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            ['error' => ['message' => 'The request value "avatar" was sent in both the query string and the body.', 'status' => 400]],
+            self::body($response),
+        );
     }
 
     public function testTakesTheFileWhenTheFormValueIsEmpty(): void
