@@ -128,8 +128,8 @@ final class ValidatedInput
             return [false, null];
         }
         $kept = self::withoutDroppedKeys($file, $rule);
-        if ($file !== [] && $kept === []) {
-            // A file half holding only keys the rule drops has nothing to merge.
+        if ($kept === []) {
+            // A file half holding no file, or only keys the rule drops, has nothing to merge.
             return [true, $form];
         }
         if (!\is_array($form)) {
@@ -174,7 +174,10 @@ final class ValidatedInput
      *
      * The elements of a list then follow the indexes the client sent, whether
      * a row arrived in the body, in the files, or in both; their positions are
-     * still counted from 0 afterwards, as Rule::list() does.
+     * still counted from 0 afterwards, as Rule::list() does. A level already
+     * in order is returned as it came, not copied, since the value can hold
+     * far more than the rule reads (keys a shape drops, elements past
+     * maxCount()).
      *
      * @param  mixed $value Value to order
      * @return mixed
@@ -186,10 +189,16 @@ final class ValidatedInput
         }
         $numbered = true;
         foreach ($value as $key => $part) {
-            $value[$key] = self::inIndexOrder($part);
-            $numbered    = $numbered && \is_int($key);
+            $numbered = $numbered && \is_int($key);
+            if (!\is_array($part)) {
+                continue;
+            }
+            $ordered = self::inIndexOrder($part);
+            if ($ordered !== $part) {
+                $value[$key] = $ordered;
+            }
         }
-        if ($numbered) {
+        if ($numbered && !array_is_list($value)) {
             ksort($value);
         }
 

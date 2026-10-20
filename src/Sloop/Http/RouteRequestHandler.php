@@ -198,13 +198,15 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             $arguments[] = $this->resolveParameter($parameter, $sloopRequest);
         }
         $rules = $shape->rules($request, $arguments);
+        // The rules are checked before any input is read, so a misdeclared rule surfaces whatever the client sent.
+        $validator = new Validator($rules, $this->clock());
 
         $input = ValidatedInput::collect($sloopRequest->psrRequest(), $rules);
         if (\is_string($input)) {
             return $this->formatter->error($input, HttpStatus::BadRequest);
         }
 
-        $result = new Validator($rules, $this->clock())->validate($input);
+        $result = $validator->validate($input);
         if ($result->failed()) {
             return $this->formatter->error('Validation failed.', HttpStatus::UnprocessableEntity, self::errorBody($result));
         }

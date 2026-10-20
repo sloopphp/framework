@@ -16,6 +16,9 @@ final class MatrixRequest extends ValidatedRequest
     /** @var list<int|null>|null */
     public private(set) ?array $mixed = null;
 
+    /** @var array<array-key, mixed>|null */
+    public private(set) ?array $map = null;
+
     /**
      * @return array<string, FieldRule<covariant mixed>>
      */
@@ -24,6 +27,7 @@ final class MatrixRequest extends ValidatedRequest
         return [
             'matrix' => Rule::list(Rule::list(Rule::int())->maxCount(3))->maxCount(3),
             'mixed'  => Rule::list(Rule::int())->maxCount(3),
+            'map'    => Rule::array(),
         ];
     }
 }

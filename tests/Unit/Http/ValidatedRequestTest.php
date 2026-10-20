@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Http;
 
 use DateTimeImmutable;
+use InvalidArgumentException;
 use LogicException;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\UploadedFile;
@@ -473,6 +474,34 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(400, $this->dispatch('nestedForm', $request)->getStatusCode());
     }
 
+    public function testValidatesAFormValueWhoseFileHalfHoldsNoFile(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => 'Ann'])
+            ->withUploadedFiles(['user' => []]);
+
+        $response = $this->dispatch('nestedForm', $request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(['user'], array_keys(self::errors($response)));
+    }
+
+    public function testRefusesAMisdeclaredRuleBeforeReadingTheInput(): void
+    {
+        $request = new ServerRequest('GET', '/dispatch')
+            ->withQueryParams(['name' => 'a'])
+            ->withParsedBody(['name' => 'a']);
+
+        try {
+            $this->dispatch('misreferenced', $request);
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('Field "name" compares with "missing", which has no rule.', $e->getMessage());
+
+            return;
+        }
+        $this->fail('InvalidArgumentException was not thrown.');
+    }
+
     public function testKeepsTheIndexesOfAListWhoseLowerElementCameOnlyWithTheFiles(): void
     {
         $zero    = new UploadedFile('zero', 4, UPLOAD_ERR_OK, 'zero.txt', 'text/plain');
@@ -672,6 +701,16 @@ final class ValidatedRequestTest extends TestCase
 
         $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
         $this->assertSame([[1, 2, 3], [4, 5, 6]], ValidatedController::$last->matrix);
+    }
+
+    public function testOrdersTheNumberedKeysOfAnArrayField(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['map' => [10 => 'a', 2 => [3 => 'c', 1 => 'b']]]);
+
+        $this->dispatch('matrix', $request);
+
+        $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
+        $this->assertSame([2 => [1 => 'b', 3 => 'c'], 10 => 'a'], ValidatedController::$last->map);
     }
 
     public function testKeepsTheOrderOfALevelWhoseKeysAreNotAllNumbers(): void

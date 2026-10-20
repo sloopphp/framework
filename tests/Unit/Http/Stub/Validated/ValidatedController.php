@@ -270,4 +270,11 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function misreferenced(MisreferencedRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }
