@@ -272,15 +272,15 @@ final class ListRule extends ArrayRule
     }
 
     /**
-     * Rules of an element, whatever the key.
+     * Rules of an element, whatever the key; none when an array sanitizer closure can move the elements first.
      *
-     * @param  int|string                 $key Key inside the value
-     * @return FieldRule<covariant mixed>
+     * @param  int|string                      $key Key inside the value
+     * @return FieldRule<covariant mixed>|null
      */
     #[\Override]
-    public function childRule(int|string $key): FieldRule
+    public function childRule(int|string $key): ?FieldRule
     {
-        return $this->element;
+        return $this->reshapes() ? null : $this->element;
     }
 
     /**

@@ -44,6 +44,25 @@ abstract class ArrayRule extends FieldRule
     }
 
     /**
+     * Whether an array sanitizer given as a closure can reshape the value before its elements or keys are validated.
+     *
+     * The rules of what the field holds then cannot be told from where a value
+     * arrives: a closure may rename a key, or move an element.
+     *
+     * @return bool
+     */
+    protected function reshapes(): bool
+    {
+        foreach ($this->arraySanitizers as $sanitizer) {
+            if ($sanitizer instanceof Closure) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Read an array, running the declared sanitizers over it.
      *
      * @param  mixed                                $value Raw value

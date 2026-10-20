@@ -41,6 +41,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\PrivateHelperBase;
 use Sloop\Tests\Unit\Http\Stub\Validated\PrivatePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyWithoutRuleRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\RenamingRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RequestInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotArrayRequest;
@@ -583,13 +584,13 @@ final class ValidatedRequestTest extends TestCase
         $file    = new UploadedFile('x', 1, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
         $request = new ServerRequest('POST', '/dispatch')
             ->withParsedBody(['meta' => ['a' => ['x' => '1']]])
-            ->withUploadedFiles(['meta' => ['a' => ['f' => $file]]]);
+            ->withUploadedFiles(['meta' => ['a' => ['f' => $file, 'g' => $file]]]);
 
         $response = $this->dispatch('trimmed', $request);
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(TrimmedRequest::class, ValidatedController::$last);
-        $this->assertSame(['a' => ['x' => '1', 'f' => $file]], ValidatedController::$last->meta);
+        $this->assertSame(['a' => ['x' => '1', 'f' => $file, 'g' => $file]], ValidatedController::$last->meta);
     }
 
     public function testDoesNotMergeAKeyTheShapeDropsFromTheFiles(): void
@@ -605,6 +606,33 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(NestedFormRequest::class, ValidatedController::$last);
         $this->assertSame(['name' => 'Ann', 'avatar' => $avatar], ValidatedController::$last->user);
+    }
+
+    public function testMergesBelowAShapeWhoseSanitizerClosureCanRenameKeysWithoutAskingItsRules(): void
+    {
+        $file    = new UploadedFile('x', 1, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => ['name' => 'Ann']])
+            ->withUploadedFiles(['user' => ['upload' => $file]]);
+
+        $response = $this->dispatch('renaming', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(RenamingRequest::class, ValidatedController::$last);
+        $this->assertSame(['name' => 'Ann', 'avatar' => $file], ValidatedController::$last->user);
+    }
+
+    public function testIgnoresAFilesHalfHoldingOnlyKeysTheShapeDrops(): void
+    {
+        $file    = new UploadedFile('x', 1, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => 'abc'])
+            ->withUploadedFiles(['user' => ['x' => $file]]);
+
+        $response = $this->dispatch('nestedForm', $request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(['user'], array_keys(self::errors($response)));
     }
 
     public function testTakesAFileInputLeftWithoutAFileAsEmptyOnlyWhereTheRuleIsAFile(): void

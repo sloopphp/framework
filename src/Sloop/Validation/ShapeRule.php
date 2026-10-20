@@ -288,7 +288,7 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
-     * Rules of a declared key, or null for a key the shape does not declare.
+     * Rules of a declared key, or null for a key the shape does not declare or when an array sanitizer closure can rename the keys first.
      *
      * @param  int|string                      $key Key inside the value
      * @return FieldRule<covariant mixed>|null
@@ -296,11 +296,11 @@ final class ShapeRule extends ArrayRule
     #[\Override]
     public function childRule(int|string $key): ?FieldRule
     {
-        return $this->fields[$key] ?? null;
+        return $this->reshapes() ? null : ($this->fields[$key] ?? null);
     }
 
     /**
-     * Whether the key is one the shape does not declare, which validation drops.
+     * Whether the key is one the shape does not declare, which validation drops; never when an array sanitizer closure can rename the keys first.
      *
      * @param  int|string $key Key inside the value
      * @return bool
@@ -308,7 +308,7 @@ final class ShapeRule extends ArrayRule
     #[\Override]
     public function dropsKey(int|string $key): bool
     {
-        return !isset($this->fields[$key]);
+        return !$this->reshapes() && !isset($this->fields[$key]);
     }
 
     /**

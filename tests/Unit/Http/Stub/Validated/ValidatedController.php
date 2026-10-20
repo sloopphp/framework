@@ -263,4 +263,11 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function renaming(RenamingRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }

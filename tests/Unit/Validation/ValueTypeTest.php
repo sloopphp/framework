@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UploadedFileInterface;
 use Sloop\Support\TimeOfDay;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
+use Sloop\Validation\ArraySanitize;
 use Sloop\Validation\FieldRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\Sanitize;
@@ -111,6 +112,17 @@ final class ValueTypeTest extends TestCase
         $this->assertFalse(Rule::shape(['a' => Rule::int()])->dropsKey('a'));
         $this->assertFalse(Rule::array()->dropsKey('b'));
         $this->assertFalse(Rule::list(Rule::int())->dropsKey(0));
+    }
+
+    public function testAsksNoRulesBelowAnArraySanitizerClosure(): void
+    {
+        $keep = static fn (array $value): array => $value;
+
+        $this->assertNull(Rule::list(Rule::int(), $keep)->childRule(0));
+        $this->assertNull(Rule::shape(['a' => Rule::int()], $keep)->childRule('a'));
+        $this->assertFalse(Rule::shape(['a' => Rule::int()], $keep)->dropsKey('b'));
+        $this->assertNotNull(Rule::list(Rule::int(), ArraySanitize::Unique)->childRule(0));
+        $this->assertTrue(Rule::shape(['a' => Rule::int()], ArraySanitize::RemoveEmpty)->dropsKey('b'));
     }
 
     public function testAnOptionalFieldWithoutADefaultCanBeNull(): void

@@ -104,7 +104,10 @@ final class ValidatedInput
      * defines it, gives way to the other, and two values with something in
      * them at the same place cannot be merged. A key the rule drops (one a
      * shape does not declare) is not merged from the files, as the Validator
-     * would drop it anyway.
+     * would drop it anyway. Below a list or a shape whose array sanitizer is
+     * a closure, which can rename keys or move elements before they are
+     * validated, no rule is asked: the halves are merged as they arrive, and
+     * the closure receives them as one form would send them.
      *
      * @param  mixed                           $form Value from the parsed body
      * @param  mixed                           $file Value from the uploaded files
@@ -121,14 +124,19 @@ final class ValidatedInput
         if (self::isEmpty($form, $rule)) {
             return [true, $file];
         }
-        if (!\is_array($form) || !\is_array($file)) {
+        if (!\is_array($file)) {
+            return [false, null];
+        }
+        $kept = self::withoutDroppedKeys($file, $rule);
+        if ($file !== [] && $kept === []) {
+            // A file half holding only keys the rule drops has nothing to merge.
+            return [true, $form];
+        }
+        if (!\is_array($form)) {
             return [false, null];
         }
 
-        foreach ($file as $key => $part) {
-            if ($rule !== null && $rule->dropsKey($key)) {
-                continue;
-            }
+        foreach ($kept as $key => $part) {
             [$combined, $merged] = self::combine($form[$key] ?? null, $part, $rule?->childRule($key));
             if (!$combined) {
                 return [false, null];
@@ -137,6 +145,28 @@ final class ValidatedInput
         }
 
         return [true, $form];
+    }
+
+    /**
+     * The files half of a field without the keys its rule drops.
+     *
+     * @param  array<array-key, mixed>         $file Value from the uploaded files
+     * @param  FieldRule<covariant mixed>|null $rule Rule at this place, or null where none is declared
+     * @return array<array-key, mixed>
+     */
+    private static function withoutDroppedKeys(array $file, ?FieldRule $rule): array
+    {
+        if ($rule === null) {
+            return $file;
+        }
+        $kept = [];
+        foreach ($file as $key => $part) {
+            if (!$rule->dropsKey($key)) {
+                $kept[$key] = $part;
+            }
+        }
+
+        return $kept;
     }
 
     /**
