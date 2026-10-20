@@ -910,8 +910,11 @@ final class MutationBaseline
     /**
      * List the baseline entries that did not survive the latest run.
      *
-     * Named, not only counted: the run still passes, so a count alone gives
-     * no lead on which entries to drop or which test now kills them.
+     * Counted by occurrence, as the regression check is: when the baseline
+     * holds the same mutant twice and only one survived, the other is listed.
+     * Named, not only counted: resolved entries alone do not fail the run, so
+     * a count gives no lead on which entries to drop or which test now kills
+     * them.
      *
      * @param  list<Mutant>       $baseline      Mutants the baseline allows
      * @param  array<string, int> $allowedCounts Occurrence count per key in the latest run
@@ -919,10 +922,13 @@ final class MutationBaseline
      */
     private static function reportResolved(array $baseline, array $allowedCounts): void
     {
+        $seen     = [];
         $resolved = [];
         foreach ($baseline as $mutant) {
-            if (!isset($allowedCounts[$mutant->key()])) {
-                $resolved[$mutant->key()] = $mutant;
+            $key        = $mutant->key();
+            $seen[$key] = ($seen[$key] ?? 0) + 1;
+            if ($seen[$key] > ($allowedCounts[$key] ?? 0)) {
+                $resolved[] = $mutant;
             }
         }
 

@@ -333,6 +333,26 @@ final class MutationBaselineTest extends TestCase
         self::assertStringNotContainsString('Kept.php', $this->output);
     }
 
+    public function testARunMatchingTheBaselineReportsNoResolvedEntries(): void
+    {
+        $mutant = $this->entry('Kept.php', 40, 'LogicalOr', '-        return $c || $d;', '+        return $c && $d;');
+        $this->writeBaselineFrom($this->reportWith(['escaped' => [$mutant]]));
+
+        self::assertSame(0, $this->check($this->reportWith(['escaped' => [$mutant]])));
+        self::assertStringNotContainsString('no longer survive', $this->output);
+    }
+
+    public function testOneOfTwoIdenticalBaselineEntriesThatNoLongerSurvivesIsReported(): void
+    {
+        $first  = $this->entry('Twice.php', 7, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;');
+        $second = $this->entry('Twice.php', 7, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;');
+        $this->writeBaselineFrom($this->reportWith(['escaped' => [$first, $second]]));
+
+        self::assertSame(0, $this->check($this->reportWith(['escaped' => [$first]])));
+        self::assertStringContainsString('1 baseline entries no longer survive', $this->output);
+        self::assertStringContainsString('Twice.php', $this->output);
+    }
+
     public function testTheBaselineRecordsEscapedTimeoutedAndErroredMutants(): void
     {
         $this->writeBaselineFrom($this->reportWith([
