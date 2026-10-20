@@ -270,4 +270,24 @@ final class ListRule extends ArrayRule
     {
         return $this->element->declaredFlags();
     }
+
+    /**
+     * This list itself when it declares no upper bound on its count, otherwise the first unbounded list inside its element.
+     *
+     * @return string|null
+     */
+    #[\Override]
+    protected function childUnboundedList(): ?string
+    {
+        if (!$this->boundsCount()) {
+            return '';
+        }
+        $inner = $this->element->unboundedList();
+
+        if ($inner === null) {
+            return null;
+        }
+
+        return $inner === '' ? '*' : '*.' . $inner;
+    }
 }

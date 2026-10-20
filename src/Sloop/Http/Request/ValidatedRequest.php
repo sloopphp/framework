@@ -45,7 +45,10 @@ namespace Sloop\Http\Request;
  * property that is not `public private(set)`, or a property given an
  * initial value other than null (declare the default with default()
  * instead) is a mistake in the class, reported with a LogicException when
- * the class is first resolved.
+ * the class is first resolved. So is a list() without maxCount(),
+ * exactCount() or betweenCount() at any depth of the rules: without an
+ * upper bound, a request failing every element of a long list makes an
+ * error for each and can exhaust memory.
  */
 abstract class ValidatedRequest
 {

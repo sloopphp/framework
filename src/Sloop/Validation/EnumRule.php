@@ -218,6 +218,6 @@ final class EnumRule extends FieldRule
     #[\Override]
     public function valueType(): string
     {
-        return $this->enum;
+        return ltrim($this->enum, '\\');
     }
 }

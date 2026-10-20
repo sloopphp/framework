@@ -286,4 +286,22 @@ final class ShapeRule extends ArrayRule
 
         return $flags;
     }
+
+    /**
+     * The first unbounded list inside the keys, prefixed with its key.
+     *
+     * @return string|null
+     */
+    #[\Override]
+    protected function childUnboundedList(): ?string
+    {
+        foreach ($this->fields as $key => $rule) {
+            $inner = $rule->unboundedList();
+            if ($inner !== null) {
+                return $key . ($inner === '' ? '' : '.' . $inner);
+            }
+        }
+
+        return null;
+    }
 }

@@ -68,7 +68,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  ServerRequestInterface   $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
      * @throws RuntimeException         If the controller cannot be resolved as an object, a route parameter is missing, or a parameter type is unsupported
-     * @throws LogicException           If a ValidatedRequest subclass the action takes does not match its rules
+     * @throws LogicException           If a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
      * @throws ContainerException       If a circular dependency is detected during resolution
@@ -111,7 +111,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  Request                             $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws RuntimeException                    If a route parameter is missing or a parameter type is unsupported
-     * @throws LogicException                      If a ValidatedRequest subclass does not match its rules
+     * @throws LogicException                      If a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
      * @throws ContainerException                  If a circular dependency is detected during dependency resolution
@@ -170,7 +170,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  class-string<ValidatedRequest>     $class        Subclass to fill
      * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
-     * @throws LogicException                     If the subclass does not match its rules, or rules() asks for the Request or a ValidatedRequest
+     * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, or the parsed body is not an array
      * @throws RuntimeException                   If a route parameter rules() asks for is missing or its type is unsupported
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
@@ -213,15 +213,15 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * The errors of a failed validation as the 422 response carries them.
      *
-     * @param  ValidationResult                                                                                                          $result Failed result
-     * @return array<string, list<array{rule: string, params: array<string, int|float|string|list<int|float|string>>, message: string}>>
+     * @param  ValidationResult                                                          $result Failed result
+     * @return array<string, list<array{rule: string, params: object, message: string}>> The params as an object, so that they encode as a JSON object even when empty
      */
     private static function errorBody(ValidationResult $result): array
     {
         $body = [];
         foreach ($result->errors() as $key => $errors) {
             foreach ($errors as $error) {
-                $body[$key][] = ['rule' => $error->rule, 'params' => $error->params, 'message' => $error->message];
+                $body[$key][] = ['rule' => $error->rule, 'params' => (object) $error->params, 'message' => $error->message];
             }
         }
 

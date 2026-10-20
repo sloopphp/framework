@@ -23,14 +23,19 @@ use Sloop\Routing\Route;
 use Sloop\Tests\Unit\Http\Stub\DiService;
 use Sloop\Tests\Unit\Http\Stub\Validated\AbstractRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\BaseInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\BoundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ClockedRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\CreateUserRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\DefaultNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\FileUploadRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InjectedRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\InnerUnboundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MutablePropertyRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\NestedFormRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NoRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NotNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NullableRequiredRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\PrivateHelperBase;
 use Sloop\Tests\Unit\Http\Stub\Validated\PrivatePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyWithoutRuleRequest;
@@ -41,6 +46,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotFieldRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesRecorder;
 use Sloop\Tests\Unit\Http\Stub\Validated\RuleWithoutPropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\StaticRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\UnboundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnionPropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedController;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedInRulesRequest;
@@ -379,6 +385,103 @@ final class ValidatedRequestTest extends TestCase
         $this->dispatch('create', new ServerRequest('POST', '/dispatch')->withParsedBody(new \stdClass()));
     }
 
+    #[DataProvider('queryMethods')]
+    public function testAnswers422WhateverTheMethod(string $method): void
+    {
+        $response = $this->dispatch('create', new ServerRequest($method, '/dispatch'));
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(['name'], array_keys(self::errors($response)));
+    }
+
+    public function testEncodesEmptyParamsAsAJsonObject(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['name' => 'Ann', 'age' => 'x']);
+
+        $body = (string) $this->dispatch('create', $request)->getBody();
+
+        $this->assertStringContainsString('"age":[{"rule":"int","params":{},', $body);
+    }
+
+    public function testAcceptsANullablePropertyForAFieldWithADefault(): void
+    {
+        $this->dispatch('defaultNullable', new ServerRequest('POST', '/dispatch'));
+
+        $this->assertInstanceOf(DefaultNullableRequest::class, ValidatedController::$last);
+        $this->assertSame(10, ValidatedController::$last->limit);
+    }
+
+    public function testAcceptsListsBoundedByExactOrBetweenCount(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['items' => [['1'], ['2', '3']]]);
+
+        $this->assertSame(200, $this->dispatch('boundedList', $request)->getStatusCode());
+        $this->assertInstanceOf(BoundedListRequest::class, ValidatedController::$last);
+        $this->assertSame([[1], [2, 3]], ValidatedController::$last->items);
+    }
+
+    public function testMergesTheFormAndTheFilesOfOneNestedField(): void
+    {
+        $file    = new UploadedFile('content', 7, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => ['name' => 'Ann']])
+            ->withUploadedFiles(['user' => ['avatar' => $file]]);
+
+        $response = $this->dispatch('nestedForm', $request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(NestedFormRequest::class, ValidatedController::$last);
+        $this->assertSame(['name' => 'Ann', 'avatar' => $file], ValidatedController::$last->user);
+    }
+
+    public function testMergesANestedFieldWhoseFileHalfIsEmpty(): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => ['name' => 'Ann']])
+            ->withUploadedFiles(['user' => []]);
+
+        $this->assertSame(200, $this->dispatch('nestedForm', $request)->getStatusCode());
+    }
+
+    public function testAnswers400WhenANestedKeyIsSentAsBothAFormValueAndAFile(): void
+    {
+        $file    = new UploadedFile('content', 7, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => ['name' => 'Ann', 'avatar' => 'x']])
+            ->withUploadedFiles(['user' => ['avatar' => $file]]);
+
+        $response = $this->dispatch('nestedForm', $request);
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(
+            ['error' => ['message' => 'The request value "user" was sent as both a form value and a file.', 'status' => 400]],
+            self::body($response),
+        );
+    }
+
+    public function testAnswers400WhenAFormValueAndANestedFileShareAField(): void
+    {
+        $file    = new UploadedFile('content', 7, UPLOAD_ERR_OK, 'a.txt', 'text/plain');
+        $request = new ServerRequest('POST', '/dispatch')
+            ->withParsedBody(['user' => 'Ann'])
+            ->withUploadedFiles(['user' => ['avatar' => $file]]);
+
+        $this->assertSame(400, $this->dispatch('nestedForm', $request)->getStatusCode());
+    }
+
+    public function testTreatsAFileInputLeftWithoutAFileAsNotSent(): void
+    {
+        $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
+        $request = new ServerRequest('DELETE', '/dispatch')
+            ->withQueryParams(['avatar' => 'x'])
+            ->withUploadedFiles(['avatar' => $empty]);
+
+        $response = $this->dispatch('upload', $request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(['avatar'], array_keys(self::errors($response)));
+    }
+
     public function testReadsTheShapeOfAClassOnce(): void
     {
         $this->assertSame(ValidatedRequestShape::of(CreateUserRequest::class), ValidatedRequestShape::of(CreateUserRequest::class));
@@ -407,6 +510,9 @@ final class ValidatedRequestTest extends TestCase
             'rules() takes a ValidatedRequest' => ['validatedInRules', ValidatedInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
             'rules() takes the base class' => ['baseInRules', BaseInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
             'the base class itself' => ['base', ValidatedRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
+            'private property of a parent' => ['inheritedPrivate', PrivateHelperBase::class . '::$helper must be declared public private(set): every property of a validated request receives a validated value.'],
+            'list() without an upper bound' => ['unboundedList', UnboundedListRequest::class . ': the list() at "items" needs maxCount(), exactCount() or betweenCount(), so that a request failing every element cannot exhaust memory.'],
+            'inner list() without an upper bound' => ['innerUnboundedList', InnerUnboundedListRequest::class . ': the list() at "items.*.tags" needs maxCount(), exactCount() or betweenCount(), so that a request failing every element cannot exhaust memory.'],
             'abstract class' => ['abstract', AbstractRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
         ];
     }

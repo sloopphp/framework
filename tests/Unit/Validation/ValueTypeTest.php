@@ -29,6 +29,7 @@ final class ValueTypeTest extends TestCase
             'decimal'          => [Rule::decimal(5, 2), 'string'],
             'decimal asNumber' => [Rule::decimal(5, 2)->asNumber(), Number::class],
             'enum'             => [Rule::enum(Priority::class), Priority::class],
+            'enum named with a leading backslash' => [Rule::enum('\\' . Priority::class), Priority::class],
             'date'             => [Rule::date(), DateTimeImmutable::class],
             'dateTime'         => [Rule::dateTime(), DateTimeImmutable::class],
             'time'             => [Rule::time(), TimeOfDay::class],
@@ -46,6 +47,37 @@ final class ValueTypeTest extends TestCase
     public function testNamesTheTypeOfTheValidatedValue(FieldRule $rule, string $type): void
     {
         $this->assertSame($type, $rule->valueType());
+    }
+
+    /**
+     * @return array<string, array{FieldRule<covariant mixed>, string|null}>
+     */
+    public static function lists(): array
+    {
+        return [
+            'not a list'                     => [Rule::int(), null],
+            'list without a bound'           => [Rule::list(Rule::int()), ''],
+            'list with maxCount()'           => [Rule::list(Rule::int())->maxCount(5), null],
+            'list with exactCount()'         => [Rule::list(Rule::int())->exactCount(5), null],
+            'list with betweenCount()'       => [Rule::list(Rule::int())->betweenCount(1, 5), null],
+            'list with only minCount()'      => [Rule::list(Rule::int())->minCount(1), ''],
+            'maxCount() only inside when()'  => [Rule::list(Rule::int())->when('other', 1, static fn (FieldRule $r): FieldRule => $r->maxCount(5)), ''],
+            'unbounded list of lists'        => [Rule::list(Rule::list(Rule::int()))->maxCount(5), '*'],
+            'unbounded list in a shape'      => [Rule::shape(['a' => Rule::int(), 'tags' => Rule::list(Rule::int())]), 'tags'],
+            'unbounded list of lists in a shape' => [Rule::shape(['tags' => Rule::list(Rule::list(Rule::int()))->maxCount(5)]), 'tags.*'],
+            'deep unbounded list'            => [Rule::list(Rule::shape(['tags' => Rule::list(Rule::int())]))->maxCount(5), '*.tags'],
+            'bounded lists in a shape'       => [Rule::shape(['tags' => Rule::list(Rule::int())->maxCount(5)]), null],
+            'array() needs no bound'         => [Rule::array(), null],
+        ];
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $rule
+     */
+    #[DataProvider('lists')]
+    public function testFindsTheFirstListWithoutAnUpperBound(FieldRule $rule, ?string $path): void
+    {
+        $this->assertSame($path, $rule->unboundedList());
     }
 
     public function testAnOptionalFieldWithoutADefaultCanBeNull(): void

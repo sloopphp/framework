@@ -186,4 +186,46 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function nestedForm(NestedFormRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function unboundedList(UnboundedListRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function innerUnboundedList(InnerUnboundedListRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function boundedList(BoundedListRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function defaultNullable(DefaultNullableRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function inheritedPrivate(InheritedPrivateRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }

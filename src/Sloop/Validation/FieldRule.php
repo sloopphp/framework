@@ -890,6 +890,49 @@ abstract class FieldRule
     abstract public function valueType(): string;
 
     /**
+     * Path to the first list() in this field, the field itself included, that declares no upper bound on its count.
+     *
+     * The path is relative to the field: '' for the field itself, `*` for
+     * the elements of a list, and the key for a key of a shape, joined by
+     * dots (`*.tags`). maxCount(), exactCount() and betweenCount() bound the
+     * count; one added by when() does not, as it runs only on a condition.
+     *
+     * @internal Read by ValidatedRequest, which needs every list bounded so that a request failing every element cannot exhaust memory.
+     *
+     * @return string|null Path, or null when every list is bounded
+     */
+    public function unboundedList(): ?string
+    {
+        return $this->childUnboundedList();
+    }
+
+    /**
+     * Path to the first unbounded list() inside what this field holds, as unboundedList() describes it.
+     *
+     * @return string|null
+     */
+    protected function childUnboundedList(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Whether maxCount(), exactCount() or betweenCount() was declared on the field itself.
+     *
+     * @return bool
+     */
+    protected function boundsCount(): bool
+    {
+        foreach ($this->sizeChecks as $check) {
+            if ($check->rule === 'maxCount' || $check->rule === 'exactCount' || $check->rule === 'betweenCount') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a validated value of this field can be the given value.
      *
      * Only the types whose validated value is compared as it is answer yes;

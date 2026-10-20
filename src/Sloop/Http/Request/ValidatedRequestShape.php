@@ -77,28 +77,59 @@ final class ValidatedRequestShape
         }
 
         $properties = [];
-        foreach ($reflection->getProperties() as $property) {
-            $name = $property->getName();
-            if (!$property->isPublic() || !$property->isPrivateSet() || $property->isStatic()) {
-                throw new LogicException(
-                    $class . '::$' . $name . ' must be declared public private(set): every property of a validated request receives a validated value.',
-                );
-            }
-            if ($property->hasDefaultValue() && $property->getDefaultValue() !== null) {
-                throw new LogicException(
-                    $class . '::$' . $name . ' has an initial value, which the validated value always replaces: declare the default with default() in rules().',
-                );
-            }
-            $type = $property->getType();
-            if (!$type instanceof ReflectionNamedType) {
-                throw new LogicException(
-                    $class . '::$' . $name . ' needs a single type (with or without ?), the type of its field\'s validated value.',
-                );
-            }
-            $properties[$name] = [$property, $type];
+        foreach (self::declaredProperties($reflection) as $property) {
+            $properties[$property->getName()] = [$property, self::receivingType($property)];
         }
 
         return new self($class, $rules, $properties);
+    }
+
+    /**
+     * Every property of a subclass, the private ones of its parents between it and ValidatedRequest included.
+     *
+     * @param  ReflectionClass<ValidatedRequest> $reflection Subclass
+     * @return list<ReflectionProperty>
+     */
+    private static function declaredProperties(ReflectionClass $reflection): array
+    {
+        $declared = $reflection->getProperties();
+        for ($parent = $reflection->getParentClass(); $parent !== false && $parent->getName() !== ValidatedRequest::class; $parent = $parent->getParentClass()) {
+            foreach ($parent->getProperties(ReflectionProperty::IS_PRIVATE) as $private) {
+                $declared[] = $private;
+            }
+        }
+
+        return $declared;
+    }
+
+    /**
+     * Check how a property is declared, and return its type.
+     *
+     * @param  ReflectionProperty  $property Property of the subclass or of a parent
+     * @return ReflectionNamedType
+     * @throws LogicException      When the property is not a typed `public private(set)` one, or has an initial value other than null
+     */
+    private static function receivingType(ReflectionProperty $property): ReflectionNamedType
+    {
+        $where = $property->getDeclaringClass()->getName() . '::$' . $property->getName();
+        if (!$property->isPublic() || !$property->isPrivateSet() || $property->isStatic()) {
+            throw new LogicException(
+                $where . ' must be declared public private(set): every property of a validated request receives a validated value.',
+            );
+        }
+        if ($property->hasDefaultValue() && $property->getDefaultValue() !== null) {
+            throw new LogicException(
+                $where . ' has an initial value, which the validated value always replaces: declare the default with default() in rules().',
+            );
+        }
+        $type = $property->getType();
+        if (!$type instanceof ReflectionNamedType) {
+            throw new LogicException(
+                $where . ' needs a single type (with or without ?), the type of its field\'s validated value.',
+            );
+        }
+
+        return $type;
     }
 
     /**
@@ -117,7 +148,7 @@ final class ValidatedRequestShape
      * @param  ValidatedRequest                          $request   Instance to call rules() on
      * @param  list<mixed>                               $arguments Resolved arguments of rules()
      * @return array<string, FieldRule<covariant mixed>> Rules keyed by field name
-     * @throws LogicException                            When rules() does not return field rules keyed by name, a rule has no property or a property no rule, or a property's type does not match its rule
+     * @throws LogicException                            When rules() does not return field rules keyed by name, a rule has no property or a property no rule, a property's type does not match its rule, or a list() has no upper bound on its count
      * @throws ReflectionException                       When rules() cannot be invoked
      */
     public function rules(ValidatedRequest $request, array $arguments): array
@@ -136,6 +167,13 @@ final class ValidatedRequestShape
                 throw new LogicException($this->class . ' has a rule for "' . $field . '" but no property to receive it.');
             }
             $this->assertType($field, $rule, $this->properties[$field][1]);
+            $unbounded = $rule->unboundedList();
+            if ($unbounded !== null) {
+                throw new LogicException(
+                    $this->class . ': the list() at "' . ($unbounded === '' ? $field : $field . '.' . $unbounded) . '" needs maxCount(), exactCount() or betweenCount(), '
+                    . 'so that a request failing every element cannot exhaust memory.',
+                );
+            }
             $rules[$field] = $rule;
         }
         foreach ($this->properties as $name => $_) {

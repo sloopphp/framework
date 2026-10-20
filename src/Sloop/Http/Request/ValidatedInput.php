@@ -6,6 +6,7 @@ namespace Sloop\Http\Request;
 
 use LogicException;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * Input a ValidatedRequest validates, gathered by the request method.
@@ -14,10 +15,12 @@ use Psr\Http\Message\ServerRequestInterface;
  * uploaded files. GET, HEAD and DELETE validate the query string as well,
  * since RFC 9110 gives content in those requests no defined meaning and
  * clients put what they send in either place. A field found in two of the
- * places is refused instead of one silently winning; an empty value (null
- * or '') counts as not sent, as it does for the Validator. Only the fields
- * with a rule are gathered, so the key named in that refusal is always one
- * the application declared, never one a client made up.
+ * places is refused instead of one silently winning; an empty value (null,
+ * '' or a file input left without a file) counts as not sent, as it does for
+ * the Validator. The body and the uploaded files are merged key by key, as
+ * PHP splits one form between them. Only the fields with a rule are
+ * gathered, so the key named in that refusal is always one the application
+ * declared, never one a client made up.
  *
  * @internal Used by RouteRequestHandler.
  */
@@ -40,26 +43,27 @@ final class ValidatedInput
      */
     public static function collect(ServerRequestInterface $request, array $fields): array|string
     {
-        $body = $request->getParsedBody() ?? [];
-        if (!\is_array($body)) {
-            throw new LogicException('The parsed body of the request is not an array; a ValidatedRequest reads the body as one.');
-        }
+        $body  = self::body($request);
         $files = $request->getUploadedFiles();
         $query = \in_array($request->getMethod(), self::QUERY_METHODS, true) ? $request->getQueryParams() : [];
 
-        $sources = ['body' => $body, 'file' => $files, 'query' => $query];
-        $input   = [];
+        $input = [];
         foreach ($fields as $field) {
-            $sent = self::sent($field, $sources);
-
-            if (\array_key_exists('body', $sent) && \array_key_exists('file', $sent)) {
+            [$combined, $value] = self::combine($body[$field] ?? null, $files[$field] ?? null);
+            if (!$combined) {
                 return 'The request value "' . $field . '" was sent as both a form value and a file.';
             }
-            if (\count($sent) > 1) {
-                return 'The request value "' . $field . '" was sent in both the query string and the body.';
+
+            $fromQuery = $query[$field] ?? null;
+            if (!self::isEmpty($fromQuery)) {
+                if (!self::isEmpty($value)) {
+                    return 'The request value "' . $field . '" was sent in both the query string and the body.';
+                }
+                $value = $fromQuery;
             }
-            if ($sent !== []) {
-                $input[$field] = array_first($sent);
+
+            if (!self::isEmpty($value)) {
+                $input[$field] = $value;
             }
         }
 
@@ -67,22 +71,69 @@ final class ValidatedInput
     }
 
     /**
-     * The values a field was sent with, keyed by where they came from, leaving out empty ones.
+     * The parsed body of the request.
      *
-     * @param  string                                 $field   Field name
-     * @param  array<string, array<array-key, mixed>> $sources Body, files and query string, keyed by place
-     * @return array<string, mixed>
+     * @param  ServerRequestInterface  $request PSR-7 request
+     * @return array<array-key, mixed>
+     * @throws LogicException          When the parsed body is an object, which a middleware put there in place of an array
      */
-    private static function sent(string $field, array $sources): array
+    private static function body(ServerRequestInterface $request): array
     {
-        $sent = [];
-        foreach ($sources as $place => $source) {
-            $value = $source[$field] ?? null;
-            if ($value !== null && $value !== '') {
-                $sent[$place] = $value;
-            }
+        $body = $request->getParsedBody() ?? [];
+        if (!\is_array($body)) {
+            throw new LogicException('The parsed body of the request is not an array; a ValidatedRequest reads the body as one.');
         }
 
-        return $sent;
+        return $body;
+    }
+
+    /**
+     * Put back together a form value and the uploaded files PHP split from it.
+     *
+     * PHP puts `user[name]` in the parsed body and `user[avatar]` in the
+     * uploaded files, so one field of a form can arrive in both halves. The
+     * halves are merged key by key; an empty one gives way to the other, and
+     * two values with something in them at the same place cannot be merged.
+     *
+     * @param  mixed              $form Value from the parsed body
+     * @param  mixed              $file Value from the uploaded files
+     * @return array{bool, mixed} Whether the halves could be merged, and the merged value
+     */
+    private static function combine(mixed $form, mixed $file): array
+    {
+        if (self::isEmpty($file) || $file === []) {
+            return [true, $form];
+        }
+        if (self::isEmpty($form) || $form === []) {
+            return [true, $file];
+        }
+        if (!\is_array($form) || !\is_array($file)) {
+            return [false, null];
+        }
+
+        foreach ($file as $key => $part) {
+            [$combined, $merged] = self::combine($form[$key] ?? null, $part);
+            if (!$combined) {
+                return [false, null];
+            }
+            $form[$key] = $merged;
+        }
+
+        return [true, $form];
+    }
+
+    /**
+     * Whether a value counts as not sent: null, '', or a file input left without a file.
+     *
+     * The same values the rules take as empty.
+     *
+     * @param  mixed $value Value to check
+     * @return bool
+     */
+    private static function isEmpty(mixed $value): bool
+    {
+        return $value === null
+            || $value === ''
+            || ($value instanceof UploadedFileInterface && $value->getError() === UPLOAD_ERR_NO_FILE);
     }
 }

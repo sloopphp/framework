@@ -247,14 +247,16 @@
             // method, for which private and protected behave the same. Made
             // private by hand, it fails DecimalRuleTest, so the full suite
             // does detect it.
-            // FieldRule::childUsingWithoutMessage and FieldRule::childFlags
-            // are the same: ListRule and ShapeRule override them, and made
-            // private by hand the whole of UsingTest / ErrorFlagTest stops
-            // with a fatal error (#[\Override] finds no parent).
+            // FieldRule::childUsingWithoutMessage, FieldRule::childFlags and
+            // FieldRule::childUnboundedList are the same: ListRule and
+            // ShapeRule override them, and made private by hand the tests
+            // stop with a fatal error (#[\Override] finds no parent;
+            // UsingTest / ErrorFlagTest / ValueTypeTest).
             "ignore": [
                 "Sloop\\Validation\\FieldRule::typeParams",
                 "Sloop\\Validation\\FieldRule::childUsingWithoutMessage",
-                "Sloop\\Validation\\FieldRule::childFlags"
+                "Sloop\\Validation\\FieldRule::childFlags",
+                "Sloop\\Validation\\FieldRule::childUnboundedList"
             ]
         },
         "AssignCoalesce": {
