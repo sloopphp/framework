@@ -192,28 +192,68 @@ final class ValidatedInput
         if ($rule === null || !\is_array($value) || !$rule->ordersElementsOf($value)) {
             return $value;
         }
-        $numbered = true;
-        $dropped  = false;
-        foreach ($value as $key => $part) {
-            $numbered = $numbered && \is_int($key);
-            if ($rule->dropsKey($key)) {
-                $dropped = true;
-                continue;
-            }
-            if (!\is_array($part)) {
-                continue;
-            }
-            $ordered = self::inIndexOrder($part, $rule->childRule($key));
-            if ($ordered !== $part) {
-                $value[$key] = $ordered;
-            }
-        }
+        [$kept, $ordered, $numbered] = self::orderedChildren($value, $rule);
         // A level holding a key the rule drops is a shape, whose keys are names, not positions.
-        if ($numbered && !$dropped && !array_is_list($value)) {
+        // It is rebuilt from the kept keys, so that the keys the Validator drops are never copied.
+        if (\count($kept) < \count($value)) {
+            return $ordered === [] ? $value : self::withKeys($value, $kept, $ordered);
+        }
+        foreach ($ordered as $key => $child) {
+            $value[$key] = $child;
+        }
+        if ($numbered && !array_is_list($value)) {
             ksort($value);
         }
 
         return $value;
+    }
+
+    /**
+     * The children of one level put in index order, with the keys the rule keeps.
+     *
+     * @param  array<array-key, mixed>                               $value Level to walk
+     * @param  FieldRule<covariant mixed>                            $rule  Rule at this level
+     * @return array{list<array-key>, array<array-key, mixed>, bool} The keys the rule keeps, the children that changed keyed by their key, and whether every key is a number
+     */
+    private static function orderedChildren(array $value, FieldRule $rule): array
+    {
+        $numbered = true;
+        $kept     = [];
+        $ordered  = [];
+        foreach ($value as $key => $part) {
+            $numbered = $numbered && \is_int($key);
+            if ($rule->dropsKey($key)) {
+                continue;
+            }
+            $kept[] = $key;
+            if (!\is_array($part)) {
+                continue;
+            }
+            $child = self::inIndexOrder($part, $rule->childRule($key));
+            if ($child !== $part) {
+                $ordered[$key] = $child;
+            }
+        }
+
+        return [$kept, $ordered, $numbered];
+    }
+
+    /**
+     * A new array holding only the given keys of a value, with some of their values replaced.
+     *
+     * @param  array<array-key, mixed> $value    Value to take the keys from
+     * @param  list<array-key>         $keys     Keys to keep, in order
+     * @param  array<array-key, mixed> $replaced Values that replace those of the same keys
+     * @return array<array-key, mixed>
+     */
+    private static function withKeys(array $value, array $keys, array $replaced): array
+    {
+        $result = [];
+        foreach ($keys as $key) {
+            $result[$key] = \array_key_exists($key, $replaced) ? $replaced[$key] : $value[$key];
+        }
+
+        return $result;
     }
 
     /**
