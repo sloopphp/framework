@@ -42,7 +42,8 @@ final class Config
      * Reads all PHP files in the base config directory, then merges
      * environment-specific overrides from the subdirectory matching
      * the given environment name. An array with only integer keys in an
-     * override replaces the base array instead of being appended to it.
+     * override replaces a base array that also has only integer keys (or a
+     * missing or non-array value) instead of being appended to it.
      *
      * @param  string           $configPath  Absolute path to the config directory
      * @param  string|null      $environment Environment name (e.g. 'production', 'testing')
