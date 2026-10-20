@@ -41,7 +41,8 @@ final class Config
      *
      * Reads all PHP files in the base config directory, then merges
      * environment-specific overrides from the subdirectory matching
-     * the given environment name.
+     * the given environment name. A list in an override replaces the
+     * base list instead of being appended to it.
      *
      * @param  string           $configPath  Absolute path to the config directory
      * @param  string|null      $environment Environment name (e.g. 'production', 'testing')
@@ -81,7 +82,7 @@ final class Config
 
             if (is_dir($envPath)) {
                 $envItems        = self::loadDirectory($envPath);
-                $instance->items = Arr::merge($instance->items, $envItems);
+                $instance->items = self::mergeOverride($instance->items, $envItems);
             }
         }
 
@@ -248,6 +249,39 @@ final class Config
         self::$instance ??= new self();
 
         return self::$instance;
+    }
+
+    /**
+     * Merge environment overrides into the base configuration.
+     *
+     * Associative arrays merge recursively. A list replaces a list (or a
+     * missing or non-array value) as a whole, so a list written for an
+     * environment does not keep the base entries. An empty array over a
+     * non-empty associative array changes nothing. Where the shapes differ
+     * (a list over an associative array or the reverse) the arrays merge,
+     * with numeric keys appended.
+     *
+     * @param  array<array-key, mixed> $base     Base configuration
+     * @param  array<array-key, mixed> $override Environment overrides
+     * @return array<array-key, mixed>
+     */
+    private static function mergeOverride(array $base, array $override): array
+    {
+        foreach ($override as $key => $value) {
+            $current = $base[$key] ?? null;
+
+            if (\is_array($value) && array_is_list($value) && (!\is_array($current) || array_is_list($current))) {
+                $base[$key] = $value;
+            } elseif (\is_int($key)) {
+                $base[] = $value;
+            } elseif (\is_array($value) && \is_array($current)) {
+                $base[$key] = self::mergeOverride($current, $value);
+            } else {
+                $base[$key] = $value;
+            }
+        }
+
+        return $base;
     }
 
     /**

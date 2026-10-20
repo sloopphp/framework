@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Config;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Config\Config;
@@ -381,6 +382,53 @@ final class ConfigTest extends TestCase
     // ---------------------------------------------------------------
     // Environment override merging
     // ---------------------------------------------------------------
+
+    public function testEnvironmentOverrideReplacesANestedListInsteadOfAppendingToIt(): void
+    {
+        Config::load($this->fixturesPath, 'production');
+
+        $this->assertSame([['host' => 'replica-1'], ['host' => 'replica-2']], Config::get('lists.connections.main.read'));
+        $this->assertSame('db', Config::get('lists.connections.main.host'));
+    }
+
+    public function testEnvironmentOverrideWithAnEmptyListEmptiesAList(): void
+    {
+        Config::load($this->fixturesPath, 'production');
+
+        $this->assertSame([], Config::get('lists.emptied'));
+    }
+
+    public function testEnvironmentOverrideWithAnEmptyArrayKeepsAnAssociativeArray(): void
+    {
+        Config::load($this->fixturesPath, 'production');
+
+        $this->assertSame(['X-Frame-Options' => 'DENY'], Config::get('lists.headers'));
+    }
+
+    /**
+     * @return array<string, array{string, mixed}>
+     */
+    public static function listOverrideProvider(): array
+    {
+        return [
+            'a list replacing an empty list'          => ['lists.empty_to_list', ['x']],
+            'a list replacing a scalar'               => ['lists.scalar_to_list', ['x']],
+            'a list missing from the base'            => ['lists.new_list', ['x', 'y']],
+            'an associative array over a list'        => ['lists.list_to_assoc', ['a', 'key' => 'value']],
+            'a list over an associative array'        => ['lists.assoc_to_list', ['key' => 'value', 0 => 'a']],
+            'a list the environment does not mention' => ['lists.untouched', ['a', 'b']],
+            'an associative array over a scalar'      => ['lists.scalar_to_assoc', ['key' => 'value']],
+            'a scalar over an associative array'      => ['lists.assoc_to_scalar', 'single'],
+        ];
+    }
+
+    #[DataProvider('listOverrideProvider')]
+    public function testEnvironmentOverrideOfListsAndMismatchedShapes(string $key, mixed $expected): void
+    {
+        Config::load($this->fixturesPath, 'production');
+
+        $this->assertSame($expected, Config::get($key));
+    }
 
     public function testEnvironmentOverridePreservesBaseValues(): void
     {
