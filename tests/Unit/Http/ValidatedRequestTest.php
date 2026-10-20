@@ -32,6 +32,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\NoRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NotNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NullableRequiredRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PrivatePropertyRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyWithoutRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RequestInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesListRequest;
@@ -261,8 +262,9 @@ final class ValidatedRequestTest extends TestCase
             ->withParsedBody(['avatar' => ''])
             ->withUploadedFiles(['avatar' => $file]);
 
-        $this->dispatch('upload', $request);
+        $response = $this->dispatch('upload', $request);
 
+        $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(FileUploadRequest::class, ValidatedController::$last);
         $this->assertSame($file, ValidatedController::$last->avatar);
     }
@@ -398,6 +400,7 @@ final class ValidatedRequestTest extends TestCase
             'rules() returning no FieldRule' => ['rulesNotFieldRule', RulesNotFieldRuleRequest::class . '::rules() must return field rules keyed by field name.'],
             'rule without property' => ['ruleWithoutProperty', RuleWithoutPropertyRequest::class . ' has a rule for "email" but no property to receive it.'],
             'property without rule' => ['propertyWithoutRule', PropertyWithoutRuleRequest::class . '::$email has no rule in rules().'],
+            'initial value other than null' => ['propertyDefault', PropertyDefaultRequest::class . '::$age has an initial value, which the validated value always replaces: declare the default with default() in rules().'],
             'type differs from the rule' => ['wrongType', WrongTypeRequest::class . '::$name is declared int, but its rule gives string.'],
             'optional field not nullable' => ['notNullable', NotNullableRequest::class . '::$age must accept null (?int): the field is neither required() nor given a default().'],
             'rules() takes the Request' => ['requestInRules', RequestInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],

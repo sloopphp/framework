@@ -15,9 +15,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * since RFC 9110 gives content in those requests no defined meaning and
  * clients put what they send in either place. A field found in two of the
  * places is refused instead of one silently winning; an empty value (null
- * or '') counts as not sent, as it does for the Validator. Only the fields with a
- * rule are gathered, so the key named in that refusal is always one the
- * application declared, never one a client made up.
+ * or '') counts as not sent, as it does for the Validator. Only the fields
+ * with a rule are gathered, so the key named in that refusal is always one
+ * the application declared, never one a client made up.
  *
  * @internal Used by RouteRequestHandler.
  */

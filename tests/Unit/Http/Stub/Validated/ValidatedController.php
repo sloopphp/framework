@@ -179,4 +179,11 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function propertyDefault(PropertyDefaultRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }

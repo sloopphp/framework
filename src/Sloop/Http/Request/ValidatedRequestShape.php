@@ -46,7 +46,7 @@ final class ValidatedRequestShape
      *
      * @param  class-string<ValidatedRequest> $class Subclass
      * @return self
-     * @throws LogicException                 When the class cannot be instantiated, has no rules() method, or declares a property that is not a typed `public private(set)` one
+     * @throws LogicException                 When the class cannot be instantiated, has no rules() method, or declares a property that is not a typed `public private(set)` one or gives one an initial value other than null
      * @throws ReflectionException            When the class cannot be reflected
      */
     public static function of(string $class): self
@@ -59,7 +59,7 @@ final class ValidatedRequestShape
      *
      * @param  class-string<ValidatedRequest> $class Subclass
      * @return self
-     * @throws LogicException                 When the class cannot be instantiated, has no rules() method, or declares a property that is not a typed `public private(set)` one
+     * @throws LogicException                 When the class cannot be instantiated, has no rules() method, or declares a property that is not a typed `public private(set)` one or gives one an initial value other than null
      * @throws ReflectionException            When the class cannot be reflected
      */
     private static function read(string $class): self
@@ -82,6 +82,11 @@ final class ValidatedRequestShape
             if (!$property->isPublic() || !$property->isPrivateSet() || $property->isStatic()) {
                 throw new LogicException(
                     $class . '::$' . $name . ' must be declared public private(set): every property of a validated request receives a validated value.',
+                );
+            }
+            if ($property->hasDefaultValue() && $property->getDefaultValue() !== null) {
+                throw new LogicException(
+                    $class . '::$' . $name . ' has an initial value, which the validated value always replaces: declare the default with default() in rules().',
                 );
             }
             $type = $property->getType();
