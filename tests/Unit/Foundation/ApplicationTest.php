@@ -1192,6 +1192,7 @@ final class ApplicationTest extends TestCase
             static function (): never {
                 throw new \RequestParseBodyException('Missing boundary in multipart/form-data POST data');
             },
+            1_048_576,
         );
 
         $app = new Application($this->tmpDir);

@@ -23,9 +23,9 @@ final class FormBodyTest extends TestCase
     }
 
     /**
-     * @param  array<array-key, mixed>                        $values
-     * @param  array<array-key, mixed>                        $files
-     * @return Closure(): array<int, array<array-key, mixed>>
+     * @param  array<array-key, mixed>                                             $values
+     * @param  array<array-key, mixed>                                             $files
+     * @return Closure(array<string, string>): array<int, array<array-key, mixed>>
      */
     private static function parser(array $values, array $files = []): Closure
     {
@@ -33,7 +33,7 @@ final class FormBodyTest extends TestCase
     }
 
     /**
-     * @return Closure(): array<int, array<array-key, mixed>>
+     * @return Closure(array<string, string>): array<int, array<array-key, mixed>>
      */
     private static function unreachableParser(): Closure
     {
@@ -60,6 +60,7 @@ final class FormBodyTest extends TestCase
         $request = FormBody::parse(
             $this->request($method, 'application/x-www-form-urlencoded'),
             self::parser(['name' => 'Alice']),
+            1_048_576,
         );
 
         $this->assertSame(['name' => 'Alice'], $request->getParsedBody());
@@ -86,6 +87,7 @@ final class FormBodyTest extends TestCase
         $request = FormBody::parse(
             $this->request($method, 'application/x-www-form-urlencoded'),
             self::unreachableParser(),
+            1_048_576,
         );
 
         $this->assertSame(['global' => 'value'], $request->getParsedBody());
@@ -109,7 +111,7 @@ final class FormBodyTest extends TestCase
     #[DataProvider('formContentTypes')]
     public function testParsesEachFormContentType(string $contentType): void
     {
-        $request = FormBody::parse($this->request('PUT', $contentType), self::parser(['a' => '1']));
+        $request = FormBody::parse($this->request('PUT', $contentType), self::parser(['a' => '1']), 1_048_576);
 
         $this->assertSame(['a' => '1'], $request->getParsedBody());
     }
@@ -130,7 +132,7 @@ final class FormBodyTest extends TestCase
     #[DataProvider('otherContentTypes')]
     public function testLeavesAnotherContentTypeAlone(?string $contentType): void
     {
-        $request = FormBody::parse($this->request('PUT', $contentType), self::unreachableParser());
+        $request = FormBody::parse($this->request('PUT', $contentType), self::unreachableParser(), 1_048_576);
 
         $this->assertSame(['global' => 'value'], $request->getParsedBody());
         $this->assertFalse(FormBody::isMalformed($request));
@@ -149,6 +151,7 @@ final class FormBodyTest extends TestCase
                     'avatar' => ['name' => 'a.txt', 'type' => 'text/plain', 'tmp_name' => $tmp, 'error' => \UPLOAD_ERR_OK, 'size' => 2],
                     'empty'  => ['name' => '', 'type' => '', 'tmp_name' => '', 'error' => \UPLOAD_ERR_NO_FILE, 'size' => 0],
                 ]),
+                1_048_576,
             );
 
             $files = $request->getUploadedFiles();
@@ -170,6 +173,7 @@ final class FormBodyTest extends TestCase
             static function (): never {
                 throw new RequestParseBodyException('Missing boundary in multipart/form-data POST data');
             },
+            1_048_576,
         );
 
         $this->assertTrue(FormBody::isMalformed($request));
@@ -181,6 +185,7 @@ final class FormBodyTest extends TestCase
         $request = FormBody::parse(
             $this->request('PUT', 'application/x-www-form-urlencoded'),
             static fn (): array => [],
+            1_048_576,
         );
 
         $this->assertSame([], $request->getParsedBody());
@@ -190,5 +195,56 @@ final class FormBodyTest extends TestCase
     public function testARequestThatWasNotParsedIsNotMalformed(): void
     {
         $this->assertFalse(FormBody::isMalformed($this->request('PUT', 'application/x-www-form-urlencoded')));
+    }
+
+    /**
+     * @return array<string, array{string, array<string, string>}>
+     */
+    public static function parserOptionsProvider(): array
+    {
+        return [
+            'urlencoded is parsed up to the limit'  => ['application/x-www-form-urlencoded', ['post_max_size' => '512']],
+            'multipart keeps PHP\'s post_max_size' => ['multipart/form-data; boundary=x', []],
+        ];
+    }
+
+    /**
+     * @param array<string, string> $expected
+     */
+    #[DataProvider('parserOptionsProvider')]
+    public function testGivesTheParserTheLimitForUrlencodedBodiesOnly(string $contentType, array $expected): void
+    {
+        $given = new \ArrayObject();
+
+        FormBody::parse(
+            $this->request('PUT', $contentType),
+            static function (array $options) use ($given): array {
+                $given->exchangeArray($options);
+
+                return [[], []];
+            },
+            512,
+        );
+
+        $this->assertSame($expected, $given->getArrayCopy());
+    }
+
+    public function testKeepsAWarningOfTheParserOutOfTheOutput(): void
+    {
+        error_clear_last();
+
+        $request = FormBody::parse(
+            $this->request('PUT', 'application/x-www-form-urlencoded'),
+            static function (): array {
+                // Stands in for request_parse_body() warning that the body is over the limit.
+                hex2bin('a');
+
+                return [[], []];
+            },
+            1_048_576,
+        );
+
+        $this->assertSame([], $request->getParsedBody());
+        $this->assertNull(error_get_last());
     }
 }

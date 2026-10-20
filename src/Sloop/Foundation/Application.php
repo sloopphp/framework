@@ -1046,10 +1046,13 @@ final class Application implements RequestHandlerInterface
      * puts only form bodies in $_POST; one that is not a JSON object or array
      * is marked, and handle() answers it with a 400. PHP fills $_POST and
      * $_FILES only for POST, so the form body of a PUT, PATCH or DELETE is read
-     * here, and one PHP refuses to read is marked the same way.
+     * here, and one PHP refuses to read is marked the same way. A body larger
+     * than security.max_body_size is marked and not attached, and handle()
+     * answers it with a 413.
      *
      * @return ServerRequestInterface
-     * @throws \InvalidArgumentException When the URI or a header value cannot be parsed, or an uploaded file carries an error code PHP does not define
+     * @throws DomainException           With status 400 when the URI or a header value the client sent cannot be parsed
+     * @throws \InvalidArgumentException When an uploaded file carries an error code PHP does not define
      */
     private function createServerRequestFromGlobals(): ServerRequestInterface
     {
@@ -1057,15 +1060,23 @@ final class Application implements RequestHandlerInterface
         $uri     = Arr::getString($_SERVER, 'REQUEST_URI', '/');
         $headers = \function_exists('getallheaders') ? getallheaders() : [];
 
+        try {
+            $request = new ServerRequest($method, $uri, $headers, null, '1.1', $_SERVER);
+        } catch (\InvalidArgumentException $e) {
+            // The URI and the headers come from the client.
+            throw new DomainException('The request URI or headers could not be read.', HttpStatus::BadRequest, previous: $e);
+        }
+
         // request_parse_body() finds nothing in php://input once something has
         // read it, so the form body is parsed before the raw body is taken.
         $request = FormBody::parse(
-            new ServerRequest($method, $uri, $headers, null, '1.1', $_SERVER)
+            $request
                 ->withQueryParams($_GET)
                 ->withParsedBody($_POST)
                 ->withCookieParams($_COOKIE)
                 ->withUploadedFiles(UploadedFiles::fromGlobals($_FILES)),
             request_parse_body(...),
+            $this->maxBodySize,
         );
 
         $request = RawBody::read(

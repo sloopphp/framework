@@ -13,8 +13,6 @@ use Sloop\Http\Request\RawBody;
 final class RawBodyTest extends TestCase
 {
     /**
-     * Reader returning the body cut to the length asked for, recording that length.
-     *
      * @param \ArrayObject<int, int> $asked
      */
     private function reader(string|false $body, \ArrayObject $asked = new \ArrayObject()): Closure
@@ -69,6 +67,51 @@ final class RawBodyTest extends TestCase
         $request = RawBody::read($original, $this->reader($body), 7);
 
         $this->assertSame($original, $request);
+        $this->assertFalse(RawBody::isTooLarge($request));
+    }
+
+    public function testReadsUpToTheLimitWhenTheLimitIsTheLargestInteger(): void
+    {
+        $asked   = new \ArrayObject();
+        $request = RawBody::read(new ServerRequest('POST', '/'), $this->reader('{"a":1}', $asked), \PHP_INT_MAX);
+
+        $this->assertSame([\PHP_INT_MAX], $asked->getArrayCopy());
+        $this->assertSame('{"a":1}', (string) $request->getBody());
+        $this->assertFalse(RawBody::isTooLarge($request));
+    }
+
+    /**
+     * @return array<string, array{array<array-key, mixed>, int<0, max>, bool}>
+     */
+    public static function parsedFieldsProvider(): array
+    {
+        return [
+            'name and value at the limit'      => [['ab' => 'cde'], 5, false],
+            'name and value past the limit'    => [['ab' => 'cdef'], 5, true],
+            'nested fields past the limit'     => [['a' => ['b' => 'cd', 'e' => 'f']], 5, true],
+            'nested fields at the limit'       => [['a' => ['b' => 'c'], 'd' => ''], 4, false],
+            'numeric names count their digits' => [[10 => 'abc'], 4, true],
+            'no fields with a limit of zero'   => [[], 0, false],
+            'a value that is not a string adds nothing' => [['abc' => 1, 'd' => 'xy'], 5, true],
+        ];
+    }
+
+    /**
+     * @param array<array-key, mixed> $fields
+     * @param int<0, max>             $limit
+     */
+    #[DataProvider('parsedFieldsProvider')]
+    public function testCountsTheParsedFieldsOfAMultipartBodyPhpAlreadyRead(array $fields, int $limit, bool $tooLarge): void
+    {
+        $request = RawBody::read(new ServerRequest('POST', '/')->withParsedBody($fields), $this->reader(''), $limit);
+
+        $this->assertSame($tooLarge, RawBody::isTooLarge($request));
+    }
+
+    public function testABodyWithoutParsedFieldsIsNotTooLargeAtALimitOfZero(): void
+    {
+        $request = RawBody::read(new ServerRequest('POST', '/'), $this->reader(''), 0);
+
         $this->assertFalse(RawBody::isTooLarge($request));
     }
 

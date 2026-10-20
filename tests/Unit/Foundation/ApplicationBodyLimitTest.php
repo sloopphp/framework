@@ -42,8 +42,6 @@ final class ApplicationBodyLimitTest extends TestCase
     }
 
     /**
-     * A request read with the given limit from a body one byte longer.
-     *
      * @param int<0, max> $limit
      */
     private function tooLarge(int $limit, ?ServerRequestInterface $request = null): ServerRequestInterface
@@ -121,6 +119,7 @@ final class ApplicationBodyLimitTest extends TestCase
             static function (): never {
                 throw new \RequestParseBodyException('POST Content-Length of 9000000 bytes exceeds the limit of 8388608 bytes');
             },
+            1_048_576,
         );
 
         $response = $this->app()->run($this->tooLarge(3, $refused));
@@ -139,7 +138,7 @@ final class ApplicationBodyLimitTest extends TestCase
         $this->assertSame(200, $this->app()->run($request)->getStatusCode());
     }
 
-    public function testAnExceptionWhileBuildingTheRequestFromTheGlobalsGetsTheSecurityHeaders(): void
+    public function testAnUnreadableUriFromTheGlobalsIsA400WithTheSecurityHeaders(): void
     {
         $backup = [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES];
         try {
@@ -155,7 +154,8 @@ final class ApplicationBodyLimitTest extends TestCase
             [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES] = $backup;
         }
 
-        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('The request URI or headers could not be read.', (string) $response->getBody());
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
     }
 

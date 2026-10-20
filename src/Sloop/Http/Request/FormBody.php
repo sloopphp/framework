@@ -60,22 +60,37 @@ final class FormBody
      * there once something else has read it, so this runs before the raw body
      * is read.
      *
-     * @param  ServerRequestInterface                         $request Request built from the globals, before its body is read
-     * @param  Closure(): array<int, array<array-key, mixed>> $parse   Reads the body as request_parse_body() does: the values, then the files
+     * An urlencoded body longer than the limit is not parsed: the parser is
+     * given the limit as its post_max_size, returns no values and warns, and
+     * the warning is kept out of the output. The raw body stays readable, so
+     * RawBody then marks the request. A multipart body is parsed under PHP's
+     * own post_max_size, because the limit does not apply to its files.
+     *
+     * @param  ServerRequestInterface                                              $request Request built from the globals, before its body is read
+     * @param  Closure(array<string, string>): array<int, array<array-key, mixed>> $parse   Reads the body as request_parse_body() does, with the given options: the values, then the files
+     * @param  int<1, max>                                                         $limit   Largest urlencoded body parsed, in bytes (0 would mean no limit to the parser)
      * @return ServerRequestInterface
-     * @throws \InvalidArgumentException                      When an uploaded file carries an error code PHP does not define
+     * @throws \InvalidArgumentException                                           When an uploaded file carries an error code PHP does not define
      */
-    public static function parse(ServerRequestInterface $request, Closure $parse): ServerRequestInterface
+    public static function parse(ServerRequestInterface $request, Closure $parse, int $limit): ServerRequestInterface
     {
-        if (!\in_array($request->getMethod(), self::METHODS, true)
-            || !self::isForm($request->getHeaderLine('Content-Type'))) {
+        $mediaType = self::mediaType($request->getHeaderLine('Content-Type'));
+        if (!\in_array($request->getMethod(), self::METHODS, true) || !\in_array($mediaType, self::FORM_TYPES, true)) {
             return $request;
         }
 
+        $options = $mediaType === 'multipart/form-data' ? [] : ['post_max_size' => (string) $limit];
+
+        // The parser warns, instead of throwing, when an urlencoded body is
+        // over post_max_size; with display_errors on, the warning would come
+        // before the response.
+        set_error_handler(static fn (): bool => true, \E_WARNING);
         try {
-            $parsed = $parse();
+            $parsed = $parse($options);
         } catch (RequestParseBodyException) {
             return $request->withParsedBody([])->withAttribute(self::MALFORMED, true);
+        } finally {
+            restore_error_handler();
         }
 
         return $request
@@ -95,13 +110,13 @@ final class FormBody
     }
 
     /**
-     * Whether a Content-Type header names a form.
+     * The media type of a Content-Type header, lowercased and without parameters.
      *
      * @param  string $contentType Content-Type header, possibly with parameters
-     * @return bool
+     * @return string
      */
-    private static function isForm(string $contentType): bool
+    private static function mediaType(string $contentType): string
     {
-        return \in_array(strtolower(trim(explode(';', $contentType, 2)[0])), self::FORM_TYPES, true);
+        return strtolower(trim(explode(';', $contentType, 2)[0]));
     }
 }
