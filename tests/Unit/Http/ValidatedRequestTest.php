@@ -490,22 +490,21 @@ final class ValidatedRequestTest extends TestCase
     }
 
     /**
-     * @return array<string, array{array<string, mixed>, list<array<string, mixed>>}>
+     * @return array<string, array{array<string, mixed>, bool|null}>
      */
     public static function rowsWithoutAFile(): array
     {
         return [
-            'another row has a form value' => [['items' => [1 => ['public' => '1']]], [['public' => true]]],
-            'no row has a form value'      => [[], [['public' => null]]],
+            'another row has a form value' => [['items' => [1 => ['public' => '1']]], true],
+            'no row has a form value'      => [[], null],
         ];
     }
 
     /**
-     * @param array<string, mixed>       $body
-     * @param list<array<string, mixed>> $expected
+     * @param array<string, mixed> $body
      */
     #[DataProvider('rowsWithoutAFile')]
-    public function testDropsARowHoldingOnlyAFileInputLeftWithoutAFile(array $body, array $expected): void
+    public function testKeepsARowHoldingOnlyAFileInputLeftWithoutAFile(array $body, ?bool $public): void
     {
         $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
         $one     = new UploadedFile('one', 3, UPLOAD_ERR_OK, 'one.txt', 'text/plain');
@@ -517,7 +516,10 @@ final class ValidatedRequestTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(PhotoListRequest::class, ValidatedController::$last);
-        $this->assertSame([[...$expected[0], 'photo' => $one]], ValidatedController::$last->items);
+        $this->assertSame(
+            [['public' => null, 'photo' => null], ['public' => $public, 'photo' => $one]],
+            ValidatedController::$last->items,
+        );
     }
 
     public function testOrdersAListSentOutOfOrderByItsIndexes(): void
@@ -555,18 +557,33 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame([2, 1], ValidatedController::$last->mixed);
     }
 
-    public function testTreatsNestedFileInputsLeftWithoutAFileAsNotSent(): void
+    public function testCountsANestedFileInputLeftWithoutAFileAsSentWhenTheQueryHasTheSameField(): void
     {
         $empty   = new UploadedFile('', 0, UPLOAD_ERR_NO_FILE);
         $request = new ServerRequest('DELETE', '/dispatch')
             ->withQueryParams(['user' => ['name' => 'Ann']])
             ->withUploadedFiles(['user' => ['avatar' => $empty]]);
 
-        $response = $this->dispatch('nestedForm', $request);
+        $this->assertSame(400, $this->dispatch('nestedForm', $request)->getStatusCode());
+    }
 
-        $this->assertSame(200, $response->getStatusCode());
-        $this->assertInstanceOf(NestedFormRequest::class, ValidatedController::$last);
-        $this->assertSame(['name' => 'Ann', 'avatar' => null], ValidatedController::$last->user);
+    /**
+     * @return array<string, array{string, int}>
+     */
+    public static function filesInputsLeftEmpty(): array
+    {
+        return [
+            'minCount(1) fails'  => ['atLeastOnePhoto', 422],
+            'required() passes'  => ['requiredPhotos', 200],
+        ];
+    }
+
+    #[DataProvider('filesInputsLeftEmpty')]
+    public function testReadsAMultipleFileInputLeftEmptyAsAnEmptyListAsTheValidatorDoes(string $action, int $status): void
+    {
+        $request = new ServerRequest('POST', '/dispatch')->withUploadedFiles(['photos' => []]);
+
+        $this->assertSame($status, $this->dispatch($action, $request)->getStatusCode());
     }
 
     public function testTreatsAFileInputLeftWithoutAFileAsNotSent(): void

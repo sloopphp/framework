@@ -242,4 +242,18 @@ final class ValidatedController
 
         return 'ok';
     }
+
+    public function atLeastOnePhoto(AtLeastOnePhotoRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function requiredPhotos(RequiredPhotosRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
 }

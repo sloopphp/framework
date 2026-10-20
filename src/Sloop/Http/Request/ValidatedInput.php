@@ -16,8 +16,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * since RFC 9110 gives content in those requests no defined meaning and
  * clients put what they send in either place. A field found in two of the
  * places is refused instead of one silently winning; an empty value (null,
- * '' or a file input left without a file) counts as not sent, as it does for
- * the Validator. The body and the uploaded files are merged key by key, as
+ * '' or a file input left without a file, but not `[]`) counts as not sent,
+ * as it does for the Validator. The body and the uploaded files are merged key by key, as
  * PHP splits one form between them, and a level keyed only by numbers is
  * put in the order of its keys. Only the fields with a rule are
  * gathered, so the key named in that refusal is always one the application
@@ -50,7 +50,7 @@ final class ValidatedInput
 
         $input = [];
         foreach ($fields as $field) {
-            [$combined, $value] = self::combine($body[$field] ?? null, self::withoutEmptyFiles($files[$field] ?? null));
+            [$combined, $value] = self::combine($body[$field] ?? null, $files[$field] ?? null);
             if (!$combined) {
                 return 'The request value "' . $field . '" was sent as both a form value and a file.';
             }
@@ -89,49 +89,24 @@ final class ValidatedInput
     }
 
     /**
-     * The files half of a field without the file inputs left without a file, or null when nothing is left.
-     *
-     * A file input left without a file counts as not sent, at any depth, so
-     * a row of a list that holds nothing else disappears the way a row of
-     * unchecked checkboxes does, whatever the other rows hold.
-     *
-     * @param  mixed $file Value from the uploaded files
-     * @return mixed
-     */
-    private static function withoutEmptyFiles(mixed $file): mixed
-    {
-        if (!\is_array($file)) {
-            return self::isEmpty($file) ? null : $file;
-        }
-        $kept = [];
-        foreach ($file as $key => $part) {
-            $part = self::withoutEmptyFiles($part);
-            if ($part !== null) {
-                $kept[$key] = $part;
-            }
-        }
-
-        return $kept === [] ? null : $kept;
-    }
-
-    /**
      * Put back together a form value and the uploaded files PHP split from it.
      *
      * PHP puts `user[name]` in the parsed body and `user[avatar]` in the
      * uploaded files, so one field of a form can arrive in both halves. The
-     * halves are merged key by key; an empty one gives way to the other, and
-     * two values with something in them at the same place cannot be merged.
+     * halves are merged key by key; an empty one (as the rules define it, so
+     * `[]` is not empty) gives way to the other, and two values with something
+     * in them at the same place cannot be merged.
      *
      * @param  mixed              $form Value from the parsed body
-     * @param  mixed              $file Value from the uploaded files, without the file inputs left without a file
+     * @param  mixed              $file Value from the uploaded files
      * @return array{bool, mixed} Whether the halves could be merged, and the merged value
      */
     private static function combine(mixed $form, mixed $file): array
     {
-        if ($file === null) {
+        if (self::isEmpty($file)) {
             return [true, $form];
         }
-        if (self::isEmpty($form) || $form === []) {
+        if (self::isEmpty($form)) {
             return [true, $file];
         }
         if (!\is_array($form) || !\is_array($file)) {
