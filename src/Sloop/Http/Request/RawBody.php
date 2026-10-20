@@ -12,8 +12,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * Reading of the raw request body with an upper limit on its size.
  *
  * What is counted is what is read from php://input. A multipart body PHP has
- * already parsed reads as empty there, so for it the values of the fields
- * (not the files) are counted instead; its files are left to PHP's own
+ * already parsed reads as empty there, so for it the names and values of the
+ * fields (not the files) are counted instead; its files are left to PHP's own
  * limits. A body longer than the limit is not kept: at most one byte past
  * the limit is read, and the request is marked instead of refused, because
  * it is built before the error boundary exists; Application answers a marked

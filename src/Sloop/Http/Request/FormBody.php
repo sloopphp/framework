@@ -83,8 +83,12 @@ final class FormBody
 
         // The parser warns, instead of throwing, when an urlencoded body is
         // over post_max_size; with display_errors on, the warning would come
-        // before the response.
-        set_error_handler(static fn (): bool => true, \E_WARNING);
+        // before the response. Only that warning is kept back: another one
+        // (input variables over max_input_vars) still reaches PHP's handler.
+        set_error_handler(
+            static fn (int $errno, string $message): bool => str_contains($message, 'POST Content-Length of'),
+            \E_WARNING,
+        );
         try {
             $parsed = $parse($options);
         } catch (RequestParseBodyException) {

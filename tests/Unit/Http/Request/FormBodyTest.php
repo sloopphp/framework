@@ -229,15 +229,16 @@ final class FormBodyTest extends TestCase
         $this->assertSame($expected, $given->getArrayCopy());
     }
 
-    public function testKeepsAWarningOfTheParserOutOfTheOutput(): void
+    public function testKeepsTheWarningThatTheBodyIsOverTheLimitOutOfTheOutput(): void
     {
         error_clear_last();
 
         $request = FormBody::parse(
             $this->request('PUT', 'application/x-www-form-urlencoded'),
             static function (): array {
-                // Stands in for request_parse_body() warning that the body is over the limit.
-                hex2bin('a');
+                // A warning whose message carries the words request_parse_body()
+                // uses when the body is over post_max_size.
+                file_get_contents('/nonexistent/POST Content-Length of 3002 bytes exceeds the limit');
 
                 return [[], []];
             },
@@ -246,5 +247,30 @@ final class FormBodyTest extends TestCase
 
         $this->assertSame([], $request->getParsedBody());
         $this->assertNull(error_get_last());
+    }
+
+    public function testLetsAnotherWarningOfTheParserThrough(): void
+    {
+        error_clear_last();
+        $display = ini_set('display_errors', '0');
+        $log     = ini_set('log_errors', '0');
+
+        try {
+            FormBody::parse(
+                $this->request('PUT', 'application/x-www-form-urlencoded'),
+                static function (): array {
+                    // Stands in for the warning that input variables were dropped.
+                    hex2bin('a');
+
+                    return [[], []];
+                },
+                1_048_576,
+            );
+        } finally {
+            ini_set('display_errors', (string) $display);
+            ini_set('log_errors', (string) $log);
+        }
+
+        $this->assertStringContainsString('Hexadecimal input string', error_get_last()['message'] ?? '');
     }
 }
