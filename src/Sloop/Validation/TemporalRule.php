@@ -450,4 +450,17 @@ abstract class TemporalRule extends FieldRule
             flag: $flag,
         );
     }
+
+    /**
+     * Type of the validated value as PHP names it.
+     *
+     * @internal Read by ValidatedRequest.
+     *
+     * @return string
+     */
+    #[\Override]
+    public function valueType(): string
+    {
+        return DateTimeImmutable::class;
+    }
 }

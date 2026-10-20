@@ -11,8 +11,10 @@ use Monolog\Logger;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
 use Sloop\Database\Config\ValidatedConfig;
@@ -851,6 +853,17 @@ final class ApplicationTest extends TestCase
 
         // Log::monolog() throws RuntimeException if init() was not called
         $this->assertInstanceOf(Logger::class, Log::monolog());
+    }
+
+    public function testContainerRegistersTheSystemClock(): void
+    {
+        $app = new Application($this->tmpDir);
+
+        $a = $app->container->get(ClockInterface::class);
+        $b = $app->container->get(ClockInterface::class);
+
+        $this->assertInstanceOf(SystemClock::class, $a);
+        $this->assertSame($a, $b);
     }
 
     public function testContainerRegistersTraceContext(): void

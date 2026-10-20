@@ -286,4 +286,46 @@ final class ShapeRule extends ArrayRule
 
         return $flags;
     }
+
+    /**
+     * Rules of a declared key, or null for a key the shape does not declare or when an array sanitizer closure can rename the keys first.
+     *
+     * @param  int|string                      $key Key inside the value
+     * @return FieldRule<covariant mixed>|null
+     */
+    #[\Override]
+    public function childRule(int|string $key): ?FieldRule
+    {
+        return $this->reshapes() ? null : ($this->fields[$key] ?? null);
+    }
+
+    /**
+     * Whether the key is one the shape does not declare, which validation drops; never when an array sanitizer closure can rename the keys first.
+     *
+     * @param  int|string $key Key inside the value
+     * @return bool
+     */
+    #[\Override]
+    public function dropsKey(int|string $key): bool
+    {
+        return !$this->reshapes() && !isset($this->fields[$key]);
+    }
+
+    /**
+     * The first unbounded list inside the keys, prefixed with its key.
+     *
+     * @return string|null
+     */
+    #[\Override]
+    protected function childUnboundedList(): ?string
+    {
+        foreach ($this->fields as $key => $rule) {
+            $inner = $rule->unboundedList();
+            if ($inner !== null) {
+                return $key . ($inner === '' ? '' : '.' . $inner);
+            }
+        }
+
+        return null;
+    }
 }

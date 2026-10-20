@@ -270,4 +270,36 @@ final class ListRule extends ArrayRule
     {
         return $this->element->declaredFlags();
     }
+
+    /**
+     * Rules of an element, whatever the key; none when an array sanitizer closure can move the elements first.
+     *
+     * @param  int|string                      $key Key inside the value
+     * @return FieldRule<covariant mixed>|null
+     */
+    #[\Override]
+    public function childRule(int|string $key): ?FieldRule
+    {
+        return $this->reshapes() ? null : $this->element;
+    }
+
+    /**
+     * This list itself when it declares no upper bound on its count, otherwise the first unbounded list inside its element.
+     *
+     * @return string|null
+     */
+    #[\Override]
+    protected function childUnboundedList(): ?string
+    {
+        if (!$this->boundsCount()) {
+            return '';
+        }
+        $inner = $this->element->unboundedList();
+
+        if ($inner === null) {
+            return null;
+        }
+
+        return $inner === '' ? '*' : '*.' . $inner;
+    }
 }

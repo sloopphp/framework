@@ -869,6 +869,119 @@ abstract class FieldRule
     }
 
     /**
+     * Whether a raw input value counts as empty for this field, judged as evaluate() judges it: after the string sanitizers.
+     *
+     * The sanitizers run here and again when the value is validated, so a
+     * sanitizer closure is called twice for the same value.
+     *
+     * @internal Read by ValidatedRequest, which takes an empty value as not sent when the same field arrives in two places.
+     *
+     * @param  mixed                    $raw Raw input value
+     * @return bool
+     * @throws UnexpectedValueException When a sanitizer closure returns something other than a string
+     * @throws RuntimeException         When PCRE aborts while a Sanitize case is running
+     */
+    public function isEmptyInput(mixed $raw): bool
+    {
+        $value = $raw;
+        if (\is_string($value) && mb_check_encoding($value, 'UTF-8')) {
+            $value = $this->sanitize($value);
+        }
+
+        return $this->isEmpty($value);
+    }
+
+    /**
+     * Rules of what this field holds at a key: the element of a list, or a key of a shape.
+     *
+     * @internal Read by ValidatedRequest, which merges the body and the uploaded files key by key.
+     *
+     * @param  int|string                      $key Key inside the value
+     * @return FieldRule<covariant mixed>|null Null when this field declares no rules for what it holds there, or when an array sanitizer closure can reshape the value first
+     */
+    public function childRule(int|string $key): ?FieldRule
+    {
+        return null;
+    }
+
+    /**
+     * Whether a key can be left out when the body and the uploaded files are merged: one a shape does not declare, unless an array sanitizer closure can rename the keys first.
+     *
+     * @internal Read by ValidatedRequest, which does not merge from the uploaded files a key the rules drop.
+     *
+     * @param  int|string $key Key inside the value
+     * @return bool
+     */
+    public function dropsKey(int|string $key): bool
+    {
+        return false;
+    }
+
+    /**
+     * Whether the validated value can be null: the field is neither required() nor given a default().
+     *
+     * @internal Read by ValidatedRequest, whose property for such a field must accept null.
+     *
+     * @return bool
+     */
+    public function canBeNull(): bool
+    {
+        return !$this->required && !$this->hasDefault;
+    }
+
+    /**
+     * Type of the validated value as PHP names it: a builtin type, or a class or interface name.
+     *
+     * @internal Read by ValidatedRequest, which checks it against the type of the property receiving the value.
+     *
+     * @return string
+     */
+    abstract public function valueType(): string;
+
+    /**
+     * Path to the first list() in this field, the field itself included, that declares no upper bound on its count.
+     *
+     * The path is relative to the field: '' for the field itself, `*` for
+     * the elements of a list, and the key for a key of a shape, joined by
+     * dots (`*.tags`). maxCount(), exactCount() and betweenCount() bound the
+     * count; one added by when() does not, as it runs only on a condition.
+     *
+     * @internal Read by ValidatedRequest, which needs every list bounded so that a request failing every element cannot exhaust memory.
+     *
+     * @return string|null Path, or null when every list is bounded
+     */
+    public function unboundedList(): ?string
+    {
+        return $this->childUnboundedList();
+    }
+
+    /**
+     * Path to the first unbounded list() inside what this field holds, as unboundedList() describes it.
+     *
+     * @return string|null
+     */
+    protected function childUnboundedList(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Whether maxCount(), exactCount() or betweenCount() was declared on the field itself.
+     *
+     * @return bool
+     */
+    protected function boundsCount(): bool
+    {
+        foreach ($this->sizeChecks as $check) {
+            if ($check->rule === 'maxCount' || $check->rule === 'exactCount' || $check->rule === 'betweenCount') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a validated value of this field can be the given value.
      *
      * Only the types whose validated value is compared as it is answer yes;
