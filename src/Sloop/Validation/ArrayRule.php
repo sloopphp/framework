@@ -44,22 +44,23 @@ abstract class ArrayRule extends FieldRule
     }
 
     /**
-     * Whether validating an array value of this field reads its elements.
+     * Whether ValidatedRequest puts an array value of this field in index order and descends into it.
      *
-     * A value over the field's own count limit fails before any element is
-     * read, unless an array sanitizer, which runs first, could shrink it.
+     * Only when the field's own count rule bounds the value as sent: a value
+     * over the limit, which the Validator refuses before reading any element,
+     * is left as it came, as is every value below an array sanitizer closure.
      *
-     * @internal Read by ValidatedRequest, which puts in index order only the part of the input the Validator reads.
+     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering costs no more than validating.
      *
      * @param  array<array-key, mixed> $value Array sent for this field
      * @return bool
      */
     #[\Override]
-    public function readsElementsOf(array $value): bool
+    public function ordersElementsOf(array $value): bool
     {
         $limit = $this->countLimit();
 
-        return $this->arraySanitizers !== [] || $limit === null || \count($value) <= $limit;
+        return !$this->reshapes() && $limit !== null && \count($value) <= $limit;
     }
 
     /**

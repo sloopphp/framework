@@ -312,6 +312,20 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Whether ValidatedRequest descends into an array value of this field: a shape bounds what it reads by its declared keys, not by a count.
+     *
+     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering costs no more than validating.
+     *
+     * @param  array<array-key, mixed> $value Array sent for this field
+     * @return bool
+     */
+    #[\Override]
+    public function ordersElementsOf(array $value): bool
+    {
+        return !$this->reshapes();
+    }
+
+    /**
      * The first unbounded list inside the keys, prefixed with its key.
      *
      * @return string|null

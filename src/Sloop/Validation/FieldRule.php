@@ -918,14 +918,14 @@ abstract class FieldRule
     }
 
     /**
-     * Whether validating an array value of this field reads its elements: no for a type that holds no array, nor for one whose own count rule fails first.
+     * Whether ValidatedRequest puts an array value of this field in index order and descends into it: only where a declaration bounds how much it holds.
      *
-     * @internal Read by ValidatedRequest, which puts in index order only the part of the input the Validator reads.
+     * @internal Read by ValidatedRequest, which orders only what the declared rules bound, so that ordering costs no more than validating.
      *
      * @param  array<array-key, mixed> $value Array sent for this field
      * @return bool
      */
-    public function readsElementsOf(array $value): bool
+    public function ordersElementsOf(array $value): bool
     {
         return false;
     }
@@ -985,13 +985,7 @@ abstract class FieldRule
      */
     protected function boundsCount(): bool
     {
-        foreach ($this->sizeChecks as $check) {
-            if ($check->rule === 'maxCount' || $check->rule === 'exactCount' || $check->rule === 'betweenCount') {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->countLimit() !== null;
     }
 
     /**

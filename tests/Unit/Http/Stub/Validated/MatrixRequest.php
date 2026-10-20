@@ -27,7 +27,7 @@ final class MatrixRequest extends ValidatedRequest
         return [
             'matrix' => Rule::list(Rule::list(Rule::int())->maxCount(3))->maxCount(3),
             'mixed'  => Rule::list(Rule::int())->maxCount(3),
-            'map'    => Rule::array(),
+            'map'    => Rule::array()->maxCount(2),
         ];
     }
 }

@@ -22,10 +22,10 @@ use UnexpectedValueException;
  * the Validator would take as empty: null or '' after the sanitizers, and a
  * file input left without a file only where the rule is Rule::file(); `[]`
  * is a value. The body and the uploaded files are merged key by key, as PHP
- * splits one form between them, and a level keyed only by numbers is put in
- * the order of its keys. Only the fields with a rule are gathered, so the
- * key named in that refusal is always one the application declared, never
- * one a client made up.
+ * splits one form between them, and a level keyed only by numbers that a
+ * declaration bounds is put in the order of its keys. Only the fields with a
+ * rule are gathered, so the key named in that refusal is always one the
+ * application declared, never one a client made up.
  *
  * @internal Used by RouteRequestHandler.
  */
@@ -174,13 +174,14 @@ final class ValidatedInput
      *
      * The elements of a list then follow the indexes the client sent, whether
      * a row arrived in the body, in the files, or in both; their positions are
-     * still counted from 0 afterwards, as Rule::list() does. Only the part the
-     * Validator reads is ordered, as the input can hold far more than that: a
-     * key a shape drops, the elements of a list over its own count limit, or
-     * an array where the rule holds no array, is left as it came, and a level
-     * already in order is not copied. Below a list or a shape whose array
-     * sanitizer is a closure, and inside Rule::array(), every level is
-     * ordered.
+     * still counted from 0 afterwards, as Rule::list() does. Only what a
+     * declaration bounds is ordered, so that ordering costs no more than
+     * validating: a list or Rule::array() level within its own count limit,
+     * and the keys a shape declares. Everything else is left as it came: a
+     * level over its count limit or with none, the contents of Rule::array(),
+     * whatever lies below an array sanitizer closure, a key a shape drops,
+     * and an array where the rule holds no array. A level already in order is
+     * not copied.
      *
      * @param  mixed                           $value Value to order
      * @param  FieldRule<covariant mixed>|null $rule  Rule at this place, or null where none is declared
@@ -188,21 +189,21 @@ final class ValidatedInput
      */
     private static function inIndexOrder(mixed $value, ?FieldRule $rule): mixed
     {
-        if (!\is_array($value) || ($rule !== null && !$rule->readsElementsOf($value))) {
+        if ($rule === null || !\is_array($value) || !$rule->ordersElementsOf($value)) {
             return $value;
         }
         $numbered = true;
         $dropped  = false;
         foreach ($value as $key => $part) {
             $numbered = $numbered && \is_int($key);
-            if ($rule !== null && $rule->dropsKey($key)) {
+            if ($rule->dropsKey($key)) {
                 $dropped = true;
                 continue;
             }
             if (!\is_array($part)) {
                 continue;
             }
-            $ordered = self::inIndexOrder($part, $rule?->childRule($key));
+            $ordered = self::inIndexOrder($part, $rule->childRule($key));
             if ($ordered !== $part) {
                 $value[$key] = $ordered;
             }

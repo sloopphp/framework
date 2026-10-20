@@ -48,17 +48,47 @@ final class ValidatedInputTest extends TestCase
             'list over its count limit with an array sanitizer' => [
                 Rule::list(Rule::string(), ArraySanitize::RemoveEmpty)->maxCount(1),
                 [1 => 'b', 0 => 'a'],
+                [1 => 'b', 0 => 'a'],
+            ],
+            'list within its count limit with an array sanitizer' => [
+                Rule::list(Rule::string(), ArraySanitize::RemoveEmpty)->maxCount(2),
+                [1 => 'b', 0 => 'a'],
                 [0 => 'a', 1 => 'b'],
             ],
-            'list over minCount() only' => [
-                Rule::list(Rule::list(Rule::string())->maxCount(2))->maxCount(1)->minCount(1),
-                [0 => [1 => 'b', 0 => 'a']],
-                [0 => [0 => 'a', 1 => 'b']],
+            'list over minCount(), within maxCount()' => [
+                Rule::list(Rule::list(Rule::string())->maxCount(2))->maxCount(3)->minCount(1),
+                [1 => [1 => 'd', 0 => 'c'], 0 => [1 => 'b', 0 => 'a']],
+                [0 => [0 => 'a', 1 => 'b'], 1 => [0 => 'c', 1 => 'd']],
+            ],
+            'list without a count limit' => [
+                Rule::list(Rule::string()),
+                [1 => 'b', 0 => 'a'],
+                [1 => 'b', 0 => 'a'],
+            ],
+            'list with a closure array sanitizer' => [
+                Rule::list(Rule::string(), static fn (array $value): array => $value)->maxCount(2),
+                [1 => 'b', 0 => 'a'],
+                [1 => 'b', 0 => 'a'],
+            ],
+            'Rule::array() within its count limit, and its contents' => [
+                Rule::array()->maxCount(2),
+                [1 => [1 => 'b', 0 => 'a'], 0 => 'x'],
+                [0 => 'x', 1 => [1 => 'b', 0 => 'a']],
+            ],
+            'Rule::array() without a count limit' => [
+                Rule::array(),
+                [1 => 'b', 0 => 'a'],
+                [1 => 'b', 0 => 'a'],
             ],
             'shape: a declared key' => [
                 Rule::shape(['tags' => Rule::list(Rule::string())->maxCount(2)]),
                 ['tags' => [1 => 'b', 0 => 'a']],
                 ['tags' => [0 => 'a', 1 => 'b']],
+            ],
+            'shape: a declared key after a scalar' => [
+                Rule::shape(['name' => Rule::string(), 'tags' => Rule::list(Rule::string())->maxCount(2)]),
+                ['name' => 'a', 'tags' => [1 => 'b', 0 => 'a']],
+                ['name' => 'a', 'tags' => [0 => 'a', 1 => 'b']],
             ],
             'shape: a key it drops' => [
                 Rule::shape(['name' => Rule::string()]),
@@ -73,7 +103,7 @@ final class ValidatedInputTest extends TestCase
             'shape with a closure array sanitizer' => [
                 Rule::shape(['name' => Rule::string()], static fn (array $value): array => $value),
                 ['junk' => [1 => 'b', 0 => 'a']],
-                ['junk' => [0 => 'a', 1 => 'b']],
+                ['junk' => [1 => 'b', 0 => 'a']],
             ],
             'a type that holds no array' => [
                 Rule::string(),
@@ -89,7 +119,7 @@ final class ValidatedInputTest extends TestCase
      * @param array<array-key, mixed>    $expected
      */
     #[DataProvider('orderings')]
-    public function testOrdersOnlyThePartTheValidatorReads(FieldRule $rule, array $sent, array $expected): void
+    public function testOrdersOnlyWhatADeclarationBounds(FieldRule $rule, array $sent, array $expected): void
     {
         $request = new ServerRequest('POST', '/')->withParsedBody(['field' => $sent]);
 

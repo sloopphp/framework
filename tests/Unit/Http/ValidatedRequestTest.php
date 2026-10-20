@@ -703,14 +703,14 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame([[1, 2, 3], [4, 5, 6]], ValidatedController::$last->matrix);
     }
 
-    public function testOrdersTheNumberedKeysOfAnArrayField(): void
+    public function testOrdersTheNumberedKeysOfABoundedArrayFieldButNotItsContents(): void
     {
         $request = new ServerRequest('POST', '/dispatch')->withParsedBody(['map' => [10 => 'a', 2 => [3 => 'c', 1 => 'b']]]);
 
         $this->dispatch('matrix', $request);
 
         $this->assertInstanceOf(MatrixRequest::class, ValidatedController::$last);
-        $this->assertSame([2 => [1 => 'b', 3 => 'c'], 10 => 'a'], ValidatedController::$last->map);
+        $this->assertSame([2 => [3 => 'c', 1 => 'b'], 10 => 'a'], ValidatedController::$last->map);
     }
 
     public function testKeepsTheOrderOfALevelWhoseKeysAreNotAllNumbers(): void
