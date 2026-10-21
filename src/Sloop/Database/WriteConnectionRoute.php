@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Database;
 
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 
 /**
  * A route that asks a pool for its primary each time it is used.
@@ -32,7 +32,7 @@ final readonly class WriteConnectionRoute implements ConnectionRoute
      * Ask the pool for its primary connection.
      *
      * @return Connection
-     * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When a persistent primary carries a residual transaction that cannot be rolled back
      */

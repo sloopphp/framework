@@ -20,9 +20,9 @@ use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
 use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\FixedConnectionRoute;
@@ -245,7 +245,7 @@ final class ConnectionManagerTest extends TestCase
             'replica_selector' => 'round_robin',
         ]], new AlwaysFailConnectionFactory());
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(DatabaseConfigException::class);
         $this->expectExceptionMessageIsOrContains(
             'No replica selector is registered for "round_robin". Registered: random.'
         );
@@ -258,7 +258,7 @@ final class ConnectionManagerTest extends TestCase
     {
         $manager = $this->manager('master', [], new AlwaysFailConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [master] is not defined.',
             $e->getMessage(),
@@ -275,7 +275,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [analytics] is not defined.',
             $e->getMessage(),
@@ -291,7 +291,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Connection [master]: missing required config key "host".',
             $e->getMessage(),
@@ -308,7 +308,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             "Connection [master]: unsupported driver \"sqlite\". Only 'mysql' is supported.",
             $e->getMessage(),
@@ -326,7 +326,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Connection [master]: unsupported config key "foo".',
             $e->getMessage(),
@@ -346,7 +346,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new AlwaysFailConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Connection [master]: "read[0]" has unsupported key "health_check". Pool-level keys must be set on the pool itself, not inside read[].',
             $e->getMessage(),
@@ -2112,7 +2112,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new ScriptedConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->probeReplicas('analytics'));
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->probeReplicas('analytics'));
         $this->assertSame(
             'Database connection [analytics] is not defined.',
             $e->getMessage(),
@@ -2128,7 +2128,7 @@ final class ConnectionManagerTest extends TestCase
             ],
         ], new ScriptedConnectionFactory());
 
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->probeReplicas());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->probeReplicas());
         $this->assertSame(
             'Connection [master]: missing required config key "host".',
             $e->getMessage(),

@@ -45,12 +45,11 @@ final class Config
      * override replaces a base array that also has only integer keys (or a
      * missing or non-array value) instead of being appended to it.
      *
-     * @param  string           $configPath  Absolute path to the config directory
-     * @param  string|null      $environment Environment name (e.g. 'production', 'testing')
+     * @param  string                 $configPath  Absolute path to the config directory
+     * @param  string|null            $environment Environment name (e.g. 'production', 'testing')
      * @return void
-     * @throws RuntimeException If the config directory does not exist
-     * @throws RuntimeException If already loaded
-     * @throws RuntimeException If the environment name contains characters outside [A-Za-z0-9_-]
+     * @throws InvalidConfigException If the config directory does not exist, a config file does not return an array, or the environment name contains characters outside [A-Za-z0-9_-]
+     * @throws RuntimeException       If already loaded, or the config directory cannot be scanned
      */
     public static function load(string $configPath, ?string $environment = null): void
     {
@@ -60,7 +59,7 @@ final class Config
         // directory whose PHP files get executed; reject anything that could
         // escape it (e.g. an APP_ENV of '../../evil' from a tainted process env).
         if ($environment !== null && preg_match('/\A[A-Za-z0-9_-]+\z/', $environment) !== 1) {
-            throw new RuntimeException(
+            throw new InvalidConfigException(
                 'Invalid environment name: ' . $environment
                 . ' (only [A-Za-z0-9_-] is allowed)'
             );
@@ -71,7 +70,7 @@ final class Config
         }
 
         if (!is_dir($configPath)) {
-            throw new RuntimeException(
+            throw new InvalidConfigException(
                 'Config directory does not exist: ' . $configPath
             );
         }
@@ -309,8 +308,10 @@ final class Config
      * Each file is expected to return an array. The filename (without extension)
      * becomes the top-level key.
      *
-     * @param  string               $directory Absolute path to the directory
+     * @param  string                 $directory Absolute path to the directory
      * @return array<string, mixed>
+     * @throws RuntimeException       If the directory cannot be scanned
+     * @throws InvalidConfigException If a config file does not return an array
      */
     private static function loadDirectory(string $directory): array
     {
@@ -328,7 +329,7 @@ final class Config
             $value = require $file;
 
             if (!\is_array($value)) {
-                throw new RuntimeException(
+                throw new InvalidConfigException(
                     'Config file must return an array, got ' . get_debug_type($value) . ': ' . $file
                 );
             }

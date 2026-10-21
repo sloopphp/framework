@@ -8,7 +8,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Config\Config;
 use Sloop\Encryption\Encryptor;
-use Sloop\Encryption\Exception\InvalidConfigException;
+use Sloop\Encryption\Exception\EncryptionConfigException;
 use Sloop\Encryption\Signer;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
@@ -107,7 +107,7 @@ final class ApplicationSigningTest extends TestCase
         $container = new Application($this->tmpDir)->container;
 
         $this->assertInstanceOf(Encryptor::class, $container->get(Encryptor::class));
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
         $this->expectExceptionMessageIsOrContains('The signing key is not configured.');
 
         $container->get(Signer::class);
@@ -146,7 +146,7 @@ final class ApplicationSigningTest extends TestCase
         }
         $container = new Application($this->tmpDir)->container;
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
         $this->expectExceptionMessageIsOrContains('The signing key is not configured. Set signing.key to 64 hexadecimal characters, for example the output of Signer::generateKey().');
 
         $container->get(Signer::class);
@@ -158,7 +158,7 @@ final class ApplicationSigningTest extends TestCase
         $container = new Application($this->tmpDir)->container;
         mkdir($this->tmpDir . '/config');
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
 
         $container->get(Signer::class);
     }
@@ -189,7 +189,7 @@ final class ApplicationSigningTest extends TestCase
     {
         $this->writeConfig('signing', $config);
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
         $this->expectExceptionMessageIsOrContains($message);
 
         new Application($this->tmpDir);

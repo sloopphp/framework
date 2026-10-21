@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Database\Replica;
 
 use PHPUnit\Framework\TestCase;
-use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
@@ -46,7 +46,7 @@ final class ReplicaSelectorRegistryTest extends TestCase
             'first'  => $this->fixedSelector(),
         ]);
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(DatabaseConfigException::class);
         $this->expectExceptionMessageIsOrContains(
             'No replica selector is registered for "round_robin". Registered: random, first.'
         );
@@ -58,7 +58,7 @@ final class ReplicaSelectorRegistryTest extends TestCase
     {
         $registry = new ReplicaSelectorRegistry([]);
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(DatabaseConfigException::class);
         $this->expectExceptionMessageIsOrContains(
             'No replica selector is registered for "random". Registered: (none).'
         );

@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Sloop\Encryption;
 
-use Sloop\Encryption\Exception\InvalidConfigException;
-
 /**
  * Encrypts and decrypts strings with AES-256 and a 32-byte key.
  *
@@ -73,10 +71,10 @@ final readonly class Encryptor
     /**
      * Create an encryptor from hexadecimal keys.
      *
-     * @param  string                 $key          Current key as 64 hexadecimal characters; encrypt() always uses it
-     * @param  list<string>           $previousKeys Earlier keys as 64 hexadecimal characters, tried in order after the current key by decrypt()
-     * @param  Cipher                 $cipher       Cipher used by encrypt() for new payloads
-     * @throws InvalidConfigException If any key is not 64 hexadecimal characters
+     * @param  string                    $key          Current key as 64 hexadecimal characters; encrypt() always uses it
+     * @param  list<string>              $previousKeys Earlier keys as 64 hexadecimal characters, tried in order after the current key by decrypt()
+     * @param  Cipher                    $cipher       Cipher used by encrypt() for new payloads
+     * @throws \InvalidArgumentException If any key is not 64 hexadecimal characters
      */
     public function __construct(
         #[\SensitiveParameter]

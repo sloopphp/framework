@@ -8,9 +8,9 @@ use InvalidArgumentException;
 use LogicException;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 
 /**
  * An INSERT statement being built.
@@ -199,7 +199,7 @@ class Insert extends Builder
      * @return int|string                  Id of a row the statement wrote or overwrote, or 0 when there is none to report; see Connection::lastInsertId() for when it is a string
      * @throws LogicException              When no row was given
      * @throws InvalidArgumentException    When an identifier is malformed or a column to overwrite is not being written
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */
@@ -235,7 +235,7 @@ class Insert extends Builder
      * @return int|string                  Id of the first row inserted, or 0 when no row was written or the table has no AUTO_INCREMENT column; see Connection::lastInsertId() for when it is a string
      * @throws LogicException              When no row was given, or upsert() named columns to overwrite
      * @throws InvalidArgumentException    When an identifier is malformed
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */

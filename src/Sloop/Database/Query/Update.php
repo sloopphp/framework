@@ -7,9 +7,9 @@ namespace Sloop\Database\Query;
 use InvalidArgumentException;
 use LogicException;
 use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 
 /**
  * An UPDATE statement being built.
@@ -365,7 +365,7 @@ class Update extends BuilderWhere
      * @return int                         Rows changed
      * @throws LogicException              When there is nothing to assign, a group of conditions or of ON conditions was left open, a join carries no ON condition, a join is paired with ORDER BY or LIMIT, an offset was set, or the connection is in strict mode and nothing narrows the statement
      * @throws InvalidArgumentException    When an identifier is malformed
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */

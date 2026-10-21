@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Sloop\Encryption;
 
-use Sloop\Encryption\Exception\InvalidConfigException;
-
 /**
  * Hashes and verifies passwords with bcrypt (the default) or argon2id.
  *
@@ -61,12 +59,13 @@ final readonly class PasswordHasher
      * The defaults are PHP's own. The argon2id settings are checked whichever
      * algorithm is chosen.
      *
-     * @param  PasswordAlgorithm      $algorithm     Algorithm used by hash() for new hashes
-     * @param  int                    $bcryptCost    Bcrypt cost, 4 to 31; each step doubles the time
-     * @param  int                    $argon2Memory  Argon2id memory cost in KiB, at least 8 per thread and at most 4294967295
-     * @param  int                    $argon2Time    Argon2id time cost (number of passes), 1 to 4294967295
-     * @param  int                    $argon2Threads Argon2id thread count, 1 to 16777215
-     * @throws InvalidConfigException If a cost is out of range, or argon2id is chosen and this PHP build lacks it
+     * @param  PasswordAlgorithm         $algorithm     Algorithm used by hash() for new hashes
+     * @param  int                       $bcryptCost    Bcrypt cost, 4 to 31; each step doubles the time
+     * @param  int                       $argon2Memory  Argon2id memory cost in KiB, at least 8 per thread and at most 4294967295
+     * @param  int                       $argon2Time    Argon2id time cost (number of passes), 1 to 4294967295
+     * @param  int                       $argon2Threads Argon2id thread count, 1 to 16777215
+     * @throws \InvalidArgumentException If a cost is out of range
+     * @throws \RuntimeException         If argon2id is chosen and this PHP build lacks it
      */
     public function __construct(
         public PasswordAlgorithm $algorithm = PasswordAlgorithm::Bcrypt,
@@ -76,31 +75,31 @@ final readonly class PasswordHasher
         public int $argon2Threads = 1,
     ) {
         if ($bcryptCost < self::BCRYPT_MIN_COST || $bcryptCost > self::BCRYPT_MAX_COST) {
-            throw new InvalidConfigException('The bcrypt cost must be between ' . self::BCRYPT_MIN_COST . ' and ' . self::BCRYPT_MAX_COST . ', got ' . $bcryptCost . '.');
+            throw new \InvalidArgumentException('The bcrypt cost must be between ' . self::BCRYPT_MIN_COST . ' and ' . self::BCRYPT_MAX_COST . ', got ' . $bcryptCost . '.');
         }
 
         if ($argon2Time < 1 || $argon2Time > self::ARGON2_MAX_COST) {
-            throw new InvalidConfigException('The argon2id time cost must be between 1 and ' . self::ARGON2_MAX_COST . ', got ' . $argon2Time . '.');
+            throw new \InvalidArgumentException('The argon2id time cost must be between 1 and ' . self::ARGON2_MAX_COST . ', got ' . $argon2Time . '.');
         }
 
         if ($argon2Threads < 1 || $argon2Threads > self::ARGON2_MAX_THREADS) {
-            throw new InvalidConfigException('The argon2id thread count must be between 1 and ' . self::ARGON2_MAX_THREADS . ', got ' . $argon2Threads . '.');
+            throw new \InvalidArgumentException('The argon2id thread count must be between 1 and ' . self::ARGON2_MAX_THREADS . ', got ' . $argon2Threads . '.');
         }
 
         if ($argon2Memory > self::ARGON2_MAX_COST) {
-            throw new InvalidConfigException('The argon2id memory cost must be at most ' . self::ARGON2_MAX_COST . ' KiB, got ' . $argon2Memory . '.');
+            throw new \InvalidArgumentException('The argon2id memory cost must be at most ' . self::ARGON2_MAX_COST . ' KiB, got ' . $argon2Memory . '.');
         }
 
         $minMemory = self::ARGON2_MIN_MEMORY_PER_THREAD * $argon2Threads;
         if ($argon2Memory < $minMemory) {
-            throw new InvalidConfigException(
+            throw new \InvalidArgumentException(
                 'The argon2id memory cost must be at least ' . self::ARGON2_MIN_MEMORY_PER_THREAD . ' KiB per thread ('
                 . $minMemory . ' for ' . $argon2Threads . ' thread' . ($argon2Threads === 1 ? '' : 's') . '), got ' . $argon2Memory . '.',
             );
         }
 
         if (!$algorithm->isAvailable()) {
-            throw new InvalidConfigException('This PHP build cannot hash with ' . $algorithm->value . '. Choose another hashing.algorithm, or use a PHP built with argon2 support.');
+            throw new \RuntimeException('This PHP build cannot hash with ' . $algorithm->value . '. Choose another hashing.algorithm, or use a PHP built with argon2 support.');
         }
     }
 

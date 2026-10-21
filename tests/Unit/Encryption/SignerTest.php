@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Encryption;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Encryption\Encryptor;
-use Sloop\Encryption\Exception\InvalidConfigException;
 use Sloop\Encryption\Signer;
 
 final class SignerTest extends TestCase
@@ -278,7 +278,7 @@ final class SignerTest extends TestCase
     #[DataProvider('invalidKeyProvider')]
     public function testConstructorRejectsAKeyThatIsNot64HexCharacters(string $key): void
     {
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('The signing key must be 64 hexadecimal characters (32 bytes).');
 
         new Signer($key);
@@ -287,7 +287,7 @@ final class SignerTest extends TestCase
     #[DataProvider('invalidKeyProvider')]
     public function testConstructorRejectsAPreviousKeyThatIsNot64HexCharacters(string $key): void
     {
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Previous signing key #1 must be 64 hexadecimal characters (32 bytes).');
 
         new Signer(self::KEY, [self::OTHER_KEY, $key]);
@@ -316,8 +316,8 @@ final class SignerTest extends TestCase
 
         try {
             new Signer($key);
-            $this->fail('Expected InvalidConfigException.');
-        } catch (InvalidConfigException $e) {
+            $this->fail('Expected InvalidArgumentException.');
+        } catch (InvalidArgumentException $e) {
             $this->assertStringNotContainsString($key, $e->getMessage());
         }
     }
@@ -329,8 +329,8 @@ final class SignerTest extends TestCase
 
         try {
             new Signer(self::KEY, [$badPreviousKey]);
-            $this->fail('Expected InvalidConfigException.');
-        } catch (InvalidConfigException $e) {
+            $this->fail('Expected InvalidArgumentException.');
+        } catch (InvalidArgumentException $e) {
             $exception = $e;
         } finally {
             ini_set('zend.exception_ignore_args', $ignoreArgs === false ? '1' : $ignoreArgs);

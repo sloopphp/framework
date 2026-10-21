@@ -7,7 +7,7 @@ namespace Sloop\Database\Config;
 use PDO;
 use Pdo\Mysql as PdoMysql;
 use Sloop\Database\CastMode;
-use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\DatabaseConfigException;
 
 /**
  * Pure transformation: connection config array → ValidatedConfig / PoolConfig → DSN / PDO options.
@@ -75,7 +75,7 @@ final class ConnectionConfigResolver
     ];
 
     /**
-     * Required config keys; absence causes InvalidConfigException.
+     * Required config keys; absence causes DatabaseConfigException.
      *
      * @var list<string>
      */
@@ -246,7 +246,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array (may contain non-string keys)
      * @return ValidatedConfig         Validated, typed view of the config
-     * @throws InvalidConfigException  When any key is unknown, a required key is missing, or a value has the wrong type
+     * @throws DatabaseConfigException When any key is unknown, a required key is missing, or a value has the wrong type
      */
     public static function validate(string $name, array $config): ValidatedConfig
     {
@@ -278,7 +278,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name (the connections.<name> key)
      * @param  array<array-key, mixed> $config Raw pool config array
      * @return PoolConfig              Validated pool with primary + replicas + behavior settings
-     * @throws InvalidConfigException  When any key is unknown, required key is missing, or a value has the wrong type
+     * @throws DatabaseConfigException When any key is unknown, required key is missing, or a value has the wrong type
      */
     public static function validatePool(string $name, array $config): PoolConfig
     {
@@ -387,13 +387,13 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array
      * @return void
-     * @throws InvalidConfigException  When an unknown or non-string key is present
+     * @throws DatabaseConfigException When an unknown or non-string key is present
      */
     private static function assertNoUnknownKeys(string $name, array $config): void
     {
         foreach (array_keys($config) as $key) {
             if (!\is_string($key) || !\in_array($key, self::ALLOWED_KEYS, true)) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: unsupported config key "' . $key . '".',
                 );
             }
@@ -406,13 +406,13 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array
      * @return void
-     * @throws InvalidConfigException  When a required key is missing
+     * @throws DatabaseConfigException When a required key is missing
      */
     private static function assertRequiredKeysPresent(string $name, array $config): void
     {
         foreach (self::REQUIRED_KEYS as $required) {
             if (!\array_key_exists($required, $config)) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: missing required config key "' . $required . '".',
                 );
             }
@@ -425,13 +425,13 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Raw config array
      * @return string
-     * @throws InvalidConfigException  When driver is not a string or not in ALLOWED_DRIVERS
+     * @throws DatabaseConfigException When driver is not a string or not in ALLOWED_DRIVERS
      */
     private static function extractDriver(string $name, array $config): string
     {
         $driver = self::extractRequiredString($name, $config, 'driver');
         if (!\in_array($driver, self::ALLOWED_DRIVERS, true)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: unsupported driver "' . $driver . '". Only \'mysql\' is supported.',
             );
         }
@@ -446,13 +446,13 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return string
-     * @throws InvalidConfigException  When the value is not a string
+     * @throws DatabaseConfigException When the value is not a string
      */
     private static function extractRequiredString(string $name, array $config, string $key): string
     {
         $value = $config[$key];
         if (!\is_string($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be a string.',
             );
         }
@@ -471,13 +471,13 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Config key to extract
      * @return string
-     * @throws InvalidConfigException  When the value is not a string or contains `;`, `=`, or a NUL byte
+     * @throws DatabaseConfigException When the value is not a string or contains `;`, `=`, or a NUL byte
      */
     private static function extractDsnSafeString(string $name, array $config, string $key): string
     {
         $value = self::extractRequiredString($name, $config, $key);
         if (preg_match('/[;=\0]/', $value) === 1) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must not contain ";", "=", or NUL.',
             );
         }
@@ -492,7 +492,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return int|null
-     * @throws InvalidConfigException  When the value is present but not an int
+     * @throws DatabaseConfigException When the value is present but not an int
      */
     private static function extractOptionalInt(string $name, array $config, string $key): ?int
     {
@@ -502,7 +502,7 @@ final class ConnectionConfigResolver
 
         $value = $config[$key];
         if (!\is_int($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be an integer.',
             );
         }
@@ -517,7 +517,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return string|null
-     * @throws InvalidConfigException  When the value is present but not null and not a string
+     * @throws DatabaseConfigException When the value is present but not null and not a string
      */
     private static function extractOptionalNullableString(string $name, array $config, string $key): ?string
     {
@@ -527,7 +527,7 @@ final class ConnectionConfigResolver
 
         $value = $config[$key];
         if ($value !== null && !\is_string($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be a string or null.',
             );
         }
@@ -547,7 +547,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Config array
      * @param  string                  $key    Key to extract
      * @return string|null
-     * @throws InvalidConfigException  When the value is present but not a valid identifier
+     * @throws DatabaseConfigException When the value is present but not a valid identifier
      */
     private static function extractOptionalIdentifier(string $name, array $config, string $key): ?string
     {
@@ -557,13 +557,13 @@ final class ConnectionConfigResolver
 
         $value = $config[$key];
         if (!\is_string($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be a string.',
             );
         }
 
         if (preg_match('/\A[a-zA-Z0-9_]+\z/', $value) !== 1) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must contain only alphanumeric and underscore characters, got "' . $value . '".',
             );
         }
@@ -577,14 +577,14 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Config array
      * @return string|null
-     * @throws InvalidConfigException  When the value is not a valid identifier, or names a charset that is not allowed
+     * @throws DatabaseConfigException When the value is not a valid identifier, or names a charset that is not allowed
      */
     private static function extractOptionalCharset(string $name, array $config): ?string
     {
         $charset = self::extractOptionalIdentifier($name, $config, 'charset');
 
         if ($charset !== null && !\in_array(strtolower($charset), self::ALLOWED_CHARSETS, true)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: unsupported charset "' . $charset . '". Only charsets that the server accepts as a client charset, '
                 . 'and whose multi-byte characters cannot end in a backtick byte, are allowed.',
             );
@@ -604,7 +604,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return string|null
-     * @throws InvalidConfigException  When the value is not a string, or is not alphanumeric and underscore
+     * @throws DatabaseConfigException When the value is not a string, or is not alphanumeric and underscore
      */
     private static function extractOptionalPrefix(string $name, array $config): ?string
     {
@@ -614,13 +614,13 @@ final class ConnectionConfigResolver
 
         $value = $config['prefix'];
         if (!\is_string($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "prefix" must be a string.',
             );
         }
 
         if (preg_match('/\A[a-zA-Z0-9_]*\z/', $value) !== 1) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "prefix" must contain only alphanumeric and underscore characters, got "' . $value . '".',
             );
         }
@@ -638,7 +638,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return string|null
-     * @throws InvalidConfigException  When the value is not a string, or is not one or more alphanumeric and underscore characters
+     * @throws DatabaseConfigException When the value is not a string, or is not one or more alphanumeric and underscore characters
      */
     private static function extractOptionalMigrationsTable(string $name, array $config): ?string
     {
@@ -648,13 +648,13 @@ final class ConnectionConfigResolver
 
         $value = $config['migrations_table'];
         if (!\is_string($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "migrations_table" must be a string.',
             );
         }
 
         if (preg_match('/\A[a-zA-Z0-9_]+\z/', $value) !== 1) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "migrations_table" must be one or more alphanumeric and underscore characters, got "' . $value . '".',
             );
         }
@@ -673,7 +673,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return CastMode|null           The configured mode, or null when the key is absent
-     * @throws InvalidConfigException  When the value is not a CastMode case
+     * @throws DatabaseConfigException When the value is not a CastMode case
      */
     private static function extractOptionalCastMode(string $name, array $config): ?CastMode
     {
@@ -683,7 +683,7 @@ final class ConnectionConfigResolver
 
         $value = $config['casts'];
         if (!$value instanceof CastMode) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "casts" must be a ' . CastMode::class . ' case.',
             );
         }
@@ -707,7 +707,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Connection name for error messages
      * @param  array<array-key, mixed> $config Config array
      * @return array<int, mixed>       Caller-supplied PDO attribute overrides
-     * @throws InvalidConfigException  When `options` is present but not an int-keyed array, or sets ATTR_INIT_COMMAND
+     * @throws DatabaseConfigException When `options` is present but not an int-keyed array, or sets ATTR_INIT_COMMAND
      */
     private static function extractOptions(string $name, array $config): array
     {
@@ -717,7 +717,7 @@ final class ConnectionConfigResolver
 
         $value = $config['options'];
         if (!\is_array($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "options" must be an array.',
             );
         }
@@ -725,12 +725,12 @@ final class ConnectionConfigResolver
         $extracted = [];
         foreach ($value as $key => $element) {
             if (!\is_int($key)) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: config key "options" must be an array with integer (PDO::ATTR_*) keys.',
                 );
             }
             if ($key === PdoMysql::ATTR_INIT_COMMAND) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: config key "options" must not set Pdo\\Mysql::ATTR_INIT_COMMAND. '
                     . 'Use the "charset" and "collation" keys instead.',
                 );
@@ -747,13 +747,13 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Raw pool config array
      * @return void
-     * @throws InvalidConfigException  When an unknown or non-string key is present at the pool level
+     * @throws DatabaseConfigException When an unknown or non-string key is present at the pool level
      */
     private static function assertNoUnknownPoolKeys(string $name, array $config): void
     {
         foreach (array_keys($config) as $key) {
             if (!\is_string($key) || !\in_array($key, self::ALLOWED_POOL_KEYS, true)) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: unsupported config key "' . $key . '".',
                 );
             }
@@ -791,7 +791,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $poolConfig          Raw pool config array
      * @param  array<string, mixed>    $primarySingleConfig Primary's single-connection key subset (used for inheritance)
      * @return list<ValidatedConfig>   Validated replicas in declaration order (empty when `read` is absent)
-     * @throws InvalidConfigException  When `read` is malformed or any replica entry is invalid
+     * @throws DatabaseConfigException When `read` is malformed or any replica entry is invalid
      */
     private static function extractReplicas(string $name, array $poolConfig, array $primarySingleConfig): array
     {
@@ -801,7 +801,7 @@ final class ConnectionConfigResolver
 
         $read = $poolConfig['read'];
         if (!\is_array($read)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "read" must be an array.',
             );
         }
@@ -809,19 +809,19 @@ final class ConnectionConfigResolver
         $replicas = [];
         foreach ($read as $index => $replicaOverride) {
             if (!\is_int($index)) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: "read" must be a list with integer keys, got string key "' . $index . '".',
                 );
             }
             if (!\is_array($replicaOverride)) {
-                throw new InvalidConfigException(
+                throw new DatabaseConfigException(
                     'Connection [' . $name . ']: "read[' . $index . ']" must be an array.',
                 );
             }
 
             foreach (array_keys($replicaOverride) as $replicaKey) {
                 if (!\is_string($replicaKey) || !\in_array($replicaKey, self::ALLOWED_KEYS, true)) {
-                    throw new InvalidConfigException(
+                    throw new DatabaseConfigException(
                         'Connection [' . $name . ']: "read[' . $index . ']" has unsupported key "' . $replicaKey . '". Pool-level keys must be set on the pool itself, not inside read[].',
                     );
                 }
@@ -840,7 +840,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return bool|null
-     * @throws InvalidConfigException  When the value is present but not a bool
+     * @throws DatabaseConfigException When the value is present but not a bool
      */
     private static function extractOptionalHealthCheck(string $name, array $config): ?bool
     {
@@ -850,7 +850,7 @@ final class ConnectionConfigResolver
 
         $value = $config['health_check'];
         if (!\is_bool($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "health_check" must be a boolean.',
             );
         }
@@ -870,7 +870,7 @@ final class ConnectionConfigResolver
      * @param  string                  $name   Pool name for error messages
      * @param  array<array-key, mixed> $config Pool config array
      * @return string|null
-     * @throws InvalidConfigException  When the value is present but not a string
+     * @throws DatabaseConfigException When the value is present but not a string
      */
     private static function extractOptionalReplicaSelector(string $name, array $config): ?string
     {
@@ -880,7 +880,7 @@ final class ConnectionConfigResolver
 
         $value = $config['replica_selector'];
         if (!\is_string($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "replica_selector" must be a string.',
             );
         }
@@ -894,7 +894,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Pool config array
      * @param  string                  $key    Key to extract
      * @return bool|null
-     * @throws InvalidConfigException  When the value is present but not a bool
+     * @throws DatabaseConfigException When the value is present but not a bool
      */
     private static function extractOptionalBool(string $name, array $config, string $key): ?bool
     {
@@ -904,7 +904,7 @@ final class ConnectionConfigResolver
 
         $value = $config[$key];
         if (!\is_bool($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be a boolean.',
             );
         }
@@ -924,7 +924,7 @@ final class ConnectionConfigResolver
      * @param  string                  $key     Key to extract
      * @param  bool                    $default Value the key stands for when it is absent
      * @return bool                    The configured value, or the default
-     * @throws InvalidConfigException  When the key is present but not a boolean
+     * @throws DatabaseConfigException When the key is present but not a boolean
      */
     private static function extractBool(string $name, array $config, string $key, bool $default): bool
     {
@@ -942,7 +942,7 @@ final class ConnectionConfigResolver
      * @param  array<array-key, mixed> $config Pool config array
      * @param  string                  $key    Key to extract
      * @return int|null
-     * @throws InvalidConfigException  When the value is non-null and not an integer, or is less than 1
+     * @throws DatabaseConfigException When the value is non-null and not an integer, or is less than 1
      */
     private static function extractOptionalPositiveInt(string $name, array $config, string $key): ?int
     {
@@ -955,12 +955,12 @@ final class ConnectionConfigResolver
             return null;
         }
         if (!\is_int($value)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be an integer.',
             );
         }
         if ($value < 1) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Connection [' . $name . ']: config key "' . $key . '" must be >= 1, got ' . $value . '.',
             );
         }

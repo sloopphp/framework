@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Encryption;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Sloop\Encryption\Exception\InvalidConfigException;
 use Sloop\Encryption\PasswordAlgorithm;
 use Sloop\Encryption\PasswordHasher;
 
@@ -318,7 +318,7 @@ final class PasswordHasherTest extends TestCase
     #[DataProvider('invalidBcryptCostProvider')]
     public function testConstructorRejectsABcryptCostOutsideFourToThirtyOne(int $cost): void
     {
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('The bcrypt cost must be between 4 and 31, got ' . $cost . '.');
 
         new PasswordHasher(PasswordAlgorithm::Bcrypt, bcryptCost: $cost);
@@ -349,7 +349,7 @@ final class PasswordHasherTest extends TestCase
     #[DataProvider('invalidArgon2SettingsProvider')]
     public function testConstructorRejectsArgon2SettingsPhpRejects(int $memory, int $time, int $threads, string $message): void
     {
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains($message);
 
         new PasswordHasher(PasswordAlgorithm::Argon2id, argon2Memory: $memory, argon2Time: $time, argon2Threads: $threads);
@@ -357,7 +357,7 @@ final class PasswordHasherTest extends TestCase
 
     public function testConstructorChecksArgon2SettingsEvenWhenBcryptIsChosen(): void
     {
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(InvalidArgumentException::class);
 
         new PasswordHasher(PasswordAlgorithm::Bcrypt, argon2Time: 0);
     }

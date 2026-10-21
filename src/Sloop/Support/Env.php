@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Support;
 
 use InvalidArgumentException;
-use RuntimeException;
+use Sloop\Config\InvalidConfigException;
 
 /**
  * Immutable environment variable accessor.
@@ -37,7 +37,7 @@ final class Env
      * @param  bool                     $required Throw exception if not set (incompatible with default)
      * @return string|null
      * @throws InvalidArgumentException If required and default are both specified
-     * @throws RuntimeException         If required and the variable is not set
+     * @throws InvalidConfigException   If required and the variable is not set
      */
     public static function get(
         string $key,
@@ -64,7 +64,7 @@ final class Env
 
         if ($value === false) {
             if ($required) {
-                throw new RuntimeException(
+                throw new InvalidConfigException(
                     'Required environment variable \'' . $key . '\' is not set.'
                 );
             }

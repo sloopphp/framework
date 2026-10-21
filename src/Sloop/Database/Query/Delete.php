@@ -7,9 +7,9 @@ namespace Sloop\Database\Query;
 use InvalidArgumentException;
 use LogicException;
 use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 
 /**
  * A DELETE statement being built.
@@ -99,7 +99,7 @@ class Delete extends BuilderWhere
      * @return int                         Rows removed
      * @throws LogicException              When a group of conditions was left open, an offset was set, or the connection is in strict mode and nothing narrows the statement
      * @throws InvalidArgumentException    When an identifier is malformed
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      */

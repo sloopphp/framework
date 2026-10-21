@@ -9,9 +9,9 @@ use InvalidArgumentException;
 use LogicException;
 use Sloop\Database\CastMode;
 use Sloop\Database\ConnectionRoute;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Paginator;
 use Sloop\Database\Result;
 use UnexpectedValueException;
@@ -1490,7 +1490,7 @@ class Select extends BuilderWhere
      * @return Result                                                                                Rows the statement read
      * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                                              When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                                                                When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                                                               When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                                           When the connection cannot be obtained
      * @throws DatabaseException                                                                     When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      * @throws UnexpectedValueException                                                              When the driver returns a value outside the types it contracts to
@@ -1519,7 +1519,7 @@ class Select extends BuilderWhere
      * @return Result                      Rows the statement read
      * @throws LogicException              When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails, or a persistent connection carries a residual transaction that cannot be rolled back
      * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
@@ -1540,7 +1540,7 @@ class Select extends BuilderWhere
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null>|null The row, or null when nothing matched
      * @throws LogicException                                                      When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                            When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                                              When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                                             When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                         When the connection cannot be obtained
      * @throws DatabaseException                                                   When the statement fails
      * @throws UnexpectedValueException                                            When the driver returns a value outside the types it contracts to
@@ -1562,7 +1562,7 @@ class Select extends BuilderWhere
      * @return int|float|string|bool|DateTimeImmutable|null Its value, or null when nothing matched
      * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
      * @throws DatabaseException                            When the statement fails
      * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
@@ -1588,7 +1588,7 @@ class Select extends BuilderWhere
      * @return list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> Rows in the order they were read
      * @throws LogicException                                                       When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                             When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                                               When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                                              When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                          When the connection cannot be obtained
      * @throws DatabaseException                                                    When the statement fails
      * @throws UnexpectedValueException                                             When the driver returns a value outside the types it contracts to
@@ -1622,7 +1622,7 @@ class Select extends BuilderWhere
      * @return int                         How many rows matched
      * @throws LogicException              When no table has been named, a group of conditions was left open, the lock is NOWAIT, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails
      * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to, or a count that is not an integer
@@ -1660,7 +1660,7 @@ class Select extends BuilderWhere
      * @return bool                        True when at least one row matched
      * @throws LogicException              When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails
      * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
@@ -1678,7 +1678,7 @@ class Select extends BuilderWhere
      * @return bool                        True when nothing matched
      * @throws LogicException              When no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When the statement fails
      * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
@@ -1705,7 +1705,7 @@ class Select extends BuilderWhere
      * @return int|float|string|bool|DateTimeImmutable|null The total, or null when nothing matched
      * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
      * @throws DatabaseException                            When the statement fails
      * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
@@ -1726,7 +1726,7 @@ class Select extends BuilderWhere
      * @return int|float|string|bool|DateTimeImmutable|null The average, or null when nothing matched
      * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
      * @throws DatabaseException                            When the statement fails
      * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
@@ -1747,7 +1747,7 @@ class Select extends BuilderWhere
      * @return int|float|string|bool|DateTimeImmutable|null The smallest value, or null when nothing matched
      * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
      * @throws DatabaseException                            When the statement fails
      * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
@@ -1766,7 +1766,7 @@ class Select extends BuilderWhere
      * @return int|float|string|bool|DateTimeImmutable|null The largest value, or null when nothing matched
      * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
      * @throws DatabaseException                            When the statement fails
      * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
@@ -1804,7 +1804,7 @@ class Select extends BuilderWhere
      * @return int|float|string|bool|DateTimeImmutable|null Value the call produced, or null when nothing matched
      * @throws LogicException                               When no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed or the row window is inconsistent
-     * @throws InvalidConfigException                       When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
      * @throws DatabaseException                            When the statement fails
      * @throws UnexpectedValueException                     When the driver returns a value outside the types it contracts to
@@ -1843,7 +1843,7 @@ class Select extends BuilderWhere
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Values, keyed when a key column was given
      * @throws LogicException                                                 When no table has been named, a group of conditions was left open, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                       When an identifier is malformed, the row window is inconsistent, or the two columns come back under one name
-     * @throws InvalidConfigException                                         When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                                        When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                    When the connection cannot be obtained
      * @throws DatabaseException                                              When the statement fails
      * @throws UnexpectedValueException                                       When the driver returns a value outside the types it contracts to, or the key column holds a value that cannot be an array key
@@ -1912,7 +1912,7 @@ class Select extends BuilderWhere
      * @return Paginator                   The page, with the size of the set it came from
      * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, the rows are held with NOWAIT, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the page size or number is below one, an identifier is malformed, or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When either statement fails
      * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
@@ -1959,7 +1959,7 @@ class Select extends BuilderWhere
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
      * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the batch size is below one, an identifier is malformed, or the row window is inconsistent
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When a statement fails
      * @throws UnexpectedValueException    When the driver returns a value outside the types it contracts to
@@ -2025,7 +2025,7 @@ class Select extends BuilderWhere
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
      * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When a statement fails
      * @throws UnexpectedValueException    When the walked column is absent from the rows or holds no value, or the driver returns a value outside the types it contracts to

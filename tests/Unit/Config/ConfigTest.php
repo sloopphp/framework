@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Config\Config;
+use Sloop\Config\InvalidConfigException;
 use Sloop\Tests\Support\ThrowsAssertions;
 
 final class ConfigTest extends TestCase
@@ -60,7 +61,7 @@ final class ConfigTest extends TestCase
     {
         // The environment name becomes a path segment whose PHP files get
         // executed, so a tainted APP_ENV must not escape the config directory.
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidConfigException::class);
         $this->expectExceptionMessageIsOrContains('Invalid environment name: ../evil (only [A-Za-z0-9_-] is allowed)');
 
         Config::load($this->fixturesPath, '../evil');
@@ -68,7 +69,7 @@ final class ConfigTest extends TestCase
 
     public function testLoadThrowsForEnvironmentNameWithDirectorySeparator(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidConfigException::class);
         $this->expectExceptionMessageIsOrContains('Invalid environment name: sub/dir (only [A-Za-z0-9_-] is allowed)');
 
         Config::load($this->fixturesPath, 'sub/dir');
@@ -76,7 +77,7 @@ final class ConfigTest extends TestCase
 
     public function testLoadThrowsForNonexistentDirectory(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidConfigException::class);
         $this->expectExceptionMessageIsOrContains('Config directory does not exist: /nonexistent/path');
 
         Config::load('/nonexistent/path');
@@ -96,7 +97,7 @@ final class ConfigTest extends TestCase
     {
         $invalidPath = $this->fixturesPath . '/invalid';
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidConfigException::class);
         $this->expectExceptionMessageIsOrContains(
             'Config file must return an array, got string: ' . $invalidPath . DIRECTORY_SEPARATOR . 'broken.php'
         );

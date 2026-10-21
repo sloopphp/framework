@@ -12,6 +12,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
+use Sloop\Config\InvalidConfigException;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
@@ -25,7 +26,7 @@ use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
 use Sloop\Encryption\Cipher;
 use Sloop\Encryption\Encryptor;
-use Sloop\Encryption\Exception\InvalidConfigException;
+use Sloop\Encryption\Exception\EncryptionConfigException;
 use Sloop\Encryption\HexKey;
 use Sloop\Encryption\PasswordAlgorithm;
 use Sloop\Encryption\PasswordHasher;
@@ -45,6 +46,7 @@ use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Log\ChannelFactoryInterface;
+use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Log\Processor\ElapsedTimeProcessor;
@@ -54,6 +56,7 @@ use Sloop\Log\Processor\TraceIdProcessor;
 use Sloop\Log\TraceContext;
 use Sloop\Routing\Route;
 use Sloop\Routing\Router;
+use Sloop\Security\Exception\SecurityConfigException;
 use Sloop\Support\Arr;
 use Sloop\Validation\ValidationMessages;
 
@@ -487,16 +490,27 @@ final class Application implements RequestHandlerInterface
     /**
      * Resolve a ChannelFactoryInterface implementation from the container.
      *
+     * The class name is the factory entry of a log channel config, so a name
+     * the container cannot resolve or a class that is not a factory is a
+     * config error. A failure to resolve the factory's own dependencies is a
+     * mistake in the bindings, not in the config, and is left to the container.
+     *
      * @param  Container               $container    DI container
      * @param  string                  $factoryClass Factory class name
      * @return ChannelFactoryInterface
-     * @throws \RuntimeException       If the resolved instance does not implement the interface
+     * @throws LogConfigException      If the class cannot be resolved or does not implement the interface
+     * @throws EntryNotFoundException  If a dependency of the factory cannot be found
+     * @throws ContainerException      If resolving the factory's dependencies fails otherwise
      */
     private function resolveChannelFactory(Container $container, string $factoryClass): ChannelFactoryInterface
     {
+        if (!$container->has($factoryClass)) {
+            throw new LogConfigException('Custom log factory cannot be resolved: ' . $factoryClass);
+        }
+
         $factory = $container->get($factoryClass);
         if (!$factory instanceof ChannelFactoryInterface) {
-            throw new \RuntimeException(
+            throw new LogConfigException(
                 'Custom log factory must implement ChannelFactoryInterface: ' . $factoryClass,
             );
         }
@@ -611,11 +625,11 @@ final class Application implements RequestHandlerInterface
      * throws instead.
      *
      * @return void
-     * @throws InvalidConfigException If encryption is not an array or has an unsupported key, or encryption.key, encryption.previous_keys or encryption.cipher is malformed
+     * @throws EncryptionConfigException If encryption is not an array or has an unsupported key, or encryption.key, encryption.previous_keys or encryption.cipher is malformed
      */
     private function bootEncryption(): void
     {
-        $this->assertConfigSection('encryption', ['key', 'previous_keys', 'cipher']);
+        $this->assertConfigSection('encryption', ['key', 'previous_keys', 'cipher'], EncryptionConfigException::class);
 
         $key          = $this->readKey('encryption');
         $previousKeys = $this->readPreviousKeys('encryption');
@@ -623,7 +637,7 @@ final class Application implements RequestHandlerInterface
 
         if ($key === null) {
             $this->container->singleton(Encryptor::class, static function (): never {
-                throw new InvalidConfigException(
+                throw new EncryptionConfigException(
                     'The encryption key is not configured. Set encryption.key to 64 hexadecimal characters, for example the output of Encryptor::generateKey().',
                 );
             });
@@ -631,7 +645,13 @@ final class Application implements RequestHandlerInterface
             return;
         }
 
-        $this->container->instance(Encryptor::class, new Encryptor($key, $previousKeys, $cipher));
+        try {
+            $encryptor = new Encryptor($key, $previousKeys, $cipher);
+        } catch (\InvalidArgumentException $e) {
+            throw new EncryptionConfigException($e->getMessage(), previous: $e);
+        }
+
+        $this->container->instance(Encryptor::class, $encryptor);
     }
 
     /**
@@ -642,18 +662,18 @@ final class Application implements RequestHandlerInterface
      * entry fails the boot and a missing key throws only when Signer is resolved.
      *
      * @return void
-     * @throws InvalidConfigException If signing is not an array or has an unsupported key, or signing.key or signing.previous_keys is malformed
+     * @throws EncryptionConfigException If signing is not an array or has an unsupported key, or signing.key or signing.previous_keys is malformed
      */
     private function bootSigning(): void
     {
-        $this->assertConfigSection('signing', ['key', 'previous_keys']);
+        $this->assertConfigSection('signing', ['key', 'previous_keys'], EncryptionConfigException::class);
 
         $key          = $this->readKey('signing');
         $previousKeys = $this->readPreviousKeys('signing');
 
         if ($key === null) {
             $this->container->singleton(Signer::class, static function (): never {
-                throw new InvalidConfigException(
+                throw new EncryptionConfigException(
                     'The signing key is not configured. Set signing.key to 64 hexadecimal characters, for example the output of Signer::generateKey().',
                 );
             });
@@ -661,15 +681,21 @@ final class Application implements RequestHandlerInterface
             return;
         }
 
-        $this->container->instance(Signer::class, new Signer($key, $previousKeys));
+        try {
+            $signer = new Signer($key, $previousKeys);
+        } catch (\InvalidArgumentException $e) {
+            throw new EncryptionConfigException($e->getMessage(), previous: $e);
+        }
+
+        $this->container->instance(Signer::class, $signer);
     }
 
     /**
      * Read the key entry of a section, treating a missing, null or empty entry as not configured.
      *
-     * @param  string                 $section Config section holding the key ('encryption' or 'signing')
+     * @param  string                    $section Config section holding the key ('encryption' or 'signing')
      * @return string|null
-     * @throws InvalidConfigException If the entry is written but is not a string
+     * @throws EncryptionConfigException If the entry is written but is not a string
      */
     private function readKey(string $section): ?string
     {
@@ -679,7 +705,7 @@ final class Application implements RequestHandlerInterface
         }
 
         if (!\is_string($key)) {
-            throw new InvalidConfigException($section . '.key must be a string of 64 hexadecimal characters.');
+            throw new EncryptionConfigException($section . '.key must be a string of 64 hexadecimal characters.');
         }
 
         return $key;
@@ -688,21 +714,21 @@ final class Application implements RequestHandlerInterface
     /**
      * Read the previous_keys entry of a section, checking that every entry is a key.
      *
-     * @param  string                 $section Config section holding the keys ('encryption' or 'signing')
+     * @param  string                    $section Config section holding the keys ('encryption' or 'signing')
      * @return list<string>
-     * @throws InvalidConfigException If the entry is not a list, or one of its keys is not 64 hexadecimal characters
+     * @throws EncryptionConfigException If the entry is not a list, or one of its keys is not 64 hexadecimal characters
      */
     private function readPreviousKeys(string $section): array
     {
         $previousKeys = (Config::isLoaded() ? Config::get($section . '.previous_keys') : null) ?? [];
         if (!\is_array($previousKeys) || !array_is_list($previousKeys)) {
-            throw new InvalidConfigException($section . '.previous_keys must be a list of keys.');
+            throw new EncryptionConfigException($section . '.previous_keys must be a list of keys.');
         }
 
         $checked = [];
         foreach ($previousKeys as $index => $previousKey) {
             if (!\is_string($previousKey) || !HexKey::isValid($previousKey)) {
-                throw new InvalidConfigException('Previous ' . $section . ' key #' . $index . ' must be 64 hexadecimal characters (32 bytes).');
+                throw new EncryptionConfigException('Previous ' . $section . ' key #' . $index . ' must be 64 hexadecimal characters (32 bytes).');
             }
             $checked[] = $previousKey;
         }
@@ -716,14 +742,14 @@ final class Application implements RequestHandlerInterface
      * The name is matched without regard to case ('AES-256-GCM' names the same cipher).
      *
      * @return Cipher
-     * @throws InvalidConfigException If the entry names no supported cipher
+     * @throws EncryptionConfigException If the entry names no supported cipher
      */
     private function readEncryptionCipher(): Cipher
     {
         $name   = (Config::isLoaded() ? Config::get('encryption.cipher') : null) ?? Cipher::Aes256Gcm->value;
         $cipher = \is_string($name) ? Cipher::tryFrom(strtolower($name)) : null;
         if ($cipher === null) {
-            throw new InvalidConfigException(
+            throw new EncryptionConfigException(
                 'encryption.cipher must be one of: ' . implode(', ', array_column(Cipher::cases(), 'value')) . '.',
             );
         }
@@ -738,21 +764,21 @@ final class Application implements RequestHandlerInterface
      * fails the boot instead. Without the config the default headers are sent.
      *
      * @return SecurityHeadersMiddleware
-     * @throws InvalidConfigException    If security is not an array or has an unsupported key, security.headers is not an array, or one of its entries is not a valid header
+     * @throws SecurityConfigException   If security is not an array or has an unsupported key, security.headers is not an array, or one of its entries is not a valid header
      */
     private function bootSecurityHeaders(): SecurityHeadersMiddleware
     {
-        $this->assertConfigSection('security', ['headers', 'csrf', 'max_body_size']);
+        $this->assertConfigSection('security', ['headers', 'csrf', 'max_body_size'], SecurityConfigException::class);
 
         $headers = (Config::isLoaded() ? Config::get('security.headers') : null) ?? [];
         if (!\is_array($headers)) {
-            throw new InvalidConfigException('security.headers must be an array of header names mapped to a value or null.');
+            throw new SecurityConfigException('security.headers must be an array of header names mapped to a value or null.');
         }
 
         try {
             $middleware = new SecurityHeadersMiddleware($headers);
         } catch (\InvalidArgumentException $e) {
-            throw new InvalidConfigException('security.headers: ' . $e->getMessage(), previous: $e);
+            throw new SecurityConfigException('security.headers: ' . $e->getMessage(), previous: $e);
         }
 
         // Registered so that listing the class in config/middleware.php or on a
@@ -769,26 +795,26 @@ final class Application implements RequestHandlerInterface
      * config/middleware.php or on a route; both resolve this instance.
      *
      * @return void
-     * @throws InvalidConfigException If security.csrf has an unsupported key, origin is not a string or null, trusted_origins is not a list of strings, or an origin is malformed
+     * @throws SecurityConfigException If security.csrf has an unsupported key, origin is not a string or null, trusted_origins is not a list of strings, or an origin is malformed
      */
     private function bootCsrf(): void
     {
-        $this->assertConfigSection('security.csrf', ['origin', 'trusted_origins']);
+        $this->assertConfigSection('security.csrf', ['origin', 'trusted_origins'], SecurityConfigException::class);
 
         $origin = Config::isLoaded() ? Config::get('security.csrf.origin') : null;
         if ($origin !== null && !\is_string($origin)) {
-            throw new InvalidConfigException('security.csrf.origin must be a string or null.');
+            throw new SecurityConfigException('security.csrf.origin must be a string or null.');
         }
 
         $trusted = (Config::isLoaded() ? Config::get('security.csrf.trusted_origins') : null) ?? [];
         if (!\is_array($trusted) || !array_is_list($trusted) || array_filter($trusted, \is_string(...)) !== $trusted) {
-            throw new InvalidConfigException('security.csrf.trusted_origins must be a list of origins.');
+            throw new SecurityConfigException('security.csrf.trusted_origins must be a list of origins.');
         }
 
         try {
             $middleware = new CsrfMiddleware($origin, $trusted);
         } catch (\InvalidArgumentException $e) {
-            throw new InvalidConfigException('security.csrf: ' . $e->getMessage(), previous: $e);
+            throw new SecurityConfigException('security.csrf: ' . $e->getMessage(), previous: $e);
         }
 
         $this->container->instance(CsrfMiddleware::class, $middleware);
@@ -798,13 +824,13 @@ final class Application implements RequestHandlerInterface
      * Read security.max_body_size, defaulting to 1 MiB when it is missing or null.
      *
      * @return int<1, max>
-     * @throws InvalidConfigException If the entry is not a positive integer
+     * @throws SecurityConfigException If the entry is not a positive integer
      */
     private function readMaxBodySize(): int
     {
         $size = (Config::isLoaded() ? Config::get('security.max_body_size') : null) ?? self::DEFAULT_MAX_BODY_SIZE;
         if (!\is_int($size) || $size < 1) {
-            throw new InvalidConfigException('security.max_body_size must be a positive integer number of bytes.');
+            throw new SecurityConfigException('security.max_body_size must be a positive integer number of bytes.');
         }
 
         return $size;
@@ -818,21 +844,30 @@ final class Application implements RequestHandlerInterface
      * still gets a working hasher.
      *
      * @return void
-     * @throws InvalidConfigException If a section is not an array or has an unsupported key, an entry is malformed, a cost is out of range, or argon2id is chosen and this PHP build lacks it
+     * @throws EncryptionConfigException If a section is not an array or has an unsupported key, an entry is malformed, a cost is out of range, or argon2id is chosen and this PHP build lacks it
      */
     private function bootHashing(): void
     {
-        $this->assertConfigSection('hashing', ['algorithm', 'bcrypt', 'argon2id']);
-        $this->assertConfigSection('hashing.bcrypt', ['cost']);
-        $this->assertConfigSection('hashing.argon2id', ['memory', 'time', 'threads']);
+        $this->assertConfigSection('hashing', ['algorithm', 'bcrypt', 'argon2id'], EncryptionConfigException::class);
+        $this->assertConfigSection('hashing.bcrypt', ['cost'], EncryptionConfigException::class);
+        $this->assertConfigSection('hashing.argon2id', ['memory', 'time', 'threads'], EncryptionConfigException::class);
 
-        $this->container->instance(PasswordHasher::class, new PasswordHasher(
-            algorithm: $this->readHashingAlgorithm(),
-            bcryptCost: $this->readHashingInt('hashing.bcrypt.cost', 12),
-            argon2Memory: $this->readHashingInt('hashing.argon2id.memory', 65536),
-            argon2Time: $this->readHashingInt('hashing.argon2id.time', 4),
-            argon2Threads: $this->readHashingInt('hashing.argon2id.threads', 1),
-        ));
+        $algorithm     = $this->readHashingAlgorithm();
+        $bcryptCost    = $this->readHashingInt('hashing.bcrypt.cost', 12);
+        $argon2Memory  = $this->readHashingInt('hashing.argon2id.memory', 65536);
+        $argon2Time    = $this->readHashingInt('hashing.argon2id.time', 4);
+        $argon2Threads = $this->readHashingInt('hashing.argon2id.threads', 1);
+
+        // The entries are read first so that only the constructor's own
+        // exception (a cost out of range) is rewrapped. argon2id missing from
+        // the build is reported by readHashingAlgorithm() before this point.
+        try {
+            $hasher = new PasswordHasher($algorithm, $bcryptCost, $argon2Memory, $argon2Time, $argon2Threads);
+        } catch (\InvalidArgumentException $e) {
+            throw new EncryptionConfigException($e->getMessage(), previous: $e);
+        }
+
+        $this->container->instance(PasswordHasher::class, $hasher);
     }
 
     /**
@@ -841,12 +876,13 @@ final class Application implements RequestHandlerInterface
      * A misspelled key or a value written where a section belongs would
      * otherwise be ignored and the default used without notice.
      *
-     * @param  string                 $key         Config key of the section
-     * @param  list<string>           $allowedKeys Keys the section may contain
+     * @param  string                                                          $key         Config key of the section
+     * @param  list<string>                                                    $allowedKeys Keys the section may contain
+     * @param  class-string<EncryptionConfigException|SecurityConfigException> $exception   Exception of the area the section belongs to
      * @return void
-     * @throws InvalidConfigException If the section is not an array or has another key
+     * @throws EncryptionConfigException|SecurityConfigException               If the section is not an array or has another key
      */
-    private function assertConfigSection(string $key, array $allowedKeys): void
+    private function assertConfigSection(string $key, array $allowedKeys, string $exception): void
     {
         $section = Config::isLoaded() ? Config::get($key) : null;
         if ($section === null) {
@@ -854,12 +890,12 @@ final class Application implements RequestHandlerInterface
         }
 
         if (!\is_array($section)) {
-            throw new InvalidConfigException($key . ' must be an array of settings.');
+            throw new $exception($key . ' must be an array of settings.');
         }
 
         foreach (array_keys($section) as $name) {
             if (!\in_array($name, $allowedKeys, true)) {
-                throw new InvalidConfigException($key . ' has an unsupported key "' . $name . '".');
+                throw new $exception($key . ' has an unsupported key "' . $name . '".');
             }
         }
     }
@@ -870,16 +906,22 @@ final class Application implements RequestHandlerInterface
      * The name is matched without regard to case ('Argon2id' names the same algorithm).
      *
      * @return PasswordAlgorithm
-     * @throws InvalidConfigException If the entry names no supported algorithm
+     * @throws EncryptionConfigException If the entry names no supported algorithm, or names argon2id and this PHP build lacks it
      */
     private function readHashingAlgorithm(): PasswordAlgorithm
     {
         $name      = (Config::isLoaded() ? Config::get('hashing.algorithm') : null) ?? PasswordAlgorithm::Bcrypt->value;
         $algorithm = \is_string($name) ? PasswordAlgorithm::tryFrom(strtolower($name)) : null;
         if ($algorithm === null) {
-            throw new InvalidConfigException(
+            throw new EncryptionConfigException(
                 'hashing.algorithm must be one of: ' . implode(', ', array_column(PasswordAlgorithm::cases(), 'value')) . '.',
             );
+        }
+
+        // Checked here as well as in PasswordHasher, whose RuntimeException
+        // for this case would otherwise reach the caller unwrapped.
+        if (!$algorithm->isAvailable()) {
+            throw new EncryptionConfigException('This PHP build cannot hash with ' . $algorithm->value . '. Choose another hashing.algorithm, or use a PHP built with argon2 support.');
         }
 
         return $algorithm;
@@ -888,16 +930,16 @@ final class Application implements RequestHandlerInterface
     /**
      * Read an integer entry of the hashing config, using the default when it is missing or null.
      *
-     * @param  string                 $key     Config key
-     * @param  int                    $default Value used when the entry is missing or null
+     * @param  string                    $key     Config key
+     * @param  int                       $default Value used when the entry is missing or null
      * @return int
-     * @throws InvalidConfigException If the entry is written but is not an integer
+     * @throws EncryptionConfigException If the entry is written but is not an integer
      */
     private function readHashingInt(string $key, int $default): int
     {
         $value = (Config::isLoaded() ? Config::get($key) : null) ?? $default;
         if (!\is_int($value)) {
-            throw new InvalidConfigException($key . ' must be an integer.');
+            throw new EncryptionConfigException($key . ' must be an integer.');
         }
 
         return $value;
@@ -978,7 +1020,13 @@ final class Application implements RequestHandlerInterface
     /**
      * Build the middleware dispatcher with global and route middleware.
      *
+     * The class names come from config/middleware.php, so a name the container
+     * cannot resolve or a class that is not a middleware is a config error. A
+     * failure to resolve the middleware's own dependencies is left to the
+     * container, as for a custom log factory.
+     *
      * @return MiddlewareDispatcher
+     * @throws InvalidConfigException If an entry of config/middleware.php cannot be resolved or does not implement MiddlewareInterface
      */
     private function buildMiddlewareDispatcher(): MiddlewareDispatcher
     {
@@ -989,9 +1037,13 @@ final class Application implements RequestHandlerInterface
         $dispatcher->pipe($this->securityHeaders);
 
         foreach ($this->middleware as $middlewareClass) {
+            if (!$this->container->has($middlewareClass)) {
+                throw new InvalidConfigException('Middleware in config/middleware.php cannot be resolved: ' . $middlewareClass);
+            }
+
             $middleware = $this->container->get($middlewareClass);
             if (!$middleware instanceof MiddlewareInterface) {
-                throw new \RuntimeException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
+                throw new InvalidConfigException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
             }
 
             $dispatcher->pipe($middleware);
