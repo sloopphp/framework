@@ -451,6 +451,13 @@ final class ConfigTest extends TestCase
         $this->assertSame(['X-Frame-Options' => 'DENY'], Config::get('s.headers'));
     }
 
+    public function testEnvironmentOverrideIntoAnEmptyArrayKeepsItsIntegerKeys(): void
+    {
+        Config::load(__DIR__ . '/fixtures-shape/int_keyed_assoc_over_empty', 'production');
+
+        $this->assertSame(['key' => 'value', 5 => 'x'], Config::get('s.items'));
+    }
+
     public function testEnvironmentOverrideAppendsIntegerKeysInsideAnAssociativeArray(): void
     {
         Config::load(__DIR__ . '/fixtures-shape/int_keys_inside_assoc', 'production');
