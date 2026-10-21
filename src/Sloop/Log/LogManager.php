@@ -154,7 +154,7 @@ final class LogManager
      * @param  string             $name Channel name
      * @return Logger
      * @throws LogConfigException If the configuration is invalid
-     * @throws RuntimeException   If a custom channel has no factory resolver
+     * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies (the container's exception is passed on)
      */
     private function createLogger(string $name): Logger
     {
@@ -200,7 +200,7 @@ final class LogManager
      * @param  string             $name Channel name
      * @return Logger
      * @throws LogConfigException If the configuration is invalid
-     * @throws RuntimeException   If a custom channel has no factory resolver
+     * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies (the container's exception is passed on)
      */
     private function buildLogger(string $name): Logger
     {
@@ -331,7 +331,7 @@ final class LogManager
      * @param  array<string, mixed> $config Channel configuration
      * @return Logger
      * @throws LogConfigException   If the factory is missing (the resolver may throw it too, for a factory it cannot resolve)
-     * @throws RuntimeException     If no factory resolver was given
+     * @throws RuntimeException     If no factory resolver was given, or the resolver cannot build the factory's own dependencies (the container's exception is passed on)
      */
     private function createCustomLogger(string $name, array $config): Logger
     {
