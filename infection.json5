@@ -67,8 +67,8 @@
                 "Sloop\\Validation\\Validator::validate",
                 // CsrfMiddleware::__construct builds the set of trusted origins,
                 // which isTrusted() reads only through isset(). Pinned to the
-                // line: the true passed to configuredOrigin() above it is killed.
-                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct::93"
+                // line: the true passed to Origin::configured() above it is killed.
+                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct::79"
             ]
         },
         "LogicalOrAllSubExprNegation": {
@@ -337,11 +337,11 @@
             ]
         },
         "PregMatchRemoveFlags": {
-            // CsrfMiddleware::isCanonicalHost checks a host from parse_url(),
+            // Origin::isCanonicalHost checks a host from parse_url(),
             // which replaces control characters with "_", so the host never
             // ends in a line feed and `$` without /D matches the same hosts.
             "ignore": [
-                "Sloop\\Http\\Middleware\\CsrfMiddleware::isCanonicalHost::298"
+                "Sloop\\Http\\Middleware\\Origin::isCanonicalHost::127"
             ]
         },
         "Concat": {
