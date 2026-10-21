@@ -781,9 +781,10 @@ final class Application implements RequestHandlerInterface
     /**
      * Register the CORS middleware built from security.cors, checking every entry now.
      *
-     * The middleware runs only where the application lists it, in
-     * config/middleware.php or on a route; both resolve this instance. An
-     * entry that is missing or null keeps the middleware's default.
+     * The middleware runs only where the application lists it in
+     * config/middleware.php, which resolves this instance. On a route it would
+     * never see a preflight: no route matches OPTIONS. An entry that is missing
+     * or null keeps the middleware's default.
      *
      * @return void
      * @throws SecurityConfigException If security.cors has an unsupported key, a list entry is not a list of strings, max_age is not an integer, allow_credentials is not a boolean, or the middleware rejects a value
