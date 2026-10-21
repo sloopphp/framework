@@ -104,7 +104,7 @@ final class ResultTest extends TestCase
         $this->assertNull(new Result([])->first());
     }
 
-    public function testAsArrayByKeysRowsByTheGivenColumn(): void
+    public function testKeyByKeysRowsByTheGivenColumn(): void
     {
         $result = new Result([
             ['id' => 7, 'name' => 'alice'],
@@ -116,38 +116,38 @@ final class ResultTest extends TestCase
                 7 => ['id' => 7, 'name' => 'alice'],
                 9 => ['id' => 9, 'name' => 'bob'],
             ],
-            $result->asArrayBy('id'),
+            $result->keyBy('id'),
         );
     }
 
-    public function testAsArrayByKeepsTheLastRowOnDuplicateKeys(): void
+    public function testKeyByKeepsTheLastRowOnDuplicateKeys(): void
     {
         $result = new Result([
             ['id' => 1, 'name' => 'first'],
             ['id' => 1, 'name' => 'second'],
         ]);
 
-        $this->assertSame([1 => ['id' => 1, 'name' => 'second']], $result->asArrayBy('id'));
+        $this->assertSame([1 => ['id' => 1, 'name' => 'second']], $result->keyBy('id'));
     }
 
-    public function testAsArrayByDropsTheKeyColumnWhenAsked(): void
+    public function testKeyByDropsTheKeyColumnWhenAsked(): void
     {
         $result = new Result([['id' => 7, 'name' => 'alice']]);
 
-        $this->assertSame([7 => ['name' => 'alice']], $result->asArrayBy('id', removeKey: true));
+        $this->assertSame([7 => ['name' => 'alice']], $result->keyBy('id', removeKey: true));
     }
 
-    public function testAsArrayByRejectsAColumnThatIsNotInTheResult(): void
+    public function testKeyByRejectsAColumnThatIsNotInTheResult(): void
     {
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Column "missing" is not in the result set.');
 
-        $result->asArrayBy('missing');
+        $result->keyBy('missing');
     }
 
-    public function testAsArrayByRejectsANullKeyValue(): void
+    public function testKeyByRejectsANullKeyValue(): void
     {
         // PHP would turn a null key into '' and silently merge every such row
         // into one entry.
@@ -158,10 +158,10 @@ final class ResultTest extends TestCase
             'Column "id" must hold an int or string to be used as a key, got null.',
         );
 
-        $result->asArrayBy('id');
+        $result->keyBy('id');
     }
 
-    public function testAsArrayByRejectsAFloatKeyValue(): void
+    public function testKeyByRejectsAFloatKeyValue(): void
     {
         // A float key is truncated to int, so 1.5 and 1.9 would collide on 1.
         $result = new Result([['id' => 1.5, 'name' => 'alice']]);
@@ -171,10 +171,10 @@ final class ResultTest extends TestCase
             'Column "id" must hold an int or string to be used as a key, got float.',
         );
 
-        $result->asArrayBy('id');
+        $result->keyBy('id');
     }
 
-    public function testAsMapPairsTwoColumns(): void
+    public function testToMapPairsTwoColumns(): void
     {
         $result = new Result([
             ['id' => 1, 'email' => 'alice@example.com'],
@@ -183,35 +183,35 @@ final class ResultTest extends TestCase
 
         $this->assertSame(
             [1 => 'alice@example.com', 2 => 'bob@example.com'],
-            $result->asMap('id', 'email'),
+            $result->toMap('id', 'email'),
         );
     }
 
-    public function testAsMapCarriesNullValuesThrough(): void
+    public function testToMapCarriesNullValuesThrough(): void
     {
         $result = new Result([['id' => 1, 'deleted_at' => null]]);
 
-        $this->assertSame([1 => null], $result->asMap('id', 'deleted_at'));
+        $this->assertSame([1 => null], $result->toMap('id', 'deleted_at'));
     }
 
-    public function testAsMapKeepsTheLastValueOnDuplicateKeys(): void
+    public function testToMapKeepsTheLastValueOnDuplicateKeys(): void
     {
         $result = new Result([
             ['id' => 1, 'email' => 'first@example.com'],
             ['id' => 1, 'email' => 'second@example.com'],
         ]);
 
-        $this->assertSame([1 => 'second@example.com'], $result->asMap('id', 'email'));
+        $this->assertSame([1 => 'second@example.com'], $result->toMap('id', 'email'));
     }
 
-    public function testAsMapRejectsAValueColumnThatIsNotInTheResult(): void
+    public function testToMapRejectsAValueColumnThatIsNotInTheResult(): void
     {
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Column "email" is not in the result set.');
 
-        $result->asMap('id', 'email');
+        $result->toMap('id', 'email');
     }
 
     public function testGroupByCollectsRowsSharingAColumnValue(): void
@@ -254,38 +254,38 @@ final class ResultTest extends TestCase
         $collection = $result->toCollection();
 
         $this->assertInstanceOf(Collection::class, $collection);
-        $this->assertSame($rows, $collection->toArray());
+        $this->assertSame($rows, $collection->asArray());
         // Exercising a Collection-only operation proves the bridge produces a
         // usable Collection rather than something that merely holds the rows.
         $this->assertSame(42, $collection->sum('score'));
     }
 
-    public function testAsObjectHydratesOneInstancePerRowInOrder(): void
+    public function testToObjectsHydratesOneInstancePerRowInOrder(): void
     {
         $result = new Result([
             ['id' => 1, 'name' => 'alice', 'email' => 'alice@example.com'],
             ['id' => 2, 'name' => 'bob', 'email' => 'bob@example.com'],
         ]);
 
-        $users = $result->asObject(HydratedUser::class);
+        $users = $result->toObjects(HydratedUser::class);
 
         $this->assertCount(2, $users);
         $this->assertSame([1, 2], array_map(static fn (HydratedUser $u): int => $u->id, $users));
         $this->assertSame('alice@example.com', $users[0]->email);
     }
 
-    public function testAsObjectIgnoresTheOrderColumnsAppearInTheRow(): void
+    public function testToObjectsIgnoresTheOrderColumnsAppearInTheRow(): void
     {
         $result = new Result([['email' => 'z@example.com', 'name' => 'zoe', 'id' => 9]]);
 
-        $user = $result->asObject(HydratedUser::class)[0];
+        $user = $result->toObjects(HydratedUser::class)[0];
 
         $this->assertSame(9, $user->id);
         $this->assertSame('zoe', $user->name);
         $this->assertSame('z@example.com', $user->email);
     }
 
-    public function testAsObjectDoesNotAcceptAColumnWhoseNameDiffersFromTheParameter(): void
+    public function testToObjectsDoesNotAcceptAColumnWhoseNameDiffersFromTheParameter(): void
     {
         $result = new Result([['id' => 1, 'nickname' => 'alice']]);
 
@@ -295,48 +295,48 @@ final class ResultTest extends TestCase
                 . '::__construct(). Columns present: id, nickname.',
         );
 
-        $result->asObject(HydratedUser::class);
+        $result->toObjects(HydratedUser::class);
     }
 
-    public function testAsObjectIgnoresColumnsThatNoParameterTakes(): void
+    public function testToObjectsIgnoresColumnsThatNoParameterTakes(): void
     {
         $result = new Result([['id' => 1, 'name' => 'alice', 'unused' => 'x']]);
 
-        $this->assertSame(1, $result->asObject(HydratedUser::class)[0]->id);
+        $this->assertSame(1, $result->toObjects(HydratedUser::class)[0]->id);
     }
 
-    public function testAsObjectLeavesAnAbsentOptionalColumnToItsDefault(): void
+    public function testToObjectsLeavesAnAbsentOptionalColumnToItsDefault(): void
     {
         $result = new Result([['id' => 1, 'name' => 'alice']]);
 
-        $this->assertNull($result->asObject(HydratedUser::class)[0]->email);
+        $this->assertNull($result->toObjects(HydratedUser::class)[0]->email);
     }
 
-    public function testAsObjectSkipsAnAbsentOptionalColumnWithoutShiftingTheOnesAfterIt(): void
+    public function testToObjectsSkipsAnAbsentOptionalColumnWithoutShiftingTheOnesAfterIt(): void
     {
         $result = new Result([['id' => 1, 'rank' => 5]]);
 
-        $sparse = $result->asObject(HydratedSparse::class)[0];
+        $sparse = $result->toObjects(HydratedSparse::class)[0];
 
         $this->assertSame('none', $sparse->label);
         $this->assertSame(5, $sparse->rank);
     }
 
-    public function testAsObjectPassesANullColumnThroughRatherThanFallingBackToTheDefault(): void
+    public function testToObjectsPassesANullColumnThroughRatherThanFallingBackToTheDefault(): void
     {
         $result = new Result([['id' => 1, 'note' => null]]);
 
-        $this->assertNull($result->asObject(HydratedNullable::class)[0]->note);
+        $this->assertNull($result->toObjects(HydratedNullable::class)[0]->note);
     }
 
-    public function testAsObjectUsesTheDefaultOnlyWhenTheColumnIsAbsent(): void
+    public function testToObjectsUsesTheDefaultOnlyWhenTheColumnIsAbsent(): void
     {
         $result = new Result([['id' => 1]]);
 
-        $this->assertSame('unset', $result->asObject(HydratedNullable::class)[0]->note);
+        $this->assertSame('unset', $result->toObjects(HydratedNullable::class)[0]->note);
     }
 
-    public function testAsObjectRejectsARowMissingAColumnARequiredParameterNeeds(): void
+    public function testToObjectsRejectsARowMissingAColumnARequiredParameterNeeds(): void
     {
         $result = new Result([['id' => 1, 'name' => 'alice'], ['id' => 2]]);
 
@@ -346,15 +346,15 @@ final class ResultTest extends TestCase
                 . '::__construct(). Columns present: id.',
         );
 
-        $result->asObject(HydratedUser::class);
+        $result->toObjects(HydratedUser::class);
     }
 
-    public function testAsObjectReturnsAnEmptyListForAnEmptyResult(): void
+    public function testToObjectsReturnsAnEmptyListForAnEmptyResult(): void
     {
-        $this->assertSame([], new Result([])->asObject(HydratedUser::class));
+        $this->assertSame([], new Result([])->toObjects(HydratedUser::class));
     }
 
-    public function testAsObjectRejectsAnUnusableClassEvenWithNoRowsToHydrate(): void
+    public function testToObjectsRejectsAnUnusableClassEvenWithNoRowsToHydrate(): void
     {
         $result = new Result([]);
 
@@ -364,10 +364,10 @@ final class ResultTest extends TestCase
                 . '" takes a variadic parameter ($columns), which columns cannot be matched to.',
         );
 
-        $result->asObject(HydratedVariadic::class);
+        $result->toObjects(HydratedVariadic::class);
     }
 
-    public function testAsObjectRejectsAClassThatDoesNotExist(): void
+    public function testToObjectsRejectsAClassThatDoesNotExist(): void
     {
         $result = new Result([['id' => 1]]);
 
@@ -377,10 +377,10 @@ final class ResultTest extends TestCase
         );
 
         /** @phpstan-ignore argument.type */
-        $result->asObject('Sloop\\Tests\\Unit\\Database\\Stub\\NoSuchDto');
+        $result->toObjects('Sloop\\Tests\\Unit\\Database\\Stub\\NoSuchDto');
     }
 
-    public function testAsObjectRejectsAClassThatCannotBeInstantiated(): void
+    public function testToObjectsRejectsAClassThatCannotBeInstantiated(): void
     {
         $result = new Result([['id' => 1]]);
 
@@ -390,10 +390,10 @@ final class ResultTest extends TestCase
                 . '" cannot be instantiated, so rows cannot be hydrated into it.',
         );
 
-        $result->asObject(HydratedAbstract::class);
+        $result->toObjects(HydratedAbstract::class);
     }
 
-    public function testAsObjectRejectsAClassWithoutAConstructor(): void
+    public function testToObjectsRejectsAClassWithoutAConstructor(): void
     {
         $result = new Result([['id' => 1]]);
 
@@ -403,10 +403,10 @@ final class ResultTest extends TestCase
                 . '" has no constructor, so there is nowhere to pass the columns.',
         );
 
-        $result->asObject(HydratedWithoutConstructor::class);
+        $result->toObjects(HydratedWithoutConstructor::class);
     }
 
-    public function testAsObjectRejectsAVariadicConstructor(): void
+    public function testToObjectsRejectsAVariadicConstructor(): void
     {
         $result = new Result([['id' => 1]]);
 
@@ -416,16 +416,16 @@ final class ResultTest extends TestCase
                 . '" takes a variadic parameter ($columns), which columns cannot be matched to.',
         );
 
-        $result->asObject(HydratedVariadic::class);
+        $result->toObjects(HydratedVariadic::class);
     }
 
-    public function testAsObjectLetsTheConstructorsTypeErrorThroughNamingTheParameter(): void
+    public function testToObjectsLetsTheConstructorsTypeErrorThroughNamingTheParameter(): void
     {
         $result = new Result([['id' => 'not-an-int', 'name' => 'alice']]);
 
         $this->expectException(TypeError::class);
         $this->expectExceptionMessageMatches('/\$id/');
 
-        $result->asObject(HydratedUser::class);
+        $result->toObjects(HydratedUser::class);
     }
 }

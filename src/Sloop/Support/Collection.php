@@ -83,7 +83,7 @@ final readonly class Collection implements IteratorAggregate, Countable
      *
      * @return array<array-key, T>
      */
-    public function toArray(): array
+    public function asArray(): array
     {
         return $this->items;
     }

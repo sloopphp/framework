@@ -13,21 +13,21 @@ use stdClass;
 final class CollectionTest extends TestCase
 {
     // -------------------------------------------------------
-    // from / count / isEmpty / toArray
+    // from / count / isEmpty / asArray
     // -------------------------------------------------------
 
     public function testFromAcceptsArray(): void
     {
         $collection = Collection::from(['a', 'b', 'c']);
 
-        $this->assertSame(['a', 'b', 'c'], $collection->toArray());
+        $this->assertSame(['a', 'b', 'c'], $collection->asArray());
     }
 
     public function testFromAcceptsIterator(): void
     {
         $collection = Collection::from(new ArrayIterator(['x' => 1, 'y' => 2]));
 
-        $this->assertSame(['x' => 1, 'y' => 2], $collection->toArray());
+        $this->assertSame(['x' => 1, 'y' => 2], $collection->asArray());
     }
 
     public function testCountReturnsNumberOfItems(): void
@@ -50,9 +50,9 @@ final class CollectionTest extends TestCase
         $this->assertFalse(Collection::from([1])->isEmpty());
     }
 
-    public function testToArrayPreservesKeys(): void
+    public function testAsArrayPreservesKeys(): void
     {
-        $this->assertSame(['a' => 1, 'b' => 2], Collection::from(['a' => 1, 'b' => 2])->toArray());
+        $this->assertSame(['a' => 1, 'b' => 2], Collection::from(['a' => 1, 'b' => 2])->asArray());
     }
 
     // -------------------------------------------------------
@@ -101,14 +101,14 @@ final class CollectionTest extends TestCase
     {
         $result = Collection::from([1, 2, 3])->map(fn (int $n): int => $n * 2);
 
-        $this->assertSame([2, 4, 6], $result->toArray());
+        $this->assertSame([2, 4, 6], $result->asArray());
     }
 
     public function testMapPreservesKeys(): void
     {
         $result = Collection::from(['a' => 1, 'b' => 2])->map(fn (int $n): int => $n * 10);
 
-        $this->assertSame(['a' => 10, 'b' => 20], $result->toArray());
+        $this->assertSame(['a' => 10, 'b' => 20], $result->asArray());
     }
 
     public function testMapPassesKeyToCallback(): void
@@ -117,7 +117,7 @@ final class CollectionTest extends TestCase
             fn (int $value, string $key): string => $key . '=' . $value,
         );
 
-        $this->assertSame(['a' => 'a=1', 'b' => 'b=2'], $result->toArray());
+        $this->assertSame(['a' => 'a=1', 'b' => 'b=2'], $result->asArray());
     }
 
     public function testMapOnEmptyReturnsEmpty(): void
@@ -141,7 +141,7 @@ final class CollectionTest extends TestCase
     {
         $result = Collection::from([1, 2, 3, 4])->filter(fn (int $n): bool => $n % 2 === 0);
 
-        $this->assertSame([1 => 2, 3 => 4], $result->toArray());
+        $this->assertSame([1 => 2, 3 => 4], $result->asArray());
     }
 
     public function testFilterPreservesKeys(): void
@@ -149,7 +149,7 @@ final class CollectionTest extends TestCase
         $result = Collection::from(['a' => 1, 'b' => 2, 'c' => 3])
             ->filter(fn (int $n): bool => $n !== 2);
 
-        $this->assertSame(['a' => 1, 'c' => 3], $result->toArray());
+        $this->assertSame(['a' => 1, 'c' => 3], $result->asArray());
     }
 
     public function testFilterPassesKeyToCallback(): void
@@ -157,7 +157,7 @@ final class CollectionTest extends TestCase
         $result = Collection::from(['keep1' => 1, 'drop' => 2, 'keep2' => 3])
             ->filter(fn (int $v, string $k): bool => str_starts_with($k, 'keep'));
 
-        $this->assertSame(['keep1' => 1, 'keep2' => 3], $result->toArray());
+        $this->assertSame(['keep1' => 1, 'keep2' => 3], $result->asArray());
     }
 
     public function testFilterOnEmptyReturnsEmpty(): void
@@ -400,7 +400,7 @@ final class CollectionTest extends TestCase
 
         $this->assertSame(
             ['a' => ['id' => 'a', 'v' => 1], 'b' => ['id' => 'b', 'v' => 2]],
-            $result->toArray(),
+            $result->asArray(),
         );
     }
 
@@ -411,7 +411,7 @@ final class CollectionTest extends TestCase
 
         $this->assertSame(
             ['key_1' => ['n' => 1], 'key_2' => ['n' => 2]],
-            $result->toArray(),
+            $result->asArray(),
         );
     }
 
@@ -439,7 +439,7 @@ final class CollectionTest extends TestCase
         // the current behavior so future changes are noticed.
         $result = Collection::from([['count' => 'apple'], ['count' => 'banana']])->keyBy('count');
 
-        $this->assertSame([1 => ['count' => 'banana']], $result->toArray());
+        $this->assertSame([1 => ['count' => 'banana']], $result->asArray());
     }
 
     // -------------------------------------------------------
@@ -455,9 +455,9 @@ final class CollectionTest extends TestCase
         ];
         $result = Collection::from($items)->groupBy('type');
 
-        $this->assertInstanceOf(Collection::class, $result->toArray()['fruit']);
-        $this->assertCount(2, $result->toArray()['fruit']);
-        $this->assertCount(1, $result->toArray()['veg']);
+        $this->assertInstanceOf(Collection::class, $result->asArray()['fruit']);
+        $this->assertCount(2, $result->asArray()['fruit']);
+        $this->assertCount(1, $result->asArray()['veg']);
     }
 
     public function testGroupByCallable(): void
@@ -465,10 +465,10 @@ final class CollectionTest extends TestCase
         $result = Collection::from([1, 2, 3, 4, 5])
             ->groupBy(fn (int $n): string => $n % 2 === 0 ? 'even' : 'odd');
 
-        $groups = $result->toArray();
+        $groups = $result->asArray();
 
-        $this->assertSame([1, 3, 5], $groups['odd']->toArray());
-        $this->assertSame([2, 4], $groups['even']->toArray());
+        $this->assertSame([1, 3, 5], $groups['odd']->asArray());
+        $this->assertSame([2, 4], $groups['even']->asArray());
     }
 
     // -------------------------------------------------------
@@ -479,7 +479,7 @@ final class CollectionTest extends TestCase
     {
         $items = [['name' => 'a'], ['name' => 'b'], ['name' => 'c']];
 
-        $this->assertSame(['a', 'b', 'c'], Collection::from($items)->pluck('name')->toArray());
+        $this->assertSame(['a', 'b', 'c'], Collection::from($items)->pluck('name')->asArray());
     }
 
     public function testPluckExtractsObjectProperty(): void
@@ -489,12 +489,12 @@ final class CollectionTest extends TestCase
         $o2       = new stdClass();
         $o2->name = 'bob';
 
-        $this->assertSame(['alice', 'bob'], Collection::from([$o1, $o2])->pluck('name')->toArray());
+        $this->assertSame(['alice', 'bob'], Collection::from([$o1, $o2])->pluck('name')->asArray());
     }
 
     public function testPluckReturnsNullForMissingKey(): void
     {
-        $this->assertSame([null, null], Collection::from([['x' => 1], ['x' => 2]])->pluck('y')->toArray());
+        $this->assertSame([null, null], Collection::from([['x' => 1], ['x' => 2]])->pluck('y')->asArray());
     }
 
     public function testPluckReturnsNullForMissingObjectPropertyWithoutEmittingAWarning(): void
@@ -502,7 +502,7 @@ final class CollectionTest extends TestCase
         $object       = new stdClass();
         $object->name = 'alice';
 
-        $this->assertSame([null], Collection::from([$object])->pluck('missing')->toArray());
+        $this->assertSame([null], Collection::from([$object])->pluck('missing')->asArray());
     }
 
     // -------------------------------------------------------
@@ -512,7 +512,7 @@ final class CollectionTest extends TestCase
     public function testChunkSplitsIntoGroups(): void
     {
         $result = Collection::from([1, 2, 3, 4, 5])->chunk(2);
-        $chunks = array_map(fn (Collection $c): array => $c->toArray(), $result->toArray());
+        $chunks = array_map(fn (Collection $c): array => $c->asArray(), $result->asArray());
 
         $this->assertSame([[1, 2], [2 => 3, 3 => 4], [4 => 5]], $chunks);
     }
@@ -536,24 +536,24 @@ final class CollectionTest extends TestCase
     public function testChunkSizeOneDoesNotThrow(): void
     {
         $result = Collection::from([1, 2])->chunk(1);
-        $chunks = array_map(fn (Collection $c): array => $c->toArray(), $result->toArray());
+        $chunks = array_map(fn (Collection $c): array => $c->asArray(), $result->asArray());
 
         $this->assertSame([[1], [1 => 2]], $chunks);
     }
 
     public function testTakeReturnsFirstN(): void
     {
-        $this->assertSame([1, 2, 3], Collection::from([1, 2, 3, 4, 5])->take(3)->toArray());
+        $this->assertSame([1, 2, 3], Collection::from([1, 2, 3, 4, 5])->take(3)->asArray());
     }
 
     public function testTakeMoreThanSizeReturnsAll(): void
     {
-        $this->assertSame([1, 2], Collection::from([1, 2])->take(10)->toArray());
+        $this->assertSame([1, 2], Collection::from([1, 2])->take(10)->asArray());
     }
 
     public function testSkipReturnsAfterN(): void
     {
-        $this->assertSame([3 => 4, 4 => 5], Collection::from([1, 2, 3, 4, 5])->skip(3)->toArray());
+        $this->assertSame([3 => 4, 4 => 5], Collection::from([1, 2, 3, 4, 5])->skip(3)->asArray());
     }
 
     public function testSkipMoreThanSizeReturnsEmpty(): void
@@ -567,13 +567,13 @@ final class CollectionTest extends TestCase
         // length=-N, which returns all elements except the last N. This differs
         // from Laravel Collection's take(-N) which takes the last N. Changing
         // this should be a conscious decision.
-        $this->assertSame([0 => 1, 1 => 2], Collection::from([1, 2, 3, 4])->take(-2)->toArray());
+        $this->assertSame([0 => 1, 1 => 2], Collection::from([1, 2, 3, 4])->take(-2)->asArray());
     }
 
     public function testSkipWithNegativeCountDelegatesToArraySlice(): void
     {
         // Pin current behavior: array_slice($arr, -2) skips all but the last 2.
-        $this->assertSame([2 => 3, 3 => 4], Collection::from([1, 2, 3, 4])->skip(-2)->toArray());
+        $this->assertSame([2 => 3, 3 => 4], Collection::from([1, 2, 3, 4])->skip(-2)->asArray());
     }
 
     // -------------------------------------------------------
@@ -584,14 +584,14 @@ final class CollectionTest extends TestCase
     {
         $result = Collection::from([3, 1, 2])->sort();
 
-        $this->assertSame([1 => 1, 2 => 2, 0 => 3], $result->toArray());
+        $this->assertSame([1 => 1, 2 => 2, 0 => 3], $result->asArray());
     }
 
     public function testSortWithCustomComparator(): void
     {
         $result = Collection::from([1, 2, 3])->sort(fn (int $a, int $b): int => $b <=> $a);
 
-        $this->assertSame([2 => 3, 1 => 2, 0 => 1], $result->toArray());
+        $this->assertSame([2 => 3, 1 => 2, 0 => 1], $result->asArray());
     }
 
     public function testSortByKey(): void
@@ -599,7 +599,7 @@ final class CollectionTest extends TestCase
         $items  = [['n' => 3], ['n' => 1], ['n' => 2]];
         $result = Collection::from($items)->sortBy('n');
 
-        $this->assertSame([1, 2, 3], array_column($result->toArray(), 'n'));
+        $this->assertSame([1, 2, 3], array_column($result->asArray(), 'n'));
     }
 
     public function testSortByCallable(): void
@@ -607,12 +607,12 @@ final class CollectionTest extends TestCase
         $result = Collection::from(['banana', 'apple', 'cherry'])
             ->sortBy(fn (string $s): int => \strlen($s));
 
-        $this->assertSame(['apple', 'banana', 'cherry'], array_values($result->toArray()));
+        $this->assertSame(['apple', 'banana', 'cherry'], array_values($result->asArray()));
     }
 
     public function testReverseFlipsOrder(): void
     {
-        $this->assertSame([2 => 3, 1 => 2, 0 => 1], Collection::from([1, 2, 3])->reverse()->toArray());
+        $this->assertSame([2 => 3, 1 => 2, 0 => 1], Collection::from([1, 2, 3])->reverse()->asArray());
     }
 
     // -------------------------------------------------------
@@ -623,14 +623,14 @@ final class CollectionTest extends TestCase
     {
         $result = Collection::from(['a' => 1, 'b' => 2])->values();
 
-        $this->assertSame([1, 2], $result->toArray());
+        $this->assertSame([1, 2], $result->asArray());
     }
 
     public function testKeysReturnsKeys(): void
     {
         $result = Collection::from(['a' => 1, 'b' => 2])->keys();
 
-        $this->assertSame(['a', 'b'], $result->toArray());
+        $this->assertSame(['a', 'b'], $result->asArray());
     }
 
     // -------------------------------------------------------
@@ -656,7 +656,7 @@ final class CollectionTest extends TestCase
         $original = Collection::from([1, 2, 3, 4]);
         $original->filter(fn (int $n): bool => $n > 2);
 
-        $this->assertSame([1, 2, 3, 4], $original->toArray());
+        $this->assertSame([1, 2, 3, 4], $original->asArray());
     }
 
     public function testSortDoesNotMutateOriginal(): void
@@ -664,6 +664,6 @@ final class CollectionTest extends TestCase
         $original = Collection::from([3, 1, 2]);
         $original->sort();
 
-        $this->assertSame([3, 1, 2], $original->toArray());
+        $this->assertSame([3, 1, 2], $original->asArray());
     }
 }

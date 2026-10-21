@@ -26,6 +26,11 @@ use UnexpectedValueException;
  * the rows to. Keeping map/filter/sum off this class is what makes the split
  * meaningful: Result stays a database bridge, Collection stays generic.
  *
+ * The conversion prefixes follow one rule shared with Collection: `as*` hands
+ * back the rows it holds as they are, `to*` builds a new value from them.
+ * keyBy() and groupBy() carry the names Collection uses for the same
+ * operations instead of a prefix.
+ *
  * Rows are held in memory rather than streamed, so the result can be iterated
  * more than once.
  *
@@ -115,7 +120,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * @throws InvalidArgumentException                                                         When the column is absent
      * @throws UnexpectedValueException                                                         When the column's value cannot be an array key
      */
-    public function asArrayBy(string $keyColumn, bool $removeKey = false): array
+    public function keyBy(string $keyColumn, bool $removeKey = false): array
     {
         $keyed = [];
 
@@ -135,7 +140,7 @@ final readonly class Result implements IteratorAggregate, Countable
     /**
      * Return a map from one column's value to another's.
      *
-     * Later rows overwrite earlier ones on duplicate keys, matching asArrayBy().
+     * Later rows overwrite earlier ones on duplicate keys, matching keyBy().
      *
      * @param  string                                                         $keyColumn   Column whose value becomes the key
      * @param  string                                                         $valueColumn Column whose value becomes the value
@@ -143,7 +148,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * @throws InvalidArgumentException                                       When either column is absent
      * @throws UnexpectedValueException                                       When the key column's value cannot be an array key
      */
-    public function asMap(string $keyColumn, string $valueColumn): array
+    public function toMap(string $keyColumn, string $valueColumn): array
     {
         $map = [];
 
@@ -203,7 +208,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * @return list<T>                  One instance per row, in the result's order
      * @throws InvalidArgumentException When the class cannot be hydrated into at all, or a row has no column for a required parameter
      */
-    public function asObject(string $class): array
+    public function toObjects(string $class): array
     {
         $parameters = self::constructorParameters($class);
 
