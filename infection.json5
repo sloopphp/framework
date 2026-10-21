@@ -13,6 +13,13 @@
         "json": "build/infection/infection.json"
     },
     "tmpDir": "build/infection/tmp",
+    // Infection starts the initial test run with the PHP binary itself, not
+    // the php wrapper SETUP.md sets up, so it gets PHP's default 128M. With
+    // PCOV, --testdox and the JUnit log the Unit suite can pass that limit
+    // depending on the random order (seen on main e115739 with three seeds),
+    // so the run fails before any mutant is tried. The wrapper's value is
+    // used here too.
+    "initialTestsPhpOptions": "-d memory_limit=-1",
     // The aggregate floor. Per mutant regressions are caught by
     // .claude/mutation-baseline.php; this only guards against a broad
     // collapse. 99 tolerates 19 escaped mutants against the 4 that exist
