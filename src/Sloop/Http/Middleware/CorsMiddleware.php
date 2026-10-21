@@ -116,7 +116,8 @@ final readonly class CorsMiddleware implements MiddlewareInterface
 
         // For a request with credentials the Fetch spec reads `*` in
         // Access-Control-Allow-Methods / -Headers as a name, not a wildcard,
-        // so it would allow nothing; ask for the names instead.
+        // so it would allow nothing beyond the CORS-safelisted methods and
+        // headers; ask for the names instead.
         if ($allowCredentials) {
             foreach (['method' => $methods, 'header' => $headers] as $kind => $values) {
                 if (\in_array('*', $values, true)) {
