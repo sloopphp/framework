@@ -10,48 +10,26 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Sloop\Http\HttpStatus;
-use Sloop\Support\Arr;
 
 /**
  * CORS middleware for cross-origin resource sharing.
  *
  * Handles preflight OPTIONS requests and adds CORS headers
- * to responses based on configuration.
+ * to responses from the allowed origins.
  */
 final readonly class CorsMiddleware implements MiddlewareInterface
 {
     /**
-     * Default string-list config values.
+     * RFC 9110 token, the form of a method and a header name.
      *
-     * Used as fallback when the corresponding config key is missing
-     * or contains a non-array value.
-     *
-     * @var array<string, list<string>>
+     * @var string
      */
-    private const array STRING_LIST_DEFAULTS = [
-        'allowed_origins' => [],
-        'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE'],
-        'allowed_headers' => ['Content-Type', 'Authorization'],
-    ];
+    private const string TOKEN_PATTERN = '/^[!#$%&\'*+\-.^_`|~0-9A-Za-z]+$/D';
 
     /**
-     * Default preflight cache max age in seconds.
+     * Allowed origins as scheme://host[:port], keyed by their lowercased serialization.
      *
-     * @var int
-     */
-    private const int DEFAULT_MAX_AGE = 86400;
-
-    /**
-     * Default credentials policy.
-     *
-     * @var bool
-     */
-    private const bool DEFAULT_ALLOW_CREDENTIALS = false;
-
-    /**
-     * Allowed origins.
-     *
-     * @var list<string>
+     * @var array<string, true>
      */
     private array $allowedOrigins;
 
@@ -93,26 +71,52 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     /**
      * Create a new CORS middleware.
      *
-     * @param  array<string, mixed>      $config CORS configuration
-     * @throws \InvalidArgumentException When the wildcard origin `*` is combined with allow_credentials
+     * Each origin is `*` or is written as scheme://host or scheme://host:port
+     * the way browsers send the Origin header, as for CsrfMiddleware's trusted
+     * origins; the scheme and host match without regard to case. Methods are
+     * sent as written, and browsers match them with regard to case.
+     *
+     * @param  list<string>              $allowedOrigins   Origins allowed to read responses; `*` allows every origin
+     * @param  list<string>              $allowedMethods   Methods allowed in a preflight
+     * @param  list<string>              $allowedHeaders   Request headers allowed in a preflight
+     * @param  int                       $maxAge           Seconds a browser may cache a preflight result
+     * @param  bool                      $allowCredentials Whether requests with credentials may read responses
+     * @throws \InvalidArgumentException If a list holds a value that is not a string, an origin is not written as above, a method or header is not an HTTP token, maxAge is negative, or `*` is allowed together with credentials
      */
-    public function __construct(array $config = [])
-    {
-        $this->allowedOrigins   = Arr::stringList($config, 'allowed_origins', self::STRING_LIST_DEFAULTS['allowed_origins']);
-        $this->allowedMethods   = Arr::stringList($config, 'allowed_methods', self::STRING_LIST_DEFAULTS['allowed_methods']);
-        $this->allowedHeaders   = Arr::stringList($config, 'allowed_headers', self::STRING_LIST_DEFAULTS['allowed_headers']);
-        $this->maxAge           = \is_int($config['max_age'] ?? null) ? $config['max_age'] : self::DEFAULT_MAX_AGE;
-        $this->allowCredentials = \is_bool($config['allow_credentials'] ?? null) ? $config['allow_credentials'] : self::DEFAULT_ALLOW_CREDENTIALS;
-        $this->wildcardOrigin   = \in_array('*', $this->allowedOrigins, true);
+    public function __construct(
+        array $allowedOrigins = [],
+        array $allowedMethods = ['GET', 'POST', 'PUT', 'DELETE'],
+        array $allowedHeaders = ['Content-Type', 'Authorization'],
+        int $maxAge = 86400,
+        bool $allowCredentials = false,
+    ) {
+        $wildcard = false;
+        $origins  = [];
+        foreach (self::strings('allowedOrigins', $allowedOrigins) as $origin) {
+            if ($origin === '*') {
+                $wildcard = true;
+            } else {
+                $origins[Origin::serialize(Origin::configured($origin, false))] = true;
+            }
+        }
+
+        if ($maxAge < 0) {
+            throw new \InvalidArgumentException('The max age must be 0 or more seconds; ' . $maxAge . ' was given.');
+        }
 
         // The Fetch spec forbids `Access-Control-Allow-Origin: *` together with
         // credentials; reflecting the request origin instead would silently
         // grant any site credentialed cross-origin reads, so fail loudly.
-        if ($this->wildcardOrigin && $this->allowCredentials) {
-            throw new \InvalidArgumentException(
-                'CORS config error: allowed_origins must not contain "*" when allow_credentials is true.'
-            );
+        if ($wildcard && $allowCredentials) {
+            throw new \InvalidArgumentException('The origin "*" must not be allowed together with credentials.');
         }
+
+        $this->allowedOrigins   = $origins;
+        $this->allowedMethods   = self::tokens('method', self::strings('allowedMethods', $allowedMethods));
+        $this->allowedHeaders   = self::tokens('header', self::strings('allowedHeaders', $allowedHeaders));
+        $this->maxAge           = $maxAge;
+        $this->allowCredentials = $allowCredentials;
+        $this->wildcardOrigin   = $wildcard;
     }
 
     /**
@@ -143,6 +147,50 @@ final readonly class CorsMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Check that every value of a list given to the constructor is a string.
+     *
+     * The parameter is typed loosely so that the check is not dropped for
+     * callers whose values are not checked by static analysis.
+     *
+     * @param  string                    $name   Parameter name, for the message
+     * @param  array<mixed>              $values Values given
+     * @return list<string>
+     * @throws \InvalidArgumentException If a value is not a string
+     */
+    private static function strings(string $name, array $values): array
+    {
+        $strings = [];
+        foreach ($values as $value) {
+            if (!\is_string($value)) {
+                throw new \InvalidArgumentException($name . ' must hold only strings; ' . get_debug_type($value) . ' was given.');
+            }
+
+            $strings[] = $value;
+        }
+
+        return $strings;
+    }
+
+    /**
+     * Check that every value is an HTTP token, which a header line can carry.
+     *
+     * @param  string                    $kind   What the values name (method or header), for the message
+     * @param  list<string>              $values Values given
+     * @return list<string>
+     * @throws \InvalidArgumentException If a value is not an HTTP token
+     */
+    private static function tokens(string $kind, array $values): array
+    {
+        foreach ($values as $value) {
+            if (preg_match(self::TOKEN_PATTERN, $value) !== 1) {
+                throw new \InvalidArgumentException('The ' . $kind . ' "' . $value . '" must be an HTTP token (letters, digits and !#$%&\'*+-.^_`|~).');
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * Check if the given origin is allowed.
      *
      * @param  string $origin Request origin
@@ -150,11 +198,7 @@ final readonly class CorsMiddleware implements MiddlewareInterface
      */
     private function isOriginAllowed(string $origin): bool
     {
-        if (\in_array('*', $this->allowedOrigins, true)) {
-            return true;
-        }
-
-        return \in_array($origin, $this->allowedOrigins, true);
+        return $this->wildcardOrigin || isset($this->allowedOrigins[strtolower($origin)]);
     }
 
     /**

@@ -148,7 +148,7 @@ final class ApplicationSecurityHeadersTest extends TestCase
         $this->writeFile('config/middleware.php', '<?php return [\\Sloop\\Http\\Middleware\\CorsMiddleware::class];');
 
         $app = new Application($this->tmpDir);
-        $app->container->bind(CorsMiddleware::class, static fn (): CorsMiddleware => new CorsMiddleware(['allowed_origins' => ['https://app.example']]));
+        $app->container->bind(CorsMiddleware::class, static fn (): CorsMiddleware => new CorsMiddleware(allowedOrigins: ['https://app.example']));
 
         $response = $app->run(new ServerRequest('OPTIONS', '/health', ['Origin' => 'https://app.example']));
 

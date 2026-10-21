@@ -37,6 +37,7 @@ use Sloop\Error\DomainException;
 use Sloop\Error\ExceptionHandler;
 use Sloop\Error\SloopException;
 use Sloop\Http\HttpStatus;
+use Sloop\Http\Middleware\CorsMiddleware;
 use Sloop\Http\Middleware\CsrfMiddleware;
 use Sloop\Http\Middleware\MiddlewareDispatcher;
 use Sloop\Http\Middleware\SecurityHeadersMiddleware;
@@ -171,6 +172,7 @@ final class Application implements RequestHandlerInterface
         $this->bootHashing();
         $this->securityHeaders = $this->bootSecurityHeaders();
         $this->bootCsrf();
+        $this->bootCors();
         $this->maxBodySize         = $this->readMaxBodySize();
         $this->jsonOptions         = $this->readJsonOptions();
         $this->logChannels         = $this->readLogChannels();
@@ -724,7 +726,7 @@ final class Application implements RequestHandlerInterface
      */
     private function bootSecurityHeaders(): SecurityHeadersMiddleware
     {
-        $this->assertConfigSection('security', ['headers', 'csrf', 'max_body_size'], SecurityConfigException::class);
+        $this->assertConfigSection('security', ['headers', 'csrf', 'cors', 'max_body_size'], SecurityConfigException::class);
 
         $headers = (Config::isLoaded() ? Config::get('security.headers') : null) ?? [];
         if (!\is_array($headers)) {
@@ -774,6 +776,70 @@ final class Application implements RequestHandlerInterface
         }
 
         $this->container->instance(CsrfMiddleware::class, $middleware);
+    }
+
+    /**
+     * Register the CORS middleware built from security.cors, checking every entry now.
+     *
+     * The middleware runs only where the application lists it, in
+     * config/middleware.php or on a route; both resolve this instance. An
+     * entry that is missing or null keeps the middleware's default.
+     *
+     * @return void
+     * @throws SecurityConfigException If security.cors has an unsupported key, a list entry is not a list of strings, max_age is not an integer, allow_credentials is not a boolean, or the middleware rejects a value
+     */
+    private function bootCors(): void
+    {
+        $this->assertConfigSection('security.cors', ['allowed_origins', 'allowed_methods', 'allowed_headers', 'max_age', 'allow_credentials'], SecurityConfigException::class);
+
+        $arguments = [];
+        foreach (['allowed_origins' => 'allowedOrigins', 'allowed_methods' => 'allowedMethods', 'allowed_headers' => 'allowedHeaders'] as $key => $parameter) {
+            $list = $this->readCorsList($key);
+            if ($list !== null) {
+                $arguments[$parameter] = $list;
+            }
+        }
+
+        $maxAge = Config::isLoaded() ? Config::get('security.cors.max_age') : null;
+        if ($maxAge !== null && !\is_int($maxAge)) {
+            throw new SecurityConfigException('security.cors.max_age must be an integer number of seconds.');
+        }
+
+        $credentials = Config::isLoaded() ? Config::get('security.cors.allow_credentials') : null;
+        if ($credentials !== null && !\is_bool($credentials)) {
+            throw new SecurityConfigException('security.cors.allow_credentials must be true or false.');
+        }
+
+        $arguments += array_filter(['maxAge' => $maxAge, 'allowCredentials' => $credentials], static fn (int|bool|null $value): bool => $value !== null);
+
+        try {
+            $middleware = new CorsMiddleware(...$arguments);
+        } catch (\InvalidArgumentException $e) {
+            throw new SecurityConfigException('security.cors: ' . $e->getMessage(), previous: $e);
+        }
+
+        $this->container->instance(CorsMiddleware::class, $middleware);
+    }
+
+    /**
+     * Read one list entry of security.cors.
+     *
+     * @param  string                  $key Entry name
+     * @return list<string>|null       Null when the entry is missing or null
+     * @throws SecurityConfigException If the entry is not a list of strings
+     */
+    private function readCorsList(string $key): ?array
+    {
+        $list = Config::isLoaded() ? Config::get('security.cors.' . $key) : null;
+        if ($list === null) {
+            return null;
+        }
+
+        if (!\is_array($list) || !array_is_list($list) || array_filter($list, \is_string(...)) !== $list) {
+            throw new SecurityConfigException('security.cors.' . $key . ' must be a list of strings.');
+        }
+
+        return $list;
     }
 
     /**
