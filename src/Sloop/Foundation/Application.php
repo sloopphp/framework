@@ -151,12 +151,9 @@ final class Application implements RequestHandlerInterface
     /**
      * Create and boot the application.
      *
-     * A config entry that is written but malformed fails here, so the error
-     * surfaces at deploy time rather than on the first request that uses it.
-     *
      * @param  string                    $basePath Application root directory
      * @throws InvalidConfigException    If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)
-     * @throws \RuntimeException         If the base directory does not exist
+     * @throws \RuntimeException         If the base directory does not exist, the config is already loaded, or the config directory cannot be scanned
      * @throws \InvalidArgumentException If lang/en/validation.php is not a map of known rule names to valid messages
      * @throws \LogicException           If the validation messages were already loaded
      */
@@ -561,6 +558,8 @@ final class Application implements RequestHandlerInterface
      * Load configuration files if the config directory exists.
      *
      * @return void
+     * @throws InvalidConfigException If a config file does not return an array, APP_ENV is not a valid environment name, or an environment override differs in shape from the base
+     * @throws \RuntimeException      If the config is already loaded, or the config directory cannot be scanned
      */
     private function loadConfig(): void
     {
@@ -886,7 +885,10 @@ final class Application implements RequestHandlerInterface
     /**
      * Read database.connections, checking the database config and every connection now.
      *
-     * ConnectionManager checks a connection again when it is first used.
+     * ConnectionManager checks a connection again when it is first used. A
+     * replica_selector is checked to be a string here; whether the registry
+     * holds that name is checked then, as the application may bind its own
+     * registry after the Application is created.
      *
      * @return array<string, array<string, mixed>>
      * @throws DatabaseConfigException             If database is not an array or has an unsupported key, database.connections is not an array of named connections, or a connection is malformed
