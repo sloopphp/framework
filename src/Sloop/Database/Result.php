@@ -26,10 +26,10 @@ use UnexpectedValueException;
  * the rows to. Keeping map/filter/sum off this class is what makes the split
  * meaningful: Result stays a database bridge, Collection stays generic.
  *
- * Conversion methods are prefixed by what they return: `as*` hands back the
- * rows it holds as they are (as Collection::asArray() does), `to*` builds a
- * new value from them. keyBy() and groupBy() keep the names Collection uses
- * for keying and grouping, without a prefix; here they return arrays.
+ * The names read as plain English: asArray() hands back the rows it holds as
+ * an array, unchanged (as Collection::asArray() does), while toMap(),
+ * toObjects() and toCollection() turn them into something new. keyBy() and
+ * groupBy() share their names with Collection; here they return arrays.
  *
  * Rows are held in memory rather than streamed, so the result can be iterated
  * more than once.
