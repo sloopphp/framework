@@ -399,13 +399,6 @@ final class ConfigTest extends TestCase
         $this->assertSame([], Config::get('lists.emptied'));
     }
 
-    public function testEnvironmentOverrideWithAnEmptyArrayKeepsAnAssociativeArray(): void
-    {
-        Config::load($this->fixturesPath, 'production');
-
-        $this->assertSame(['X-Frame-Options' => 'DENY'], Config::get('lists.headers'));
-    }
-
     /**
      * @return array<string, array{string, mixed}>
      */
@@ -415,15 +408,49 @@ final class ConfigTest extends TestCase
             'a list replacing an empty list'          => ['lists.empty_to_list', ['x']],
             'a list replacing a scalar'               => ['lists.scalar_to_list', ['x']],
             'a list missing from the base'            => ['lists.new_list', ['x', 'y']],
-            'an associative array over a list'        => ['lists.list_to_assoc', ['a', 'key' => 'value']],
-            'a list over an associative array'        => ['lists.assoc_to_list', ['key' => 'value', 0 => 'a']],
             'a list the environment does not mention' => ['lists.untouched', ['a', 'b']],
             'an associative array over a scalar'      => ['lists.scalar_to_assoc', ['key' => 'value']],
             'a scalar over an associative array'      => ['lists.assoc_to_scalar', 'single'],
-            'a list under a numeric key, appended'    => ['lists.mixed', ['a', 'key' => 'value', 1 => ['x']]],
             'a list with gaps replacing a list'       => ['lists.gapped', [1 => 'prod']],
             'an integer-keyed map replacing one'      => ['lists.int_map', [2 => 10]],
         ];
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function mismatchedShapeProvider(): array
+    {
+        return [
+            'an empty array over an associative array'   => ['empty_over_assoc', 's.headers'],
+            'a list over an associative array'           => ['list_over_assoc', 's.headers'],
+            'an associative array over a list'           => ['assoc_over_list', 's.origins'],
+            'string and integer keys over a list'        => ['mixed_keys_over_list', 's.items'],
+            'a list over an associative array, nested'   => ['nested_list_over_assoc', 's.pool.main.options'],
+        ];
+    }
+
+    #[DataProvider('mismatchedShapeProvider')]
+    public function testEnvironmentOverrideWhoseShapeDiffersFromTheBaseThrows(string $fixture, string $key): void
+    {
+        $this->expectException(InvalidConfigException::class);
+        $this->expectExceptionMessageIsOrContains('Config "' . $key . '" in environment "production"');
+
+        Config::load(__DIR__ . '/fixtures-shape/' . $fixture, 'production');
+    }
+
+    public function testEnvironmentOverrideWithAnAssociativeArrayFillsAnEmptyArray(): void
+    {
+        Config::load(__DIR__ . '/fixtures-shape/assoc_over_empty', 'production');
+
+        $this->assertSame(['X-Frame-Options' => 'DENY'], Config::get('s.headers'));
+    }
+
+    public function testEnvironmentOverrideAppendsIntegerKeysInsideAnAssociativeArray(): void
+    {
+        Config::load(__DIR__ . '/fixtures-shape/int_keys_inside_assoc', 'production');
+
+        $this->assertSame(['key' => 'value', 'other' => 'x', 0 => 'y'], Config::get('s.items'));
     }
 
     #[DataProvider('listOverrideProvider')]
