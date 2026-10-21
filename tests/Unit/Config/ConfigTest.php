@@ -399,13 +399,6 @@ final class ConfigTest extends TestCase
         $this->assertSame([], Config::get('lists.emptied'));
     }
 
-    public function testEnvironmentOverrideWithAnEmptyArrayKeepsAnAssociativeArray(): void
-    {
-        Config::load($this->fixturesPath, 'production');
-
-        $this->assertSame(['X-Frame-Options' => 'DENY'], Config::get('lists.headers'));
-    }
-
     /**
      * @return array<string, array{string, mixed}>
      */
@@ -415,15 +408,61 @@ final class ConfigTest extends TestCase
             'a list replacing an empty list'          => ['lists.empty_to_list', ['x']],
             'a list replacing a scalar'               => ['lists.scalar_to_list', ['x']],
             'a list missing from the base'            => ['lists.new_list', ['x', 'y']],
-            'an associative array over a list'        => ['lists.list_to_assoc', ['a', 'key' => 'value']],
-            'a list over an associative array'        => ['lists.assoc_to_list', ['key' => 'value', 0 => 'a']],
             'a list the environment does not mention' => ['lists.untouched', ['a', 'b']],
             'an associative array over a scalar'      => ['lists.scalar_to_assoc', ['key' => 'value']],
             'a scalar over an associative array'      => ['lists.assoc_to_scalar', 'single'],
-            'a list under a numeric key, appended'    => ['lists.mixed', ['a', 'key' => 'value', 1 => ['x']]],
             'a list with gaps replacing a list'       => ['lists.gapped', [1 => 'prod']],
             'an integer-keyed map replacing one'      => ['lists.int_map', [2 => 10]],
         ];
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function mismatchedShapeProvider(): array
+    {
+        $listOverAssoc = ' is a list but the base value is an array with string keys; write the same shape as the base.';
+        $assocOverList = ' is an array with string keys but the base value is a list; write the same shape as the base.';
+
+        return [
+            'an empty array over an associative array' => ['empty_over_assoc', 'Config "s.headers" in environment "production"' . $listOverAssoc],
+            'a list over an associative array'         => ['list_over_assoc', 'Config "s.headers" in environment "production"' . $listOverAssoc],
+            'an associative array over a list'         => ['assoc_over_list', 'Config "s.origins" in environment "production"' . $assocOverList],
+            'string and integer keys over a list'      => ['mixed_keys_over_list', 'Config "s.items" in environment "production"' . $assocOverList],
+            'a list over an associative array, nested' => ['nested_list_over_assoc', 'Config "s.pool.main.options" in environment "production"' . $listOverAssoc],
+        ];
+    }
+
+    #[DataProvider('mismatchedShapeProvider')]
+    public function testEnvironmentOverrideWhoseShapeDiffersFromTheBaseThrows(string $fixture, string $message): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => Config::load(__DIR__ . '/fixtures-shape/' . $fixture, 'production'),
+        );
+
+        $this->assertSame($message, $thrown->getMessage());
+    }
+
+    public function testEnvironmentOverrideWithAnAssociativeArrayFillsAnEmptyArray(): void
+    {
+        Config::load(__DIR__ . '/fixtures-shape/assoc_over_empty', 'production');
+
+        $this->assertSame(['X-Frame-Options' => 'DENY'], Config::get('s.headers'));
+    }
+
+    public function testEnvironmentOverrideIntoAnEmptyArrayKeepsItsIntegerKeys(): void
+    {
+        Config::load(__DIR__ . '/fixtures-shape/int_keyed_assoc_over_empty', 'production');
+
+        $this->assertSame(['key' => 'value', 5 => 'x'], Config::get('s.items'));
+    }
+
+    public function testEnvironmentOverrideAppendsIntegerKeysInsideAnAssociativeArray(): void
+    {
+        Config::load(__DIR__ . '/fixtures-shape/int_keys_inside_assoc', 'production');
+
+        $this->assertSame(['key' => 'value', 'other' => 'x', 0 => 'y'], Config::get('s.items'));
     }
 
     #[DataProvider('listOverrideProvider')]

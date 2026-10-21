@@ -43,12 +43,14 @@ final class Config
      * environment-specific overrides from the subdirectory matching
      * the given environment name. An array with only integer keys in an
      * override replaces a base array that also has only integer keys (or a
-     * missing or non-array value) instead of being appended to it.
+     * missing or non-array value) instead of being appended to it. An array
+     * whose shape differs from the base array's (integer keys only against
+     * string keys, or the reverse) is rejected.
      *
      * @param  string                 $configPath  Absolute path to the config directory
      * @param  string|null            $environment Environment name (e.g. 'production', 'testing')
      * @return void
-     * @throws InvalidConfigException If the config directory does not exist, a config file does not return an array, or the environment name contains characters outside [A-Za-z0-9_-]
+     * @throws InvalidConfigException If the config directory does not exist, a config file does not return an array, the environment name contains characters outside [A-Za-z0-9_-], or an environment override differs in shape from the base
      * @throws RuntimeException       If already loaded, or the config directory cannot be scanned
      */
     public static function load(string $configPath, ?string $environment = null): void
@@ -82,7 +84,7 @@ final class Config
 
             if (is_dir($envPath)) {
                 $envItems        = self::loadDirectory($envPath);
-                $instance->items = self::mergeOverride($instance->items, $envItems);
+                $instance->items = self::mergeOverride($instance->items, $envItems, $environment);
             }
         }
 
@@ -258,27 +260,38 @@ final class Config
      * integers (a list, a list with gaps such as array_filter() leaves, or a
      * map of PDO attributes) replaces such an array, or a missing or
      * non-array value, as a whole and keeps its keys, so the base entries do
-     * not stay. An empty array over an array with string keys changes
-     * nothing. Where the shapes differ (integer keys over string keys or the
-     * reverse) the arrays merge, with integer keys appended.
+     * not stay. An array over an array of the other shape (integer keys only
+     * over one with a string key, the empty array included, or the reverse)
+     * would mix the two, so it is rejected; an empty base array takes either
+     * shape. Integer keys inside an array with string keys are appended.
      *
-     * @param  array<array-key, mixed> $base     Base configuration
-     * @param  array<array-key, mixed> $override Environment overrides
+     * @param  array<array-key, mixed> $base        Base configuration
+     * @param  array<array-key, mixed> $override    Environment overrides
+     * @param  string                  $environment Environment name, for the exception message
+     * @param  string                  $prefix      Dot-notated key of $base, empty at the top
      * @return array<array-key, mixed>
+     * @throws InvalidConfigException  If an override array and the array it falls on differ in shape
      */
-    private static function mergeOverride(array $base, array $override): array
+    private static function mergeOverride(array $base, array $override, string $environment, string $prefix = ''): array
     {
         foreach ($override as $key => $value) {
             $current = $base[$key] ?? null;
 
             if (\is_int($key)) {
                 $base[] = $value;
-            } elseif (\is_array($value) && self::hasOnlyIntKeys($value) && (!\is_array($current) || self::hasOnlyIntKeys($current))) {
+            } elseif (!\is_array($value) || !\is_array($current) || $current === []) {
                 $base[$key] = $value;
-            } elseif (\is_array($value) && \is_array($current)) {
-                $base[$key] = self::mergeOverride($current, $value);
+            } elseif (self::hasOnlyIntKeys($value) !== self::hasOnlyIntKeys($current)) {
+                throw new InvalidConfigException(
+                    'Config "' . $prefix . $key . '" in environment "' . $environment . '" is '
+                    . (self::hasOnlyIntKeys($value) ? 'a list' : 'an array with string keys')
+                    . ' but the base value is ' . (self::hasOnlyIntKeys($current) ? 'a list' : 'an array with string keys')
+                    . '; write the same shape as the base.',
+                );
+            } elseif (self::hasOnlyIntKeys($value)) {
+                $base[$key] = $value;
             } else {
-                $base[$key] = $value;
+                $base[$key] = self::mergeOverride($current, $value, $environment, $prefix . $key . '.');
             }
         }
 
