@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Sloop\Config\Config;
 use Sloop\Encryption\Cipher;
 use Sloop\Encryption\Encryptor;
-use Sloop\Encryption\Exception\InvalidConfigException;
+use Sloop\Encryption\Exception\EncryptionConfigException;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Log\Log;
@@ -173,7 +173,7 @@ final class ApplicationEncryptionTest extends TestCase
         }
         $container = new Application($this->tmpDir)->container;
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
         $this->expectExceptionMessageIsOrContains('The encryption key is not configured.');
 
         $container->get(Encryptor::class);
@@ -185,7 +185,7 @@ final class ApplicationEncryptionTest extends TestCase
         $container = new Application($this->tmpDir)->container;
         mkdir($this->tmpDir . '/config');
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
 
         $container->get(Encryptor::class);
     }
@@ -219,7 +219,7 @@ final class ApplicationEncryptionTest extends TestCase
     {
         $this->writeEncryptionConfig($config);
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
         $this->expectExceptionMessageIsOrContains($message);
 
         new Application($this->tmpDir);

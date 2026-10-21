@@ -24,6 +24,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 use RuntimeException;
 use Sloop\Log\ChannelFactoryInterface;
+use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\LogManager;
 
 final class LogManagerTest extends TestCase
@@ -292,7 +293,7 @@ final class LogManagerTest extends TestCase
             'app' => ['driver' => 'unknown_driver'],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Unknown log driver: unknown_driver');
 
         $manager->channel('app');
@@ -307,7 +308,7 @@ final class LogManagerTest extends TestCase
             ],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Unknown log formatter: xml');
 
         $manager->channel('app');
@@ -322,7 +323,7 @@ final class LogManagerTest extends TestCase
             ],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Unknown log level: verbose');
 
         $manager->channel('app');
@@ -334,7 +335,7 @@ final class LogManagerTest extends TestCase
             'app' => ['driver' => 'daily'],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Log driver "daily" requires "path" configuration.');
 
         $manager->channel('app');
@@ -386,7 +387,7 @@ final class LogManagerTest extends TestCase
             'syslog' => ['driver' => 'custom'],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Log driver "custom" requires "factory" configuration.');
 
         $manager->channel('syslog');
@@ -534,7 +535,7 @@ final class LogManagerTest extends TestCase
             ],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Unknown log processor: no_such_processor');
 
         $manager->channel('app');

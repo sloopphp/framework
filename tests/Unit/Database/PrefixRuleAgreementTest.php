@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Config\ConnectionConfigResolver;
-use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Query\Grammar;
 
 final class PrefixRuleAgreementTest extends TestCase
@@ -53,7 +53,7 @@ final class PrefixRuleAgreementTest extends TestCase
                 'database' => 'app',
                 'prefix'   => $prefix,
             ]);
-        } catch (InvalidConfigException) {
+        } catch (DatabaseConfigException) {
             return false;
         }
 

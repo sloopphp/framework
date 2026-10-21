@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Sloop\Encryption;
 
-use Sloop\Encryption\Exception\InvalidConfigException;
-
 /**
  * A 32-byte key written as 64 hexadecimal characters.
  *
@@ -42,16 +40,16 @@ final class HexKey
     /**
      * Convert a key to raw bytes.
      *
-     * @param  string                 $key   Key as 64 hexadecimal characters
-     * @param  string                 $label Name of the key for the exception message
+     * @param  string                    $key   Key as 64 hexadecimal characters
+     * @param  string                    $label Name of the key for the exception message
      * @return string
-     * @throws InvalidConfigException If the key is not 64 hexadecimal characters
+     * @throws \InvalidArgumentException If the key is not 64 hexadecimal characters
      */
     public static function toBytes(#[\SensitiveParameter] string $key, string $label): string
     {
         $bytes = self::isValid($key) ? hex2bin($key) : false;
         if ($bytes === false) {
-            throw new InvalidConfigException($label . ' must be 64 hexadecimal characters (32 bytes).');
+            throw new \InvalidArgumentException($label . ' must be 64 hexadecimal characters (32 bytes).');
         }
 
         return $bytes;

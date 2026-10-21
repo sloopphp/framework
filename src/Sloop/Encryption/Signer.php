@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Sloop\Encryption;
 
-use Sloop\Encryption\Exception\InvalidConfigException;
-
 /**
  * Signs strings with HMAC-SHA256 so that they can be handed out and later checked for changes.
  *
@@ -47,9 +45,9 @@ final readonly class Signer
     /**
      * Create a signer from hexadecimal keys.
      *
-     * @param  string                 $key          Current key as 64 hexadecimal characters; sign() always uses it
-     * @param  list<string>           $previousKeys Earlier keys as 64 hexadecimal characters, tried in order after the current key by verify()
-     * @throws InvalidConfigException If any key is not 64 hexadecimal characters
+     * @param  string                    $key          Current key as 64 hexadecimal characters; sign() always uses it
+     * @param  list<string>              $previousKeys Earlier keys as 64 hexadecimal characters, tried in order after the current key by verify()
+     * @throws \InvalidArgumentException If any key is not 64 hexadecimal characters
      */
     public function __construct(
         #[\SensitiveParameter]

@@ -7,7 +7,7 @@ namespace Sloop\Tests\Unit\Foundation;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Config\Config;
-use Sloop\Encryption\Exception\InvalidConfigException;
+use Sloop\Encryption\Exception\EncryptionConfigException;
 use Sloop\Encryption\PasswordAlgorithm;
 use Sloop\Encryption\PasswordHasher;
 use Sloop\Foundation\Application;
@@ -141,7 +141,7 @@ final class ApplicationHashingTest extends TestCase
     {
         $this->writeHashingConfig($config);
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(EncryptionConfigException::class);
         $this->expectExceptionMessageIsOrContains($message);
 
         new Application($this->tmpDir);

@@ -20,7 +20,7 @@ use Sloop\Container\Container;
 use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
-use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\QueryException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Factory\PdoConnectionFactory;
@@ -1588,7 +1588,7 @@ final class ApplicationTest extends TestCase
 
         // If default = "primary" reached the ConnectionManager, the absence of
         // "primary" in connections must surface as "[primary] is not defined".
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [primary] is not defined.',
             $e->getMessage(),
@@ -1613,7 +1613,7 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // If connections.primary reached the Resolver, its required-key check fires.
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Connection [primary]: missing required config key "database".',
             $e->getMessage(),
@@ -1648,7 +1648,7 @@ final class ApplicationTest extends TestCase
 
         // audit appears after the invalid entries; reaching it via the validation
         // error confirms iteration continues (instead of breaking on the first invalid).
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Connection [audit]: missing required config key "database".',
             $e->getMessage(),
@@ -1676,7 +1676,7 @@ final class ApplicationTest extends TestCase
         // When int keys are stripped by filterStringKeys, the Resolver only
         // sees string keys and reports "missing required config key" instead
         // of "unsupported config key 0".
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Connection [primary]: missing required config key "database".',
             $e->getMessage(),
@@ -1701,7 +1701,7 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Non-string default falls back to "" — "[]" is not present in connections.
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [] is not defined.',
             $e->getMessage(),
@@ -1720,7 +1720,7 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Non-array connections fall back to []; "[primary]" is not present.
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [primary] is not defined.',
             $e->getMessage(),
@@ -1737,7 +1737,7 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // Config::isLoaded() is false → defaultName='' and configs=[].
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [] is not defined.',
             $e->getMessage(),
@@ -1755,7 +1755,7 @@ final class ApplicationTest extends TestCase
         // database.default and database.connections are both undefined.
         // Config::get returns null, and is_string(null) / is_array(null) both
         // fall through to the same defaults as the explicit non-string/non-array cases.
-        $e = $this->assertThrows(InvalidConfigException::class, static fn () => $manager->connection());
+        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [] is not defined.',
             $e->getMessage(),

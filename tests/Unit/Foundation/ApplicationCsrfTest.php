@@ -10,11 +10,11 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Sloop\Config\Config;
-use Sloop\Encryption\Exception\InvalidConfigException;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
+use Sloop\Security\Exception\SecurityConfigException;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\ValidationMessages;
 
@@ -181,7 +181,7 @@ final class ApplicationCsrfTest extends TestCase
     {
         $this->writeFile('config/security.php', '<?php return ' . $config . ';');
 
-        $e = $this->assertThrows(InvalidConfigException::class, fn () => new Application($this->tmpDir));
+        $e = $this->assertThrows(SecurityConfigException::class, fn () => new Application($this->tmpDir));
 
         $this->assertSame($message, $e->getMessage());
     }

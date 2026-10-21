@@ -7,6 +7,7 @@ namespace Sloop\Tests\Unit\Support;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Sloop\Config\InvalidConfigException;
 use Sloop\Support\Env;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -66,7 +67,7 @@ final class EnvTest extends TestCase
 
     public function testGetRequiredThrowsExceptionWhenNotSet(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidConfigException::class);
         $this->expectExceptionMessageIsOrContains(
             'Required environment variable \'SLOOP_NONEXISTENT_VAR\' is not set.'
         );
@@ -76,7 +77,7 @@ final class EnvTest extends TestCase
 
     public function testGetRequiredThrowsExceptionIncludesKeyName(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidConfigException::class);
         $this->expectExceptionMessageIsOrContains(
             'Required environment variable \'ANOTHER_MISSING_KEY\' is not set.'
         );

@@ -10,12 +10,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Sloop\Config\Config;
-use Sloop\Encryption\Exception\InvalidConfigException;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Middleware\CorsMiddleware;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
+use Sloop\Security\Exception\SecurityConfigException;
 use Sloop\Validation\ValidationMessages;
 
 final class ApplicationSecurityHeadersTest extends TestCase
@@ -240,7 +240,7 @@ final class ApplicationSecurityHeadersTest extends TestCase
     {
         $this->writeFile('config/security.php', '<?php return ' . $config . ';');
 
-        $this->expectException(InvalidConfigException::class);
+        $this->expectException(SecurityConfigException::class);
         $this->expectExceptionMessageIsOrContains($message);
 
         new Application($this->tmpDir);

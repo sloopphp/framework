@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\CastMode;
 use Sloop\Database\Config\ConnectionConfigResolver;
-use Sloop\Database\Exception\InvalidConfigException;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\IsolationLevel;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -66,7 +66,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsUnknownKey(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'           => 'mysql',
                 'host'             => 'localhost',
@@ -83,7 +83,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsMistypedKey(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'  => 'mysql',
                 'host'    => 'localhost',
@@ -106,7 +106,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // so the pool-only invariant is asserted on both validate() and
         // validatePool() entry points.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'     => 'mysql',
                 'host'       => 'localhost',
@@ -143,7 +143,7 @@ final class ConnectionConfigResolverTest extends TestCase
         unset($config[$missingKey]);
 
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', $config),
         );
         $this->assertSame(
@@ -155,7 +155,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsUnsupportedDriver(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'pgsql',
                 'host'     => 'localhost',
@@ -171,7 +171,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsNonStringDriver(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 1,
                 'host'     => 'localhost',
@@ -190,7 +190,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // nondeterministic, so the resolver requires >= 1 like the other
         // duration keys.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'                  => 'mysql',
                 'host'                    => 'localhost',
@@ -210,7 +210,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // `x;unix_socket=/tmp/evil.sock` could append extra DSN keys and
         // redirect the connection.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'x;unix_socket=/tmp/evil.sock',
@@ -226,7 +226,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsDatabaseContainingDsnMetacharacters(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -242,7 +242,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsNonIntPort(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -259,7 +259,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsNonStringNullableUsername(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -302,7 +302,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsInvalidIdentifier(string $key, mixed $value, string $expectedMessage): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -316,7 +316,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsNonArrayOptions(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -333,7 +333,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsStringKeyedOptions(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -350,7 +350,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsInitCommandInOptions(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -385,7 +385,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // reaches the resolver, so this scenario only fires when the resolver
         // is called directly. Cover the defensive `is_string($key)` branch.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -404,7 +404,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // Confirms the connection name is propagated into all error messages.
         // Asserts the full message so concat-mutation cannot escape.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('analytics', [
                 'driver' => 'mysql',
             ]),
@@ -709,7 +709,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsUnknownPoolKey(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -726,7 +726,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonArrayRead(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -743,7 +743,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsStringKeyInRead(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -762,7 +762,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonArrayReplicaEntry(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -779,7 +779,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsPoolOnlyKeyInsideReplica(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -798,7 +798,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolPropagatesReplicaValidationErrorWithLocation(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -818,7 +818,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonBooleanHealthCheck(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'       => 'mysql',
                 'host'         => 'primary.example.com',
@@ -835,7 +835,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonIntDeadCacheTtl(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'                 => 'mysql',
                 'host'                   => 'primary.example.com',
@@ -852,7 +852,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsZeroDeadCacheTtl(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'                 => 'mysql',
                 'host'                   => 'primary.example.com',
@@ -884,7 +884,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonStringReplicaSelector(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'           => 'mysql',
                 'host'             => 'primary.example.com',
@@ -901,7 +901,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNegativeMaxConnectionAttempts(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'                  => 'mysql',
                 'host'                    => 'primary.example.com',
@@ -931,7 +931,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolPropagatesPrimaryValidationError(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver' => 'mysql',
                 'host'   => 'primary.example.com',
@@ -947,7 +947,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsIntegerKeyAtPoolLevel(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -964,7 +964,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsIntegerKeyInsideReplica(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1033,7 +1033,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonBooleanLogBindings(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'       => 'mysql',
                 'host'         => 'primary.example.com',
@@ -1050,7 +1050,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonBooleanLogAllQueries(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'          => 'mysql',
                 'host'            => 'primary.example.com',
@@ -1067,7 +1067,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonIntSlowQueryThresholdMs(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'                  => 'mysql',
                 'host'                    => 'primary.example.com',
@@ -1084,7 +1084,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsNonPositiveSlowQueryThresholdMs(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'                  => 'mysql',
                 'host'                    => 'primary.example.com',
@@ -1195,7 +1195,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // range check (`< 1`). Bool/float are exercised explicitly so silent
         // coercion regressions are caught.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'           => 'mysql',
                 'host'             => 'primary.example.com',
@@ -1215,7 +1215,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // never inside a read[] entry. Same protection as the health_check
         // regression in testValidatePoolRejectsPoolOnlyKeyInsideReplica.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1290,7 +1290,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // explicit null as the off-sentinel; the divergence is locked in by
         // covering null in this provider.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'     => 'mysql',
                 'host'       => 'primary.example.com',
@@ -1310,7 +1310,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // never inside a read[] entry. Same protection as the health_check
         // regression in testValidatePoolRejectsPoolOnlyKeyInsideReplica.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1353,7 +1353,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsInvalidStrictMode(mixed $value): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'      => 'mysql',
                 'host'        => 'primary.example.com',
@@ -1372,7 +1372,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // strict_mode guards the tables the pool holds, so it belongs to the
         // pool rather than to one of the servers that reach them.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1393,7 +1393,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // strict_mode is not in ALLOWED_KEYS: validate() covers one server's
         // connection settings, and this is not one of them.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'      => 'mysql',
                 'host'        => 'primary.example.com',
@@ -1464,7 +1464,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsInvalidPrefix(mixed $prefix, string $expectedMessage): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1480,7 +1480,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // prefix describes how the pool names its tables, so it cannot differ
         // between the primary and a replica of the same pool.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1499,7 +1499,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsPrefixAtSingleConnectionLevel(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -1555,7 +1555,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsInvalidMigrationsTable(mixed $table, string $expectedMessage): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'           => 'mysql',
                 'host'             => 'primary.example.com',
@@ -1569,7 +1569,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsMigrationsTableInsideReplica(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1588,7 +1588,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsMigrationsTableAtSingleConnectionLevel(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'           => 'mysql',
                 'host'             => 'localhost',
@@ -1666,7 +1666,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsCharsetsThatWouldBreakIdentifierQuoting(string $charset): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'   => 'mysql',
                 'host'     => 'localhost',
@@ -1686,7 +1686,7 @@ final class ConnectionConfigResolverTest extends TestCase
         // collation goes into SET NAMES ... COLLATE ... verbatim, and ^...$
         // let a trailing newline through.
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validate('master', [
                 'driver'    => 'mysql',
                 'host'      => 'localhost',
@@ -1703,7 +1703,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidateRejectsAnUnsupportedCharsetInsideAReplica(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1777,7 +1777,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsCastsThatIsNotACastMode(mixed $casts): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',
@@ -1794,7 +1794,7 @@ final class ConnectionConfigResolverTest extends TestCase
     public function testValidatePoolRejectsCastsInsideAReplica(): void
     {
         $e = $this->assertThrows(
-            InvalidConfigException::class,
+            DatabaseConfigException::class,
             static fn () => ConnectionConfigResolver::validatePool('mydb', [
                 'driver'   => 'mysql',
                 'host'     => 'primary.example.com',

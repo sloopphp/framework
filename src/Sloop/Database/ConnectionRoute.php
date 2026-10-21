@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Sloop\Database;
 
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 
 /**
  * The connection a statement runs on, asked for at the moment it runs.
@@ -29,7 +29,7 @@ interface ConnectionRoute
      * Return the connection to run on now.
      *
      * @return Connection
-     * @throws InvalidConfigException      When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When a persistent connection carries a residual transaction that cannot be rolled back
      */

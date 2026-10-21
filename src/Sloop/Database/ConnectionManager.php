@@ -11,9 +11,9 @@ use Psr\Log\LoggerInterface;
 use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Config\PoolConfig;
 use Sloop\Database\Config\ValidatedConfig;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Exception\DatabaseConnectionException;
 use Sloop\Database\Exception\DatabaseException;
-use Sloop\Database\Exception\InvalidConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
@@ -136,7 +136,7 @@ final class ConnectionManager
      *                                               null → primary (the manager does not read the statement, so a
      *                                               read reaches a replica only by asking for one or via select())
      * @return Connection                  Lazy-created, cached Connection
-     * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When max_connection_attempts is exhausted on the replica path
      * @throws DatabaseException           When a persistent primary carries a residual transaction that cannot be rolled back
      */
@@ -172,7 +172,7 @@ final class ConnectionManager
      *
      * @param  string|Expression|WindowExpression|FunctionCall|array<int|string, mixed>|Select ...$columns Columns to select, each on its own or paired with a name; none selects every column
      * @return Select                                                                          Builder for the statement
-     * @throws InvalidConfigException                                                          When the default pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException                                                         When the default pool name is not defined or its config is malformed
      * @throws InvalidArgumentException                                                        When a statement is given without a name, a pair is not two elements or is not a list, its name is not a string or not a single name, what it selects cannot be selected, or the grammar writes no such window function or aggregate
      */
     public function select(string|Expression|WindowExpression|FunctionCall|array|Select ...$columns): Select
@@ -192,9 +192,9 @@ final class ConnectionManager
      * late resolution buys is that a builder made before begin() takes part in
      * the transaction that opened after it.
      *
-     * @param  string                 $table Table to delete from, optionally schema qualified
-     * @return Delete                 Builder for the statement
-     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     * @param  string                  $table Table to delete from, optionally schema qualified
+     * @return Delete                  Builder for the statement
+     * @throws DatabaseConfigException When the default pool name is not defined or its config is malformed
      */
     public function delete(string $table): Delete
     {
@@ -211,9 +211,9 @@ final class ConnectionManager
      * The connection is resolved when the statement runs rather than here, as
      * it is for delete().
      *
-     * @param  string                 $table Table to update, optionally schema qualified
-     * @return Update                 Builder for the statement
-     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     * @param  string                  $table Table to update, optionally schema qualified
+     * @return Update                  Builder for the statement
+     * @throws DatabaseConfigException When the default pool name is not defined or its config is malformed
      */
     public function update(string $table): Update
     {
@@ -230,9 +230,9 @@ final class ConnectionManager
      * The connection is resolved when the statement runs rather than here, as
      * it is for update().
      *
-     * @param  string                 $table Table to insert into, optionally schema qualified
-     * @return Insert                 Builder for the statement
-     * @throws InvalidConfigException When the default pool name is not defined or its config is malformed
+     * @param  string                  $table Table to insert into, optionally schema qualified
+     * @return Insert                  Builder for the statement
+     * @throws DatabaseConfigException When the default pool name is not defined or its config is malformed
      */
     public function insert(string $table): Insert
     {
@@ -253,7 +253,7 @@ final class ConnectionManager
      * @param  string                   $identifier Column name, optionally qualified ('users.id')
      * @param  string|null              $name       Pool whose prefix applies; the default pool when omitted
      * @return string                   Backtick-quoted name, with the table prefix applied
-     * @throws InvalidConfigException   When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException  When the pool name is not defined or its config is malformed
      * @throws InvalidArgumentException When a segment is empty, the name has more than three segments, or `*` stands where it has no meaning
      */
     public function quoteIdentifier(string $identifier, ?string $name = null): string
@@ -271,7 +271,7 @@ final class ConnectionManager
      * @param  string                   $table Table name, optionally schema qualified ('reporting.users')
      * @param  string|null              $name  Pool whose prefix applies; the default pool when omitted
      * @return string                   Backtick-quoted name, with the table prefix applied
-     * @throws InvalidConfigException   When the pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException  When the pool name is not defined or its config is malformed
      * @throws InvalidArgumentException When a segment is empty or the name has more than two segments
      */
     public function quoteTable(string $table, ?string $name = null): string
@@ -294,7 +294,7 @@ final class ConnectionManager
      * @return int                         Number of rows written
      * @throws LogicException              When $chunkSize is below 1
      * @throws InvalidArgumentException    When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
-     * @throws InvalidConfigException      When the default pool name is not defined or its config is malformed
+     * @throws DatabaseConfigException     When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When a statement fails, or a transaction cannot be started, committed or rolled back
      *
@@ -316,7 +316,7 @@ final class ConnectionManager
      *
      * @param  string                      $name Pool name
      * @return Connection
-     * @throws InvalidConfigException      When the name is undefined or config is malformed
+     * @throws DatabaseConfigException     When the name is undefined or config is malformed
      * @throws DatabaseConnectionException When the underlying PDO connection fails
      * @throws DatabaseException           When a persistent connection carries a residual transaction that cannot be rolled back
      */
@@ -356,7 +356,7 @@ final class ConnectionManager
      *
      * @param  string                      $name Pool name
      * @return Connection
-     * @throws InvalidConfigException      When the name is undefined or config is malformed
+     * @throws DatabaseConfigException     When the name is undefined or config is malformed
      * @throws DatabaseConnectionException When all attempts (replica + fallback) fail
      */
     private function getReplicaConnection(string $name): Connection
@@ -432,9 +432,9 @@ final class ConnectionManager
      * connection(writable: false) call is NOT evicted by a failed probe: the
      * manager keeps serving it for the rest of the request/process.
      *
-     * @param  string|null            $name Pool to probe; defaults to the configured default pool
-     * @return array<string, bool>    host:port → true (probe succeeded) | false (probe failed)
-     * @throws InvalidConfigException When the pool is undefined or its config is malformed
+     * @param  string|null             $name Pool to probe; defaults to the configured default pool
+     * @return array<string, bool>     host:port → true (probe succeeded) | false (probe failed)
+     * @throws DatabaseConfigException When the pool is undefined or its config is malformed
      */
     public function probeReplicas(?string $name = null): array
     {
@@ -689,9 +689,9 @@ final class ConnectionManager
      * validator is pure, and the selector registry is fixed at construction.
      * A name that fails to resolve caches nothing and fails again next time.
      *
-     * @param  string                 $name Pool name
+     * @param  string                  $name Pool name
      * @return PoolConfig
-     * @throws InvalidConfigException When the name is undefined or config is malformed
+     * @throws DatabaseConfigException When the name is undefined or config is malformed
      */
     private function resolvePool(string $name): PoolConfig
     {
@@ -700,7 +700,7 @@ final class ConnectionManager
         }
 
         if (!\array_key_exists($name, $this->configs)) {
-            throw new InvalidConfigException(
+            throw new DatabaseConfigException(
                 'Database connection [' . $name . '] is not defined.',
             );
         }

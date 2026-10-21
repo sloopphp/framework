@@ -19,6 +19,7 @@ use Monolog\Processor\MemoryUsageProcessor;
 use Monolog\Processor\ProcessIdProcessor;
 use Monolog\Processor\WebProcessor;
 use RuntimeException;
+use Sloop\Log\Exception\LogConfigException;
 use Sloop\Support\Arr;
 
 /**
@@ -96,8 +97,10 @@ final class LogManager
      * Creates a new Monolog Logger based on the channel configuration,
      * or falls back to a default StreamHandler if the channel is not configured.
      *
-     * @param  string|null $name Channel name (null = default channel)
+     * @param  string|null        $name Channel name (null = default channel)
      * @return Logger
+     * @throws LogConfigException If the channel configuration is invalid
+     * @throws RuntimeException   If a custom channel has no factory resolver
      */
     public function channel(?string $name = null): Logger
     {
@@ -148,9 +151,10 @@ final class LogManager
     /**
      * Create a new Monolog Logger based on channel configuration.
      *
-     * @param  string           $name Channel name
+     * @param  string             $name Channel name
      * @return Logger
-     * @throws RuntimeException If the configuration is invalid
+     * @throws LogConfigException If the configuration is invalid
+     * @throws RuntimeException   If a custom channel has no factory resolver
      */
     private function createLogger(string $name): Logger
     {
@@ -193,9 +197,10 @@ final class LogManager
     /**
      * Build the Monolog Logger from channel configuration without processors.
      *
-     * @param  string           $name Channel name
+     * @param  string             $name Channel name
      * @return Logger
-     * @throws RuntimeException If the configuration is invalid
+     * @throws LogConfigException If the configuration is invalid
+     * @throws RuntimeException   If a custom channel has no factory resolver
      */
     private function buildLogger(string $name): Logger
     {
@@ -253,7 +258,7 @@ final class LogManager
      *
      * @param  string                         $name Processor name
      * @return callable(LogRecord): LogRecord
-     * @throws RuntimeException               If the name is not recognized
+     * @throws LogConfigException             If the name is not recognized
      */
     private function resolveNamedProcessor(string $name): callable
     {
@@ -264,7 +269,7 @@ final class LogManager
             'memory_peak'   => new MemoryPeakUsageProcessor(),
             'hostname'      => new HostnameProcessor(),
             'process_id'    => new ProcessIdProcessor(),
-            default         => throw new RuntimeException('Unknown log processor: ' . $name),
+            default         => throw new LogConfigException('Unknown log processor: ' . $name),
         };
     }
 
@@ -274,7 +279,7 @@ final class LogManager
      * @param  string               $driver Driver name (`stream`, `daily`)
      * @param  array<string, mixed> $config Channel configuration
      * @return HandlerInterface
-     * @throws RuntimeException     If the driver is unknown or required config is missing
+     * @throws LogConfigException   If the driver is unknown or required config is missing
      */
     private function createHandler(string $driver, array $config): HandlerInterface
     {
@@ -290,7 +295,7 @@ final class LogManager
                 Arr::getInt($config, 'days'),
                 $level,
             ),
-            default => throw new RuntimeException('Unknown log driver: ' . $driver),
+            default => throw new LogConfigException('Unknown log driver: ' . $driver),
         };
     }
 
@@ -311,7 +316,7 @@ final class LogManager
         $instance = match ($formatter) {
             'json'  => new JsonFormatter(),
             'line'  => new LineFormatter(),
-            default => throw new RuntimeException('Unknown log formatter: ' . $formatter),
+            default => throw new LogConfigException('Unknown log formatter: ' . $formatter),
         };
 
         if (method_exists($handler, 'setFormatter')) {
@@ -325,7 +330,8 @@ final class LogManager
      * @param  string               $name   Channel name
      * @param  array<string, mixed> $config Channel configuration
      * @return Logger
-     * @throws RuntimeException     If the factory is missing or invalid
+     * @throws LogConfigException   If the factory is missing
+     * @throws RuntimeException     If no factory resolver was given
      */
     private function createCustomLogger(string $name, array $config): Logger
     {
@@ -345,9 +351,9 @@ final class LogManager
     /**
      * Resolve a PSR-3 level string to a Monolog Level.
      *
-     * @param  string           $level Level name (`debug`, `info`, `warning`, etc.)
+     * @param  string             $level Level name (`debug`, `info`, `warning`, etc.)
      * @return Level
-     * @throws RuntimeException If the level name is not recognized
+     * @throws LogConfigException If the level name is not recognized
      */
     private function resolveLevel(string $level): Level
     {
@@ -360,7 +366,7 @@ final class LogManager
             'critical'  => Level::Critical,
             'alert'     => Level::Alert,
             'emergency' => Level::Emergency,
-            default     => throw new RuntimeException('Unknown log level: ' . $level),
+            default     => throw new LogConfigException('Unknown log level: ' . $level),
         };
     }
 
@@ -371,13 +377,13 @@ final class LogManager
      * @param  string               $key    Configuration key
      * @param  string               $driver Driver name for error context
      * @return string
-     * @throws RuntimeException     If the key is missing or empty
+     * @throws LogConfigException   If the key is missing or empty
      */
     private function requireString(array $config, string $key, string $driver): string
     {
         $value = Arr::getString($config, $key);
         if ($value === '') {
-            throw new RuntimeException('Log driver "' . $driver . '" requires "' . $key . '" configuration.');
+            throw new LogConfigException('Log driver "' . $driver . '" requires "' . $key . '" configuration.');
         }
 
         return $value;
