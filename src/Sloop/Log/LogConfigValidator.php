@@ -62,7 +62,9 @@ final class LogConfigValidator
     /**
      * Check log.channels and return it typed for LogManager.
      *
-     * A null value is treated as not written, as elsewhere in the config.
+     * A null value, for log.channels or for one channel, is treated as not
+     * written, as elsewhere in the config: an environment file can drop a
+     * channel by writing null for it.
      *
      * @param  mixed                               $channels Value of log.channels
      * @return array<string, array<string, mixed>>
@@ -80,6 +82,10 @@ final class LogConfigValidator
 
         $validated = [];
         foreach ($channels as $name => $config) {
+            if ($config === null) {
+                continue;
+            }
+
             if (!\is_string($name)) {
                 throw new LogConfigException('log.channels has a channel without a name (key ' . $name . '); write the channel name as the key.');
             }

@@ -355,6 +355,69 @@ final class ApplicationConfigCheckTest extends TestCase
         $this->assertSame('Custom log factory cannot be resolved: App\\NoSuchLogFactory', $thrown->getMessage());
     }
 
+    public function testBootSkipsALogChannelWrittenAsNull(): void
+    {
+        $this->writeConfig('log.php', '<?php return ["default" => "app", "channels" => ["audit" => null, "app" => ["level" => "error"]]];');
+
+        $manager = $this->logManager(new Application($this->tmpDir));
+
+        // app, written after the null entry, is still read.
+        $app = $manager->channel('app')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $app);
+        $this->assertSame(Level::Error, $app->getLevel());
+        // audit is not configured, so it is the unconfigured channel at debug.
+        $handler = $manager->channel('audit')->getHandlers()[0];
+        $this->assertInstanceOf(StreamHandler::class, $handler);
+        $this->assertSame(Level::Debug, $handler->getLevel());
+    }
+
+    public function testBootRejectsLogDefaultNamingAChannelWrittenAsNull(): void
+    {
+        $this->writeConfig('log.php', '<?php return ["default" => "audit", "channels" => ["audit" => null]];');
+
+        $thrown = $this->assertThrows(LogConfigException::class, fn (): Application => new Application($this->tmpDir));
+
+        $this->assertSame('log.default names the channel "audit", which log.channels does not define.', $thrown->getMessage());
+    }
+
+    public function testBootSkipsADatabaseConnectionWrittenAsNull(): void
+    {
+        $this->writeConfig('database.php', '<?php return ["default" => "main", "connections" => [
+            "replica" => null,
+            "main"    => ["driver" => "mysql", "host" => "localhost", "database" => "app", "replica_selector" => "nope"],
+        ]];');
+
+        $manager = new Application($this->tmpDir)->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        // main, written after the null entry, is still read: using it reaches
+        // the replica_selector check, not "not defined".
+        $thrown = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
+        $this->assertSame('No replica selector is registered for "nope". Registered: random.', $thrown->getMessage());
+    }
+
+    public function testBootRejectsDatabaseDefaultNamingAConnectionWrittenAsNull(): void
+    {
+        $this->writeConfig('database.php', '<?php return ["default" => "replica", "connections" => ["replica" => null]];');
+
+        $thrown = $this->assertThrows(DatabaseConfigException::class, fn (): Application => new Application($this->tmpDir));
+
+        $this->assertSame('database.default names the connection "replica", which database.connections does not define.', $thrown->getMessage());
+    }
+
+    public function testBootLeavesAnUnregisteredReplicaSelectorToTheFirstUse(): void
+    {
+        $this->writeConfig('database.php', '<?php return ["default" => "main", "connections" => ["main" => [
+            "driver" => "mysql", "host" => "localhost", "database" => "app", "replica_selector" => "nope",
+        ]]];');
+
+        $manager = new Application($this->tmpDir)->container->get(ConnectionManager::class);
+        $this->assertInstanceOf(ConnectionManager::class, $manager);
+
+        $thrown = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
+        $this->assertSame('No replica selector is registered for "nope". Registered: random.', $thrown->getMessage());
+    }
+
     public function testBootLeavesAnUnwrittenDatabaseDefaultToTheFirstUse(): void
     {
         $this->writeConfig('database.php', '<?php return ["connections" => ["main" => ["driver" => "mysql", "host" => "localhost", "database" => "app"]]];');

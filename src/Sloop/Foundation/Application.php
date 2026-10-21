@@ -904,6 +904,12 @@ final class Application implements RequestHandlerInterface
 
         $connections = [];
         foreach ($configured as $name => $config) {
+            // Not written, as elsewhere in the config: an environment file
+            // can drop a connection by writing null for it.
+            if ($config === null) {
+                continue;
+            }
+
             if (!\is_string($name)) {
                 throw new DatabaseConfigException('database.connections has a connection without a name (key ' . $name . '); write the connection name as the key.');
             }
