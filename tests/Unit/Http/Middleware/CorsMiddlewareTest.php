@@ -338,6 +338,15 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertSame('https://example.com', $response->getHeaderLine('Access-Control-Allow-Origin'));
     }
 
+    public function testMatchesARequestOriginWrittenInUpperCase(): void
+    {
+        $cors     = $this->createCors();
+        $request  = $this->createRequest(origin: 'HTTPS://EXAMPLE.COM');
+        $response = $cors->process($request, $this->createHandler());
+
+        $this->assertSame('HTTPS://EXAMPLE.COM', $response->getHeaderLine('Access-Control-Allow-Origin'));
+    }
+
     public function testAcceptsAnOriginWithAnotherSchemeAndPort(): void
     {
         $cors     = $this->createCors(allowedOrigins: ['capacitor://localhost', 'http://localhost:5173']);

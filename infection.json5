@@ -68,7 +68,11 @@
                 // CsrfMiddleware::__construct builds the set of trusted origins,
                 // which isTrusted() reads only through isset(). Pinned to the
                 // line: the true passed to Origin::configured() above it is killed.
-                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct::79"
+                "Sloop\\Http\\Middleware\\CsrfMiddleware::__construct::79",
+                // CorsMiddleware::__construct builds the set of allowed origins the
+                // same way, read by isOriginAllowed() only through isset(). Pinned
+                // to the line: the true set for the wildcard above it is killed.
+                "Sloop\\Http\\Middleware\\CorsMiddleware::__construct::99"
             ]
         },
         "LogicalOrAllSubExprNegation": {

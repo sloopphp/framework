@@ -644,7 +644,7 @@ final class ArrTest extends TestCase
     #[DataProvider('nonArrayValueProvider')]
     public function testToStringListReturnsDefaultForNonArrayValue(mixed $value): void
     {
-        $this->assertSame(['fallback'], Arr::toStringList($value, ['fallback']));
+        $this->assertSame(['fallback', 'other'], Arr::toStringList($value, ['fallback', 'other']));
     }
 
     public function testToStringListReturnsEmptyDefaultWhenNoDefaultGiven(): void

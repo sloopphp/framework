@@ -16,8 +16,12 @@ use Sloop\Config\InvalidConfigException;
  * is malformed (an origin that is not a string or null, is not
  * scheme://host[:port] as browsers send it, names the default port, or for
  * the application's own origin uses a scheme other than http or https, or
- * trusted_origins that is not a list of strings), and a
- * security.max_body_size that is not a positive integer.
+ * trusted_origins that is not a list of strings), a security.cors entry that
+ * is malformed (an unsupported key, a list that is not a list of strings, an
+ * origin written as the CSRF origins may not be, a method or header that is
+ * not an HTTP token, a max_age that is not a non-negative integer, an
+ * allow_credentials that is not a boolean, or "*" together with credentials),
+ * and a security.max_body_size that is not a positive integer.
  */
 final class SecurityConfigException extends InvalidConfigException
 {
