@@ -45,6 +45,7 @@ use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Log\ChannelFactoryInterface;
+use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Log\Processor\ElapsedTimeProcessor;
@@ -488,16 +489,26 @@ final class Application implements RequestHandlerInterface
     /**
      * Resolve a ChannelFactoryInterface implementation from the container.
      *
+     * The class name is the factory entry of a log channel config, so a name
+     * that cannot be resolved or a class that is not a factory is a config
+     * error. A circular dependency inside the factory is left to the container.
+     *
      * @param  Container               $container    DI container
      * @param  string                  $factoryClass Factory class name
      * @return ChannelFactoryInterface
-     * @throws \RuntimeException       If the resolved instance does not implement the interface
+     * @throws LogConfigException      If the class cannot be found or does not implement the interface
+     * @throws ContainerException      If resolving the factory hits a circular dependency
      */
     private function resolveChannelFactory(Container $container, string $factoryClass): ChannelFactoryInterface
     {
-        $factory = $container->get($factoryClass);
+        try {
+            $factory = $container->get($factoryClass);
+        } catch (EntryNotFoundException $e) {
+            throw new LogConfigException('Custom log factory cannot be resolved: ' . $factoryClass, previous: $e);
+        }
+
         if (!$factory instanceof ChannelFactoryInterface) {
-            throw new \RuntimeException(
+            throw new LogConfigException(
                 'Custom log factory must implement ChannelFactoryInterface: ' . $factoryClass,
             );
         }
@@ -846,12 +857,11 @@ final class Application implements RequestHandlerInterface
         $argon2Threads = $this->readHashingInt('hashing.argon2id.threads', 1);
 
         // The entries are read first so that only the constructor's own
-        // exceptions are rewrapped; a cost out of range is an
-        // InvalidArgumentException, argon2id missing from the build a
-        // RuntimeException.
+        // exception (a cost out of range) is rewrapped. argon2id missing from
+        // the build is reported by readHashingAlgorithm() before this point.
         try {
             $hasher = new PasswordHasher($algorithm, $bcryptCost, $argon2Memory, $argon2Time, $argon2Threads);
-        } catch (\InvalidArgumentException|\RuntimeException $e) {
+        } catch (\InvalidArgumentException $e) {
             throw new EncryptionConfigException($e->getMessage(), previous: $e);
         }
 
@@ -894,7 +904,7 @@ final class Application implements RequestHandlerInterface
      * The name is matched without regard to case ('Argon2id' names the same algorithm).
      *
      * @return PasswordAlgorithm
-     * @throws EncryptionConfigException If the entry names no supported algorithm
+     * @throws EncryptionConfigException If the entry names no supported algorithm, or names argon2id and this PHP build lacks it
      */
     private function readHashingAlgorithm(): PasswordAlgorithm
     {
@@ -904,6 +914,12 @@ final class Application implements RequestHandlerInterface
             throw new EncryptionConfigException(
                 'hashing.algorithm must be one of: ' . implode(', ', array_column(PasswordAlgorithm::cases(), 'value')) . '.',
             );
+        }
+
+        // Checked here as well as in PasswordHasher, whose RuntimeException
+        // for this case would otherwise reach the caller unwrapped.
+        if (!$algorithm->isAvailable()) {
+            throw new EncryptionConfigException('This PHP build cannot hash with ' . $algorithm->value . '. Choose another hashing.algorithm, or use a PHP built with argon2 support.');
         }
 
         return $algorithm;

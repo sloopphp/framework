@@ -101,7 +101,7 @@
             "ignore": [
                 "Sloop\\Validation\\StringRule::clusters::724",
                 "Sloop\\Validation\\TimeRule::coerce::225",
-                "Sloop\\Encryption\\Encryptor::openCbc::260"
+                "Sloop\\Encryption\\Encryptor::openCbc::258"
             ]
         },
         "CastString": {
@@ -116,11 +116,11 @@
         },
         "IncrementInteger": {
             "ignore": [
-                // Application::createServerRequestFromGlobals::1088 reads php://input,
+                // Application::createServerRequestFromGlobals::1128 reads php://input,
                 // which a PHPUnit process cannot fill: it is always '' there, so the
                 // offset argument cannot change what is read in a test. The limit
                 // logic itself is in RawBody, which is tested with a reader closure.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1088",
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1128",
                 // CombiningRun::segmentHolds splits a segment into code points. In
                 // pairs, each pair's NFKD ends with the second one's non-starters
                 // added to the first one's when the second has no starter, so the
@@ -278,20 +278,20 @@
         "Coalesce": {
             // Str::camel reads its memo with `??`. The mutation makes the
             // method recompute and overwrite the cache with the same value.
-            // Application::run::252 passes a placeholder request to the security
+            // Application::run::254 passes a placeholder request to the security
             // headers middleware when none could be built; the middleware does
             // not read the request, so always passing the placeholder gives the
             // same response.
             "ignore": [
                 "Sloop\\Support\\Str::camel",
-                "Sloop\\Foundation\\Application::run::252"
+                "Sloop\\Foundation\\Application::run::254"
             ]
         },
         "FalseValue": {
-            // Application::createServerRequestFromGlobals::1088: see IncrementInteger
+            // Application::createServerRequestFromGlobals::1128: see IncrementInteger
             // (php://input is always '' in a PHPUnit process).
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1088"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1128"
             ]
         },
         "NullSafeMethodCall": {
@@ -361,7 +361,7 @@
                 // alphabet. Without either return the later checks reject the
                 // same input (the HMAC comparison, and the canonical re-encoding),
                 // so only the work done differs.
-                "Sloop\\Encryption\\Encryptor::openCbc::261",
+                "Sloop\\Encryption\\Encryptor::openCbc::259",
                 "Sloop\\Encryption\\Base64Url::decode::34",
                 // DistinctValues::normalize keys an enum case: without the return
                 // the case falls through to the object branch and is compared one
@@ -446,7 +446,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::218",
+                "Sloop\\Foundation\\Application::dispatchRoute::220",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.
@@ -454,7 +454,7 @@
                 // LogManager::resolveChannelProcessors returns early when the
                 // channel declares no processor names. Falling through iterates
                 // an empty name list and returns the same empty array.
-                "Sloop\\Log\\LogManager::resolveChannelProcessors::240",
+                "Sloop\\Log\\LogManager::resolveChannelProcessors::245",
                 // Arr::last returns end($array) for the callback-less case. The
                 // fall-through calls first() on the reversed array with a null
                 // callback, which resolves to the same element.

@@ -68,7 +68,7 @@ final class LogManager
      * @param  array<string, array<string, mixed>>              $channels              Channel configurations from config/log.php
      * @param  Level                                            $defaultLevel          Default log level for unconfigured channels
      * @param  string                                           $defaultStream         Default output stream for unconfigured channels
-     * @param  (callable(string): ChannelFactoryInterface)|null $customFactoryResolver Resolver for custom driver factories
+     * @param  (callable(string): ChannelFactoryInterface)|null $customFactoryResolver Resolver for custom driver factories (the one Application passes throws LogConfigException for a factory entry it cannot use)
      * @return void
      */
     public function __construct(
@@ -330,7 +330,7 @@ final class LogManager
      * @param  string               $name   Channel name
      * @param  array<string, mixed> $config Channel configuration
      * @return Logger
-     * @throws LogConfigException   If the factory is missing
+     * @throws LogConfigException   If the factory is missing (the resolver may throw it too, for a factory it cannot resolve)
      * @throws RuntimeException     If no factory resolver was given
      */
     private function createCustomLogger(string $name, array $config): Logger

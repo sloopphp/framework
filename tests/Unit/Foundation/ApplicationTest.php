@@ -17,6 +17,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
 use Sloop\Container\Container;
+use Sloop\Container\EntryNotFoundException;
 use Sloop\Database\Config\ValidatedConfig;
 use Sloop\Database\Connection;
 use Sloop\Database\ConnectionManager;
@@ -35,6 +36,7 @@ use Sloop\Foundation\Path;
 use Sloop\Http\Request\FormBody;
 use Sloop\Http\Request\JsonBody;
 use Sloop\Http\Response\ResponseFormatterInterface;
+use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Log\TraceContext;
@@ -817,10 +819,34 @@ final class ApplicationTest extends TestCase
         $manager = $app->container->get(LogManager::class);
         $this->assertInstanceOf(LogManager::class, $manager);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(LogConfigException::class);
         $this->expectExceptionMessageIsOrContains('Custom log factory must implement ChannelFactoryInterface: ' . InvalidChannelFactory::class);
 
         $manager->channel('bad');
+    }
+
+    public function testConfigLogCustomDriverThrowsLogConfigExceptionWhenFactoryClassDoesNotExist(): void
+    {
+        $this->writeConfig(
+            'log.php',
+            '<?php return [
+                "channels" => [
+                    "bad" => [
+                        "driver" => "custom",
+                        "factory" => "App\\\\NoSuchLogFactory",
+                    ],
+                ],
+            ];',
+        );
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        $thrown = $this->assertThrows(LogConfigException::class, static fn (): Logger => $manager->channel('bad'));
+
+        $this->assertSame('Custom log factory cannot be resolved: App\\NoSuchLogFactory', $thrown->getMessage());
+        $this->assertInstanceOf(EntryNotFoundException::class, $thrown->getPrevious());
     }
 
     public function testContainerRegistersItself(): void
