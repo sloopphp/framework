@@ -421,22 +421,27 @@ final class ConfigTest extends TestCase
      */
     public static function mismatchedShapeProvider(): array
     {
+        $listOverAssoc = ' is a list but the base value is an array with string keys; write the same shape as the base.';
+        $assocOverList = ' is an array with string keys but the base value is a list; write the same shape as the base.';
+
         return [
-            'an empty array over an associative array'   => ['empty_over_assoc', 's.headers'],
-            'a list over an associative array'           => ['list_over_assoc', 's.headers'],
-            'an associative array over a list'           => ['assoc_over_list', 's.origins'],
-            'string and integer keys over a list'        => ['mixed_keys_over_list', 's.items'],
-            'a list over an associative array, nested'   => ['nested_list_over_assoc', 's.pool.main.options'],
+            'an empty array over an associative array' => ['empty_over_assoc', 'Config "s.headers" in environment "production"' . $listOverAssoc],
+            'a list over an associative array'         => ['list_over_assoc', 'Config "s.headers" in environment "production"' . $listOverAssoc],
+            'an associative array over a list'         => ['assoc_over_list', 'Config "s.origins" in environment "production"' . $assocOverList],
+            'string and integer keys over a list'      => ['mixed_keys_over_list', 'Config "s.items" in environment "production"' . $assocOverList],
+            'a list over an associative array, nested' => ['nested_list_over_assoc', 'Config "s.pool.main.options" in environment "production"' . $listOverAssoc],
         ];
     }
 
     #[DataProvider('mismatchedShapeProvider')]
-    public function testEnvironmentOverrideWhoseShapeDiffersFromTheBaseThrows(string $fixture, string $key): void
+    public function testEnvironmentOverrideWhoseShapeDiffersFromTheBaseThrows(string $fixture, string $message): void
     {
-        $this->expectException(InvalidConfigException::class);
-        $this->expectExceptionMessageIsOrContains('Config "' . $key . '" in environment "production"');
+        $thrown = $this->assertThrows(
+            InvalidConfigException::class,
+            static fn () => Config::load(__DIR__ . '/fixtures-shape/' . $fixture, 'production'),
+        );
 
-        Config::load(__DIR__ . '/fixtures-shape/' . $fixture, 'production');
+        $this->assertSame($message, $thrown->getMessage());
     }
 
     public function testEnvironmentOverrideWithAnAssociativeArrayFillsAnEmptyArray(): void
