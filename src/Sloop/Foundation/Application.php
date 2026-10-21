@@ -154,8 +154,11 @@ final class Application implements RequestHandlerInterface
      * A config entry that is written but malformed fails here, so the error
      * surfaces at deploy time rather than on the first request that uses it.
      *
-     * @param  string                 $basePath Application root directory
-     * @throws InvalidConfigException If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)
+     * @param  string                    $basePath Application root directory
+     * @throws InvalidConfigException    If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)
+     * @throws \RuntimeException         If the base directory does not exist
+     * @throws \InvalidArgumentException If lang/en/validation.php is not a map of known rule names to valid messages
+     * @throws \LogicException           If the validation messages were already loaded
      */
     public function __construct(string $basePath)
     {
