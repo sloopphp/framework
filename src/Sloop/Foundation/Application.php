@@ -16,7 +16,9 @@ use Sloop\Config\InvalidConfigException;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
+use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\ConnectionManager;
+use Sloop\Database\Exception\DatabaseConfigException;
 use Sloop\Database\Factory\ConnectionFactory;
 use Sloop\Database\Factory\PdoConnectionFactory;
 use Sloop\Database\Replica\ApcuDeadReplicaCache;
@@ -48,6 +50,7 @@ use Sloop\Http\RouteRequestHandler;
 use Sloop\Log\ChannelFactoryInterface;
 use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\Log;
+use Sloop\Log\LogConfigValidator;
 use Sloop\Log\LogManager;
 use Sloop\Log\Processor\ElapsedTimeProcessor;
 use Sloop\Log\Processor\ExtraContextProcessor;
@@ -111,9 +114,48 @@ final class Application implements RequestHandlerInterface
     private readonly int $maxBodySize;
 
     /**
+     * JSON encoding flags for the response formatter, from response.json_options.
+     *
+     * @var int
+     */
+    private readonly int $jsonOptions;
+
+    /**
+     * Default log channel name, from log.default.
+     *
+     * @var string
+     */
+    private readonly string $logDefault;
+
+    /**
+     * Log channel configs, from log.channels.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private readonly array $logChannels;
+
+    /**
+     * Default database connection name, from database.default ('' when not written).
+     *
+     * @var string
+     */
+    private readonly string $databaseDefault;
+
+    /**
+     * Database connection configs, from database.connections.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private readonly array $databaseConnections;
+
+    /**
      * Create and boot the application.
      *
-     * @param string $basePath Application root directory
+     * @param  string                    $basePath Application root directory
+     * @throws InvalidConfigException    If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)
+     * @throws \RuntimeException         If the base directory does not exist, the config is already loaded, or the config directory cannot be scanned
+     * @throws \InvalidArgumentException If lang/en/validation.php is not a map of known rule names to valid messages
+     * @throws \LogicException           If the validation messages were already loaded
      */
     public function __construct(string $basePath)
     {
@@ -129,7 +171,12 @@ final class Application implements RequestHandlerInterface
         $this->bootHashing();
         $this->securityHeaders = $this->bootSecurityHeaders();
         $this->bootCsrf();
-        $this->maxBodySize = $this->readMaxBodySize();
+        $this->maxBodySize         = $this->readMaxBodySize();
+        $this->jsonOptions         = $this->readJsonOptions();
+        $this->logChannels         = $this->readLogChannels();
+        $this->logDefault          = $this->readLogDefault($this->logChannels);
+        $this->databaseConnections = $this->readDatabaseConnections();
+        $this->databaseDefault     = $this->readDatabaseDefault($this->databaseConnections);
         $this->loadValidationMessages();
         $this->bootLog();
         $this->loadMiddleware();
@@ -411,15 +458,7 @@ final class Application implements RequestHandlerInterface
      */
     private function createResponseFormatter(): ApiResponseFormatter
     {
-        $options = ApiResponseFormatter::DEFAULT_JSON_OPTIONS;
-        if (Config::isLoaded()) {
-            $configured = Config::get('response.json_options');
-            if (\is_int($configured)) {
-                $options = $configured;
-            }
-        }
-
-        return new ApiResponseFormatter($options);
+        return new ApiResponseFormatter($this->jsonOptions);
     }
 
     /**
@@ -430,60 +469,10 @@ final class Application implements RequestHandlerInterface
      */
     private function createLogManager(Container $container): LogManager
     {
-        $channel  = 'app';
-        $channels = [];
-
-        if (Config::isLoaded()) {
-            $default = Config::get('log.default');
-            if (\is_string($default)) {
-                $channel = $default;
-            }
-
-            $channels = $this->normalizeLogChannelsFromConfig();
-        }
-
         return new LogManager(
-            defaultChannel: $channel,
-            channels: $channels,
+            defaultChannel: $this->logDefault,
+            channels: $this->logChannels,
             customFactoryResolver: fn (string $factoryClass): ChannelFactoryInterface => $this->resolveChannelFactory($container, $factoryClass),
-        );
-    }
-
-    /**
-     * Normalize the log.channels config entry into a typed array.
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function normalizeLogChannelsFromConfig(): array
-    {
-        $configured = Config::get('log.channels');
-        if (!\is_array($configured)) {
-            return [];
-        }
-
-        $channels = [];
-        foreach ($configured as $name => $channelConfig) {
-            if (!\is_string($name) || !\is_array($channelConfig)) {
-                continue;
-            }
-            $channels[$name] = $this->filterStringKeys($channelConfig);
-        }
-
-        return $channels;
-    }
-
-    /**
-     * Filter an array to keep only entries with string keys.
-     *
-     * @param  array<array-key, mixed> $array Array to filter
-     * @return array<string, mixed>
-     */
-    private function filterStringKeys(array $array): array
-    {
-        return array_filter(
-            $array,
-            static fn (mixed $_value, int|string $key): bool => \is_string($key),
-            ARRAY_FILTER_USE_BOTH,
         );
     }
 
@@ -527,18 +516,6 @@ final class Application implements RequestHandlerInterface
      */
     private function createConnectionManager(Container $container): ConnectionManager
     {
-        $default     = '';
-        $connections = [];
-
-        if (Config::isLoaded()) {
-            $configuredDefault = Config::get('database.default');
-            if (\is_string($configuredDefault)) {
-                $default = $configuredDefault;
-            }
-
-            $connections = $this->normalizeDatabaseConnectionsFromConfig();
-        }
-
         $factory = $container->get(ConnectionFactory::class);
         if (!$factory instanceof ConnectionFactory) {
             throw new \RuntimeException(
@@ -568,8 +545,8 @@ final class Application implements RequestHandlerInterface
         }
 
         return new ConnectionManager(
-            defaultName: $default,
-            configs: $connections,
+            defaultName: $this->databaseDefault,
+            configs: $this->databaseConnections,
             factory: $factory,
             replicaSelectors: $replicaSelectors,
             deadCache: $deadCache,
@@ -578,32 +555,11 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
-     * Normalize the database.connections config entry into a typed array.
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function normalizeDatabaseConnectionsFromConfig(): array
-    {
-        $configured = Config::get('database.connections');
-        if (!\is_array($configured)) {
-            return [];
-        }
-
-        $connections = [];
-        foreach ($configured as $name => $connectionConfig) {
-            if (!\is_string($name) || !\is_array($connectionConfig)) {
-                continue;
-            }
-            $connections[$name] = $this->filterStringKeys($connectionConfig);
-        }
-
-        return $connections;
-    }
-
-    /**
      * Load configuration files if the config directory exists.
      *
      * @return void
+     * @throws InvalidConfigException If a config file does not return an array, APP_ENV is not a valid environment name, or an environment override differs in shape from the base
+     * @throws \RuntimeException      If the config is already loaded, or the config directory cannot be scanned
      */
     private function loadConfig(): void
     {
@@ -837,6 +793,147 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
+     * Read response.json_options, checking the response config now.
+     *
+     * @return int
+     * @throws InvalidConfigException If response is not an array or has an unsupported key, or response.json_options is not an integer
+     */
+    private function readJsonOptions(): int
+    {
+        $this->assertConfigSection('response', ['json_options'], InvalidConfigException::class);
+
+        $options = (Config::isLoaded() ? Config::get('response.json_options') : null) ?? ApiResponseFormatter::DEFAULT_JSON_OPTIONS;
+        if (!\is_int($options)) {
+            throw new InvalidConfigException('response.json_options must be an integer of JSON_* flags.');
+        }
+
+        return $options;
+    }
+
+    /**
+     * Read log.channels, checking the log config and every written channel now.
+     *
+     * A channel is otherwise read only when it is first used. The factory of
+     * a custom channel is still resolved then: the application may bind it
+     * in the container after the Application is created.
+     *
+     * @return array<string, array<string, mixed>>
+     * @throws LogConfigException                  If log is not an array or has an unsupported key, or a channel is malformed
+     */
+    private function readLogChannels(): array
+    {
+        $this->assertConfigSection('log', ['default', 'channels'], LogConfigException::class);
+
+        return LogConfigValidator::validateChannels(Config::isLoaded() ? Config::get('log.channels') : null);
+    }
+
+    /**
+     * Read log.default, defaulting to app when it is missing or null.
+     *
+     * The app channel needs no entry in log.channels when log.default is not
+     * written; LogManager writes an unconfigured channel to its default stream.
+     *
+     * @param  array<string, array<string, mixed>> $channels Checked log.channels
+     * @return string
+     * @throws LogConfigException                  If log.default is not a string or names a channel log.channels does not define
+     */
+    private function readLogDefault(array $channels): string
+    {
+        $default = Config::isLoaded() ? Config::get('log.default') : null;
+        if ($default === null) {
+            return 'app';
+        }
+
+        if (!\is_string($default)) {
+            throw new LogConfigException('log.default must be a string.');
+        }
+
+        if (!\array_key_exists($default, $channels)) {
+            throw new LogConfigException('log.default names the channel "' . $default . '", which log.channels does not define.');
+        }
+
+        return $default;
+    }
+
+    /**
+     * Read database.default, which is '' when it is missing or null.
+     *
+     * Using the default connection then fails when it is first used.
+     *
+     * @param  array<string, array<string, mixed>> $connections Checked database.connections
+     * @return string
+     * @throws DatabaseConfigException             If database.default is not a string or names a connection database.connections does not define
+     */
+    private function readDatabaseDefault(array $connections): string
+    {
+        $default = Config::isLoaded() ? Config::get('database.default') : null;
+        if ($default === null) {
+            return '';
+        }
+
+        if (!\is_string($default)) {
+            throw new DatabaseConfigException('database.default must be a string.');
+        }
+
+        if (!\array_key_exists($default, $connections)) {
+            throw new DatabaseConfigException('database.default names the connection "' . $default . '", which database.connections does not define.');
+        }
+
+        return $default;
+    }
+
+    /**
+     * Read database.connections, checking the database config and every connection now.
+     *
+     * ConnectionManager checks a connection again when it is first used. A
+     * replica_selector is checked to be a string here; whether the registry
+     * holds that name is checked then, as the application may bind its own
+     * registry after the Application is created.
+     *
+     * @return array<string, array<string, mixed>>
+     * @throws DatabaseConfigException             If database is not an array or has an unsupported key, database.connections is not an array of named connections, or a connection is malformed
+     */
+    private function readDatabaseConnections(): array
+    {
+        $this->assertConfigSection('database', ['default', 'connections'], DatabaseConfigException::class);
+
+        $configured = (Config::isLoaded() ? Config::get('database.connections') : null) ?? [];
+        if (!\is_array($configured)) {
+            throw new DatabaseConfigException('database.connections must be an array of connection names mapped to settings.');
+        }
+
+        $connections = [];
+        foreach ($configured as $name => $config) {
+            // Not written, as elsewhere in the config: an environment file
+            // can drop a connection by writing null for it.
+            if ($config === null) {
+                continue;
+            }
+
+            if (!\is_string($name)) {
+                throw new DatabaseConfigException('database.connections has a connection without a name (key ' . $name . '); write the connection name as the key.');
+            }
+
+            if (!\is_array($config)) {
+                throw new DatabaseConfigException('database.connections.' . $name . ' must be an array of settings.');
+            }
+
+            $typed = [];
+            foreach ($config as $key => $value) {
+                if (!\is_string($key)) {
+                    throw new DatabaseConfigException('database.connections.' . $name . ' has a setting without a name (key ' . $key . ').');
+                }
+                $typed[$key] = $value;
+            }
+
+            ConnectionConfigResolver::validatePool($name, $typed);
+            $connections[$name] = $typed;
+        }
+
+        return $connections;
+    }
+
+    /**
      * Register the PasswordHasher from the hashing config, checking every entry now.
      *
      * Missing or null entries take PHP's defaults (bcrypt, cost 12, argon2id
@@ -876,11 +973,11 @@ final class Application implements RequestHandlerInterface
      * A misspelled key or a value written where a section belongs would
      * otherwise be ignored and the default used without notice.
      *
-     * @param  string                                                          $key         Config key of the section
-     * @param  list<string>                                                    $allowedKeys Keys the section may contain
-     * @param  class-string<EncryptionConfigException|SecurityConfigException> $exception   Exception of the area the section belongs to
+     * @param  string                               $key         Config key of the section
+     * @param  list<string>                         $allowedKeys Keys the section may contain
+     * @param  class-string<InvalidConfigException> $exception   Exception of the area the section belongs to
      * @return void
-     * @throws EncryptionConfigException|SecurityConfigException               If the section is not an array or has another key
+     * @throws InvalidConfigException               If the section is not an array or has another key
      */
     private function assertConfigSection(string $key, array $allowedKeys, string $exception): void
     {
@@ -986,9 +1083,13 @@ final class Application implements RequestHandlerInterface
     }
 
     /**
-     * Load global middleware from config.
+     * Load global middleware from config, checking that every entry is a class name.
+     *
+     * The classes are resolved when the first request is handled: the
+     * application may bind them in the container after the Application is created.
      *
      * @return void
+     * @throws InvalidConfigException If an entry of config/middleware.php is not a string
      */
     private function loadMiddleware(): void
     {
@@ -997,7 +1098,16 @@ final class Application implements RequestHandlerInterface
             return;
         }
 
-        $middleware       = require $middlewarePath;
+        // Config::load() has already rejected a file that does not return an array.
+        $middleware = require $middlewarePath;
+        if (\is_array($middleware)) {
+            foreach ($middleware as $key => $entry) {
+                if (!\is_string($entry)) {
+                    throw new InvalidConfigException('config/middleware.php must list middleware class names; the entry at key ' . $key . ' is ' . get_debug_type($entry) . '.');
+                }
+            }
+        }
+
         $this->middleware = Arr::toStringList($middleware);
     }
 
