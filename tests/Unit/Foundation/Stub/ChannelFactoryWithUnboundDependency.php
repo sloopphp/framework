@@ -16,7 +16,7 @@ use Sloop\Log\ChannelFactoryInterface;
  */
 final readonly class ChannelFactoryWithUnboundDependency implements ChannelFactoryInterface
 {
-    public function __construct(private UnboundLogDependency $dependency)
+    public function __construct(private UnboundDependency $dependency)
     {
     }
 

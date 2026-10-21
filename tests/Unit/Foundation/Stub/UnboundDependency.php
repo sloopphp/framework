@@ -7,6 +7,6 @@ namespace Sloop\Tests\Unit\Foundation\Stub;
 /**
  * Test stub interface that is never bound in the container.
  */
-interface UnboundLogDependency
+interface UnboundDependency
 {
 }

@@ -47,8 +47,9 @@ use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\ChannelFactoryWithUnboundDependency;
 use Sloop\Tests\Unit\Foundation\Stub\HealthController;
 use Sloop\Tests\Unit\Foundation\Stub\InvalidChannelFactory;
+use Sloop\Tests\Unit\Foundation\Stub\MiddlewareWithUnboundDependency;
 use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
-use Sloop\Tests\Unit\Foundation\Stub\UnboundLogDependency;
+use Sloop\Tests\Unit\Foundation\Stub\UnboundDependency;
 use Sloop\Validation\ValidationMessages;
 
 /*
@@ -871,7 +872,7 @@ final class ApplicationTest extends TestCase
 
         // The class in the config is right; the binding it needs is missing.
         $this->expectException(EntryNotFoundException::class);
-        $this->expectExceptionMessageIsOrContains(UnboundLogDependency::class);
+        $this->expectExceptionMessageIsOrContains(UnboundDependency::class);
 
         $manager->channel('bad');
     }
@@ -1065,10 +1066,30 @@ final class ApplicationTest extends TestCase
         $response = $app->run($this->createRequest('GET', '/anything'));
 
         $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Server Error', (string) $response->getBody());
         $this->assertTrue($handler->hasCriticalThatContains(
             'Middleware in config/middleware.php cannot be resolved: App\\NoSuchMiddleware',
         ));
         $this->assertInstanceOf(InvalidConfigException::class, $handler->getRecords()[0]->context['exception'] ?? null);
+    }
+
+    public function testBuildMiddlewareDispatcherLeavesAnUnresolvableMiddlewareDependencyToTheContainer(): void
+    {
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return [\\' . MiddlewareWithUnboundDependency::class . '::class];',
+        );
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/anything'));
+
+        // The class in the config is right; the binding it needs is missing.
+        $this->assertSame(500, $response->getStatusCode());
+        $exception = $handler->getRecords()[0]->context['exception'] ?? null;
+        $this->assertInstanceOf(EntryNotFoundException::class, $exception);
+        $this->assertStringContainsString(UnboundDependency::class, $exception->getMessage());
     }
 
     public function testHandleConvertsReflectionExceptionToRuntimeException(): void
