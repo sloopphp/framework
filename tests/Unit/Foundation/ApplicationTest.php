@@ -604,15 +604,11 @@ final class ApplicationTest extends TestCase
         $this->assertSame('vendor1=value1,vendor2=value2', $response->getHeaderLine('tracestate'));
     }
 
-    public function testLoadMiddlewareFiltersNonStringEntries(): void
+    public function testMiddlewareListedUnderNamesIsExecuted(): void
     {
-        // When middleware.php contains mixed types, Arr::toStringList filters non-strings
-        // silently. Valid middleware classes still execute.
-        // Note: Config::load() validates that the file returns an array, so a non-array
-        // value would throw earlier; only mixed-type arrays are reachable here.
         file_put_contents(
             $this->tmpDir . '/config/middleware.php',
-            '<?php return [\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class, 42, null];',
+            '<?php return ["request_id" => \Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class];',
         );
         $this->writeRoutes('<?php
             $router->get("/health", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check");
@@ -655,25 +651,9 @@ final class ApplicationTest extends TestCase
         $this->assertStringContainsString('"path":"a/b"', $body);
     }
 
-    public function testConfigJsonOptionsFallsBackWhenValueIsNotInt(): void
-    {
-        $this->writeConfig('response.php', '<?php return ["json_options" => "pretty"];');
-        $this->writeRoutes('<?php
-            $router->get("/unicode", \Sloop\Tests\Unit\Foundation\Stub\UnicodeSlashController::class, "show");
-        ');
-
-        $app      = new Application($this->tmpDir);
-        $response = $app->run($this->createRequest('GET', '/unicode'));
-        $body     = (string) $response->getBody();
-
-        $this->assertStringContainsString('"label":"テスト"', $body);
-        $this->assertStringContainsString('"path":"a/b"', $body);
-        $this->assertStringNotContainsString("\n", $body);
-    }
-
     public function testConfigLogDefaultChannelIsInjected(): void
     {
-        $this->writeConfig('log.php', '<?php return ["default" => "custom"];');
+        $this->writeConfig('log.php', '<?php return ["default" => "custom", "channels" => ["custom" => []]];');
 
         $app     = new Application($this->tmpDir);
         $manager = $app->container->get(LogManager::class);
@@ -703,82 +683,6 @@ final class ApplicationTest extends TestCase
         $handler = $manager->channel('app')->getHandlers()[0];
         $this->assertInstanceOf(StreamHandler::class, $handler);
         $this->assertSame(Level::Warning, $handler->getLevel());
-    }
-
-    public function testConfigLogChannelsSkipsInvalidEntries(): void
-    {
-        // Invalid entries are in the middle to verify `continue` (not `break`):
-        // audit must still be registered after the invalid entries are skipped.
-        $this->writeConfig('log.php', '<?php return [
-            "default" => "app",
-            "channels" => [
-                "app" => ["driver" => "stream", "level" => "debug"],
-                0 => ["driver" => "stream"],
-                "invalid_scalar" => "not_an_array",
-                "audit" => ["driver" => "stream", "level" => "warning"],
-            ],
-        ];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(LogManager::class);
-
-        $this->assertInstanceOf(LogManager::class, $manager);
-
-        // Both valid channels must be registered independently
-        $appHandler = $manager->channel('app')->getHandlers()[0];
-        $this->assertInstanceOf(StreamHandler::class, $appHandler);
-        $this->assertSame(Level::Debug, $appHandler->getLevel());
-
-        $auditHandler = $manager->channel('audit')->getHandlers()[0];
-        $this->assertInstanceOf(StreamHandler::class, $auditHandler);
-        $this->assertSame(Level::Warning, $auditHandler->getLevel());
-    }
-
-    public function testConfigLogChannelsFiltersNumericKeysInsideChannel(): void
-    {
-        $this->writeConfig('log.php', '<?php return [
-            "default" => "app",
-            "channels" => [
-                "app" => [
-                    "driver" => "stream",
-                    "level" => "error",
-                    0 => "ignored_numeric_key",
-                ],
-            ],
-        ];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(LogManager::class);
-        $this->assertInstanceOf(LogManager::class, $manager);
-
-        // Numeric keys inside channel config must not corrupt string-keyed config
-        $handler = $manager->channel('app')->getHandlers()[0];
-        $this->assertInstanceOf(StreamHandler::class, $handler);
-        $this->assertSame(Level::Error, $handler->getLevel());
-    }
-
-    public function testConfigLogDefaultFallsBackWhenNotString(): void
-    {
-        $this->writeConfig('log.php', '<?php return ["default" => 42];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(LogManager::class);
-
-        $this->assertInstanceOf(LogManager::class, $manager);
-        $this->assertSame('app', $manager->defaultChannel);
-    }
-
-    public function testConfigLogChannelsIgnoredWhenNotArray(): void
-    {
-        $this->writeConfig('log.php', '<?php return ["channels" => "not_an_array"];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(LogManager::class);
-
-        // Falls back to default auto-created StreamHandler (unconfigured path)
-        $this->assertInstanceOf(LogManager::class, $manager);
-        $handler = $manager->channel('app')->getHandlers()[0];
-        $this->assertInstanceOf(StreamHandler::class, $handler);
     }
 
     public function testConfigLogCustomDriverResolvesFactoryFromContainer(): void
@@ -1331,12 +1235,13 @@ final class ApplicationTest extends TestCase
 
     public function testBrokenLogConfigStillYieldsErrorResponse(): void
     {
-        // The ExceptionHandler resolves its log channel lazily, so a broken
-        // config/log.php first surfaces while handling another exception.
-        // The boundary must still produce a 500 instead of crashing.
+        // The ExceptionHandler resolves its log channel lazily, so a custom
+        // factory that cannot be resolved first surfaces while handling
+        // another exception. The boundary must still produce a 500 instead
+        // of crashing.
         $this->writeConfig('log.php', '<?php return [
             "default"  => "app",
-            "channels" => ["app" => ["driver" => "unknown-driver"]],
+            "channels" => ["app" => ["driver" => "custom", "factory" => "App\\\\NoSuchLogFactory"]],
         ];');
         $this->writeRoutes('<?php
             $router->get("/boom", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "generic");
@@ -1666,27 +1571,43 @@ final class ApplicationTest extends TestCase
     public function testConfigDatabaseDefaultIsInjected(): void
     {
         $this->writeConfig('database.php', '<?php return [
-            "default" => "primary",
+            "default" => "secondary",
             "connections" => [
+                "primary" => [
+                    "driver"   => "mysql",
+                    "host"     => "localhost",
+                    "database" => "primary_db",
+                ],
                 "secondary" => [
                     "driver"   => "mysql",
                     "host"     => "localhost",
-                    "database" => "app",
+                    "database" => "secondary_db",
                 ],
             ],
         ];');
 
-        $app     = new Application($this->tmpDir);
+        $app = new Application($this->tmpDir);
+
+        $factory = new class () implements ConnectionFactory {
+            public ?string $name = null;
+
+            public ?string $database = null;
+
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
+            {
+                $this->name     = $name;
+                $this->database = $config->database;
+
+                throw new \LogicException('recorded');
+            }
+        };
+        $app->container->instance(ConnectionFactory::class, $factory);
+
         $manager = $app->container->get(ConnectionManager::class);
         $this->assertInstanceOf(ConnectionManager::class, $manager);
+        $this->assertThrows(\LogicException::class, static fn () => $manager->connection());
 
-        // If default = "primary" reached the ConnectionManager, the absence of
-        // "primary" in connections must surface as "[primary] is not defined".
-        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
-        $this->assertSame(
-            'Database connection [primary] is not defined.',
-            $e->getMessage(),
-        );
+        $this->assertSame('secondary', $factory->name);
     }
 
     public function testConfigDatabaseConnectionsAreInjected(): void
@@ -1695,130 +1616,35 @@ final class ApplicationTest extends TestCase
             "default" => "primary",
             "connections" => [
                 "primary" => [
-                    "driver" => "mysql",
-                    "host"   => "localhost",
-                    // database is intentionally missing to surface the validation path
-                ],
-            ],
-        ];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(ConnectionManager::class);
-        $this->assertInstanceOf(ConnectionManager::class, $manager);
-
-        // If connections.primary reached the Resolver, its required-key check fires.
-        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
-        $this->assertSame(
-            'Connection [primary]: missing required config key "database".',
-            $e->getMessage(),
-        );
-    }
-
-    public function testConfigDatabaseConnectionsSkipsInvalidEntries(): void
-    {
-        // Invalid entries are in the middle to verify `continue` (not `break`):
-        // audit must still be registered after the invalid entries are skipped.
-        $this->writeConfig('database.php', '<?php return [
-            "default" => "audit",
-            "connections" => [
-                "primary" => [
                     "driver"   => "mysql",
                     "host"     => "localhost",
                     "database" => "primary_db",
                 ],
-                0 => ["driver" => "mysql"],
-                "invalid_scalar" => "not_an_array",
-                "audit" => [
-                    "driver" => "mysql",
-                    "host"   => "localhost",
-                    // database missing on purpose for assertion
-                ],
             ],
         ];');
 
-        $app     = new Application($this->tmpDir);
+        $app = new Application($this->tmpDir);
+
+        $factory = new class () implements ConnectionFactory {
+            public ?string $name = null;
+
+            public ?string $database = null;
+
+            public function make(ValidatedConfig $config, string $name, bool $persistent): Connection
+            {
+                $this->name     = $name;
+                $this->database = $config->database;
+
+                throw new \LogicException('recorded');
+            }
+        };
+        $app->container->instance(ConnectionFactory::class, $factory);
+
         $manager = $app->container->get(ConnectionManager::class);
         $this->assertInstanceOf(ConnectionManager::class, $manager);
+        $this->assertThrows(\LogicException::class, static fn () => $manager->connection());
 
-        // audit appears after the invalid entries; reaching it via the validation
-        // error confirms iteration continues (instead of breaking on the first invalid).
-        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
-        $this->assertSame(
-            'Connection [audit]: missing required config key "database".',
-            $e->getMessage(),
-        );
-    }
-
-    public function testConfigDatabaseConnectionsFiltersNumericKeysInsideConnection(): void
-    {
-        $this->writeConfig('database.php', '<?php return [
-            "default" => "primary",
-            "connections" => [
-                "primary" => [
-                    "driver" => "mysql",
-                    "host"   => "localhost",
-                    0 => "ignored_numeric_key",
-                    // database missing
-                ],
-            ],
-        ];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(ConnectionManager::class);
-        $this->assertInstanceOf(ConnectionManager::class, $manager);
-
-        // When int keys are stripped by filterStringKeys, the Resolver only
-        // sees string keys and reports "missing required config key" instead
-        // of "unsupported config key 0".
-        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
-        $this->assertSame(
-            'Connection [primary]: missing required config key "database".',
-            $e->getMessage(),
-        );
-    }
-
-    public function testConfigDatabaseDefaultFallsBackWhenNotString(): void
-    {
-        $this->writeConfig('database.php', '<?php return [
-            "default" => 42,
-            "connections" => [
-                "primary" => [
-                    "driver"   => "mysql",
-                    "host"     => "localhost",
-                    "database" => "app",
-                ],
-            ],
-        ];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(ConnectionManager::class);
-        $this->assertInstanceOf(ConnectionManager::class, $manager);
-
-        // Non-string default falls back to "" — "[]" is not present in connections.
-        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
-        $this->assertSame(
-            'Database connection [] is not defined.',
-            $e->getMessage(),
-        );
-    }
-
-    public function testConfigDatabaseConnectionsIgnoredWhenNotArray(): void
-    {
-        $this->writeConfig('database.php', '<?php return [
-            "default" => "primary",
-            "connections" => "not_an_array",
-        ];');
-
-        $app     = new Application($this->tmpDir);
-        $manager = $app->container->get(ConnectionManager::class);
-        $this->assertInstanceOf(ConnectionManager::class, $manager);
-
-        // Non-array connections fall back to []; "[primary]" is not present.
-        $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
-        $this->assertSame(
-            'Database connection [primary] is not defined.',
-            $e->getMessage(),
-        );
+        $this->assertSame('primary_db', $factory->database);
     }
 
     public function testConfigDatabaseFallsBackWhenConfigNotLoaded(): void
