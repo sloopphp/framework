@@ -12,6 +12,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
+use Sloop\Config\InvalidConfigException;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
@@ -1019,7 +1020,13 @@ final class Application implements RequestHandlerInterface
     /**
      * Build the middleware dispatcher with global and route middleware.
      *
+     * The class names come from config/middleware.php, so a name the container
+     * cannot resolve or a class that is not a middleware is a config error. A
+     * failure to resolve the middleware's own dependencies is left to the
+     * container, as for a custom log factory.
+     *
      * @return MiddlewareDispatcher
+     * @throws InvalidConfigException If an entry of config/middleware.php cannot be resolved or does not implement MiddlewareInterface
      */
     private function buildMiddlewareDispatcher(): MiddlewareDispatcher
     {
@@ -1030,9 +1037,13 @@ final class Application implements RequestHandlerInterface
         $dispatcher->pipe($this->securityHeaders);
 
         foreach ($this->middleware as $middlewareClass) {
+            if (!$this->container->has($middlewareClass)) {
+                throw new InvalidConfigException('Middleware in config/middleware.php cannot be resolved: ' . $middlewareClass);
+            }
+
             $middleware = $this->container->get($middlewareClass);
             if (!$middleware instanceof MiddlewareInterface) {
-                throw new \RuntimeException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
+                throw new InvalidConfigException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
             }
 
             $dispatcher->pipe($middleware);

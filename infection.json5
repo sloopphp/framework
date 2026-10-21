@@ -123,11 +123,11 @@
         },
         "IncrementInteger": {
             "ignore": [
-                // Application::createServerRequestFromGlobals::1129 reads php://input,
+                // Application::createServerRequestFromGlobals::1140 reads php://input,
                 // which a PHPUnit process cannot fill: it is always '' there, so the
                 // offset argument cannot change what is read in a test. The limit
                 // logic itself is in RawBody, which is tested with a reader closure.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1129",
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1140",
                 // CombiningRun::segmentHolds splits a segment into code points. In
                 // pairs, each pair's NFKD ends with the second one's non-starters
                 // added to the first one's when the second has no starter, so the
@@ -285,20 +285,20 @@
         "Coalesce": {
             // Str::camel reads its memo with `??`. The mutation makes the
             // method recompute and overwrite the cache with the same value.
-            // Application::run::254 passes a placeholder request to the security
+            // Application::run::255 passes a placeholder request to the security
             // headers middleware when none could be built; the middleware does
             // not read the request, so always passing the placeholder gives the
             // same response.
             "ignore": [
                 "Sloop\\Support\\Str::camel",
-                "Sloop\\Foundation\\Application::run::254"
+                "Sloop\\Foundation\\Application::run::255"
             ]
         },
         "FalseValue": {
-            // Application::createServerRequestFromGlobals::1129: see IncrementInteger
+            // Application::createServerRequestFromGlobals::1140: see IncrementInteger
             // (php://input is always '' in a PHPUnit process).
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1129"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1140"
             ]
         },
         "NullSafeMethodCall": {
@@ -453,7 +453,7 @@
                 // middleware. The fall-through builds a MiddlewareDispatcher
                 // with an empty pipeline, which delegates straight to the same
                 // final handler and returns the same response.
-                "Sloop\\Foundation\\Application::dispatchRoute::220",
+                "Sloop\\Foundation\\Application::dispatchRoute::221",
                 // TracingMiddleware::extractTraceId returns null for an empty
                 // header. The fall-through runs the traceparent regex against
                 // '', which cannot match, and returns null on the next line.

@@ -16,6 +16,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
+use Sloop\Config\InvalidConfigException;
 use Sloop\Container\Container;
 use Sloop\Container\EntryNotFoundException;
 use Sloop\Database\Config\ValidatedConfig;
@@ -1048,6 +1049,26 @@ final class ApplicationTest extends TestCase
         $this->assertTrue($handler->hasCriticalThatContains(
             'Middleware must implement MiddlewareInterface: ' . HealthController::class,
         ));
+        $this->assertInstanceOf(InvalidConfigException::class, $handler->getRecords()[0]->context['exception'] ?? null);
+    }
+
+    public function testBuildMiddlewareDispatcherThrowsAConfigErrorForAnUnresolvableMiddleware(): void
+    {
+        file_put_contents(
+            $this->tmpDir . '/config/middleware.php',
+            '<?php return ["App\\\\NoSuchMiddleware"];',
+        );
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/anything'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertTrue($handler->hasCriticalThatContains(
+            'Middleware in config/middleware.php cannot be resolved: App\\NoSuchMiddleware',
+        ));
+        $this->assertInstanceOf(InvalidConfigException::class, $handler->getRecords()[0]->context['exception'] ?? null);
     }
 
     public function testHandleConvertsReflectionExceptionToRuntimeException(): void
