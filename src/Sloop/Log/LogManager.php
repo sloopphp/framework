@@ -100,7 +100,7 @@ final class LogManager
      * @param  string|null        $name Channel name (null = default channel)
      * @return Logger
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws RuntimeException   If a custom channel has no factory resolver
+     * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies (the container's exception is passed on)
      */
     public function channel(?string $name = null): Logger
     {
