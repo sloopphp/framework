@@ -490,23 +490,24 @@ final class Application implements RequestHandlerInterface
      * Resolve a ChannelFactoryInterface implementation from the container.
      *
      * The class name is the factory entry of a log channel config, so a name
-     * that cannot be resolved or a class that is not a factory is a config
-     * error. A circular dependency inside the factory is left to the container.
+     * the container cannot resolve or a class that is not a factory is a
+     * config error. A failure to resolve the factory's own dependencies is a
+     * mistake in the bindings, not in the config, and is left to the container.
      *
      * @param  Container               $container    DI container
      * @param  string                  $factoryClass Factory class name
      * @return ChannelFactoryInterface
-     * @throws LogConfigException      If the class cannot be found or does not implement the interface
-     * @throws ContainerException      If resolving the factory hits a circular dependency
+     * @throws LogConfigException      If the class cannot be resolved or does not implement the interface
+     * @throws EntryNotFoundException  If a dependency of the factory cannot be found
+     * @throws ContainerException      If resolving the factory's dependencies fails otherwise
      */
     private function resolveChannelFactory(Container $container, string $factoryClass): ChannelFactoryInterface
     {
-        try {
-            $factory = $container->get($factoryClass);
-        } catch (EntryNotFoundException $e) {
-            throw new LogConfigException('Custom log factory cannot be resolved: ' . $factoryClass, previous: $e);
+        if (!$container->has($factoryClass)) {
+            throw new LogConfigException('Custom log factory cannot be resolved: ' . $factoryClass);
         }
 
+        $factory = $container->get($factoryClass);
         if (!$factory instanceof ChannelFactoryInterface) {
             throw new LogConfigException(
                 'Custom log factory must implement ChannelFactoryInterface: ' . $factoryClass,

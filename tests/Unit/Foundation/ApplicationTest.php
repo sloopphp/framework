@@ -43,9 +43,11 @@ use Sloop\Log\TraceContext;
 use Sloop\Routing\Router;
 use Sloop\Tests\Support\JsonBodyAssertions;
 use Sloop\Tests\Support\ThrowsAssertions;
+use Sloop\Tests\Unit\Foundation\Stub\ChannelFactoryWithUnboundDependency;
 use Sloop\Tests\Unit\Foundation\Stub\HealthController;
 use Sloop\Tests\Unit\Foundation\Stub\InvalidChannelFactory;
 use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
+use Sloop\Tests\Unit\Foundation\Stub\UnboundLogDependency;
 use Sloop\Validation\ValidationMessages;
 
 /*
@@ -846,7 +848,31 @@ final class ApplicationTest extends TestCase
         $thrown = $this->assertThrows(LogConfigException::class, static fn (): Logger => $manager->channel('bad'));
 
         $this->assertSame('Custom log factory cannot be resolved: App\\NoSuchLogFactory', $thrown->getMessage());
-        $this->assertInstanceOf(EntryNotFoundException::class, $thrown->getPrevious());
+    }
+
+    public function testConfigLogCustomDriverLeavesAnUnresolvableFactoryDependencyToTheContainer(): void
+    {
+        $this->writeConfig(
+            'log.php',
+            '<?php return [
+                "channels" => [
+                    "bad" => [
+                        "driver" => "custom",
+                        "factory" => \\' . ChannelFactoryWithUnboundDependency::class . '::class,
+                    ],
+                ],
+            ];',
+        );
+
+        $app     = new Application($this->tmpDir);
+        $manager = $app->container->get(LogManager::class);
+        $this->assertInstanceOf(LogManager::class, $manager);
+
+        // The class in the config is right; the binding it needs is missing.
+        $this->expectException(EntryNotFoundException::class);
+        $this->expectExceptionMessageIsOrContains(UnboundLogDependency::class);
+
+        $manager->channel('bad');
     }
 
     public function testContainerRegistersItself(): void
