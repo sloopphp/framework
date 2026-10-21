@@ -27,9 +27,9 @@ use UnexpectedValueException;
  * meaningful: Result stays a database bridge, Collection stays generic.
  *
  * The names read as plain English: asArray() hands back the rows it holds as
- * an array, unchanged (as Collection::asArray() does), while toMap(),
- * toObjects() and toCollection() turn them into something new. keyBy() and
- * groupBy() share their names with Collection; here they return arrays.
+ * an array, unchanged (as Collection::asArray() does), while toKeyedArray(),
+ * toGroupedArray(), toMap(), toObjects() and toCollection() turn them into
+ * something new and say what that is.
  *
  * Rows are held in memory rather than streamed, so the result can be iterated
  * more than once.
@@ -120,7 +120,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * @throws InvalidArgumentException                                                         When the column is absent
      * @throws UnexpectedValueException                                                         When the column's value cannot be an array key
      */
-    public function keyBy(string $keyColumn, bool $removeKey = false): array
+    public function toKeyedArray(string $keyColumn, bool $removeKey = false): array
     {
         $keyed = [];
 
@@ -140,7 +140,7 @@ final readonly class Result implements IteratorAggregate, Countable
     /**
      * Return a map from one column's value to another's.
      *
-     * Later rows overwrite earlier ones on duplicate keys, matching keyBy().
+     * Later rows overwrite earlier ones on duplicate keys, matching toKeyedArray().
      *
      * @param  string                                                         $keyColumn   Column whose value becomes the key
      * @param  string                                                         $valueColumn Column whose value becomes the value
@@ -176,7 +176,7 @@ final readonly class Result implements IteratorAggregate, Countable
      * @throws InvalidArgumentException                                                               When the column is absent
      * @throws UnexpectedValueException                                                               When the column's value cannot be an array key
      */
-    public function groupBy(string $column): array
+    public function toGroupedArray(string $column): array
     {
         $groups = [];
 

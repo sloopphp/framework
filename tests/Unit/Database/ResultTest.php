@@ -104,7 +104,7 @@ final class ResultTest extends TestCase
         $this->assertNull(new Result([])->first());
     }
 
-    public function testKeyByKeysRowsByTheGivenColumn(): void
+    public function testToKeyedArrayKeysRowsByTheGivenColumn(): void
     {
         $result = new Result([
             ['id' => 7, 'name' => 'alice'],
@@ -116,38 +116,38 @@ final class ResultTest extends TestCase
                 7 => ['id' => 7, 'name' => 'alice'],
                 9 => ['id' => 9, 'name' => 'bob'],
             ],
-            $result->keyBy('id'),
+            $result->toKeyedArray('id'),
         );
     }
 
-    public function testKeyByKeepsTheLastRowOnDuplicateKeys(): void
+    public function testToKeyedArrayKeepsTheLastRowOnDuplicateKeys(): void
     {
         $result = new Result([
             ['id' => 1, 'name' => 'first'],
             ['id' => 1, 'name' => 'second'],
         ]);
 
-        $this->assertSame([1 => ['id' => 1, 'name' => 'second']], $result->keyBy('id'));
+        $this->assertSame([1 => ['id' => 1, 'name' => 'second']], $result->toKeyedArray('id'));
     }
 
-    public function testKeyByDropsTheKeyColumnWhenAsked(): void
+    public function testToKeyedArrayDropsTheKeyColumnWhenAsked(): void
     {
         $result = new Result([['id' => 7, 'name' => 'alice']]);
 
-        $this->assertSame([7 => ['name' => 'alice']], $result->keyBy('id', removeKey: true));
+        $this->assertSame([7 => ['name' => 'alice']], $result->toKeyedArray('id', removeKey: true));
     }
 
-    public function testKeyByRejectsAColumnThatIsNotInTheResult(): void
+    public function testToKeyedArrayRejectsAColumnThatIsNotInTheResult(): void
     {
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Column "missing" is not in the result set.');
 
-        $result->keyBy('missing');
+        $result->toKeyedArray('missing');
     }
 
-    public function testKeyByRejectsANullKeyValue(): void
+    public function testToKeyedArrayRejectsANullKeyValue(): void
     {
         // PHP would turn a null key into '' and silently merge every such row
         // into one entry.
@@ -158,10 +158,10 @@ final class ResultTest extends TestCase
             'Column "id" must hold an int or string to be used as a key, got null.',
         );
 
-        $result->keyBy('id');
+        $result->toKeyedArray('id');
     }
 
-    public function testKeyByRejectsAFloatKeyValue(): void
+    public function testToKeyedArrayRejectsAFloatKeyValue(): void
     {
         // A float key is truncated to int, so 1.5 and 1.9 would collide on 1.
         $result = new Result([['id' => 1.5, 'name' => 'alice']]);
@@ -171,7 +171,7 @@ final class ResultTest extends TestCase
             'Column "id" must hold an int or string to be used as a key, got float.',
         );
 
-        $result->keyBy('id');
+        $result->toKeyedArray('id');
     }
 
     public function testToMapPairsTwoColumns(): void
@@ -214,7 +214,7 @@ final class ResultTest extends TestCase
         $result->toMap('id', 'email');
     }
 
-    public function testGroupByCollectsRowsSharingAColumnValue(): void
+    public function testToGroupedArrayCollectsRowsSharingAColumnValue(): void
     {
         $result = new Result([
             ['status' => 'active', 'id' => 1],
@@ -232,18 +232,18 @@ final class ResultTest extends TestCase
                     ['status' => 'banned', 'id' => 2],
                 ],
             ],
-            $result->groupBy('status'),
+            $result->toGroupedArray('status'),
         );
     }
 
-    public function testGroupByRejectsAColumnThatIsNotInTheResult(): void
+    public function testToGroupedArrayRejectsAColumnThatIsNotInTheResult(): void
     {
         $result = new Result([['id' => 1]]);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Column "status" is not in the result set.');
 
-        $result->groupBy('status');
+        $result->toGroupedArray('status');
     }
 
     public function testToCollectionHandsTheRowsToACollection(): void
