@@ -20,7 +20,7 @@ use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Tests\Support\ThrowsAssertions;
-use Sloop\Tests\Unit\Foundation\Stub\TestChannelFactory;
+use Sloop\Tests\Unit\Foundation\Stub\ConfigRecordingChannelFactory;
 use Sloop\Validation\ValidationMessages;
 
 final class ApplicationConfigCheckTest extends TestCase
@@ -60,6 +60,7 @@ final class ApplicationConfigCheckTest extends TestCase
         Config::reset();
         Log::reset();
         ValidationMessages::reset();
+        ConfigRecordingChannelFactory::$lastConfig = null;
 
         foreach (['response.php', 'log.php', 'database.php', 'middleware.php'] as $file) {
             if (is_file($this->tmpDir . '/config/' . $file)) {
@@ -325,15 +326,23 @@ final class ApplicationConfigCheckTest extends TestCase
     {
         $this->writeConfig('log.php', '<?php return ["channels" => ["app" => [
             "driver"  => "custom",
-            "factory" => \\' . TestChannelFactory::class . '::class,
+            "factory" => \\' . ConfigRecordingChannelFactory::class . '::class,
             "level"   => 100,
             "url"     => "https://logs.example.com",
             0         => "unnamed",
         ]]];');
+        ConfigRecordingChannelFactory::$lastConfig = null;
 
         $manager = $this->logManager(new Application($this->tmpDir));
 
         $this->assertInstanceOf(TestHandler::class, $manager->channel('app')->getHandlers()[0]);
+        // The key without a name is left out; the others reach the factory as written.
+        $this->assertSame([
+            'driver'  => 'custom',
+            'factory' => ConfigRecordingChannelFactory::class,
+            'level'   => 100,
+            'url'     => 'https://logs.example.com',
+        ], ConfigRecordingChannelFactory::$lastConfig);
     }
 
     public function testBootLeavesAnUnresolvableCustomFactoryToTheFirstUse(): void

@@ -1673,8 +1673,8 @@ final class ApplicationTest extends TestCase
         $this->assertInstanceOf(ConnectionManager::class, $manager);
 
         // database.default and database.connections are both undefined.
-        // Config::get returns null, and is_string(null) / is_array(null) both
-        // fall through to the same defaults as the explicit non-string/non-array cases.
+        // Config::get returns null, which is treated as not written: the
+        // default name stays '' and the connections empty.
         $e = $this->assertThrows(DatabaseConfigException::class, static fn () => $manager->connection());
         $this->assertSame(
             'Database connection [] is not defined.',
