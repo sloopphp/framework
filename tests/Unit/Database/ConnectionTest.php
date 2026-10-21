@@ -519,13 +519,16 @@ final class ConnectionTest extends TestCase
             25,
         );
 
-        // 2 retries × 25ms backoff: usleep guarantees at least the requested
-        // duration, so the elapsed time gives a deterministic lower bound.
-        // With a 1ms backoff (a 2ms bound) the mutant that drops the sleep
-        // was killed in one Infection run and survived the next on the same code.
+        // 2 retries × 25ms backoff sleep for 50ms. The bound is 45ms, not 50:
+        // measured with hrtime, usleep on Windows can return slightly early
+        // (49.89ms on the CI runner, 2026-10-21). The mutants this test is for
+        // remove the sleep (dropping the usleep call or the sleepBackoff call,
+        // or negating the `> 0` guard), so they finish in about 0ms and still
+        // fail. With a 1ms backoff (a 2ms bound) the mutant that drops the
+        // sleep was killed in one Infection run and survived the next.
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
         $this->assertSame(3, $counter->value);
-        $this->assertGreaterThanOrEqual(50, $elapsedMs);
+        $this->assertGreaterThanOrEqual(45, $elapsedMs);
     }
 
     public function testTransactionDoesNotRetryWhenRollbackLeavesTransactionOpen(): void
