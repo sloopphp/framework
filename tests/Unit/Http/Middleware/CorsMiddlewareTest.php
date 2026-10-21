@@ -7,14 +7,18 @@ namespace Sloop\Tests\Unit\Http\Middleware;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Uri;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Sloop\Http\Middleware\CorsMiddleware;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class CorsMiddlewareTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private function createRequest(string $method = 'GET', string $origin = ''): ServerRequestInterface
     {
         $request = new ServerRequest($method, new Uri('/api/users'));
@@ -36,19 +40,21 @@ final class CorsMiddlewareTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $config Config overrides
+     * @param list<string> $allowedOrigins
+     * @param list<string> $allowedMethods
      */
-    private function createCors(array $config = []): CorsMiddleware
-    {
-        $defaults = [
-            'allowed_origins'   => ['https://example.com'],
-            'allowed_methods'   => ['GET', 'POST', 'PUT', 'DELETE'],
-            'allowed_headers'   => ['Content-Type', 'Authorization'],
-            'max_age'           => 86400,
-            'allow_credentials' => false,
-        ];
-
-        return new CorsMiddleware(array_merge($defaults, $config));
+    private function createCors(
+        array $allowedOrigins = ['https://example.com'],
+        array $allowedMethods = ['GET', 'POST', 'PUT', 'DELETE'],
+        bool $allowCredentials = false,
+    ): CorsMiddleware {
+        return new CorsMiddleware(
+            allowedOrigins: $allowedOrigins,
+            allowedMethods: $allowedMethods,
+            allowedHeaders: ['Content-Type', 'Authorization'],
+            maxAge: 86400,
+            allowCredentials: $allowCredentials,
+        );
     }
 
     public function testAddsCorHeadersForAllowedOrigin(): void
@@ -179,7 +185,7 @@ final class CorsMiddlewareTest extends TestCase
     {
         // With a wildcard config the literal `*` is sent (never a reflected
         // origin), and the response no longer varies by Origin.
-        $cors     = $this->createCors(['allowed_origins' => ['*']]);
+        $cors     = $this->createCors(allowedOrigins: ['*']);
         $request  = $this->createRequest(origin: 'https://any.example');
         $response = $cors->process($request, $this->createHandler());
 
@@ -213,15 +219,14 @@ final class CorsMiddlewareTest extends TestCase
         // The Fetch spec forbids `Access-Control-Allow-Origin: *` with
         // credentials; reflecting the origin instead would grant any site
         // credentialed cross-origin reads, so the config is rejected outright.
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('allowed_origins must not contain "*" when allow_credentials is true');
+        $e = $this->assertThrows(\InvalidArgumentException::class, fn () => $this->createCors(allowedOrigins: ['*'], allowCredentials: true));
 
-        $this->createCors(['allowed_origins' => ['*'], 'allow_credentials' => true]);
+        $this->assertSame('The origin "*" must not be allowed together with credentials.', $e->getMessage());
     }
 
     public function testCredentialsHeaderWhenEnabled(): void
     {
-        $cors     = $this->createCors(['allow_credentials' => true]);
+        $cors     = $this->createCors(allowCredentials: true);
         $request  = $this->createRequest(origin: 'https://example.com');
         $response = $cors->process($request, $this->createHandler());
 
@@ -230,7 +235,7 @@ final class CorsMiddlewareTest extends TestCase
 
     public function testNoCredentialsHeaderWhenDisabled(): void
     {
-        $cors     = $this->createCors(['allow_credentials' => false]);
+        $cors     = $this->createCors(allowCredentials: false);
         $request  = $this->createRequest(origin: 'https://example.com');
         $response = $cors->process($request, $this->createHandler());
 
@@ -239,7 +244,7 @@ final class CorsMiddlewareTest extends TestCase
 
     public function testMultipleAllowedOrigins(): void
     {
-        $cors = $this->createCors(['allowed_origins' => ['https://a.example.com', 'https://b.example.com']]);
+        $cors = $this->createCors(allowedOrigins: ['https://a.example.com', 'https://b.example.com']);
 
         $responseA = $cors->process(
             $this->createRequest(origin: 'https://a.example.com'),
@@ -269,89 +274,6 @@ final class CorsMiddlewareTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // Malformed config fallback — defensive against invalid types
-    // ---------------------------------------------------------------
-
-    public function testNonArrayAllowedMethodsFallsBackToDefault(): void
-    {
-        $cors     = new CorsMiddleware([
-            'allowed_origins' => ['https://example.com'],
-            'allowed_methods' => 'GET', // invalid: string instead of array
-        ]);
-        $response = $cors->process(
-            $this->createRequest(origin: 'https://example.com'),
-            $this->createHandler(),
-        );
-
-        $this->assertSame('GET, POST, PUT, DELETE', $response->getHeaderLine('Access-Control-Allow-Methods'));
-    }
-
-    public function testNonArrayAllowedHeadersFallsBackToDefault(): void
-    {
-        $cors     = new CorsMiddleware([
-            'allowed_origins' => ['https://example.com'],
-            'allowed_headers' => 42, // invalid: int instead of array
-        ]);
-        $response = $cors->process(
-            $this->createRequest(origin: 'https://example.com'),
-            $this->createHandler(),
-        );
-
-        $this->assertSame('Content-Type, Authorization', $response->getHeaderLine('Access-Control-Allow-Headers'));
-    }
-
-    public function testNonIntMaxAgeFallsBackToDefault(): void
-    {
-        $cors     = $this->createCors(['max_age' => 'not-a-number']);
-        $response = $cors->process(
-            $this->createRequest(method: 'OPTIONS', origin: 'https://example.com'),
-            $this->createHandler(),
-        );
-
-        $this->assertSame('86400', $response->getHeaderLine('Access-Control-Max-Age'));
-    }
-
-    public function testTruthyNonBoolAllowCredentialsFallsBackToDefaultFalse(): void
-    {
-        // Non-bool config must not silently enable credentials: a stray "1"
-        // or "true" string falls back to the safe default (disabled).
-        $cors     = $this->createCors(['allow_credentials' => 1]);
-        $response = $cors->process(
-            $this->createRequest(origin: 'https://example.com'),
-            $this->createHandler(),
-        );
-
-        $this->assertFalse($response->hasHeader('Access-Control-Allow-Credentials'));
-    }
-
-    public function testFalsyNonBoolAllowCredentialsIsCastToFalse(): void
-    {
-        $cors     = $this->createCors(['allow_credentials' => 0]);
-        $response = $cors->process(
-            $this->createRequest(origin: 'https://example.com'),
-            $this->createHandler(),
-        );
-
-        $this->assertFalse($response->hasHeader('Access-Control-Allow-Credentials'));
-    }
-
-    public function testNonArrayAllowedOriginsFallsBackToDefault(): void
-    {
-        // Default is [] (no origins allowed). When a non-array value is passed,
-        // it falls back to [] and rejects all origins — even the one matching
-        // the passed string value.
-        $cors     = new CorsMiddleware([
-            'allowed_origins' => 'https://example.com', // invalid: string instead of array
-        ]);
-        $response = $cors->process(
-            $this->createRequest(origin: 'https://example.com'),
-            $this->createHandler(),
-        );
-
-        $this->assertFalse($response->hasHeader('Access-Control-Allow-Origin'));
-    }
-
-    // ---------------------------------------------------------------
     // Non-OPTIONS HTTP methods — actual request flow
     // ---------------------------------------------------------------
 
@@ -373,7 +295,7 @@ final class CorsMiddlewareTest extends TestCase
 
     public function testPreflightIncludesCredentialsHeaderWhenEnabled(): void
     {
-        $cors     = $this->createCors(['allow_credentials' => true]);
+        $cors     = $this->createCors(allowCredentials: true);
         $request  = $this->createRequest(method: 'OPTIONS', origin: 'https://example.com');
         $response = $cors->process($request, $this->createHandler());
 
@@ -390,7 +312,7 @@ final class CorsMiddlewareTest extends TestCase
     {
         // When `*` is in the allowed list (regardless of position), all origins
         // are accepted and the literal `*` is sent instead of the request origin.
-        $cors     = $this->createCors(['allowed_origins' => ['https://a.example.com', '*']]);
+        $cors     = $this->createCors(allowedOrigins: ['https://a.example.com', '*']);
         $request  = $this->createRequest(origin: 'https://random.example');
         $response = $cors->process($request, $this->createHandler());
 
@@ -400,11 +322,79 @@ final class CorsMiddlewareTest extends TestCase
     public function testEmptyAllowedMethodsResultsInEmptyHeader(): void
     {
         // Edge case: empty methods array → implode(', ', []) → empty string header.
-        // Could happen via explicit [] config or all-non-string filtering by Arr::stringList.
-        $cors     = $this->createCors(['allowed_methods' => []]);
+        $cors     = $this->createCors(allowedMethods: []);
         $request  = $this->createRequest(origin: 'https://example.com');
         $response = $cors->process($request, $this->createHandler());
 
         $this->assertSame('', $response->getHeaderLine('Access-Control-Allow-Methods'));
+    }
+
+    public function testMatchesAnAllowedOriginWithoutRegardToCase(): void
+    {
+        $cors     = $this->createCors(allowedOrigins: ['https://Example.COM']);
+        $request  = $this->createRequest(origin: 'https://example.com');
+        $response = $cors->process($request, $this->createHandler());
+
+        $this->assertSame('https://example.com', $response->getHeaderLine('Access-Control-Allow-Origin'));
+    }
+
+    public function testMatchesARequestOriginWrittenInUpperCase(): void
+    {
+        $cors     = $this->createCors();
+        $request  = $this->createRequest(origin: 'HTTPS://EXAMPLE.COM');
+        $response = $cors->process($request, $this->createHandler());
+
+        $this->assertSame('HTTPS://EXAMPLE.COM', $response->getHeaderLine('Access-Control-Allow-Origin'));
+    }
+
+    public function testAcceptsAnOriginWithAnotherSchemeAndPort(): void
+    {
+        $cors     = $this->createCors(allowedOrigins: ['capacitor://localhost', 'http://localhost:5173']);
+        $response = $cors->process($this->createRequest(origin: 'http://localhost:5173'), $this->createHandler());
+
+        $this->assertSame('http://localhost:5173', $response->getHeaderLine('Access-Control-Allow-Origin'));
+    }
+
+    public function testAcceptsAZeroMaxAge(): void
+    {
+        $cors     = new CorsMiddleware(allowedOrigins: ['https://example.com'], maxAge: 0);
+        $response = $cors->process($this->createRequest(method: 'OPTIONS', origin: 'https://example.com'), $this->createHandler());
+
+        $this->assertSame('0', $response->getHeaderLine('Access-Control-Max-Age'));
+    }
+
+    /**
+     * @return array<string, array{\Closure(): CorsMiddleware, string}>
+     */
+    public static function rejectedArgumentProvider(): array
+    {
+        return [
+            'origin with a path'         => [static fn (): CorsMiddleware => new CorsMiddleware(allowedOrigins: ['https://example.com/']), 'The origin "https://example.com/" must be written as scheme://host or scheme://host:port and no path.'],
+            'origin with a default port' => [static fn (): CorsMiddleware => new CorsMiddleware(allowedOrigins: ['https://example.com:443']), 'The origin "https://example.com:443" must leave out the default port 443.'],
+            'null origin'                => [static fn (): CorsMiddleware => new CorsMiddleware(allowedOrigins: ['null']), 'The origin "null" must be written as scheme://host or scheme://host:port and no path.'],
+            'negative max age'           => [static fn (): CorsMiddleware => new CorsMiddleware(maxAge: -1), 'The max age must be 0 or more seconds; -1 was given.'],
+            'method with a space'        => [static fn (): CorsMiddleware => new CorsMiddleware(allowedMethods: ['GET POST']), 'The method "GET POST" must be an HTTP token (letters, digits and !#$%&\'*+-.^_`|~).'],
+            'header with a line break'   => [static fn (): CorsMiddleware => new CorsMiddleware(allowedHeaders: ["X-A\r\nX-B: 1"]), "The header \"X-A\r\nX-B: 1\" must be an HTTP token (letters, digits and !#\$%&'*+-.^_`|~)."],
+            'empty header'               => [static fn (): CorsMiddleware => new CorsMiddleware(allowedHeaders: ['']), 'The header "" must be an HTTP token (letters, digits and !#$%&\'*+-.^_`|~).'],
+        ];
+    }
+
+    /**
+     * @param \Closure(): CorsMiddleware $create
+     */
+    #[DataProvider('rejectedArgumentProvider')]
+    public function testRejectsAnArgumentThatWouldNeverTakeEffect(\Closure $create, string $message): void
+    {
+        $e = $this->assertThrows(\InvalidArgumentException::class, $create);
+
+        $this->assertSame($message, $e->getMessage());
+    }
+
+    public function testRejectsAListValueThatIsNotAString(): void
+    {
+        // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+        $e = $this->assertThrows(\InvalidArgumentException::class, static fn (): CorsMiddleware => new CorsMiddleware(allowedHeaders: ['X-A', 1]));
+
+        $this->assertSame('allowedHeaders must hold only strings; int was given.', $e->getMessage());
     }
 }
