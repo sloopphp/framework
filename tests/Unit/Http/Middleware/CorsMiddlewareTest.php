@@ -355,6 +355,15 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertSame('http://localhost:5173', $response->getHeaderLine('Access-Control-Allow-Origin'));
     }
 
+    public function testSendsAWildcardMethodAndHeaderWithoutCredentials(): void
+    {
+        $cors     = new CorsMiddleware(allowedOrigins: ['https://example.com'], allowedMethods: ['*'], allowedHeaders: ['*']);
+        $response = $cors->process($this->createRequest(method: 'OPTIONS', origin: 'https://example.com'), $this->createHandler());
+
+        $this->assertSame('*', $response->getHeaderLine('Access-Control-Allow-Methods'));
+        $this->assertSame('*', $response->getHeaderLine('Access-Control-Allow-Headers'));
+    }
+
     public function testAcceptsAZeroMaxAge(): void
     {
         $cors     = new CorsMiddleware(allowedOrigins: ['https://example.com'], maxAge: 0);
@@ -375,6 +384,8 @@ final class CorsMiddlewareTest extends TestCase
             'negative max age'           => [static fn (): CorsMiddleware => new CorsMiddleware(maxAge: -1), 'The max age must be 0 or more seconds; -1 was given.'],
             'method with a space'        => [static fn (): CorsMiddleware => new CorsMiddleware(allowedMethods: ['GET POST']), 'The method "GET POST" must be an HTTP token (letters, digits and !#$%&\'*+-.^_`|~).'],
             'header with a line break'   => [static fn (): CorsMiddleware => new CorsMiddleware(allowedHeaders: ["X-A\r\nX-B: 1"]), "The header \"X-A\r\nX-B: 1\" must be an HTTP token (letters, digits and !#\$%&'*+-.^_`|~)."],
+            'wildcard method with credentials' => [static fn (): CorsMiddleware => new CorsMiddleware(allowedMethods: ['GET', '*'], allowCredentials: true), 'The method "*" must not be allowed together with credentials; list the methods instead.'],
+            'wildcard header with credentials' => [static fn (): CorsMiddleware => new CorsMiddleware(allowedHeaders: ['*'], allowCredentials: true), 'The header "*" must not be allowed together with credentials; list the headers instead.'],
             'empty header'               => [static fn (): CorsMiddleware => new CorsMiddleware(allowedHeaders: ['']), 'The header "" must be an HTTP token (letters, digits and !#$%&\'*+-.^_`|~).'],
         ];
     }

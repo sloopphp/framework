@@ -20,7 +20,8 @@ use Sloop\Config\InvalidConfigException;
  * is malformed (an unsupported key, a list that is not a list of strings, an
  * origin written as the CSRF origins may not be, a method or header that is
  * not an HTTP token, a max_age that is not a non-negative integer, an
- * allow_credentials that is not a boolean, or "*" together with credentials),
+ * allow_credentials that is not a boolean, or "*" as an origin, a method or a
+ * header together with credentials),
  * and a security.max_body_size that is not a positive integer.
  */
 final class SecurityConfigException extends InvalidConfigException

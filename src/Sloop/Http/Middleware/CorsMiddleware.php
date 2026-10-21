@@ -81,7 +81,7 @@ final readonly class CorsMiddleware implements MiddlewareInterface
      * @param  list<string>              $allowedHeaders   Request headers allowed in a preflight
      * @param  int                       $maxAge           Seconds a browser may cache a preflight result
      * @param  bool                      $allowCredentials Whether requests with credentials may read responses
-     * @throws \InvalidArgumentException If a list holds a value that is not a string, an origin is not written as above, a method or header is not an HTTP token, maxAge is negative, or `*` is allowed together with credentials
+     * @throws \InvalidArgumentException If a list holds a value that is not a string, an origin is not written as above, a method or header is not an HTTP token, maxAge is negative, or `*` is allowed as an origin, a method or a header together with credentials
      */
     public function __construct(
         array $allowedOrigins = [],
@@ -111,9 +111,23 @@ final readonly class CorsMiddleware implements MiddlewareInterface
             throw new \InvalidArgumentException('The origin "*" must not be allowed together with credentials.');
         }
 
+        $methods = self::tokens('method', self::strings('allowedMethods', $allowedMethods));
+        $headers = self::tokens('header', self::strings('allowedHeaders', $allowedHeaders));
+
+        // For a request with credentials the Fetch spec reads `*` in
+        // Access-Control-Allow-Methods / -Headers as a name, not a wildcard,
+        // so it would allow nothing; ask for the names instead.
+        if ($allowCredentials) {
+            foreach (['method' => $methods, 'header' => $headers] as $kind => $values) {
+                if (\in_array('*', $values, true)) {
+                    throw new \InvalidArgumentException('The ' . $kind . ' "*" must not be allowed together with credentials; list the ' . $kind . 's instead.');
+                }
+            }
+        }
+
         $this->allowedOrigins   = $origins;
-        $this->allowedMethods   = self::tokens('method', self::strings('allowedMethods', $allowedMethods));
-        $this->allowedHeaders   = self::tokens('header', self::strings('allowedHeaders', $allowedHeaders));
+        $this->allowedMethods   = $methods;
+        $this->allowedHeaders   = $headers;
         $this->maxAge           = $maxAge;
         $this->allowCredentials = $allowCredentials;
         $this->wildcardOrigin   = $wildcard;
