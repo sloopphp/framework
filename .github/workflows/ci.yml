@@ -26,6 +26,42 @@ jobs:
           ini-values: apc.enable_cli=1
           coverage: none
 
+      # setup-php reports an extension it could not install but does not fail
+      # the step, so the job would stop later at composer install. On Windows
+      # the apcu download fails now and then; try the setup once more, then
+      # fail here with the extension named if it is still missing.
+      - name: Check PHP extensions
+        id: extensions
+        shell: bash
+        run: |
+          missing=""
+          for ext in intl pdo_mysql pdo_sqlite bcmath fileinfo apcu; do
+            php -r "exit(extension_loaded('$ext') ? 0 : 1);" || missing="$missing $ext"
+          done
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+
+      - name: Setup PHP (retry)
+        if: steps.extensions.outputs.missing != ''
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: intl, pdo_mysql, pdo_sqlite, bcmath, fileinfo, apcu
+          ini-values: apc.enable_cli=1
+          coverage: none
+
+      - name: Require PHP extensions
+        if: steps.extensions.outputs.missing != ''
+        shell: bash
+        run: |
+          missing=""
+          for ext in intl pdo_mysql pdo_sqlite bcmath fileinfo apcu; do
+            php -r "exit(extension_loaded('$ext') ? 0 : 1);" || missing="$missing $ext"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::PHP extensions could not be installed after a retry: $missing"
+            exit 1
+          fi
+
       - name: Cache Composer dependencies
         uses: actions/cache@v6
         with:
