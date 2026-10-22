@@ -17,6 +17,8 @@ use Sloop\Database\Exception\DatabaseException;
  * primary wins over the read route. What it decides once per pool it keeps:
  * the replica is chosen on the first read and reused for the rest of the
  * request, so the selector and the dead-replica cache do not run again here.
+ *
+ * @internal Built by ConnectionManager::select().
  */
 final readonly class ReadConnectionRoute implements ConnectionRoute
 {

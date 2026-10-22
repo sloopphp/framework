@@ -12,6 +12,8 @@ namespace Sloop\Database;
  * indirection still buys something: the builder asks the same way whether it
  * came from a connection or from a pool, so neither the builder nor the reader
  * of its code has to know which one it was.
+ *
+ * @internal Built by Connection for the statements it starts.
  */
 final readonly class FixedConnectionRoute implements ConnectionRoute
 {

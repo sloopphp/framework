@@ -22,6 +22,8 @@ use Sloop\Database\Exception\DatabaseException;
  * would defeat the seam is answering a later call with an earlier lookup,
  * since the first toRawSql() or execute() would then decide where every later
  * one runs.
+ *
+ * @internal Held by the query builders, which a statement gets from Connection or ConnectionManager.
  */
 interface ConnectionRoute
 {
