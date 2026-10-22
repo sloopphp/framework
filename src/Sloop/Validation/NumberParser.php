@@ -7,7 +7,7 @@ namespace Sloop\Validation;
 /**
  * Strict parsing of numbers that arrive as JSON numbers or as strings.
  *
- * @internal Shared by IntRule, FloatRule, and EnumRule.
+ * @internal Shared by IntRule, FloatRule, EnumRule, and RouteRequestHandler.
  */
 final class NumberParser
 {

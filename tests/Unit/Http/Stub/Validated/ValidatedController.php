@@ -47,6 +47,13 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function flagged(BoolRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function clocked(ClockedRequest $request): string
     {
         self::$last = $request;
