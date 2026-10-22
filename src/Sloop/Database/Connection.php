@@ -365,6 +365,8 @@ final class Connection
      * Tests and callers that don't need query logging can leave the logger
      * unset; the connection then logs nothing.
      *
+     * @internal Called by ConnectionManager when it opens the connection.
+     *
      * @param  LoggerInterface $logger  PSR-3 logger (typically the `database` channel from LogManager)
      * @param  LoggingOptions  $options Logging behavior: bindings redaction, log-all-queries, slow threshold
      * @return void
