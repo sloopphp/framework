@@ -14,15 +14,18 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use Sloop\Database\Migration\Migration;
 use Sloop\Database\Query\Grammar;
+use Sloop\Http\Controller\Controller;
+use Sloop\Http\Request\ValidatedRequest;
 use SplFileInfo;
 
 final class InternalBoundaryTest extends TestCase
 {
     private const string SRC_DIR = __DIR__ . '/../../../src/Sloop/';
 
-    // Classes the docs tell users to subclass to change what the framework writes.
-    private const array EXTENSION_POINTS = [Grammar::class];
+    // Classes the docs tell users to subclass.
+    private const array EXTENSION_POINTS = [Controller::class, Grammar::class, Migration::class, ValidatedRequest::class];
 
     /**
      * @return list<ReflectionClass<object>>
@@ -123,12 +126,12 @@ final class InternalBoundaryTest extends TestCase
      */
     private function internalTypesOnSurface(ReflectionClass $class): array
     {
-        $filter = \in_array($class->getName(), self::EXTENSION_POINTS, true)
-            ? ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_PROTECTED
-            : ReflectionMethod::IS_PUBLIC;
+        $extended       = \in_array($class->getName(), self::EXTENSION_POINTS, true);
+        $methodFilter   = $extended ? ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_PROTECTED : ReflectionMethod::IS_PUBLIC;
+        $propertyFilter = $extended ? ReflectionProperty::IS_PUBLIC | ReflectionProperty::IS_PROTECTED : ReflectionProperty::IS_PUBLIC;
 
         $found = [];
-        foreach ($class->getMethods($filter) as $method) {
+        foreach ($class->getMethods($methodFilter) as $method) {
             if ($this->isInternal($method)) {
                 continue;
             }
@@ -140,7 +143,7 @@ final class InternalBoundaryTest extends TestCase
                 $found[] = $class->getName() . '::' . $method->getName() . '() names ' . $name;
             }
         }
-        foreach ($class->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
+        foreach ($class->getProperties($propertyFilter) as $property) {
             foreach (array_filter($this->classNamesIn($property->getType()), $this->namesInternalType(...)) as $name) {
                 $found[] = $class->getName() . '::$' . $property->getName() . ' names ' . $name;
             }
@@ -170,7 +173,8 @@ final class InternalBoundaryTest extends TestCase
     {
         // A user who calls a method, reads a property or overrides a method of
         // a class that is not internal has to name the types written there.
-        // Protected methods count on the classes the docs tell users to extend.
+        // Protected methods and properties count on the classes the docs tell
+        // users to extend.
         $offenders = [];
         foreach ($this->sourceClasses() as $class) {
             if (!$class->isTrait() && !$this->isInternal($class)) {

@@ -703,8 +703,8 @@ abstract class BuilderWhere extends Builder
      * Sort by a column, or by an expression producing the sort key.
      *
      * The direction is taken as the SQL keyword rather than as the Direction
-     * enum: the enum names the values a Grammar writes and is internal to that
-     * seam, so it is not part of what a caller has to reach for.
+     * enum: the enum is how a Grammar reads the direction, not what a caller
+     * of this method has to reach for.
      *
      * An Expression is sorted by as it stands and takes no direction, which is
      * the rule Order states and orderByRaw() follows: text that already says
