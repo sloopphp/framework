@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Foundation;
 
 use InvalidArgumentException;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Foundation\Path;
@@ -74,7 +75,7 @@ final class PathTest extends TestCase
 
     public function testBaseThrowsExceptionWhenNotInitialized(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Path has not been initialized');
 
         Path::base();

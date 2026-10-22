@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Log;
 
+use LogicException;
 use Monolog\Handler\TestHandler;
 use Monolog\Level;
 use Monolog\Logger;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 
@@ -55,7 +55,7 @@ final class LogTest extends TestCase
 
         $log = Log::channel('app');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Logger has not been initialized');
         $log->info('test');
     }

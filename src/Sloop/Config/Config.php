@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Config;
 
+use LogicException;
 use RuntimeException;
 use Sloop\Support\Arr;
 
@@ -51,7 +52,8 @@ final class Config
      * @param  string|null            $environment Environment name (e.g. 'production', 'testing')
      * @return void
      * @throws InvalidConfigException If the config directory does not exist, a config file does not return an array, the environment name contains characters outside [A-Za-z0-9_-], or an environment override differs in shape from the base
-     * @throws RuntimeException       If already loaded, or the config directory cannot be scanned
+     * @throws LogicException         If already loaded
+     * @throws RuntimeException       If the config directory cannot be scanned
      */
     public static function load(string $configPath, ?string $environment = null): void
     {
@@ -68,7 +70,7 @@ final class Config
         }
 
         if ($instance->frozen) {
-            throw new RuntimeException('Configuration has already been loaded.');
+            throw new LogicException('Configuration has already been loaded.');
         }
 
         if (!is_dir($configPath)) {

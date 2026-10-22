@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Config;
 
+use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -87,7 +88,7 @@ final class ConfigTest extends TestCase
     {
         Config::load($this->fixturesPath);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Configuration has already been loaded');
 
         Config::load($this->fixturesPath);

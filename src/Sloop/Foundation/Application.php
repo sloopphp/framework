@@ -154,9 +154,9 @@ final class Application implements RequestHandlerInterface
      *
      * @param  string                    $basePath Application root directory
      * @throws InvalidConfigException    If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)
-     * @throws \RuntimeException         If the base directory does not exist, the config is already loaded, or the config directory cannot be scanned
+     * @throws \RuntimeException         If the base directory does not exist, or the config directory cannot be scanned
      * @throws \InvalidArgumentException If the base path is empty, or lang/en/validation.php is not a map of known rule names to valid messages
-     * @throws \LogicException           If the validation messages were already loaded
+     * @throws \LogicException           If the config or the validation messages were already loaded
      */
     public function __construct(string $basePath)
     {
@@ -562,7 +562,8 @@ final class Application implements RequestHandlerInterface
      *
      * @return void
      * @throws InvalidConfigException If a config file does not return an array, APP_ENV is not a valid environment name, or an environment override differs in shape from the base
-     * @throws \RuntimeException      If the config is already loaded, or the config directory cannot be scanned
+     * @throws \LogicException        If the config is already loaded
+     * @throws \RuntimeException      If the config directory cannot be scanned
      */
     private function loadConfig(): void
     {

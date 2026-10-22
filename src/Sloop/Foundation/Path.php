@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Foundation;
 
 use InvalidArgumentException;
+use LogicException;
 use RuntimeException;
 
 /**
@@ -50,8 +51,9 @@ final class Path
     /**
      * Get the application base path.
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function base(string $path = ''): string
     {
@@ -61,8 +63,9 @@ final class Path
     /**
      * Get the source directory path (src/).
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function src(string $path = ''): string
     {
@@ -72,8 +75,9 @@ final class Path
     /**
      * Get the configuration directory path (config/).
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function config(string $path = ''): string
     {
@@ -83,8 +87,9 @@ final class Path
     /**
      * Get the storage directory path (storage/).
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function storage(string $path = ''): string
     {
@@ -94,8 +99,9 @@ final class Path
     /**
      * Get the public directory path (public/).
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function public(string $path = ''): string
     {
@@ -105,8 +111,9 @@ final class Path
     /**
      * Get the routes directory path (routes/).
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function routes(string $path = ''): string
     {
@@ -116,8 +123,9 @@ final class Path
     /**
      * Get the tests directory path (tests/).
      *
-     * @param  string $path Optional relative path to append
+     * @param  string         $path Optional relative path to append
      * @return string
+     * @throws LogicException If Path::init() has not been called
      */
     public static function tests(string $path = ''): string
     {
@@ -147,13 +155,13 @@ final class Path
     /**
      * Get the verified base path.
      *
-     * @return string           Resolved base path
-     * @throws RuntimeException If not initialized
+     * @return string         Resolved base path
+     * @throws LogicException If Path::init() has not been called
      */
     private static function getBasePath(): string
     {
         if (self::$basePath === null) {
-            throw new RuntimeException(
+            throw new LogicException(
                 'Path has not been initialized. Call Path::init() first.'
             );
         }
