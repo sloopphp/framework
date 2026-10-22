@@ -205,7 +205,9 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
-     * @throws \RuntimeException      When the response formatter cannot be resolved while rendering an error
+     * @throws \RuntimeException      When the entry registered as the response formatter is not one while rendering an error
+     * @throws EntryNotFoundException When the response formatter cannot be resolved by the container while rendering an error
+     * @throws ContainerException     When resolving the response formatter detects a circular dependency while rendering an error
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -243,11 +245,11 @@ final class Application implements RequestHandlerInterface
      * @param  ServerRequestInterface    $request PSR-7 server request
      * @return ResponseInterface
      * @throws DomainException           With status 404 when an int, float or bool route parameter cannot be read as that type
-     * @throws \RuntimeException         When the response formatter or a route middleware does not have the expected type, the controller cannot be resolved as an object, the entry registered as the clock is not one, validating a ValidatedRequest fails the way Validator::validate() describes, or controller reflection fails
-     * @throws \LogicException           When an action parameter matches no route parameter or has an unsupported type, a ValidatedRequest subclass the action takes is declared wrongly, or the parsed body is not an array
+     * @throws \RuntimeException         When the response formatter or a route middleware does not have the expected type, the controller cannot be resolved as an object, the entry registered as the clock is not one, validating a ValidatedRequest fails the way Validator::validate() describes, or reflecting the controller action, a ValidatedRequest subclass or its rules() fails
+     * @throws \LogicException           When an action parameter or a parameter of a ValidatedRequest's rules() matches no route parameter or has an unsupported type, a ValidatedRequest subclass the action takes is declared wrongly, or the parsed body is not an array
      * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
-     * @throws \InvalidArgumentException When the Validator refuses the rules of a ValidatedRequest subclass
-     * @throws EntryNotFoundException    When the controller, a route middleware or a typed dependency cannot be resolved by the container
+     * @throws \InvalidArgumentException When the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
+     * @throws EntryNotFoundException    When the response formatter, the controller, a route middleware or a typed dependency cannot be resolved by the container
      * @throws ContainerException        When dependency resolution detects a circular dependency
      */
     private function dispatchRoute(ServerRequestInterface $request): ResponseInterface
@@ -294,7 +296,9 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
-     * @throws \RuntimeException           When the response formatter cannot be resolved while rendering an error
+     * @throws \RuntimeException           When the entry registered as the response formatter is not one while rendering an error
+     * @throws EntryNotFoundException      When the response formatter cannot be resolved by the container while rendering an error
+     * @throws ContainerException          When resolving the response formatter detects a circular dependency while rendering an error
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
     {
@@ -352,9 +356,11 @@ final class Application implements RequestHandlerInterface
      * QueryException, whose message embeds the failed SQL) are reduced to a
      * generic message so internals never reach the response body.
      *
-     * @param  \Throwable        $e Uncaught exception propagated past all middleware
+     * @param  \Throwable             $e Uncaught exception propagated past all middleware
      * @return ResponseInterface
-     * @throws \RuntimeException When the response formatter cannot be resolved from the container
+     * @throws \RuntimeException      When the entry registered as the response formatter is not one
+     * @throws EntryNotFoundException When the response formatter cannot be resolved by the container
+     * @throws ContainerException     When resolving the response formatter detects a circular dependency
      */
     private function renderException(\Throwable $e): ResponseInterface
     {
@@ -1265,6 +1271,9 @@ final class Application implements RequestHandlerInterface
      * Resolve the response formatter from the container.
      *
      * @return ResponseFormatterInterface
+     * @throws \RuntimeException          When the entry registered as ResponseFormatterInterface is not one
+     * @throws EntryNotFoundException     When the formatter cannot be resolved by the container
+     * @throws ContainerException         When dependency resolution detects a circular dependency
      */
     private function resolveFormatter(): ResponseFormatterInterface
     {

@@ -73,12 +73,12 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return ResponseInterface
      * @throws DomainException          With status 404 when an int, float or bool route parameter cannot be read as that type
      * @throws RuntimeException         If the controller cannot be resolved as an object, the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException           If an action parameter matches no route parameter or has an unsupported type, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException           If an action parameter or a parameter of a ValidatedRequest's rules() matches no route parameter or has an unsupported type, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
-     * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass
+     * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
      * @throws ContainerException       If a circular dependency is detected during resolution
-     * @throws ReflectionException      If the controller action method cannot be reflected
+     * @throws ReflectionException      If the controller action method, a ValidatedRequest subclass or its rules() cannot be reflected or invoked
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -121,12 +121,12 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws DomainException                     With status 404 when an int, float or bool route parameter cannot be read as that type
      * @throws RuntimeException                    If the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException                      If an action parameter matches no route parameter or has an unsupported type, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException                      If an action parameter or a parameter of a ValidatedRequest's rules() matches no route parameter or has an unsupported type, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException            If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
-     * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass
+     * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
      * @throws ContainerException                  If a circular dependency is detected during dependency resolution
-     * @throws ReflectionException                 If the action method cannot be reflected
+     * @throws ReflectionException                 If the action method, a ValidatedRequest subclass or its rules() cannot be reflected or invoked
      */
     private function buildActionArguments(string $className, string $method, Request $sloopRequest): array|ResponseInterface
     {
@@ -188,7 +188,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
      * @throws ReflectionException                If the subclass or its rules() cannot be reflected or invoked
-     * @throws InvalidArgumentException           If the Validator refuses the rules
+     * @throws InvalidArgumentException           If the Validator refuses the rules, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      */
     private function validatedRequest(string $class, Request $sloopRequest): ValidatedRequest|ResponseInterface
     {
