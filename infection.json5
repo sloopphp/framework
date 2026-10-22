@@ -305,15 +305,6 @@
                 "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1331"
             ]
         },
-        "NullSafeMethodCall": {
-            // RouteRequestHandler::resolveBuiltinParameter is reached only for
-            // parameters that resolveParameter has already narrowed to a
-            // ReflectionNamedType, so `getType()` cannot be null there. The
-            // `?->` is defensive; dropping it takes an unreachable branch.
-            "ignore": [
-                "Sloop\\Http\\RouteRequestHandler::resolveBuiltinParameter"
-            ]
-        },
         "RoundingFamily": {
             // TraceContext::elapsedMs rounds a live microtime() delta. round()
             // versus ceil()/floor() differ by at most one millisecond on a

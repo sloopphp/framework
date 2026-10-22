@@ -173,6 +173,20 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function untypedRulesParam(UntypedRulesParamRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function arrayRulesParam(ArrayRulesParamRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function baseInRules(BaseInRulesRequest $request): string
     {
         self::$last = $request;

@@ -247,6 +247,112 @@ final class RouteRequestHandlerTest extends TestCase
         $this->dispatch(DiController::class, 'unionTyped', ['id' => '42']);
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function builtinTypesARouteValueCannotFillProvider(): array
+    {
+        return [
+            'array'                => ['arrayTyped', 'array'],
+            'array with a default' => ['arrayWithDefault', 'array'],
+            'nullable array'       => ['nullableArray', '?array'],
+            'callable'             => ['callableTyped', 'callable'],
+        ];
+    }
+
+    #[DataProvider('builtinTypesARouteValueCannotFillProvider')]
+    public function testRefusesARouteParameterForABuiltinTypeAStringCannotFill(string $action, string $type): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Route parameter "id" cannot be passed to ' . $type . ' $id: route values are read only into int, float, bool, string, mixed or untyped parameters.',
+        );
+
+        // 'strlen' would be a callable string: the client must not choose a function.
+        $this->dispatch(DiController::class, $action, ['id' => 'strlen']);
+    }
+
+    public function testUsesTheDefaultOfAnArrayParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'arrayWithDefault', []);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testPassesNullToANullableArrayParameterTheRouteDoesNotName(): void
+    {
+        DiController::$lastId = 'unset';
+
+        $this->dispatch(DiController::class, 'nullableArray', []);
+
+        $this->assertNull(DiController::$lastId);
+    }
+
+    public function testPassesTheRouteValueToAMixedParameterAsGiven(): void
+    {
+        $this->dispatch(DiController::class, 'mixedTyped', ['id' => '007']);
+
+        $this->assertSame('007', DiController::$lastId);
+    }
+
+    public function testPassesTheRouteValueToAnUntypedParameterBesideTypedOnes(): void
+    {
+        $this->dispatch(DiController::class, 'untypedWithTyped', ['id' => '007']);
+
+        $this->assertSame('007', DiController::$lastId);
+    }
+
+    public function testUsesTheDefaultOfAnUntypedParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'untypedWithDefault', []);
+
+        $this->assertSame('none', DiController::$lastId);
+    }
+
+    public function testThrowsForAnUntypedParameterTheRouteDoesNotNameWithoutADefault(): void
+    {
+        // An untyped parameter is required in PHP, so it is not filled with null.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
+
+        $this->dispatch(DiController::class, 'untypedWithTyped', []);
+    }
+
+    public function testUsesTheDefaultOfAUnionParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'unionWithDefault', []);
+
+        $this->assertSame(1, DiController::$lastId);
+    }
+
+    public function testPassesNullToANullableUnionParameterTheRouteDoesNotName(): void
+    {
+        DiController::$lastId = 'unset';
+
+        $this->dispatch(DiController::class, 'nullableUnion', []);
+
+        $this->assertNull(DiController::$lastId);
+    }
+
+    public function testThrowsForAUnionParameterTheRouteDoesNotNameWithoutADefault(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Unsupported parameter type for id: only named types are supported in method DI.');
+
+        $this->dispatch(DiController::class, 'unionTyped', []);
+    }
+
+    public function testResolvesAClassParameterFromTheContainerEvenWhenTheRouteNamesIt(): void
+    {
+        $container = new Container();
+        $container->instance(DiService::class, new DiService('injected'));
+
+        $this->dispatch(DiController::class, 'serviceNamedLikeARouteParameter', ['id' => '7'], $container);
+
+        $this->assertInstanceOf(DiService::class, DiController::$lastService);
+        $this->assertSame('injected', DiController::$lastService->id);
+    }
+
     public function testReturnsControllerResponseUnchanged(): void
     {
         $response = $this->dispatch(ResponseDiController::class, 'returnsResponse', []);

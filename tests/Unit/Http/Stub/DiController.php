@@ -119,4 +119,94 @@ final class DiController
         self::$lastId      = $id;
         return 'nullableInt';
     }
+
+    /**
+     * @param array<mixed> $id
+     *
+     * @noinspection PhpUnused
+     */
+    public function arrayTyped(Request $request, array $id): string
+    {
+        self::$lastId = $id;
+        return 'arrayTyped';
+    }
+
+    /**
+     * @param array<mixed> $id
+     *
+     * @noinspection PhpUnused
+     */
+    public function arrayWithDefault(Request $request, array $id = []): string
+    {
+        self::$lastId = $id;
+        return 'arrayWithDefault';
+    }
+
+    /**
+     * @param array<mixed>|null $id
+     *
+     * @noinspection PhpUnused
+     */
+    public function nullableArray(Request $request, ?array $id): string
+    {
+        self::$lastId = $id;
+        return 'nullableArray';
+    }
+
+    /** @noinspection PhpUnused */
+    public function callableTyped(Request $request, callable $id): string
+    {
+        self::$lastId = $id;
+        return 'callableTyped';
+    }
+
+    /** @noinspection PhpUnused */
+    public function mixedTyped(Request $request, mixed $id): string
+    {
+        self::$lastId = $id;
+        return 'mixedTyped';
+    }
+
+    /**
+     * @param mixed $id
+     *
+     * @noinspection PhpMissingParamTypeInspection, PhpUnused
+     */
+    public function untypedWithTyped(Request $request, $id): string
+    {
+        self::$lastId = $id;
+        return 'untypedWithTyped';
+    }
+
+    /**
+     * @param mixed $id
+     *
+     * @noinspection PhpMissingParamTypeInspection, PhpUnused
+     */
+    public function untypedWithDefault(Request $request, $id = 'none'): string
+    {
+        self::$lastId = $id;
+        return 'untypedWithDefault';
+    }
+
+    /** @noinspection PhpUnused */
+    public function unionWithDefault(Request $request, int|string $id = 1): string
+    {
+        self::$lastId = $id;
+        return 'unionWithDefault';
+    }
+
+    /** @noinspection PhpUnused */
+    public function nullableUnion(Request $request, int|string|null $id): string
+    {
+        self::$lastId = $id;
+        return 'nullableUnion';
+    }
+
+    /** @noinspection PhpUnused */
+    public function serviceNamedLikeARouteParameter(Request $request, DiService $id): string
+    {
+        self::$lastService = $id;
+        return 'serviceNamedLikeARouteParameter';
+    }
 }

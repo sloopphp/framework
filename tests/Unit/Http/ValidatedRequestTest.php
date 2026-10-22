@@ -56,6 +56,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\StaticRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\TrimmedRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnboundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnionPropertyRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\UntypedRulesParamRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedController;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
@@ -415,6 +416,35 @@ final class ValidatedRequestTest extends TestCase
         $this->expectExceptionMessageIsOrContains('Unsupported parameter type for id');
 
         $this->dispatch('unionRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '1']);
+    }
+
+    public function testPassesTheRouteValueToAnUntypedParameterOfRules(): void
+    {
+        $response = $this->dispatch('untypedRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '007']);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(UntypedRulesParamRequest::class, ValidatedController::$last);
+        $this->assertSame('007', ValidatedController::$last->name);
+    }
+
+    public function testThrowsForAnUntypedParameterOfRulesTheRouteDoesNotName(): void
+    {
+        // rules() has no positional fallback, so a lone untyped parameter is
+        // resolved by name like any other and is required in PHP.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
+
+        $this->dispatch('untypedRulesParam', new ServerRequest('POST', '/dispatch'));
+    }
+
+    public function testRefusesARouteParameterForAnArrayParameterOfRules(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Route parameter "id" cannot be passed to array $id: route values are read only into int, float, bool, string, mixed or untyped parameters.',
+        );
+
+        $this->dispatch('arrayRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '1']);
     }
 
     public function testRefusesAParsedBodyThatIsNotAnArray(): void
