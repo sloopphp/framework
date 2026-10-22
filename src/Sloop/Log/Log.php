@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Sloop\Log;
 
 use InvalidArgumentException;
+use LogicException;
 use Monolog\Level;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
 use Stringable;
 
 /**
@@ -71,7 +71,7 @@ final class Log implements LoggerInterface
      * Get the underlying Monolog Logger for the current channel.
      *
      * @return Logger
-     * @throws RuntimeException If the logger has not been initialized
+     * @throws LogicException If Log::init() has not been called
      */
     public static function monolog(): Logger
     {
@@ -84,6 +84,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function emergency(string|Stringable $message, array $context = []): void
     {
@@ -96,6 +97,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function alert(string|Stringable $message, array $context = []): void
     {
@@ -108,6 +110,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function critical(string|Stringable $message, array $context = []): void
     {
@@ -120,6 +123,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function error(string|Stringable $message, array $context = []): void
     {
@@ -132,6 +136,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function warning(string|Stringable $message, array $context = []): void
     {
@@ -144,6 +149,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function notice(string|Stringable $message, array $context = []): void
     {
@@ -156,6 +162,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function info(string|Stringable $message, array $context = []): void
     {
@@ -168,6 +175,7 @@ final class Log implements LoggerInterface
      * @param  string|Stringable $message Log message
      * @param  array<mixed>      $context Context data
      * @return void
+     * @throws LogicException    If Log::init() has not been called
      */
     public function debug(string|Stringable $message, array $context = []): void
     {
@@ -177,10 +185,12 @@ final class Log implements LoggerInterface
     /**
      * Log a message at the given level.
      *
-     * @param  mixed             $level   PSR-3 log level
-     * @param  string|Stringable $message Log message
-     * @param  array<mixed>      $context Context data
+     * @param  mixed                    $level   PSR-3 log level
+     * @param  string|Stringable        $message Log message
+     * @param  array<mixed>             $context Context data
      * @return void
+     * @throws InvalidArgumentException If the level is not a valid PSR-3 level
+     * @throws LogicException           If Log::init() has not been called
      */
     public function log(mixed $level, string|Stringable $message, array $context = []): void
     {
@@ -251,12 +261,12 @@ final class Log implements LoggerInterface
      * Resolve the Monolog Logger for the current channel.
      *
      * @return Logger
-     * @throws RuntimeException If the logger has not been initialized
+     * @throws LogicException If Log::init() has not been called
      */
     private function resolveLogger(): Logger
     {
         if ($this->manager === null) {
-            throw new RuntimeException('Logger has not been initialized. Call Log::init() first.');
+            throw new LogicException('Logger has not been initialized. Call Log::init() first.');
         }
 
         return $this->manager->channel($this->channelName);
