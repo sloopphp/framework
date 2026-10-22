@@ -16,7 +16,7 @@ final class IntersectionInRulesRequest extends ValidatedRequest
     /**
      * @return array<string, FieldRule<covariant mixed>>
      */
-    protected function rules((Countable&CreateUserRequest)|null $source = null): array
+    protected function rules((Countable&ValidatedRequest)|null $source = null): array
     {
         return ['name' => Rule::string()->default($source === null ? 'null' : 'given')];
     }
