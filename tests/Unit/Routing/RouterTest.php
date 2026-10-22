@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Routing;
 
+use LogicException;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Sloop\Routing\Router;
 use Sloop\Tests\Support\ThrowsAssertions;
 
@@ -179,7 +179,7 @@ final class RouterTest extends TestCase
 
     public function testFindByNameThrowsForUnknown(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Route not found: nonexistent');
 
         $this->router->findByName('nonexistent');

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Routing;
 
-use RuntimeException;
+use LogicException;
 use Sloop\Support\Arr;
 
 /**
@@ -218,9 +218,9 @@ final class Router
     /**
      * Find a route by name.
      *
-     * @param  string           $name Route name
+     * @param  string         $name Route name
      * @return Route
-     * @throws RuntimeException If the named route is not found
+     * @throws LogicException If the named route is not found
      */
     public function findByName(string $name): Route
     {
@@ -230,7 +230,7 @@ final class Router
             }
         }
 
-        throw new RuntimeException('Route not found: ' . $name);
+        throw new LogicException('Route not found: ' . $name);
     }
 
     /**
