@@ -49,6 +49,8 @@ final readonly class Join
     /**
      * Return this join with one more part on its ON clause.
      *
+     * @internal Called by the query builders as they collect the ON clause.
+     *
      * @param  WherePart $part Part to add
      * @return self      A join carrying the parts of this one and the new part
      */

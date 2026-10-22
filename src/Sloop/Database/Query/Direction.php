@@ -19,6 +19,8 @@ enum Direction: string
     /**
      * Read a direction written as a keyword, in any case.
      *
+     * @internal Called by the query builders and expressions that take the direction as a keyword.
+     *
      * @param  string                   $direction Sort direction as the caller wrote it
      * @return self                     The direction that keyword names
      * @throws InvalidArgumentException When the keyword is neither ASC nor DESC
