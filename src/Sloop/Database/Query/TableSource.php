@@ -17,13 +17,13 @@ use InvalidArgumentException;
  *
  * The alias is checked here rather than where the clause is written, so a name
  * that cannot stand as one says so at the line that named it.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class TableSource
 {
     /**
      * Name what a statement reads from.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string|SubQuery          $source Table name, optionally schema qualified, or a statement standing in for a table
      * @param  string|null              $alias  Name to refer to the rows by, or null to refer to them by the table name

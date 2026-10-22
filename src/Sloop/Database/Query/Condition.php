@@ -12,13 +12,13 @@ namespace Sloop\Database\Query;
  * grammar's to say, so a comparison is built through Grammar::comparison()
  * rather than here: an operator that reached this class unchecked would be
  * written into the SQL as given and could carry a fragment with it.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class Condition extends WherePart
 {
     /**
      * Describe one comparison.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param string|Expression                                $column      Column to compare, or an expression standing in for one
      * @param string                                           $operator    Comparison operator, in the spelling used to build SQL

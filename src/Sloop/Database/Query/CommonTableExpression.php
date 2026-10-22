@@ -22,8 +22,6 @@ use InvalidArgumentException;
  * not here: SQL writes the keyword once, after WITH, and it covers every name
  * the clause introduces. This records what the caller asked for so that a
  * Grammar can write the keyword when any one of them asked.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class CommonTableExpression
 {
@@ -36,6 +34,8 @@ final readonly class CommonTableExpression
 
     /**
      * Name a statement for the one that follows to read.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string                   $name      Name to read the rows under; a single name, not qualified
      * @param  SubQuery                 $query     Statement whose rows the name stands for

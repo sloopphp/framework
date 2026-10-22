@@ -11,13 +11,13 @@ namespace Sloop\Database\Query;
  * parentheses that group them and the fragments a caller wrote as SQL. Each of
  * those is described by its own class, and this is what they have in common —
  * every one of them joins to whatever came before it.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 abstract readonly class WherePart
 {
     /**
      * Record how this part joins to the one before it.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param Conjunction $conjunction How this joins to the preceding part
      */

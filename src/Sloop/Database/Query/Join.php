@@ -18,8 +18,6 @@ use InvalidArgumentException;
  * place of the old. That keeps a statement spec independent of the builder it
  * came from, so a builder used again after compiling cannot change a statement
  * already handed over.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class Join
 {
@@ -32,6 +30,8 @@ final readonly class Join
 
     /**
      * Describe one join.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  JoinType                 $type       Which rows to keep when the conditions find no match
      * @param  string                   $table      Table to join, optionally schema qualified

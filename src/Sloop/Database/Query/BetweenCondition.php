@@ -11,13 +11,13 @@ namespace Sloop\Database\Query;
  * refused: a NULL bound makes the test unknown for every row, so the statement
  * matches nothing whatever the data holds. The bounds are held to that by the
  * signature rather than by a check.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class BetweenCondition extends WherePart
 {
     /**
      * Describe one range test.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param string|Expression                           $column      Column to test, or an expression standing in for one
      * @param string|int|float|bool|Expression|ColumnName $min         Lower bound, included in the range

@@ -13,13 +13,13 @@ namespace Sloop\Database\Query;
  *
  * A term written wholly as SQL carries no direction: the text already says how
  * it sorts, and appending a keyword to it would change what the caller wrote.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class Order
 {
     /**
      * Describe one sort term.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param string|Expression|WindowExpression $column    Column to sort by, or an expression producing the sort key
      * @param Direction|null                     $direction Sort direction, or null to write the term as it stands

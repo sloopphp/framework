@@ -16,13 +16,13 @@ namespace Sloop\Database\Query;
  *
  * The operator is held in the spelling it is written with, already checked
  * against the set the grammar writes, for the reason Condition describes.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class JoinCondition extends WherePart
 {
     /**
      * Describe one comparison between two columns.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param string|Expression $column      Column on the left, or an expression standing in for one
      * @param string            $operator    Comparison operator, in the spelling used to build SQL

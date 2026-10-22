@@ -15,8 +15,6 @@ use InvalidArgumentException;
  *
  * The offsets are written into the SQL as numbers rather than bound, because
  * MariaDB refuses a placeholder in a frame bound.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class WindowFrame
 {
@@ -25,6 +23,8 @@ final readonly class WindowFrame
      *
      * Both servers refuse such a frame (MySQL 3586, MariaDB 4014), so it is
      * refused here, at the line that wrote it.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  FrameUnit                $unit  Whether the offsets count rows or measure along the sort term
      * @param  int|null                 $start Where the frame starts: negative back, positive forward, zero the current row, null the first row

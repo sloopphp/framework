@@ -16,8 +16,6 @@ use InvalidArgumentException;
  * The element types of the clause arrays are checked here rather than left to
  * the Grammar, so a wrong value names itself where it was added instead of
  * surfacing as a type error in the middle of compiling.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class SelectSpec
 {
@@ -72,6 +70,8 @@ final readonly class SelectSpec
 
     /**
      * Describe one SELECT statement.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string|TableSource       $from         Table to select from, optionally schema qualified, or what to read from with its alias, which may be a statement
      * @param  array<int|string, mixed> $columns      Column names, Expressions, window calls, or SelectedColumn instances; empty selects everything

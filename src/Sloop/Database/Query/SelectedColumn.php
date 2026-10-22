@@ -19,13 +19,13 @@ use InvalidArgumentException;
  *
  * The name is checked here rather than where the clause is written, so a name
  * that cannot stand as one says so at the line that named it.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class SelectedColumn
 {
     /**
      * Name one position of the select list.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string|Expression|SubQuery|WindowExpression|FunctionCall $source Column name, optionally qualified, an expression, a statement returning one value, a window call, or an aggregate
      * @param  string                                                   $alias  Name to return it under

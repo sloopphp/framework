@@ -14,13 +14,13 @@ namespace Sloop\Database\Query;
  * Only the opening parenthesis carries a conjunction, since that is where the
  * group joins to what came before it; the closing one is given AND and a grammar
  * never reads it.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class GroupBoundary extends WherePart
 {
     /**
      * Describe one end of a group.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param GroupEdge   $edge        Which end of the group this stands at
      * @param Conjunction $conjunction How the group joins to the preceding part
