@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Foundation;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Foundation\Path;
@@ -222,9 +223,9 @@ final class PathTest extends TestCase
         $this->assertSame(Path::tests(), tests_path());
     }
 
-    public function testInitThrowsExceptionForEmptyString(): void
+    public function testInitRejectsAnEmptyStringAsAnInvalidArgument(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains('Base path must not be empty');
 
         Path::init('');
