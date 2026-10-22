@@ -306,9 +306,9 @@ final class Connection
      *
      * ConnectionManager calls this with a grammar carrying the pool's table
      * prefix, which is why the builders never build a grammar themselves.
-     * The parts a Grammar reads and returns are internal to the seam between
-     * it and a query builder, so replacing it is a framework-side extension
-     * point rather than a supported way to write another dialect from outside.
+     * A Grammar subclass can change how the existing statements and clauses
+     * are written, reading the values the builders hand it. Adding a kind of
+     * statement is not something a replacement grammar can do.
      *
      * @param  Grammar $grammar Grammar to write the SQL of subsequent builders
      * @return void
@@ -364,6 +364,8 @@ final class Connection
      * gate slow-query / log-all-queries output and binding redaction.
      * Tests and callers that don't need query logging can leave the logger
      * unset; the connection then logs nothing.
+     *
+     * @internal Called by ConnectionManager when it opens the connection.
      *
      * @param  LoggerInterface $logger  PSR-3 logger (typically the `database` channel from LogManager)
      * @param  LoggingOptions  $options Logging behavior: bindings redaction, log-all-queries, slow threshold

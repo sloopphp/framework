@@ -17,8 +17,6 @@ use InvalidArgumentException;
  * Whether there is anything to insert is not checked here. A spec describes
  * the statement it was handed, and a builder that collected no row has a
  * caller to answer to rather than a malformed clause.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class InsertSpec
 {
@@ -48,6 +46,8 @@ final readonly class InsertSpec
 
     /**
      * Describe one INSERT statement.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string                   $table    Table to insert into, optionally schema qualified
      * @param  array<int|string, mixed> $columns  Column names

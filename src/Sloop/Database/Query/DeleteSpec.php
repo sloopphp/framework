@@ -13,8 +13,6 @@ use InvalidArgumentException;
  * carries no offset: MySQL takes ORDER BY and LIMIT on a DELETE to say which
  * rows go first and how many of them, but has no OFFSET there, so a builder
  * that collected one has to report it rather than pass it on.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class DeleteSpec
 {
@@ -34,6 +32,8 @@ final readonly class DeleteSpec
 
     /**
      * Describe one DELETE statement.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string                   $from       Table to delete from, optionally schema qualified
      * @param  array<int|string, mixed> $conditions WherePart instances for the WHERE clause

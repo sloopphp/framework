@@ -18,8 +18,6 @@ use InvalidArgumentException;
  * A subquery cannot carry that guard: what it matches is not known until it
  * runs, so a `NOT IN` over a subquery that returns a null behaves the way an
  * unguarded set would. The database guide says so where it describes this.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class InCondition extends WherePart
 {
@@ -32,6 +30,8 @@ final readonly class InCondition extends WherePart
 
     /**
      * Describe one membership test.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string|Expression                 $column      Column to test, or an expression standing in for one
      * @param  array<int|string, mixed>|SubQuery $values      Values making up the set, or a statement whose rows make it up; a written-out set must not be empty

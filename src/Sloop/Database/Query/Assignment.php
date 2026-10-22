@@ -12,13 +12,13 @@ namespace Sloop\Database\Query;
  * writing it out: a plain value becomes a placeholder, an Expression is written
  * as the caller spelled it, and a ColumnName is quoted as the column it names,
  * which is how a column is set from what another one holds.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class Assignment
 {
     /**
      * Pair a column with the value to write to it.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param string                                           $column Column to write to, optionally table qualified
      * @param string|int|float|bool|Expression|ColumnName|null $value  Value to write, or an expression standing for one

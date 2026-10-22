@@ -17,8 +17,6 @@ use InvalidArgumentException;
  * Whether there is anything to assign is not checked here. A spec describes
  * the statement it was handed, and a builder that collected no assignment has
  * a caller to answer to rather than a malformed clause.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class UpdateSpec
 {
@@ -52,6 +50,8 @@ final readonly class UpdateSpec
 
     /**
      * Describe one UPDATE statement.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  string                   $table       Table to update, optionally schema qualified
      * @param  array<int|string, mixed> $joins       Join instances naming the tables joined to it

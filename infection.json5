@@ -158,7 +158,7 @@
                 // millisecond. Observing that requires timing the call. Pinned
                 // to the parameter's line because other integer literals in the
                 // same method are killable.
-                "Sloop\\Database\\Connection::transaction::1060",
+                "Sloop\\Database\\Connection::transaction::1062",
                 // Expression::placeholders builds the placeholder list with
                 // `array_fill(0, $count, '?')` and only ever implodes the
                 // result. The start index decides the array keys, which implode
@@ -423,7 +423,7 @@
                 // cast map is false for every column, so the array that comes
                 // out is equal to the one that went in. Pinned to the line
                 // because the method's other return is killable.
-                "Sloop\\Database\\Connection::castRow::683",
+                "Sloop\\Database\\Connection::castRow::685",
                 // Connection::castForColumn returns early when the driver
                 // reports no native type for the column. Falling through
                 // compares that missing type against DATE, DATETIME,
@@ -433,7 +433,7 @@
                 // suite uses, across all three presets: 30 of 30 agree.
                 // Pinned to the line because the method's other return is
                 // killable.
-                "Sloop\\Database\\Connection::castForColumn::657",
+                "Sloop\\Database\\Connection::castForColumn::659",
                 // Route::compilePattern returns early for patterns without a
                 // placeholder. Falling through compiles a regex that match()
                 // never consults, because it short-circuits on an empty

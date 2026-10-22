@@ -15,13 +15,13 @@ namespace Sloop\Database\Query;
  * The inner statement usually names a column of the row being tested, which
  * makes the server answer it once per row rather than once for the whole
  * statement.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class ExistsCondition extends WherePart
 {
     /**
      * Describe one test for the presence of a row.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param SubQuery    $query       Statement whose rows the test asks about
      * @param bool        $negated     Whether the test is NOT EXISTS rather than EXISTS

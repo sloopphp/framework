@@ -18,13 +18,13 @@ use LogicException;
  *
  * Wrapping it keeps a Grammar from having to know what a builder is: the
  * grammar asks for the SQL and the bindings, and this is what answers.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class SubQuery
 {
     /**
      * Hold the statement that stands as a set of values.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param Select $query Statement whose rows make up the set
      */

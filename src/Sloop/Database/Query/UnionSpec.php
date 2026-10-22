@@ -12,8 +12,6 @@ use InvalidArgumentException;
  * The first statement is described in full, including the sort and row window
  * written inside its own parentheses. The sort and row window held here apply
  * to the combined rows.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 final readonly class UnionSpec
 {
@@ -45,6 +43,8 @@ final readonly class UnionSpec
 
     /**
      * Describe one combined statement.
+     *
+     * @internal Built by the query builders; a Grammar subclass reads it.
      *
      * @param  SelectSpec               $first        Statement whose rows come first
      * @param  array<int|string, mixed> $unions       Union instances, in the order they are written

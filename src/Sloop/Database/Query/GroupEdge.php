@@ -9,8 +9,6 @@ namespace Sloop\Database\Query;
  *
  * Backed by the character a grammar writes, so that the two ends cannot be
  * spelled inconsistently.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 enum GroupEdge: string
 {

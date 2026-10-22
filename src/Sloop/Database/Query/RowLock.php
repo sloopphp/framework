@@ -14,8 +14,6 @@ namespace Sloop\Database\Query;
  * holds, without saying how to spell it. MySQL and MariaDB disagree on the
  * spelling of the shared case, and a Grammar for another dialect would disagree
  * further, so the SQL is written in compileLock() rather than carried here.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 enum RowLock
 {

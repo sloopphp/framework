@@ -8,12 +8,24 @@ use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
+use ReflectionIntersectionType;
 use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionProperty;
+use ReflectionType;
+use ReflectionUnionType;
+use Sloop\Database\Migration\Migration;
+use Sloop\Database\Query\Grammar;
+use Sloop\Http\Controller\Controller;
+use Sloop\Http\Request\ValidatedRequest;
 use SplFileInfo;
 
 final class InternalBoundaryTest extends TestCase
 {
     private const string SRC_DIR = __DIR__ . '/../../../src/Sloop/';
+
+    // Classes the docs tell users to subclass.
+    private const array EXTENSION_POINTS = [Controller::class, Grammar::class, Migration::class, ValidatedRequest::class];
 
     /**
      * @return list<ReflectionClass<object>>
@@ -79,6 +91,67 @@ final class InternalBoundaryTest extends TestCase
         return $surface;
     }
 
+    /**
+     * @return list<string>
+     */
+    private function classNamesIn(?ReflectionType $type): array
+    {
+        if ($type instanceof ReflectionNamedType) {
+            return $type->isBuiltin() ? [] : [$type->getName()];
+        }
+        if ($type instanceof ReflectionUnionType || $type instanceof ReflectionIntersectionType) {
+            $names = [];
+            foreach ($type->getTypes() as $inner) {
+                $names = [...$names, ...$this->classNamesIn($inner)];
+            }
+
+            return $names;
+        }
+
+        return [];
+    }
+
+    private function namesInternalType(string $name): bool
+    {
+        if (!class_exists($name) && !interface_exists($name) && !enum_exists($name)) {
+            return false;
+        }
+
+        return $this->isInternal(new ReflectionClass($name));
+    }
+
+    /**
+     * @param  ReflectionClass<object> $class
+     * @return list<string>
+     */
+    private function internalTypesOnSurface(ReflectionClass $class): array
+    {
+        $extended       = \in_array($class->getName(), self::EXTENSION_POINTS, true);
+        $methodFilter   = $extended ? ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_PROTECTED : ReflectionMethod::IS_PUBLIC;
+        $propertyFilter = $extended ? ReflectionProperty::IS_PUBLIC | ReflectionProperty::IS_PROTECTED : ReflectionProperty::IS_PUBLIC;
+
+        $found = [];
+        foreach ($class->getMethods($methodFilter) as $method) {
+            if ($this->isInternal($method)) {
+                continue;
+            }
+            $names = $this->classNamesIn($method->getReturnType());
+            foreach ($method->getParameters() as $parameter) {
+                $names = [...$names, ...$this->classNamesIn($parameter->getType())];
+            }
+            foreach (array_filter($names, $this->namesInternalType(...)) as $name) {
+                $found[] = $class->getName() . '::' . $method->getName() . '() names ' . $name;
+            }
+        }
+        foreach ($class->getProperties($propertyFilter) as $property) {
+            foreach (array_filter($this->classNamesIn($property->getType()), $this->namesInternalType(...)) as $name) {
+                $found[] = $class->getName() . '::$' . $property->getName() . ' names ' . $name;
+            }
+        }
+
+        return $found;
+    }
+
     public function testPublicMethodsAreNotDeclaredOnInternalClasses(): void
     {
         // PHPStan reports a call to a method whose declaring class is internal
@@ -94,5 +167,21 @@ final class InternalBoundaryTest extends TestCase
         }
 
         self::assertSame([], $offenders);
+    }
+
+    public function testPublicSurfaceDoesNotNameInternalTypes(): void
+    {
+        // A user who calls a method, reads a property or overrides a method of
+        // a class that is not internal has to name the types written there.
+        // Protected methods and properties count on the classes the docs tell
+        // users to extend.
+        $offenders = [];
+        foreach ($this->sourceClasses() as $class) {
+            if (!$class->isTrait() && !$this->isInternal($class)) {
+                $offenders = [...$offenders, ...$this->internalTypesOnSurface($class)];
+            }
+        }
+
+        self::assertSame([], array_values(array_unique($offenders)));
     }
 }
