@@ -47,6 +47,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyWithoutRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RenamingRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RequestInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\RequestUnionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotArrayRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotFieldRuleRequest;
@@ -59,6 +60,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\UnionPropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UntypedRulesParamRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedController;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedUnionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
@@ -838,6 +840,8 @@ final class ValidatedRequestTest extends TestCase
             'optional field not nullable' => ['notNullable', NotNullableRequest::class . '::$age must accept null (?int): the field is neither required() nor given a default().'],
             'rules() takes the Request' => ['requestInRules', RequestInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],
             'rules() takes a ValidatedRequest' => ['validatedInRules', ValidatedInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
+            'rules() takes the Request in a union' => ['requestUnionInRules', RequestUnionInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],
+            'rules() takes a ValidatedRequest in a union' => ['validatedUnionInRules', ValidatedUnionInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
             'rules() takes the base class' => ['baseInRules', BaseInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
             'the base class itself' => ['base', ValidatedRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
             'private property of a parent' => ['inheritedPrivate', PrivateHelperBase::class . '::$helper must be declared public private(set): every property of a validated request receives a validated value.'],

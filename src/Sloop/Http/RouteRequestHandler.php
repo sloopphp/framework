@@ -12,8 +12,11 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use ReflectionException;
 use ReflectionMethod;
+use ReflectionIntersectionType;
 use ReflectionNamedType;
 use ReflectionParameter;
+use ReflectionType;
+use ReflectionUnionType;
 use RuntimeException;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
@@ -196,12 +199,15 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $arguments = [];
         foreach ($shape->rulesParameters() as $parameter) {
-            $type = $parameter->getType();
-            if ($type instanceof ReflectionNamedType
-                && ($type->getName() === Request::class || is_a($type->getName(), ValidatedRequest::class, true))) {
-                throw new LogicException(
-                    $class . '::rules() cannot receive ' . $type->getName() . ': a validated request reads only its validated input.',
-                );
+            // Checked before the route and the default are looked at: a
+            // union that names the Request is refused even when it allows null.
+            foreach (self::namedTypes($parameter->getType()) as $named) {
+                $name = $named->getName();
+                if ($name === Request::class || is_a($name, ValidatedRequest::class, true)) {
+                    throw new LogicException(
+                        $class . '::rules() cannot receive ' . $name . ': a validated request reads only its validated input.',
+                    );
+                }
             }
             $arguments[] = $this->resolveParameter($parameter, $sloopRequest);
         }
@@ -222,6 +228,29 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         $shape->fill($request, $result->values());
 
         return $request;
+    }
+
+    /**
+     * The named types a declared type is made of, with unions and intersections flattened.
+     *
+     * @param  ReflectionType|null       $type Declared type, or null when the parameter has none
+     * @return list<ReflectionNamedType>
+     */
+    private static function namedTypes(?ReflectionType $type): array
+    {
+        if ($type instanceof ReflectionNamedType) {
+            return [$type];
+        }
+        if (!$type instanceof ReflectionUnionType && !$type instanceof ReflectionIntersectionType) {
+            return [];
+        }
+
+        $named = [];
+        foreach ($type->getTypes() as $member) {
+            $named = [...$named, ...self::namedTypes($member)];
+        }
+
+        return $named;
     }
 
     /**

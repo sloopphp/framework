@@ -166,6 +166,20 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function requestUnionInRules(RequestUnionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function validatedUnionInRules(ValidatedUnionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function unionRulesParam(UnionRulesParamRequest $request): string
     {
         self::$last = $request;
