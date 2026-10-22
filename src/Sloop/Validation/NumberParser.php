@@ -26,8 +26,9 @@ final class NumberParser
         if (\is_int($value)) {
             return $value;
         }
-        // Leading zeros are stripped outside the pattern: `0*(\d+)` lets both
-        // parts match the same zeros and is quadratic in a run of them.
+        // Leading zeros are stripped outside the pattern: with `0*(\d+)` both
+        // parts can match the same zeros, which is quadratic when a long run
+        // of them is followed by a character that fails the match.
         if (!\is_string($value) || preg_match('/\A(-?)(\d+)\z/', $value, $matches) !== 1) {
             return null;
         }

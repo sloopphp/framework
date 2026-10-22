@@ -233,12 +233,12 @@
             ]
         },
         "CastFloat": {
-            // NumberParser::float::49 and FloatRule::bound turn an int into a
+            // NumberParser::float::52 and FloatRule::bound turn an int into a
             // float for a function declared to return float. Under
             // strict_types PHP still widens an int return value to float, so
             // the value is a float with or without the cast.
             "ignore": [
-                "Sloop\\Validation\\NumberParser::float::49",
+                "Sloop\\Validation\\NumberParser::float::52",
                 "Sloop\\Validation\\FloatRule::bound"
             ]
         },
