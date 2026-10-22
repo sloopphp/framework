@@ -109,8 +109,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * pattern `[Request, ...routeParams]`. Otherwise resolves each parameter
      * by type: Request types receive the Sloop Request, ValidatedRequest
      * subclasses receive the validated input, builtin types come from route
-     * parameters (looked up by name, cast to the declared type), and other
-     * object types are resolved from the container.
+     * parameters (looked up by name, read as the declared type the way the
+     * Rule of that type reads a field; a value it cannot read is a 404), and
+     * other object types are resolved from the container.
      *
      * @param  string                              $className    Controller class name
      * @param  string                              $method       Action method name
