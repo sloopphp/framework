@@ -23,7 +23,7 @@ use Sloop\Database\Exception\DatabaseException;
  * since the first toRawSql() or execute() would then decide where every later
  * one runs.
  *
- * @internal Held by the query builders, which a statement gets from Connection or ConnectionManager.
+ * @internal Held by the query builders that Connection and ConnectionManager return.
  */
 interface ConnectionRoute
 {

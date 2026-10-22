@@ -93,6 +93,6 @@ final class InternalBoundaryTest extends TestCase
             }
         }
 
-        self::assertSame([], array_values(array_unique($offenders)));
+        self::assertSame([], $offenders);
     }
 }
