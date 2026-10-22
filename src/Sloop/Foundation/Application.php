@@ -242,6 +242,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
+     * @throws DomainException        With status 404 when an int or float route parameter is not numeric
      * @throws \RuntimeException      When the controller cannot be resolved as an object, parameters are invalid, or controller reflection fails
      * @throws EntryNotFoundException When the controller or a typed dependency cannot be resolved by the container
      * @throws ContainerException     When dependency resolution detects a circular dependency

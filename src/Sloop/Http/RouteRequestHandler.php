@@ -18,6 +18,7 @@ use RuntimeException;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
+use Sloop\Error\DomainException;
 use Sloop\Http\Request\Request;
 use Sloop\Http\Request\ValidatedInput;
 use Sloop\Http\Request\ValidatedRequest;
@@ -68,6 +69,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface   $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
+     * @throws DomainException          With status 404 when an int or float route parameter is not numeric
      * @throws RuntimeException         If the controller cannot be resolved as an object, a route parameter is missing, a parameter type is unsupported, the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
      * @throws LogicException           If a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
@@ -112,6 +114,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  string                              $method       Action method name
      * @param  Request                             $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
+     * @throws DomainException                     With status 404 when an int or float route parameter is not numeric
      * @throws RuntimeException                    If a route parameter is missing, a parameter type is unsupported, the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
      * @throws LogicException                      If a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException            If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
@@ -175,6 +178,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
      * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, or the parsed body is not an array
      * @throws UnexpectedValueException           If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
+     * @throws DomainException                    With status 404 when an int or float route parameter rules() asks for is not numeric
      * @throws RuntimeException                   If a route parameter rules() asks for is missing or its type is unsupported, the entry registered as the clock is not one, or validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
@@ -261,6 +265,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  ReflectionParameter    $parameter    Parameter to resolve
      * @param  Request                $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return mixed                  Resolved argument value
+     * @throws DomainException        With status 404 when an int or float route parameter is not numeric
      * @throws RuntimeException       If the parameter is untyped, uses a union/intersection type, or matches no route parameter
      * @throws EntryNotFoundException If a typed object parameter cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during resolution
@@ -295,7 +300,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  ReflectionParameter $parameter Parameter to resolve
      * @param  string              $typeName  Declared builtin type name
      * @return mixed               Cast route parameter value, or the parameter's default, or null if nullable and absent
-     * @throws RuntimeException    If the route parameter is missing and no default/nullable is declared, or if the value cannot be cast to a numeric type
+     * @throws RuntimeException    If the route parameter is missing and no default/nullable is declared
+     * @throws DomainException     With status 404 when an int or float route parameter is not numeric
      */
     private function resolveBuiltinParameter(ReflectionParameter $parameter, string $typeName): mixed
     {
@@ -315,10 +321,11 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $value = $this->params[$name];
 
+        // A path segment that is not even a number names no resource, so the
+        // request is answered with 404, the status of an unmatched route. The
+        // value is the client's and stays out of the body.
         if (($typeName === 'int' || $typeName === 'float') && !is_numeric($value)) {
-            throw new RuntimeException(
-                'Route parameter "' . $name . '" must be ' . $typeName . ', got: ' . $value,
-            );
+            throw new DomainException('The route parameter "' . $name . '" is not a number.', HttpStatus::NotFound);
         }
 
         return self::castBuiltin($value, $typeName);
