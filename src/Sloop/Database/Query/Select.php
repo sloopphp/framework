@@ -1835,7 +1835,7 @@ class Select extends BuilderWhere
      *
      * With a key column, the two columns are read together and the first keys
      * the second; later rows overwrite earlier ones on a repeated key, as
-     * Result::asMap() does. The select list is replaced by the columns named
+     * Result::toMap() does. The select list is replaced by the columns named
      * here, so a builder that names other columns does not send them.
      *
      * @param  string                                                         $valueColumn Column whose values are returned

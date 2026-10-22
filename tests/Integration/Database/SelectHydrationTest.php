@@ -36,7 +36,7 @@ final class SelectHydrationTest extends TransactionalIntegrationTestCase
             ->from('users')
             ->orderBy('id')
             ->execute()
-            ->asObject(SelectedUser::class);
+            ->toObjects(SelectedUser::class);
 
         $this->assertCount(2, $users);
         $this->assertSame(1, $users[0]->id);
@@ -53,7 +53,7 @@ final class SelectHydrationTest extends TransactionalIntegrationTestCase
             ->from('users')
             ->where('id', 1)
             ->execute()
-            ->asObject(SelectedUser::class);
+            ->toObjects(SelectedUser::class);
 
         $this->assertSame('unknown', $users[0]->status);
     }
@@ -68,6 +68,6 @@ final class SelectHydrationTest extends TransactionalIntegrationTestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/Row 0 has no column "score"/');
 
-        $rows->asObject(SelectedUser::class);
+        $rows->toObjects(SelectedUser::class);
     }
 }
