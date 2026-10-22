@@ -78,7 +78,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
      * @throws ContainerException       If a circular dependency is detected during resolution
-     * @throws ReflectionException      If the controller action method, a ValidatedRequest subclass or its rules() cannot be reflected or invoked
+     * @throws ReflectionException      If the controller action method or a ValidatedRequest subclass cannot be reflected, or its rules() cannot be invoked
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -126,7 +126,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
      * @throws ContainerException                  If a circular dependency is detected during dependency resolution
-     * @throws ReflectionException                 If the action method, a ValidatedRequest subclass or its rules() cannot be reflected or invoked
+     * @throws ReflectionException                 If the action method or a ValidatedRequest subclass cannot be reflected, or its rules() cannot be invoked
      */
     private function buildActionArguments(string $className, string $method, Request $sloopRequest): array|ResponseInterface
     {
@@ -187,7 +187,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @throws RuntimeException                   If the entry registered as the clock is not one, or validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
-     * @throws ReflectionException                If the subclass or its rules() cannot be reflected or invoked
+     * @throws ReflectionException                If the subclass cannot be reflected, or its rules() cannot be invoked
      * @throws InvalidArgumentException           If the Validator refuses the rules, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      */
     private function validatedRequest(string $class, Request $sloopRequest): ValidatedRequest|ResponseInterface
