@@ -10,11 +10,13 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Sloop\Container\Container;
+use Sloop\Error\DomainException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Request\Request;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Http\Stub\CacheKeyA;
 use Sloop\Tests\Unit\Http\Stub\CacheKeyAb;
 use Sloop\Tests\Unit\Http\Stub\CacheKeySameMethodA;
@@ -25,6 +27,8 @@ use Sloop\Tests\Unit\Http\Stub\ResponseDiController;
 
 final class RouteRequestHandlerTest extends TestCase
 {
+    use ThrowsAssertions;
+
     protected function setUp(): void
     {
         DiController::reset();
@@ -191,20 +195,20 @@ final class RouteRequestHandlerTest extends TestCase
         $this->assertNull(DiController::$lastId);
     }
 
-    public function testThrowsOnNonNumericValueForIntParameter(): void
+    public function testAnswersNotFoundForANonNumericIntParameter(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageIsOrContains('Route parameter "id" must be int, got: abc');
+        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
 
-        $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']);
+        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
+        $this->assertSame('The route parameter "id" is not a valid int.', $e->getMessage());
     }
 
-    public function testThrowsOnNonNumericValueForFloatParameter(): void
+    public function testAnswersNotFoundForANonNumericFloatParameter(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageIsOrContains('Route parameter "price" must be float, got: xyz');
+        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']));
 
-        $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']);
+        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
+        $this->assertSame('The route parameter "price" is not a valid float.', $e->getMessage());
     }
 
     public function testThrowsOnUnsupportedUnionType(): void

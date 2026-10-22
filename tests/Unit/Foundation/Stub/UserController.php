@@ -14,4 +14,9 @@ final class UserController extends Controller
     {
         return $this->response(['id' => $id, 'method' => $request->method()])->json();
     }
+
+    public function findById(int $id): ResponseInterface
+    {
+        return $this->response(['id' => $id])->json();
+    }
 }

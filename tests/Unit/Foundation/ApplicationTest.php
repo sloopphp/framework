@@ -284,6 +284,21 @@ final class ApplicationTest extends TestCase
         $this->assertSame('42', $data['id']);
     }
 
+    public function testReturns404ForARouteParameterThatIsNotAnInt(): void
+    {
+        $this->writeRoutes('<?php
+            $router->get("/users/{id}", \Sloop\Tests\Unit\Foundation\Stub\UserController::class, "findById");
+        ');
+
+        $app      = new Application($this->tmpDir);
+        $response = $app->run($this->createRequest('GET', '/users/abc'));
+        $body     = $this->decodeJsonBody($response);
+        $error    = $this->narrowToStringArray($body['error']);
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('The route parameter "id" is not a valid int.', $error['message']);
+    }
+
     public function testRequestFromGlobalsCarriesUploadedFiles(): void
     {
         $tmpFile = $this->tmpDir . '/upload.bin';
