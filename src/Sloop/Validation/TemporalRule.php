@@ -26,6 +26,8 @@ use InvalidArgumentException;
  * validation is refused by that validation.
  *
  * @extends FieldRule<DateTimeImmutable, DateTimeImmutable>
+ *
+ * @phpstan-sealed DateRule|DateTimeRule
  */
 abstract class TemporalRule extends FieldRule
 {

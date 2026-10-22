@@ -184,4 +184,44 @@ final class InternalBoundaryTest extends TestCase
 
         self::assertSame([], array_values(array_unique($offenders)));
     }
+
+    public function testValidationBaseClassesAreSealedToTheirSubclasses(): void
+    {
+        // Users add rules with using(), not by subclassing a rule type.
+        // @phpstan-sealed reports a subclass the list leaves out, so it also
+        // catches a framework type added without updating the list; this test
+        // catches the other way, a name left in the list after its class stops
+        // extending the base.
+        $sources    = $this->sourceClasses();
+        $mismatches = [];
+        foreach ($sources as $class) {
+            if (!str_starts_with($class->getName(), 'Sloop\\Validation\\')
+                || $class->isFinal() || $class->isInterface() || $class->isTrait() || $class->isEnum()
+                || $this->isInternal($class)
+            ) {
+                continue;
+            }
+
+            $children = [];
+            foreach ($sources as $candidate) {
+                $parent = $candidate->getParentClass();
+                if ($parent !== false && $parent->getName() === $class->getName()) {
+                    $children[] = $candidate->getShortName();
+                }
+            }
+            sort($children);
+
+            $doc    = $class->getDocComment();
+            $sealed = $doc !== false && preg_match('/^\s*\*\s*@phpstan-sealed\s+(\S+)/m', $doc, $match) === 1
+                ? explode('|', $match[1])
+                : [];
+            sort($sealed);
+
+            if ($sealed !== $children) {
+                $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
+            }
+        }
+
+        self::assertSame([], $mismatches);
+    }
 }
