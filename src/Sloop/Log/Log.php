@@ -262,6 +262,9 @@ final class Log implements LoggerInterface
     /**
      * Reset the singleton instance.
      *
+     * The LogManager is dropped with it, so Log::init() has to be called again;
+     * until then every instance throws as if init() had never been called.
+     *
      * @return void
      */
     public static function reset(): void
