@@ -34,6 +34,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\DefaultNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\FileUploadRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InjectedRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InnerUnboundedListRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\IntersectionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MatrixRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MutablePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NestedFormRequest;
@@ -842,6 +843,7 @@ final class ValidatedRequestTest extends TestCase
             'rules() takes a ValidatedRequest' => ['validatedInRules', ValidatedInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
             'rules() takes the Request in a union' => ['requestUnionInRules', RequestUnionInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],
             'rules() takes a ValidatedRequest in a union' => ['validatedUnionInRules', ValidatedUnionInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
+            'rules() takes a ValidatedRequest as the second type of an intersection' => ['intersectionInRules', IntersectionInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
             'rules() takes the base class' => ['baseInRules', BaseInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
             'the base class itself' => ['base', ValidatedRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
             'private property of a parent' => ['inheritedPrivate', PrivateHelperBase::class . '::$helper must be declared public private(set): every property of a validated request receives a validated value.'],

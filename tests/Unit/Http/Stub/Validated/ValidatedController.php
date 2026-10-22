@@ -180,6 +180,13 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function intersectionInRules(IntersectionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function unionRulesParam(UnionRulesParamRequest $request): string
     {
         self::$last = $request;
