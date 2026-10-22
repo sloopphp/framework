@@ -55,21 +55,7 @@ final class BoolRule extends FieldRule
      */
     protected function coerce(mixed $value): bool|TypeMismatch
     {
-        if (\is_bool($value)) {
-            return $value;
-        }
-        if ($value === 1 || $value === 0) {
-            return $value === 1;
-        }
-        if (!\is_string($value)) {
-            return new TypeMismatch();
-        }
-
-        return match (strtolower($value)) {
-            '1', 'true'  => true,
-            '0', 'false' => false,
-            default      => new TypeMismatch(),
-        };
+        return BoolParser::bool($value) ?? new TypeMismatch();
     }
 
     /**

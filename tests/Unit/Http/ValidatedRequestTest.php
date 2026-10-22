@@ -360,7 +360,20 @@ final class ValidatedRequestTest extends TestCase
         ));
 
         $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "id" is not a number.', $e->getMessage());
+        $this->assertSame('The route parameter "id" is not a valid int.', $e->getMessage());
+        $this->assertNull(ValidatedController::$last);
+    }
+
+    public function testAnswersNotFoundWhenABoolRouteParameterOfRulesIsNotABool(): void
+    {
+        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(
+            'flagged',
+            new ServerRequest('PUT', '/dispatch')->withParsedBody(['name' => 'Ann']),
+            ['flag' => 'yes'],
+        ));
+
+        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
+        $this->assertSame('The route parameter "flag" is not a valid bool.', $e->getMessage());
         $this->assertNull(ValidatedController::$last);
     }
 

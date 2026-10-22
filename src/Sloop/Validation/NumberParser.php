@@ -7,7 +7,7 @@ namespace Sloop\Validation;
 /**
  * Strict parsing of numbers that arrive as JSON numbers or as strings.
  *
- * @internal Shared by IntRule, FloatRule, and EnumRule.
+ * @internal Shared by IntRule, FloatRule, EnumRule, and RouteRequestHandler.
  */
 final class NumberParser
 {
@@ -26,12 +26,15 @@ final class NumberParser
         if (\is_int($value)) {
             return $value;
         }
-        if (!\is_string($value) || preg_match('/\A(-?)0*(\d+)\z/', $value, $matches) !== 1) {
+        // Leading zeros are stripped outside the pattern: with `0*(\d+)` both
+        // parts can match the same zeros, which is quadratic when a long run
+        // of them is followed by a character that fails the match.
+        if (!\is_string($value) || preg_match('/\A(-?)(\d+)\z/', $value, $matches) !== 1) {
             return null;
         }
 
-        $digits    = $matches[2];
-        $canonical = $digits === '0' ? '0' : $matches[1] . $digits;
+        $digits    = ltrim($matches[2], '0');
+        $canonical = $digits === '' ? '0' : $matches[1] . $digits;
         $parsed    = (int) $canonical;
 
         return (string) $parsed === $canonical ? $parsed : null;

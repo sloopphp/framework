@@ -6,6 +6,7 @@ namespace Sloop\Tests\Unit\Http;
 
 use Nyholm\Psr7\Response as Psr7Response;
 use Nyholm\Psr7\ServerRequest;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
@@ -120,39 +121,64 @@ final class RouteRequestHandlerTest extends TestCase
         $this->assertSame(19.95, DiController::$lastPrice);
     }
 
-    public function testCastsBoolRouteParameterFromTruthyString(): void
+    /**
+     * @return array<string, array{string, string, int|float|bool}>
+     */
+    public static function readableValueProvider(): array
     {
-        $this->dispatch(DiController::class, 'requestAndBool', ['flag' => '1']);
-
-        $this->assertTrue(DiController::$lastFlag);
+        return [
+            'int'                   => ['requestAndInt', '42', 42],
+            'int with leading zero' => ['requestAndInt', '042', 42],
+            'negative int'          => ['requestAndInt', '-5', -5],
+            'largest int'           => ['requestAndInt', '9223372036854775807', PHP_INT_MAX],
+            'float'                 => ['requestAndFloat', '19.95', 19.95],
+            'float without a point' => ['requestAndFloat', '3', 3.0],
+            'bool 1'                => ['requestAndBool', '1', true],
+            'bool 0'                => ['requestAndBool', '0', false],
+            'bool true'             => ['requestAndBool', 'true', true],
+            'bool FALSE'            => ['requestAndBool', 'FALSE', false],
+        ];
     }
 
-    public function testCastsBoolRouteParameterFromFalsyStringZero(): void
+    #[DataProvider('readableValueProvider')]
+    public function testReadsARouteParameterTheWayTheRuleOfItsTypeDoes(string $method, string $value, int|float|bool $expected): void
     {
-        $this->dispatch(DiController::class, 'requestAndBool', ['flag' => '0']);
+        $name = ['requestAndInt' => 'id', 'requestAndFloat' => 'price', 'requestAndBool' => 'flag'][$method];
 
-        $this->assertFalse(DiController::$lastFlag);
+        $this->dispatch(DiController::class, $method, [$name => $value]);
+
+        $actual = ['requestAndInt' => DiController::$lastId, 'requestAndFloat' => DiController::$lastPrice, 'requestAndBool' => DiController::$lastFlag][$method];
+        $this->assertSame($expected, $actual);
     }
 
-    public function testCastsBoolRouteParameterFromLiteralFalse(): void
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function unreadableValueProvider(): array
     {
-        $this->dispatch(DiController::class, 'requestAndBool', ['flag' => 'false']);
-
-        $this->assertFalse(DiController::$lastFlag);
+        return [
+            'int with a fraction'  => ['requestAndInt', '1.5', 'The route parameter "id" is not a valid int.'],
+            'int as an exponent'   => ['requestAndInt', '1e3', 'The route parameter "id" is not a valid int.'],
+            'int with a plus sign' => ['requestAndInt', '+42', 'The route parameter "id" is not a valid int.'],
+            'int out of range'     => ['requestAndInt', '9223372036854775808', 'The route parameter "id" is not a valid int.'],
+            'float as an exponent' => ['requestAndFloat', '1e3', 'The route parameter "price" is not a valid float.'],
+            'float without digits' => ['requestAndFloat', '.5', 'The route parameter "price" is not a valid float.'],
+            'bool word no'         => ['requestAndBool', 'no', 'The route parameter "flag" is not a valid bool.'],
+            'bool word on'         => ['requestAndBool', 'on', 'The route parameter "flag" is not a valid bool.'],
+            'bool number 2'        => ['requestAndBool', '2', 'The route parameter "flag" is not a valid bool.'],
+            'bool empty'           => ['requestAndBool', '', 'The route parameter "flag" is not a valid bool.'],
+        ];
     }
 
-    public function testCastsBoolRouteParameterFromEmptyString(): void
+    #[DataProvider('unreadableValueProvider')]
+    public function testAnswersNotFoundForARouteParameterItsTypeCannotRead(string $method, string $value, string $message): void
     {
-        $this->dispatch(DiController::class, 'requestAndBool', ['flag' => '']);
+        $name = ['requestAndInt' => 'id', 'requestAndFloat' => 'price', 'requestAndBool' => 'flag'][$method];
 
-        $this->assertFalse(DiController::$lastFlag);
-    }
+        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, $method, [$name => $value]));
 
-    public function testCastsBoolRouteParameterFromUppercaseFalse(): void
-    {
-        $this->dispatch(DiController::class, 'requestAndBool', ['flag' => 'FALSE']);
-
-        $this->assertFalse(DiController::$lastFlag);
+        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
+        $this->assertSame($message, $e->getMessage());
     }
 
     public function testPassesStringRouteParameterUnchanged(): void
@@ -200,7 +226,7 @@ final class RouteRequestHandlerTest extends TestCase
         $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
 
         $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "id" is not a number.', $e->getMessage());
+        $this->assertSame('The route parameter "id" is not a valid int.', $e->getMessage());
     }
 
     public function testAnswersNotFoundForANonNumericFloatParameter(): void
@@ -208,7 +234,7 @@ final class RouteRequestHandlerTest extends TestCase
         $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']));
 
         $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "price" is not a number.', $e->getMessage());
+        $this->assertSame('The route parameter "price" is not a valid float.', $e->getMessage());
     }
 
     public function testThrowsOnUnsupportedUnionType(): void
