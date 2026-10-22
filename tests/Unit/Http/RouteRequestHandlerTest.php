@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Http;
 
+use LogicException;
 use Nyholm\Psr7\Response as Psr7Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use RuntimeException;
 use Sloop\Container\Container;
 use Sloop\Error\DomainException;
 use Sloop\Http\HttpStatus;
@@ -208,7 +208,7 @@ final class RouteRequestHandlerTest extends TestCase
 
     public function testThrowsWhenBuiltinRouteParameterMissingAndNoDefault(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
 
         $this->dispatch(DiController::class, 'requestAndInt', []);
@@ -239,7 +239,7 @@ final class RouteRequestHandlerTest extends TestCase
 
     public function testThrowsOnUnsupportedUnionType(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         // Naming the offending parameter is the point of the message, so assert
         // the whole sentence rather than the trailing explanation alone.
         $this->expectExceptionMessageIsOrContains('Unsupported parameter type for id: only named types are supported in method DI.');

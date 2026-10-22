@@ -35,7 +35,7 @@ namespace Sloop\Http\Request;
  * parameters of rules() are resolved the way the action's are: objects
  * from the container, builtin types from the route parameters. It cannot
  * take the Request or another ValidatedRequest, which would let it read the
- * raw input.
+ * raw input; asking for either is reported with a LogicException.
  *
  * The properties are `private(set)` rather than `readonly` because the
  * framework fills them after construction, which static analysers report for
