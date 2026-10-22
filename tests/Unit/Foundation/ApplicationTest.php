@@ -290,7 +290,8 @@ final class ApplicationTest extends TestCase
             $router->get("/users/{id}", \Sloop\Tests\Unit\Foundation\Stub\UserController::class, "findById");
         ');
 
-        $app      = new Application($this->tmpDir);
+        $app = new Application($this->tmpDir);
+        $this->captureLog($app);
         $response = $app->run($this->createRequest('GET', '/users/abc'));
         $body     = $this->decodeJsonBody($response);
         $error    = $this->narrowToStringArray($body['error']);

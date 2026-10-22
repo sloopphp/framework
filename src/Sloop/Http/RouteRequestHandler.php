@@ -320,8 +320,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $value = $this->params[$name];
 
-        // The path names no such resource, so the request is answered like an
-        // unmatched route. The value is the client's and stays out of the body.
+        // The path names no such resource, so the request is answered with 404,
+        // the status of an unmatched route. The value is the client's and stays
+        // out of the body.
         if (($typeName === 'int' || $typeName === 'float') && !is_numeric($value)) {
             throw new DomainException('The route parameter "' . $name . '" is not a valid ' . $typeName . '.', HttpStatus::NotFound);
         }
