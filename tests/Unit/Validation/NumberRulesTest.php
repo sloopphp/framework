@@ -35,6 +35,7 @@ final class NumberRulesTest extends TestCase
         yield 'negative with leading zeros' => ['-007', -7];
         yield 'int max' => [(string) PHP_INT_MAX, PHP_INT_MAX];
         yield 'int min' => [(string) PHP_INT_MIN, PHP_INT_MIN];
+        yield 'long run of zeros' => [str_repeat('0', 100000) . '7', 7];
     }
 
     #[DataProvider('acceptedInts')]
@@ -59,6 +60,7 @@ final class NumberRulesTest extends TestCase
         yield 'letters' => ['abc'];
         yield 'minus only' => ['-'];
         yield 'array' => [[1]];
+        yield 'long run of zeros then a letter' => [str_repeat('0', 100000) . 'x'];
     }
 
     #[DataProvider('rejectedInts')]

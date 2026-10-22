@@ -111,7 +111,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * subclasses receive the validated input, builtin types come from route
      * parameters (looked up by name, read as the declared type the way the
      * Rule of that type reads a field; a value it cannot read is a 404), and
-     * other object types are resolved from the container.
+     * other object types are resolved from the container. Parameters are
+     * resolved in declaration order, so a ValidatedRequest declared before a
+     * route parameter answers with its 400 or 422 before that value is read.
      *
      * @param  string                              $className    Controller class name
      * @param  string                              $method       Action method name

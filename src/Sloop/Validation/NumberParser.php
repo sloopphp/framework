@@ -26,12 +26,14 @@ final class NumberParser
         if (\is_int($value)) {
             return $value;
         }
-        if (!\is_string($value) || preg_match('/\A(-?)0*(\d+)\z/', $value, $matches) !== 1) {
+        // Leading zeros are stripped outside the pattern: `0*(\d+)` lets both
+        // parts match the same zeros and is quadratic in a run of them.
+        if (!\is_string($value) || preg_match('/\A(-?)(\d+)\z/', $value, $matches) !== 1) {
             return null;
         }
 
-        $digits    = $matches[2];
-        $canonical = $digits === '0' ? '0' : $matches[1] . $digits;
+        $digits    = ltrim($matches[2], '0');
+        $canonical = $digits === '' ? '0' : $matches[1] . $digits;
         $parsed    = (int) $canonical;
 
         return (string) $parsed === $canonical ? $parsed : null;
