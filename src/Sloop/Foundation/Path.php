@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Foundation;
 
+use InvalidArgumentException;
 use RuntimeException;
 
 /**
@@ -24,14 +25,15 @@ final class Path
     /**
      * Initialize the base path.
      *
-     * @param  string           $basePath Absolute path to the application root directory
+     * @param  string                   $basePath Absolute path to the application root directory
      * @return void
-     * @throws RuntimeException If the directory does not exist
+     * @throws InvalidArgumentException If the path is empty
+     * @throws RuntimeException         If the directory does not exist
      */
     public static function init(string $basePath): void
     {
         if ($basePath === '') {
-            throw new RuntimeException('Base path must not be empty.');
+            throw new InvalidArgumentException('Base path must not be empty.');
         }
 
         $resolved = realpath($basePath);
