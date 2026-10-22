@@ -200,7 +200,7 @@ final class RouteRequestHandlerTest extends TestCase
         $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
 
         $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "id" is not a valid int.', $e->getMessage());
+        $this->assertSame('The route parameter "id" is not a number.', $e->getMessage());
     }
 
     public function testAnswersNotFoundForANonNumericFloatParameter(): void
@@ -208,7 +208,7 @@ final class RouteRequestHandlerTest extends TestCase
         $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']));
 
         $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "price" is not a valid float.', $e->getMessage());
+        $this->assertSame('The route parameter "price" is not a number.', $e->getMessage());
     }
 
     public function testThrowsOnUnsupportedUnionType(): void

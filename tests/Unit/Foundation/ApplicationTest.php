@@ -297,7 +297,7 @@ final class ApplicationTest extends TestCase
         $error    = $this->narrowToStringArray($body['error']);
 
         $this->assertSame(404, $response->getStatusCode());
-        $this->assertSame('The route parameter "id" is not a valid int.', $error['message']);
+        $this->assertSame('The route parameter "id" is not a number.', $error['message']);
     }
 
     public function testRequestFromGlobalsCarriesUploadedFiles(): void

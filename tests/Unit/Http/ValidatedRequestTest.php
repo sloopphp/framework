@@ -16,11 +16,14 @@ use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Sloop\Clock\FrozenClock;
 use Sloop\Container\Container;
+use Sloop\Error\DomainException;
+use Sloop\Http\HttpStatus;
 use Sloop\Http\Request\ValidatedRequest;
 use Sloop\Http\Request\ValidatedRequestShape;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Http\Stub\DiService;
 use Sloop\Tests\Unit\Http\Stub\Validated\AbstractRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\BaseInRulesRequest;
@@ -59,6 +62,8 @@ use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
 {
+    use ThrowsAssertions;
+
     protected function setUp(): void
     {
         ValidatedController::reset();
@@ -340,6 +345,23 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(['svc', 7], RulesRecorder::$received);
         $this->assertInstanceOf(InjectedRulesRequest::class, ValidatedController::$last);
         $this->assertSame(7, ValidatedController::$lastId);
+    }
+
+    public function testAnswersNotFoundWhenARouteParameterOfRulesIsNotANumber(): void
+    {
+        $container = new Container();
+        $container->instance(DiService::class, new DiService('svc'));
+
+        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(
+            'update',
+            new ServerRequest('PUT', '/dispatch')->withParsedBody(['name' => 'Ann']),
+            ['id' => 'abc'],
+            $container,
+        ));
+
+        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
+        $this->assertSame('The route parameter "id" is not a number.', $e->getMessage());
+        $this->assertNull(ValidatedController::$last);
     }
 
     public function testValidatesWithTheClockRegisteredInTheContainer(): void

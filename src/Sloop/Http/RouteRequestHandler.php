@@ -178,6 +178,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
      * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, or the parsed body is not an array
      * @throws UnexpectedValueException           If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
+     * @throws DomainException                    With status 404 when an int or float route parameter rules() asks for is not numeric
      * @throws RuntimeException                   If a route parameter rules() asks for is missing or its type is unsupported, the entry registered as the clock is not one, or validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
@@ -320,11 +321,11 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $value = $this->params[$name];
 
-        // The path names no such resource, so the request is answered with 404,
-        // the status of an unmatched route. The value is the client's and stays
-        // out of the body.
+        // A path segment that is not even a number names no resource, so the
+        // request is answered with 404, the status of an unmatched route. The
+        // value is the client's and stays out of the body.
         if (($typeName === 'int' || $typeName === 'float') && !is_numeric($value)) {
-            throw new DomainException('The route parameter "' . $name . '" is not a valid ' . $typeName . '.', HttpStatus::NotFound);
+            throw new DomainException('The route parameter "' . $name . '" is not a number.', HttpStatus::NotFound);
         }
 
         return self::castBuiltin($value, $typeName);
