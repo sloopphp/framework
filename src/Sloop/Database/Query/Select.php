@@ -197,6 +197,8 @@ class Select extends BuilderWhere
      * rather than once the statement is compiled, so a function this grammar
      * does not write says so at the line that named it.
      *
+     * @internal Called by Connection and ConnectionManager, which start statements.
+     *
      * @param  ConnectionRoute                                                               $route      Route asked for a connection when the statement runs
      * @param  Grammar                                                                       $grammar    Grammar that turns the collected parts into SQL
      * @param  string|Expression|WindowExpression|FunctionCall|array<int|string, mixed>|self ...$columns Columns to select, each on its own or paired with a name; none selects every column

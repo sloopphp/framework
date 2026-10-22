@@ -506,13 +506,13 @@
                 // own", which is what a second caller would need.
                 // Pinned to the line: the GroupBoundary list above it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileReading::1170",
+                "Sloop\\Database\\Query\\Select::compileReading::1172",
                 // Select::compileOverUnion extends the same list for the same
                 // caller, reading a combined statement: chunkById() refuses a
                 // sort before it gets here, so the list is empty there too.
                 // Pinned to the line: the condition list beside it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileOverUnion::1285"
+                "Sloop\\Database\\Query\\Select::compileOverUnion::1287"
             ]
         }
     },

@@ -44,6 +44,8 @@ class Update extends BuilderWhere
     /**
      * Start an UPDATE against the given table.
      *
+     * @internal Called by Connection and ConnectionManager, which start statements.
+     *
      * @param ConnectionRoute $route   Route asked for a connection when the statement runs
      * @param Grammar         $grammar Grammar that turns the collected parts into SQL
      * @param string          $table   Table to update, optionally schema qualified

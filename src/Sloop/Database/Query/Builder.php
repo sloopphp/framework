@@ -22,6 +22,8 @@ use LogicException;
  * What is collected here is reached through protected methods, and the
  * statements that can carry a join expose them under their own names. An INSERT
  * inherits the machinery without inheriting a join() it could not write.
+ *
+ * @internal Shared by Select, Insert, Update and Delete, which are the types to name.
  */
 abstract class Builder extends Query
 {

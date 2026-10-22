@@ -10,8 +10,6 @@ namespace Sloop\Database\Query;
  * The distinction is what tells a bound value apart from a keyword: MySQL reads
  * what follows IS as one of NULL, TRUE, FALSE or UNKNOWN, so a placeholder
  * there is a syntax error rather than a comparison.
- *
- * @internal Part of the seam between a query builder and a Grammar.
  */
 enum Operand
 {

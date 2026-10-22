@@ -28,6 +28,8 @@ abstract class Query
      * primary and a replica when the statement runs. Building the statement
      * and compiling it need no connection at all.
      *
+     * @internal Called through the constructors of Select, Insert, Update and Delete.
+     *
      * @param ConnectionRoute $route   Route asked for a connection when the statement runs
      * @param Grammar         $grammar Grammar that turns the collected parts into SQL
      */

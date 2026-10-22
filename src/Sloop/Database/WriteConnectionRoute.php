@@ -16,6 +16,8 @@ use Sloop\Database\Exception\DatabaseException;
  * the connection is decided when the statement runs. A builder made before a
  * transaction opened runs inside it, and one made while a pool was still
  * unconnected does not open anything until it is executed.
+ *
+ * @internal Built by ConnectionManager::insert(), update() and delete().
  */
 final readonly class WriteConnectionRoute implements ConnectionRoute
 {
