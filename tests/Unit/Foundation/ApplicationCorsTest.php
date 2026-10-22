@@ -150,6 +150,7 @@ final class ApplicationCorsTest extends TestCase
             'credentials not a boolean' => ["['cors' => ['allow_credentials' => 'true']]", 'security.cors.allow_credentials must be true or false.'],
             'origin with a path'        => ["['cors' => ['allowed_origins' => ['https://app.example/']]]", 'security.cors: The origin "https://app.example/" must be written as scheme://host or scheme://host:port and no path.'],
             'negative max age'          => ["['cors' => ['max_age' => -1]]", 'security.cors: The max age must be 0 or more seconds; -1 was given.'],
+            'credentialed * method'     => ["['cors' => ['allowed_methods' => ['*'], 'allow_credentials' => true]]", 'security.cors: The method "*" must not be allowed together with credentials; list the methods instead.'],
             'wildcard with credentials' => ["['cors' => ['allowed_origins' => ['*'], 'allow_credentials' => true]]", 'security.cors: The origin "*" must not be allowed together with credentials.'],
         ];
     }
