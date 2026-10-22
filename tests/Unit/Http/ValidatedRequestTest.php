@@ -411,7 +411,7 @@ final class ValidatedRequestTest extends TestCase
 
     public function testResolvesAParameterOfRulesWithAUnionTypeLikeTheAction(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Unsupported parameter type for id');
 
         $this->dispatch('unionRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '1']);

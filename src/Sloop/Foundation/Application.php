@@ -240,12 +240,15 @@ final class Application implements RequestHandlerInterface
     /**
      * Resolve the route and invoke it through the route middleware chain.
      *
-     * @param  ServerRequestInterface $request PSR-7 server request
+     * @param  ServerRequestInterface    $request PSR-7 server request
      * @return ResponseInterface
-     * @throws DomainException        With status 404 when an int, float or bool route parameter cannot be read as that type
-     * @throws \RuntimeException      When the controller cannot be resolved as an object, parameters are invalid, or controller reflection fails
-     * @throws EntryNotFoundException When the controller or a typed dependency cannot be resolved by the container
-     * @throws ContainerException     When dependency resolution detects a circular dependency
+     * @throws DomainException           With status 404 when an int, float or bool route parameter cannot be read as that type
+     * @throws \RuntimeException         When the response formatter or a route middleware does not have the expected type, the controller cannot be resolved as an object, the entry registered as the clock is not one, validating a ValidatedRequest fails the way Validator::validate() describes, or controller reflection fails
+     * @throws \LogicException           When an action parameter matches no route parameter or has an unsupported type, a ValidatedRequest subclass the action takes is declared wrongly, or the parsed body is not an array
+     * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
+     * @throws \InvalidArgumentException When the Validator refuses the rules of a ValidatedRequest subclass
+     * @throws EntryNotFoundException    When the controller, a route middleware or a typed dependency cannot be resolved by the container
+     * @throws ContainerException        When dependency resolution detects a circular dependency
      */
     private function dispatchRoute(ServerRequestInterface $request): ResponseInterface
     {
