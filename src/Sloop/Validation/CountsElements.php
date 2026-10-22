@@ -15,6 +15,8 @@ use InvalidArgumentException;
  * declares, so counting it would say nothing about what came in.
  *
  * @phpstan-require-extends ArrayRule
+ *
+ * @internal Used by ListRule and AnyArrayRule, which carry these rules.
  */
 trait CountsElements
 {

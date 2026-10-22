@@ -23,6 +23,8 @@ use RuntimeException;
  * the other placeholders are the rule's parameters. A single quote directly
  * before `{` is rejected, because ICU would print the placeholder literally;
  * quote a value with `"{value}"` or `「{value}」` instead.
+ *
+ * @internal Loaded by the Application and read by Validator; an application overrides messages in its own lang/en/validation.php.
  */
 final class ValidationMessages
 {
