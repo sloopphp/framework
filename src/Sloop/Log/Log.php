@@ -89,7 +89,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function emergency(string|Stringable $message, array $context = []): void
@@ -104,7 +104,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function alert(string|Stringable $message, array $context = []): void
@@ -119,7 +119,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function critical(string|Stringable $message, array $context = []): void
@@ -134,7 +134,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function error(string|Stringable $message, array $context = []): void
@@ -149,7 +149,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function warning(string|Stringable $message, array $context = []): void
@@ -164,7 +164,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function notice(string|Stringable $message, array $context = []): void
@@ -179,7 +179,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function info(string|Stringable $message, array $context = []): void
@@ -194,7 +194,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function debug(string|Stringable $message, array $context = []): void
@@ -211,7 +211,7 @@ final class Log implements LoggerInterface
      * @return void
      * @throws InvalidArgumentException If the level is not a valid PSR-3 level
      * @throws LogConfigException       If the channel configuration is invalid
-     * @throws LogicException           If Log::init() has not been called
+     * @throws LogicException           If Log::init() had not been called when Log::channel() made this instance
      * @throws RuntimeException         If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function log(mixed $level, string|Stringable $message, array $context = []): void
@@ -284,7 +284,7 @@ final class Log implements LoggerInterface
      *
      * @return Logger
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If Log::init() has not been called
+     * @throws LogicException     If this instance holds no manager: Log::init() has not been called, or Log::channel() made the instance before it was
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     private function resolveLogger(): Logger
