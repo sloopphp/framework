@@ -586,9 +586,9 @@ final class ConnectionManager
      *
      * It also means select() no longer sees a grammar that setGrammar() put on
      * a connection afterwards, where before it read the resolved connection's.
-     * Replacing a grammar is a framework-side extension point, so the two
-     * remaining ways in stay apart: through a connection for one connection,
-     * through the pool config for the pool.
+     * The two ways of choosing a grammar therefore stay apart: setGrammar() for
+     * the builders one connection starts, the pool config (its prefix) for the
+     * builders the pool starts.
      *
      * No @throws: Grammar checks the prefix it is handed, but the config layer
      * has already checked it against the same pattern, and PrefixRuleAgreementTest
