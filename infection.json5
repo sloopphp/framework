@@ -127,11 +127,11 @@
         },
         "IncrementInteger": {
             "ignore": [
-                // Application::createServerRequestFromGlobals::1318 reads php://input,
+                // Application::createServerRequestFromGlobals::1319 reads php://input,
                 // which a PHPUnit process cannot fill: it is always '' there, so the
                 // offset argument cannot change what is read in a test. The limit
                 // logic itself is in RawBody, which is tested with a reader closure.
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1318",
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1319",
                 // CombiningRun::segmentHolds splits a segment into code points. In
                 // pairs, each pair's NFKD ends with the second one's non-starters
                 // added to the first one's when the second has no starter, so the
@@ -299,10 +299,10 @@
             ]
         },
         "FalseValue": {
-            // Application::createServerRequestFromGlobals::1318: see IncrementInteger
+            // Application::createServerRequestFromGlobals::1319: see IncrementInteger
             // (php://input is always '' in a PHPUnit process).
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1318"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1319"
             ]
         },
         "NullSafeMethodCall": {
