@@ -60,6 +60,52 @@ final class LogTest extends TestCase
         $log->info('test');
     }
 
+    public function testInstanceMadeBeforeInitLogsOnceInitIsCalled(): void
+    {
+        Log::reset();
+
+        $log = Log::channel('app');
+
+        Log::init($this->manager);
+        $log->info('made before init');
+
+        $this->assertTrue($this->handler->hasInfoThatContains('made before init'));
+    }
+
+    public function testInstanceMadeWithNewLogsAfterInit(): void
+    {
+        $log = new Log();
+        $log->info('made with new');
+
+        $this->assertTrue($this->handler->hasInfoThatContains('made with new'));
+    }
+
+    public function testInstanceUsesTheManagerOfTheLatestInit(): void
+    {
+        $log = Log::channel('app');
+
+        $otherHandler = new TestHandler();
+        $other        = new LogManager();
+        $other->addChannel('app', new Logger('app', [$otherHandler]));
+
+        Log::init($other);
+        $log->info('after reinit');
+
+        $this->assertTrue($otherHandler->hasInfoThatContains('after reinit'));
+        $this->assertFalse($this->handler->hasInfoThatContains('after reinit'));
+    }
+
+    public function testInstanceMadeBeforeResetThrowsAfterReset(): void
+    {
+        $log = Log::channel('app');
+
+        Log::reset();
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Logger has not been initialized');
+        $log->info('after reset');
+    }
+
     // ---------------------------------------------------------------
     // Log level methods (instance)
     // ---------------------------------------------------------------

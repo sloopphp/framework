@@ -31,6 +31,9 @@ final class Log implements LoggerInterface
     /**
      * Log manager that handles channel resolution.
      *
+     * Only the shared instance holds one (set by init()). Every instance
+     * reads it from there each time it logs.
+     *
      * @var LogManager|null
      */
     private ?LogManager $manager = null;
@@ -57,17 +60,12 @@ final class Log implements LoggerInterface
     /**
      * Get a logger instance for the given channel.
      *
-     * The instance copies the LogManager the shared instance holds at the time
-     * of this call (Log::init() sets it, Log::reset() drops it), so one made
-     * while none is set holds none.
-     *
      * @param  string|null $name Channel name (null = default channel)
      * @return self        Log instance bound to the given channel
      */
     public static function channel(?string $name = null): self
     {
         $log              = new self();
-        $log->manager     = self::getInstance()->manager;
         $log->channelName = $name;
 
         return $log;
@@ -93,7 +91,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function emergency(string|Stringable $message, array $context = []): void
@@ -108,7 +106,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function alert(string|Stringable $message, array $context = []): void
@@ -123,7 +121,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function critical(string|Stringable $message, array $context = []): void
@@ -138,7 +136,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function error(string|Stringable $message, array $context = []): void
@@ -153,7 +151,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function warning(string|Stringable $message, array $context = []): void
@@ -168,7 +166,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function notice(string|Stringable $message, array $context = []): void
@@ -183,7 +181,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function info(string|Stringable $message, array $context = []): void
@@ -198,7 +196,7 @@ final class Log implements LoggerInterface
      * @param  array<mixed>       $context Context data
      * @return void
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function debug(string|Stringable $message, array $context = []): void
@@ -215,7 +213,7 @@ final class Log implements LoggerInterface
      * @return void
      * @throws InvalidArgumentException If the level is not a valid PSR-3 level
      * @throws LogConfigException       If the channel configuration is invalid
-     * @throws LogicException           If this instance holds no LogManager (see Log::channel())
+     * @throws LogicException           If Log::init() has not been called
      * @throws RuntimeException         If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     public function log(mixed $level, string|Stringable $message, array $context = []): void
@@ -264,6 +262,9 @@ final class Log implements LoggerInterface
     /**
      * Reset the singleton instance.
      *
+     * The LogManager is dropped with it, so Log::init() has to be called again;
+     * until then every instance throws as if init() had never been called.
+     *
      * @return void
      */
     public static function reset(): void
@@ -288,15 +289,17 @@ final class Log implements LoggerInterface
      *
      * @return Logger
      * @throws LogConfigException If the channel configuration is invalid
-     * @throws LogicException     If this instance holds no LogManager (Log::init() sets one on the shared instance and Log::channel() copies it from there)
+     * @throws LogicException     If Log::init() has not been called
      * @throws RuntimeException   If a custom channel has no factory resolver, or the resolver cannot build the factory's own dependencies
      */
     private function resolveLogger(): Logger
     {
-        if ($this->manager === null) {
+        $manager = self::getInstance()->manager;
+
+        if ($manager === null) {
             throw new LogicException('Logger has not been initialized. Call Log::init() first.');
         }
 
-        return $this->manager->channel($this->channelName);
+        return $manager->channel($this->channelName);
     }
 }
