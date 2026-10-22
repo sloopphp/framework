@@ -73,7 +73,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return ResponseInterface
      * @throws DomainException          With status 404 when an int, float or bool route parameter cannot be read as that type
      * @throws RuntimeException         If the controller cannot be resolved as an object, the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException           If an action parameter or a parameter of a ValidatedRequest's rules() matches no route parameter or has an unsupported type, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException           If a parameter of the action or of a ValidatedRequest's rules() has a union or intersection type, has no type (for the action, only when another of its parameters has one), or matches no route parameter while declaring neither a default nor null, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
@@ -121,7 +121,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws DomainException                     With status 404 when an int, float or bool route parameter cannot be read as that type
      * @throws RuntimeException                    If the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException                      If an action parameter or a parameter of a ValidatedRequest's rules() matches no route parameter or has an unsupported type, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException                      If a parameter of the action or of a ValidatedRequest's rules() has a union or intersection type, has no type (for the action, only when another of its parameters has one), or matches no route parameter while declaring neither a default nor null, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException            If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
@@ -181,7 +181,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  class-string<ValidatedRequest>     $class        Subclass to fill
      * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
-     * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, a route parameter rules() asks for is missing or its type is unsupported, or the parsed body is not an array
+     * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, a parameter of rules() has no type or a union or intersection type, or matches no route parameter while declaring neither a default nor null, or the parsed body is not an array
      * @throws UnexpectedValueException           If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws DomainException                    With status 404 when an int, float or bool route parameter rules() asks for cannot be read as that type
      * @throws RuntimeException                   If the entry registered as the clock is not one, or validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
@@ -271,7 +271,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  Request                $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return mixed                  Resolved argument value
      * @throws DomainException        With status 404 when an int, float or bool route parameter cannot be read as that type
-     * @throws LogicException         If the parameter is untyped, uses a union/intersection type, or matches no route parameter
+     * @throws LogicException         If the parameter is untyped, uses a union/intersection type, or matches no route parameter while declaring neither a default nor null
      * @throws EntryNotFoundException If a typed object parameter cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during resolution
      */
