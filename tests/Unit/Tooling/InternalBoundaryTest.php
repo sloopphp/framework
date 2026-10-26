@@ -152,6 +152,51 @@ final class InternalBoundaryTest extends TestCase
         return $found;
     }
 
+    /**
+     * @param ReflectionClass<object> $class
+     */
+    private function isExtendableValidationClass(ReflectionClass $class): bool
+    {
+        return str_starts_with($class->getName(), 'Sloop\\Validation\\')
+            && !$class->isFinal() && !$class->isInterface() && !$class->isTrait() && !$class->isEnum()
+            && !$this->isInternal($class);
+    }
+
+    /**
+     * @param  ReflectionClass<object> $class
+     * @return list<string>
+     */
+    private function sealedNames(ReflectionClass $class): array
+    {
+        $doc = $class->getDocComment();
+        if ($doc === false || preg_match('/^\s*\*\s*@phpstan-sealed\s+(\S+)/m', $doc, $match) !== 1) {
+            return [];
+        }
+        $names = explode('|', $match[1]);
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * @param  ReflectionClass<object>       $class
+     * @param  list<ReflectionClass<object>> $sources
+     * @return list<string>
+     */
+    private function directSubclassNames(ReflectionClass $class, array $sources): array
+    {
+        $names = [];
+        foreach ($sources as $candidate) {
+            $parent = $candidate->getParentClass();
+            if ($parent !== false && $parent->getName() === $class->getName()) {
+                $names[] = $candidate->getShortName();
+            }
+        }
+        sort($names);
+
+        return $names;
+    }
+
     public function testPublicMethodsAreNotDeclaredOnInternalClasses(): void
     {
         // PHPStan reports a call to a method whose declaring class is internal
@@ -195,28 +240,11 @@ final class InternalBoundaryTest extends TestCase
         $sources    = $this->sourceClasses();
         $mismatches = [];
         foreach ($sources as $class) {
-            if (!str_starts_with($class->getName(), 'Sloop\\Validation\\')
-                || $class->isFinal() || $class->isInterface() || $class->isTrait() || $class->isEnum()
-                || $this->isInternal($class)
-            ) {
+            if (!$this->isExtendableValidationClass($class)) {
                 continue;
             }
-
-            $children = [];
-            foreach ($sources as $candidate) {
-                $parent = $candidate->getParentClass();
-                if ($parent !== false && $parent->getName() === $class->getName()) {
-                    $children[] = $candidate->getShortName();
-                }
-            }
-            sort($children);
-
-            $doc    = $class->getDocComment();
-            $sealed = $doc !== false && preg_match('/^\s*\*\s*@phpstan-sealed\s+(\S+)/m', $doc, $match) === 1
-                ? explode('|', $match[1])
-                : [];
-            sort($sealed);
-
+            $sealed   = $this->sealedNames($class);
+            $children = $this->directSubclassNames($class, $sources);
             if ($sealed !== $children) {
                 $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
             }
