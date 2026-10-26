@@ -236,7 +236,8 @@ final class InternalBoundaryTest extends TestCase
         // @phpstan-sealed reports a subclass the list leaves out, so it also
         // catches a framework type added without updating the list; this test
         // catches the other way, a name left in the list after its class stops
-        // extending the base.
+        // extending the base. A class with no subclass has nothing to seal it
+        // to, so it fails here too and should be final instead.
         $sources    = $this->sourceClasses();
         $mismatches = [];
         foreach ($sources as $class) {
@@ -245,7 +246,7 @@ final class InternalBoundaryTest extends TestCase
             }
             $sealed   = $this->sealedNames($class);
             $children = $this->directSubclassNames($class, $sources);
-            if ($sealed !== $children) {
+            if ($sealed === [] || $sealed !== $children) {
                 $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
             }
         }
