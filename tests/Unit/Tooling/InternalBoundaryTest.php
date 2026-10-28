@@ -213,6 +213,30 @@ final class InternalBoundaryTest extends TestCase
         return $names;
     }
 
+    /**
+     * Classes the filter picks whose @phpstan-sealed list is missing or differs from their direct subclasses.
+     *
+     * @param  callable(ReflectionClass<object>): bool                              $picks Whether a class must be sealed
+     * @return array<string, array{sealed: list<string>, subclasses: list<string>}>
+     */
+    private function sealMismatches(callable $picks): array
+    {
+        $sources    = $this->sourceClasses();
+        $mismatches = [];
+        foreach ($sources as $class) {
+            if (!$picks($class)) {
+                continue;
+            }
+            $sealed   = $this->sealedNames($class);
+            $children = $this->directSubclassNames($class, $sources);
+            if ($sealed === [] || $sealed !== $children) {
+                $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
+            }
+        }
+
+        return $mismatches;
+    }
+
     public function testPublicMethodsAreNotDeclaredOnInternalClasses(): void
     {
         // PHPStan reports a call to a method whose declaring class is internal
@@ -264,29 +288,5 @@ final class InternalBoundaryTest extends TestCase
         // framework subclasses and the concrete ones are final, as with the
         // Validation base classes above.
         self::assertSame([], $this->sealMismatches($this->isExtendableQueryClass(...)));
-    }
-
-    /**
-     * Classes the filter picks whose @phpstan-sealed list is missing or differs from their direct subclasses.
-     *
-     * @param  callable(ReflectionClass<object>): bool                          $picks Whether a class must be sealed
-     * @return array<string, array{sealed: list<string>, subclasses: list<string>}>
-     */
-    private function sealMismatches(callable $picks): array
-    {
-        $sources    = $this->sourceClasses();
-        $mismatches = [];
-        foreach ($sources as $class) {
-            if (!$picks($class)) {
-                continue;
-            }
-            $sealed   = $this->sealedNames($class);
-            $children = $this->directSubclassNames($class, $sources);
-            if ($sealed === [] || $sealed !== $children) {
-                $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
-            }
-        }
-
-        return $mismatches;
     }
 }
