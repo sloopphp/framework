@@ -1387,15 +1387,21 @@ final class GrammarTest extends TestCase
 
     public function testAPartOfTheClauseWithNoCompilingRuleIsRejected(): void
     {
-        $unknown = new readonly class () extends WherePart {
+        // compileWhere() writes the parentheses itself and never hands one to
+        // compileWherePart(), so a subclass calling it directly is the way in.
+        $grammar = new class () extends Grammar {
+            public function compilePart(WherePart $part): CompiledSql
+            {
+                return $this->compileWherePart($part);
+            }
         };
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIsOrContains(
-            'No rule for compiling ' . get_debug_type($unknown) . ' as part of a WHERE clause.',
+            'No rule for compiling ' . GroupBoundary::class . ' as part of a WHERE clause.',
         );
 
-        new Grammar()->compileSelect(new SelectSpec(from: 'users', conditions: [$unknown]));
+        $grammar->compilePart(new GroupBoundary(GroupEdge::Open));
     }
 
     #[DataProvider('provideSupportedOperators')]

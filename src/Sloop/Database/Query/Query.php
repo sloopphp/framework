@@ -18,6 +18,8 @@ use Sloop\Database\Result;
  * asked for, and a Grammar turns that into text for one dialect. The Grammar
  * arrives from whatever started the statement rather than being created here,
  * so the same builder writes for another dialect by handing it a different one.
+ *
+ * @phpstan-sealed Builder
  */
 abstract class Query
 {

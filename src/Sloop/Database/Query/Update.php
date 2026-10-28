@@ -32,7 +32,7 @@ use Sloop\Database\Exception\DatabaseException;
  * `strict_mode`, which refuses an unconditioned statement at the point it would
  * run. allowWithoutWhere() says that the whole table is what was meant.
  */
-class Update extends BuilderWhere
+final class Update extends BuilderWhere
 {
     /**
      * Columns to write, kept under the column name so a later set() replaces an earlier one.

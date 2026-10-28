@@ -34,7 +34,7 @@ use UnexpectedValueException;
  *     ->execute();
  * ```
  */
-class Select extends BuilderWhere
+final class Select extends BuilderWhere
 {
     /**
      * Name the combined rows are read under when a shortcut reads them from outside.

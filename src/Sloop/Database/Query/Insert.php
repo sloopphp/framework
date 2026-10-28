@@ -35,7 +35,7 @@ use Sloop\Database\Exception\DatabaseException;
  * upsert() named columns to overwrite instead, or executeIgnore() was used to
  * pass the row over.
  */
-class Insert extends Builder
+final class Insert extends Builder
 {
     /**
      * Columns being written, settled by the first row and held in its key order.
