@@ -36,6 +36,8 @@ use UnexpectedValueException;
  * @template T
  *
  * @template-covariant O = mixed Type of the value values() hands out, which output() turns T into
+ *
+ * @phpstan-sealed ArrayRule|TemporalRule|BoolRule|DecimalRule|EnumRule|FileRule|FloatRule|IntRule|StringRule|TimeRule
  */
 abstract class FieldRule
 {

@@ -17,6 +17,8 @@ use UnexpectedValueException;
  * in CountsElements, which the types whose size follows the input use.
  *
  * @extends FieldRule<array<array-key, mixed>, array<array-key, mixed>>
+ *
+ * @phpstan-sealed AnyArrayRule|ListRule|ShapeRule
  */
 abstract class ArrayRule extends FieldRule
 {

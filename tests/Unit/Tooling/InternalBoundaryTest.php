@@ -152,6 +152,51 @@ final class InternalBoundaryTest extends TestCase
         return $found;
     }
 
+    /**
+     * @param ReflectionClass<object> $class
+     */
+    private function isExtendableValidationClass(ReflectionClass $class): bool
+    {
+        return str_starts_with($class->getName(), 'Sloop\\Validation\\')
+            && !$class->isFinal() && !$class->isInterface() && !$class->isTrait() && !$class->isEnum()
+            && !$this->isInternal($class);
+    }
+
+    /**
+     * @param  ReflectionClass<object> $class
+     * @return list<string>
+     */
+    private function sealedNames(ReflectionClass $class): array
+    {
+        $doc = $class->getDocComment();
+        if ($doc === false || preg_match('/^\s*\*\s*@phpstan-sealed\s+(\S+)/m', $doc, $match) !== 1) {
+            return [];
+        }
+        $names = explode('|', $match[1]);
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * @param  ReflectionClass<object>       $class
+     * @param  list<ReflectionClass<object>> $sources
+     * @return list<string>
+     */
+    private function directSubclassNames(ReflectionClass $class, array $sources): array
+    {
+        $names = [];
+        foreach ($sources as $candidate) {
+            $parent = $candidate->getParentClass();
+            if ($parent !== false && $parent->getName() === $class->getName()) {
+                $names[] = $candidate->getShortName();
+            }
+        }
+        sort($names);
+
+        return $names;
+    }
+
     public function testPublicMethodsAreNotDeclaredOnInternalClasses(): void
     {
         // PHPStan reports a call to a method whose declaring class is internal
@@ -183,5 +228,29 @@ final class InternalBoundaryTest extends TestCase
         }
 
         self::assertSame([], array_values(array_unique($offenders)));
+    }
+
+    public function testValidationBaseClassesAreSealedToTheirSubclasses(): void
+    {
+        // Users add rules with using(), not by subclassing a rule type.
+        // @phpstan-sealed reports a subclass the list leaves out, so it also
+        // catches a framework type added without updating the list; this test
+        // catches the other way, a name left in the list after its class stops
+        // extending the base. A class with no subclass has nothing to seal it
+        // to, so it fails here too and should be final instead.
+        $sources    = $this->sourceClasses();
+        $mismatches = [];
+        foreach ($sources as $class) {
+            if (!$this->isExtendableValidationClass($class)) {
+                continue;
+            }
+            $sealed   = $this->sealedNames($class);
+            $children = $this->directSubclassNames($class, $sources);
+            if ($sealed === [] || $sealed !== $children) {
+                $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
+            }
+        }
+
+        self::assertSame([], $mismatches);
     }
 }
