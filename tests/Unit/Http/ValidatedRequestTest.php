@@ -34,6 +34,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\DefaultNullableRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\FileUploadRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InjectedRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InnerUnboundedListRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\IntersectionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MatrixRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MutablePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NestedFormRequest;
@@ -47,6 +48,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyWithoutRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RenamingRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RequestInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\RequestUnionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotArrayRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotFieldRuleRequest;
@@ -56,8 +58,10 @@ use Sloop\Tests\Unit\Http\Stub\Validated\StaticRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\TrimmedRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnboundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnionPropertyRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\UntypedRulesParamRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedController;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedUnionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
@@ -415,6 +419,35 @@ final class ValidatedRequestTest extends TestCase
         $this->expectExceptionMessageIsOrContains('Unsupported parameter type for id');
 
         $this->dispatch('unionRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '1']);
+    }
+
+    public function testPassesTheRouteValueToAnUntypedParameterOfRules(): void
+    {
+        $response = $this->dispatch('untypedRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '007']);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(UntypedRulesParamRequest::class, ValidatedController::$last);
+        $this->assertSame('007', ValidatedController::$last->name);
+    }
+
+    public function testThrowsForAnUntypedParameterOfRulesTheRouteDoesNotName(): void
+    {
+        // rules() has no positional fallback, so a lone untyped parameter is
+        // resolved by name like any other and is required in PHP.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
+
+        $this->dispatch('untypedRulesParam', new ServerRequest('POST', '/dispatch'));
+    }
+
+    public function testRefusesARouteParameterForAnArrayParameterOfRules(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains(
+            'Route parameter "id" cannot be passed to array $id: route values are read only into int, float, bool, string, mixed or untyped parameters.',
+        );
+
+        $this->dispatch('arrayRulesParam', new ServerRequest('POST', '/dispatch'), ['id' => '1']);
     }
 
     public function testRefusesAParsedBodyThatIsNotAnArray(): void
@@ -808,6 +841,9 @@ final class ValidatedRequestTest extends TestCase
             'optional field not nullable' => ['notNullable', NotNullableRequest::class . '::$age must accept null (?int): the field is neither required() nor given a default().'],
             'rules() takes the Request' => ['requestInRules', RequestInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],
             'rules() takes a ValidatedRequest' => ['validatedInRules', ValidatedInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
+            'rules() takes the Request in a union' => ['requestUnionInRules', RequestUnionInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],
+            'rules() takes a ValidatedRequest in a union' => ['validatedUnionInRules', ValidatedUnionInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
+            'rules() takes a ValidatedRequest as the second type of an intersection' => ['intersectionInRules', IntersectionInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
             'rules() takes the base class' => ['baseInRules', BaseInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
             'the base class itself' => ['base', ValidatedRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
             'private property of a parent' => ['inheritedPrivate', PrivateHelperBase::class . '::$helper must be declared public private(set): every property of a validated request receives a validated value.'],

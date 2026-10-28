@@ -166,7 +166,42 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function requestUnionInRules(RequestUnionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function validatedUnionInRules(ValidatedUnionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function intersectionInRules(IntersectionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function unionRulesParam(UnionRulesParamRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function untypedRulesParam(UntypedRulesParamRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function arrayRulesParam(ArrayRulesParamRequest $request): string
     {
         self::$last = $request;
 
