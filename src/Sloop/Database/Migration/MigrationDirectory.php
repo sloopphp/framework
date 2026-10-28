@@ -37,14 +37,19 @@ final readonly class MigrationDirectory
      * Point at a migration directory.
      *
      * @param  string                   $path Path to the directory
-     * @throws InvalidArgumentException If the path is not an existing directory
+     * @throws InvalidArgumentException If the path is empty or contains a NUL byte
+     * @throws RuntimeException         If the path is not an existing directory
      */
     public function __construct(string $path)
     {
+        if ($path === '' || str_contains($path, "\0")) {
+            throw new InvalidArgumentException('Migration directory path must not be empty or contain a NUL byte.');
+        }
+
         $resolved = is_dir($path) ? realpath($path) : false;
 
         if ($resolved === false) {
-            throw new InvalidArgumentException('Migration directory does not exist: ' . $path);
+            throw new RuntimeException('Migration directory does not exist: ' . $path);
         }
 
         $this->path = rtrim($resolved, '/' . \DIRECTORY_SEPARATOR);

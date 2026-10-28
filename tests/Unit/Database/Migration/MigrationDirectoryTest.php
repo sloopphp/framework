@@ -290,7 +290,7 @@ final class MigrationDirectoryTest extends TestCase
         $missing = $this->directory . '/missing';
 
         $thrown = $this->assertThrows(
-            InvalidArgumentException::class,
+            RuntimeException::class,
             static fn (): MigrationDirectory => new MigrationDirectory($missing),
         );
 
@@ -303,7 +303,7 @@ final class MigrationDirectoryTest extends TestCase
         $file = $this->directory . '/20260501000000_create_users_table.php';
 
         $thrown = $this->assertThrows(
-            InvalidArgumentException::class,
+            RuntimeException::class,
             static fn (): MigrationDirectory => new MigrationDirectory($file),
         );
 
@@ -315,6 +315,14 @@ final class MigrationDirectoryTest extends TestCase
         $this->assertThrows(
             InvalidArgumentException::class,
             static fn (): MigrationDirectory => new MigrationDirectory(''),
+        );
+    }
+
+    public function testConstructorRejectsPathContainingNulByte(): void
+    {
+        $this->assertThrows(
+            InvalidArgumentException::class,
+            fn (): MigrationDirectory => new MigrationDirectory($this->directory . "\0"),
         );
     }
 }
