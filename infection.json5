@@ -170,7 +170,7 @@
         },
         "DecrementInteger": {
             "ignore": [
-                // StringRule::email::448: see IncrementInteger.
+                // StringRule::email::462: see IncrementInteger.
                 "Sloop\\Validation\\StringRule::email::462",
                 // Same millisecond-conversion literal as IncrementInteger above,
                 // in the opposite direction (1000 → 999).
@@ -210,13 +210,13 @@
             ]
         },
         "Plus": {
-            // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::462: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::462"
             ]
         },
         "NotIdentical": {
-            // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::462: see IncrementInteger (needs a live DNS lookup).
             // LimitInFrame::in::71 tests last that a result is kept, which is
             // always so once the limit matches. Turning the test around makes
             // every lookup miss, and the limit is brought into the frame again
@@ -227,7 +227,7 @@
             ]
         },
         "UnwrapSubstr": {
-            // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::462: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
                 "Sloop\\Validation\\StringRule::email::462"
             ]
