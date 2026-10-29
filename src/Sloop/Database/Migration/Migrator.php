@@ -45,7 +45,8 @@ final readonly class Migrator
      *
      * @param  Connection               $connection Connection the migrations run over and are recorded on
      * @param  string                   $directory  Directory holding the migration files
-     * @throws InvalidArgumentException If the directory does not exist
+     * @throws InvalidArgumentException If the directory path is empty or contains a NUL byte
+     * @throws RuntimeException         If the directory does not exist
      */
     public function __construct(
         private Connection $connection,

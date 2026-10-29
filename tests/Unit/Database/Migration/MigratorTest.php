@@ -11,6 +11,7 @@ use PDO;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RequiresOperatingSystemFamily;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Sloop\Database\Connection;
 use Sloop\Database\Exception\DatabaseException;
 use Sloop\Database\Migration\MigrationStatus;
@@ -119,7 +120,7 @@ final class MigratorTest extends TestCase
     public function testConstructorRefusesADirectoryThatDoesNotExist(): void
     {
         $this->assertThrows(
-            InvalidArgumentException::class,
+            RuntimeException::class,
             fn () => new Migrator($this->connection, $this->directory . '/missing'),
         );
     }
