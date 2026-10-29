@@ -451,7 +451,7 @@ final class CollectionTest extends TestCase
     public function testKeyByThrowsForNonScalarKey(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string, got null.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "id" must resolve to int or string, got null.');
 
         Collection::from([['id' => null]])->keyBy('id');
     }
@@ -459,7 +459,7 @@ final class CollectionTest extends TestCase
     public function testKeyByThrowsForFloatKey(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string, got float.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "id" must resolve to int or string, got float.');
 
         Collection::from([['id' => 1.5]])->keyBy('id');
     }
@@ -467,7 +467,7 @@ final class CollectionTest extends TestCase
     public function testKeyByThrowsForMissingField(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string, got null.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "missing" must resolve to int or string, got null.');
 
         Collection::from([['id' => 1]])->keyBy('missing');
     }
@@ -515,7 +515,7 @@ final class CollectionTest extends TestCase
     public function testGroupByThrowsForBoolKey(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string, got bool.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "active" must resolve to int or string, got bool.');
 
         Collection::from([['active' => true]])->groupBy('active');
     }
@@ -523,7 +523,7 @@ final class CollectionTest extends TestCase
     public function testGroupByThrowsForMissingObjectProperty(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string, got null.');
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "type" must resolve to int or string, got null.');
 
         Collection::from([new stdClass()])->groupBy('type');
     }

@@ -310,7 +310,7 @@ final readonly class Collection implements IteratorAggregate, Countable
         $result = [];
         foreach ($this->items as $k => $value) {
             $extracted = \is_callable($key) ? $key($value, $k) : $this->readMember($value, $key);
-            $result[$this->coerceArrayKey($extracted)] = $value;
+            $result[$this->coerceArrayKey($extracted, $key)] = $value;
         }
 
         return new self($result);
@@ -330,7 +330,7 @@ final readonly class Collection implements IteratorAggregate, Countable
         $groups = [];
         foreach ($this->items as $k => $value) {
             $extracted = \is_callable($key) ? $key($value, $k) : $this->readMember($value, $key);
-            $groups[$this->coerceArrayKey($extracted)][] = $value;
+            $groups[$this->coerceArrayKey($extracted, $key)][] = $value;
         }
 
         return new self(array_map(fn (array $items): self => new self($items), $groups));
@@ -523,18 +523,22 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Narrow an arbitrary value to an array key for keyBy/groupBy.
      *
+     * The message names the field when the key was read from one, so a
+     * mistyped field name can be found from the log.
+     *
      * @param  mixed                    $value Extracted key candidate
+     * @param  string|callable          $key   Field name or key extractor the value came from
      * @return int|string
      * @throws UnexpectedValueException If the extracted value cannot be used as an array key
      */
-    private function coerceArrayKey(mixed $value): int|string
+    private function coerceArrayKey(mixed $value, string|callable $key): int|string
     {
         if (\is_int($value) || \is_string($value)) {
             return $value;
         }
 
-        throw new UnexpectedValueException(
-            'keyBy/groupBy key must resolve to int or string, got ' . get_debug_type($value) . '.',
-        );
+        $source = \is_callable($key) ? 'keyBy/groupBy callable must return' : 'keyBy/groupBy key "' . $key . '" must resolve to';
+
+        throw new UnexpectedValueException($source . ' int or string, got ' . get_debug_type($value) . '.');
     }
 }
