@@ -941,7 +941,17 @@ final class MutationBaseline
             echo $mutant->describe(), \PHP_EOL, \PHP_EOL;
         }
 
-        echo 'Shrink the baseline with --update once the run is stable.', \PHP_EOL, \PHP_EOL;
+        echo 'Being killed in this run does not mean an entry is gone. A mutant that does', \PHP_EOL,
+        'not terminate lands on killed, errored or timeouted depending on how the', \PHP_EOL,
+        'runner stops it, and can come back in the next run. Read its processOutput in', \PHP_EOL,
+        'build/infection/infection.json. Keep the entry when the error is "Maximum call', \PHP_EOL,
+        'stack size ... reached" or the output ends at "Premature end of PHP process".', \PHP_EOL,
+        'Remove it from .claude/mutation-baseline.json by hand when PHPUnit reports', \PHP_EOL,
+        'FAILURES!, ERRORS! or "OK, but there were issues!" for any other reason', \PHP_EOL,
+        '(phpunit.xml fails on warnings, notices, deprecations and risky tests).', \PHP_EOL,
+        'When the report has no such mutant at all, the code it mutated has usually', \PHP_EOL,
+        'changed; look at that code instead. --update rewrites the whole baseline from', \PHP_EOL,
+        'this run and drops every entry listed above.', \PHP_EOL, \PHP_EOL;
     }
 
     /**
