@@ -13,6 +13,13 @@ use UnexpectedValueException;
 
 final class CollectionTest extends TestCase
 {
+    // A key extractor passed as a string, so that it can return a non-key
+    // without its declared return type being rejected by static analysis.
+    public static function halve(int $n): float
+    {
+        return $n / 2;
+    }
+
     // -------------------------------------------------------
     // from / count / isEmpty / asArray
     // -------------------------------------------------------
@@ -470,6 +477,14 @@ final class CollectionTest extends TestCase
         $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "missing" must resolve to int or string, got null.');
 
         Collection::from([['id' => 1]])->keyBy('missing');
+    }
+
+    public function testKeyByThrowsWhenCallableReturnsNonKey(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy callable must return int or string, got float.');
+
+        Collection::from([3])->keyBy(self::class . '::halve');
     }
 
     public function testKeyByTreatsPhpFunctionNameAsCallable(): void
