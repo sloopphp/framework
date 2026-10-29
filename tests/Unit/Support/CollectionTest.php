@@ -9,9 +9,17 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Support\Collection;
 use stdClass;
+use UnexpectedValueException;
 
 final class CollectionTest extends TestCase
 {
+    // A key extractor passed as a string, so that it can return a non-key
+    // without its declared return type being rejected by static analysis.
+    public static function halve(int $n): float
+    {
+        return $n / 2;
+    }
+
     // -------------------------------------------------------
     // from / count / isEmpty / asArray
     // -------------------------------------------------------
@@ -284,26 +292,34 @@ final class CollectionTest extends TestCase
 
     public function testSumThrowsOnNonNumericItem(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Collection aggregation without a key requires numeric items.');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Collection aggregation without a key requires numeric items, got string.');
 
         Collection::from(['a', 'b'])->sum();
     }
 
     public function testSumThrowsOnMissingKey(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Aggregation key "price" must resolve to int or float.');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Aggregation key "price" must resolve to int or float, got null.');
 
         Collection::from([['name' => 'x']])->sum('price');
     }
 
     public function testSumThrowsOnCallableReturningNonNumeric(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('Aggregation callable must return int or float.');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Aggregation callable must return int or float, got string.');
 
         Collection::from([1, 2])->sum(fn (int $n): string => (string) $n);
+    }
+
+    public function testSumThrowsOnNonNumericFieldValue(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Aggregation key "price" must resolve to int or float, got string.');
+
+        Collection::from([['price' => '100']])->sum('price');
     }
 
     // -------------------------------------------------------
@@ -389,6 +405,30 @@ final class CollectionTest extends TestCase
         $this->assertSame(1, Collection::from([1, 1.0])->max());
     }
 
+    public function testAvgThrowsOnMissingKey(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Aggregation key "score" must resolve to int or float, got null.');
+
+        Collection::from([['name' => 'x']])->avg('score');
+    }
+
+    public function testMinThrowsOnNonNumericItem(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Collection aggregation without a key requires numeric items, got string.');
+
+        Collection::from([1, 'a'])->min();
+    }
+
+    public function testMaxThrowsOnCallableReturningNonNumeric(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Aggregation callable must return int or float, got null.');
+
+        Collection::from([1, 2])->max(fn (int $n): null => null);
+    }
+
     // -------------------------------------------------------
     // keyBy
     // -------------------------------------------------------
@@ -417,18 +457,34 @@ final class CollectionTest extends TestCase
 
     public function testKeyByThrowsForNonScalarKey(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string.');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "id" must resolve to int or string, got null.');
 
         Collection::from([['id' => null]])->keyBy('id');
     }
 
     public function testKeyByThrowsForFloatKey(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key must resolve to int or string.');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "id" must resolve to int or string, got float.');
 
         Collection::from([['id' => 1.5]])->keyBy('id');
+    }
+
+    public function testKeyByThrowsForMissingField(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "missing" must resolve to int or string, got null.');
+
+        Collection::from([['id' => 1]])->keyBy('missing');
+    }
+
+    public function testKeyByThrowsWhenCallableReturnsNonKey(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy callable must return int or string, got float.');
+
+        Collection::from([3])->keyBy(self::class . '::halve');
     }
 
     public function testKeyByTreatsPhpFunctionNameAsCallable(): void
@@ -469,6 +525,22 @@ final class CollectionTest extends TestCase
 
         $this->assertSame([1, 3, 5], $groups['odd']->asArray());
         $this->assertSame([2, 4], $groups['even']->asArray());
+    }
+
+    public function testGroupByThrowsForBoolKey(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "active" must resolve to int or string, got bool.');
+
+        Collection::from([['active' => true]])->groupBy('active');
+    }
+
+    public function testGroupByThrowsForMissingObjectProperty(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "type" must resolve to int or string, got null.');
+
+        Collection::from([new stdClass()])->groupBy('type');
     }
 
     // -------------------------------------------------------
