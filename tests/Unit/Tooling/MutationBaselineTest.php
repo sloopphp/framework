@@ -333,6 +333,19 @@ final class MutationBaselineTest extends TestCase
         self::assertStringNotContainsString('Kept.php', $this->output);
     }
 
+    public function testResolvedEntriesComeWithAWarningAgainstShrinkingOnAKillAlone(): void
+    {
+        $this->writeBaselineFrom($this->reportWith([
+            'escaped' => [$this->entry('Gone.php', 40, 'LogicalAnd', '-        return $a && $b;', '+        return $a || $b;')],
+        ]));
+
+        self::assertSame(0, $this->check($this->reportWith(['escaped' => []])));
+        self::assertStringContainsString('does not mean an entry is gone', $this->output);
+        self::assertStringContainsString('Premature end of PHP process', $this->output);
+        self::assertStringContainsString('"OK, but there were', $this->output);
+        self::assertStringNotContainsString('Shrink the baseline', $this->output);
+    }
+
     public function testARunMatchingTheBaselineReportsNoResolvedEntries(): void
     {
         $mutant = $this->entry('Kept.php', 40, 'LogicalOr', '-        return $c || $d;', '+        return $c && $d;');
