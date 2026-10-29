@@ -471,7 +471,9 @@ final readonly class Collection implements IteratorAggregate, Countable
     {
         if ($by === null) {
             if (!\is_int($value) && !\is_float($value)) {
-                throw new UnexpectedValueException('Collection aggregation without a key requires numeric items.');
+                throw new UnexpectedValueException(
+                    'Collection aggregation without a key requires numeric items, got ' . get_debug_type($value) . '.',
+                );
             }
 
             return $value;
@@ -480,7 +482,9 @@ final readonly class Collection implements IteratorAggregate, Countable
         if (\is_callable($by)) {
             $result = $by($value);
             if (!\is_int($result) && !\is_float($result)) {
-                throw new UnexpectedValueException('Aggregation callable must return int or float.');
+                throw new UnexpectedValueException(
+                    'Aggregation callable must return int or float, got ' . get_debug_type($result) . '.',
+                );
             }
 
             return $result;
@@ -488,7 +492,9 @@ final readonly class Collection implements IteratorAggregate, Countable
 
         $extracted = $this->readMember($value, $by);
         if (!\is_int($extracted) && !\is_float($extracted)) {
-            throw new UnexpectedValueException('Aggregation key "' . $by . '" must resolve to int or float.');
+            throw new UnexpectedValueException(
+                'Aggregation key "' . $by . '" must resolve to int or float, got ' . get_debug_type($extracted) . '.',
+            );
         }
 
         return $extracted;
@@ -527,6 +533,8 @@ final readonly class Collection implements IteratorAggregate, Countable
             return $value;
         }
 
-        throw new UnexpectedValueException('keyBy/groupBy key must resolve to int or string.');
+        throw new UnexpectedValueException(
+            'keyBy/groupBy key must resolve to int or string, got ' . get_debug_type($value) . '.',
+        );
     }
 }

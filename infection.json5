@@ -465,7 +465,7 @@
                 // callable scan. Falling through runs in_array() with the
                 // callable as the needle, which is never present among the
                 // items, so the result is false either way.
-                "Sloop\\Support\\Collection::contains::204"
+                "Sloop\\Support\\Collection::contains::205"
             ]
         },
         "CloneRemoval": {
