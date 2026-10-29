@@ -26,6 +26,7 @@ final class FloatRule extends FieldRule
      * @return self
      * @throws \LogicException When the field is required or a default has already been declared
      */
+    #[\NoDiscard('FloatRule::default() returns a new rule. The original is not modified.')]
     public function default(float $value): self
     {
         return $this->withDefault($value);
@@ -57,6 +58,7 @@ final class FloatRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $min is not finite, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FloatRule::min() returns a new rule. The original is not modified.')]
     public function min(int|float $min, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($min);
@@ -73,6 +75,7 @@ final class FloatRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $max is not finite, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FloatRule::max() returns a new rule. The original is not modified.')]
     public function max(int|float $max, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($max);
@@ -90,6 +93,7 @@ final class FloatRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When a bound is not finite, $min is greater than $max, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FloatRule::between() returns a new rule. The original is not modified.')]
     public function between(int|float $min, int|float $max, ?string $message = null, ?string $flag = null): self
     {
         $lower = self::bound($min);
@@ -116,6 +120,7 @@ final class FloatRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $values is empty, contains a non-finite number, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FloatRule::in() returns a new rule. The original is not modified.')]
     public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
         $candidates = self::candidates($values, 'in');
@@ -132,6 +137,7 @@ final class FloatRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $values is empty, contains a non-finite number, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FloatRule::notIn() returns a new rule. The original is not modified.')]
     public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
         $candidates = self::candidates($values, 'notIn');

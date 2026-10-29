@@ -54,6 +54,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
+    #[\NoDiscard('TimeRule::before() returns a new rule. The original is not modified.')]
     public function before(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('before', $limit, $message, false, $flag);
@@ -68,6 +69,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
+    #[\NoDiscard('TimeRule::beforeOrEqual() returns a new rule. The original is not modified.')]
     public function beforeOrEqual(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('beforeOrEqual', $limit, $message, true, $flag);
@@ -82,6 +84,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
+    #[\NoDiscard('TimeRule::after() returns a new rule. The original is not modified.')]
     public function after(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('after', $limit, $message, false, $flag);
@@ -96,6 +99,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the format cannot write the limit
      */
+    #[\NoDiscard('TimeRule::afterOrEqual() returns a new rule. The original is not modified.')]
     public function afterOrEqual(TimeOfDay $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('afterOrEqual', $limit, $message, true, $flag);
@@ -121,6 +125,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TimeRule::afterField() returns a new rule. The original is not modified.')]
     public function afterField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0, $flag);
@@ -135,6 +140,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TimeRule::afterOrEqualField() returns a new rule. The original is not modified.')]
     public function afterOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0, $flag);
@@ -149,6 +155,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TimeRule::beforeField() returns a new rule. The original is not modified.')]
     public function beforeField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0, $flag);
@@ -163,6 +170,7 @@ final class TimeRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TimeRule::beforeOrEqualField() returns a new rule. The original is not modified.')]
     public function beforeOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0, $flag);
@@ -180,6 +188,7 @@ final class TimeRule extends FieldRule
      * @throws \LogicException          When the field is required or a default has already been declared
      * @throws InvalidArgumentException When the format cannot write the value
      */
+    #[\NoDiscard('TimeRule::default() returns a new rule. The original is not modified.')]
     public function default(TimeOfDay $value): self
     {
         return $this->withDefault($this->alignLimit($value));

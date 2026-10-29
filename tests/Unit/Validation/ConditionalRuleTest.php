@@ -616,7 +616,7 @@ final class ConditionalRuleTest extends TestCase
             {
             }
         };
-        Rule::string()->chars([Chars::Alpha])->when('kind', 'x', static function (StringRule $r) use ($kept): StringRule {
+        (void) Rule::string()->chars([Chars::Alpha])->when('kind', 'x', static function (StringRule $r) use ($kept): StringRule {
             $kept->rule = $r;
 
             return $r->url();
@@ -737,7 +737,7 @@ final class ConditionalRuleTest extends TestCase
         yield 'requiredIf' => [static fn (StringRule $r): mixed => $r->url()->requiredIf('a', 'x'), $changed];
         yield 'when' => [static fn (StringRule $r): mixed => $r->url()->when('a', 'x', static fn (StringRule $s): StringRule => $s->url()), $changed];
         yield 'no return' => [static function (StringRule $r): mixed {
-            $r->url();
+            (void) $r->url();
             return null;
         }, $returned];
         yield 'another rule' => [static fn (StringRule $r): mixed => Rule::int()->min(1), $returned];
@@ -756,7 +756,7 @@ final class ConditionalRuleTest extends TestCase
     public function testWhenLeavesTheRuleItWasCalledOnUnchanged(): void
     {
         $base = Rule::string();
-        $base->when('a', 'x', static fn (StringRule $r): StringRule => $r->url());
+        (void) $base->when('a', 'x', static fn (StringRule $r): StringRule => $r->url());
 
         $this->assertSame([], self::failedRulesOf(['f' => $base, 'a' => Rule::string()], ['f' => 'not a url', 'a' => 'x']));
     }
@@ -764,7 +764,7 @@ final class ConditionalRuleTest extends TestCase
     public function testRequiredWithLeavesTheRuleItWasCalledOnUnchanged(): void
     {
         $base = Rule::string();
-        $base->requiredWith('a');
+        (void) $base->requiredWith('a');
 
         $this->assertSame([], self::failedRulesOf(['f' => $base, 'a' => Rule::string()], ['a' => 'x']));
     }

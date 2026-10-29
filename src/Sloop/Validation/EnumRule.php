@@ -56,6 +56,7 @@ final class EnumRule extends FieldRule
      * @throws InvalidArgumentException When the case belongs to another enum
      * @throws \LogicException          When the field is required or a default has already been declared
      */
+    #[\NoDiscard('EnumRule::default() returns a new rule. The original is not modified.')]
     public function default(BackedEnum $value): self
     {
         return $this->withDefault($this->caseOf($value));
@@ -86,6 +87,7 @@ final class EnumRule extends FieldRule
      * @return self<E>
      * @throws InvalidArgumentException When $cases is empty, holds a case of another enum, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('EnumRule::in() returns a new rule. The original is not modified.')]
     public function in(array $cases, ?string $message = null, ?string $flag = null): self
     {
         $this->assertCases($cases, 'in');
@@ -102,6 +104,7 @@ final class EnumRule extends FieldRule
      * @return self<E>
      * @throws InvalidArgumentException When $cases is empty, holds a case of another enum, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('EnumRule::notIn() returns a new rule. The original is not modified.')]
     public function notIn(array $cases, ?string $message = null, ?string $flag = null): self
     {
         $this->assertCases($cases, 'notIn');

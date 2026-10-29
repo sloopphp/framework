@@ -157,6 +157,7 @@ final class Validator
      * @return self
      * @throws InvalidArgumentException   When the field already has rules, or the new set of rules is refused the way the constructor refuses it
      */
+    #[\NoDiscard('Validator::with() returns a new Validator. The original is not modified.')]
     public function with(string $field, FieldRule $rule): self
     {
         if (\array_key_exists($field, $this->rules)) {

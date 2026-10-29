@@ -26,6 +26,7 @@ final class IntRule extends FieldRule
      * @return self
      * @throws \LogicException When the field is required or a default has already been declared
      */
+    #[\NoDiscard('IntRule::default() returns a new rule. The original is not modified.')]
     public function default(int $value): self
     {
         return $this->withDefault($value);
@@ -56,6 +57,7 @@ final class IntRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('IntRule::min() returns a new rule. The original is not modified.')]
     public function min(int $min, ?string $message = null, ?string $flag = null): self
     {
         return $this->withCheck('min', ['min' => $min], static fn (int $value): bool => $value >= $min, $message, flag: $flag);
@@ -70,6 +72,7 @@ final class IntRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('IntRule::max() returns a new rule. The original is not modified.')]
     public function max(int $max, ?string $message = null, ?string $flag = null): self
     {
         return $this->withCheck('max', ['max' => $max], static fn (int $value): bool => $value <= $max, $message, flag: $flag);
@@ -85,6 +88,7 @@ final class IntRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $min is greater than $max, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('IntRule::between() returns a new rule. The original is not modified.')]
     public function between(int $min, int $max, ?string $message = null, ?string $flag = null): self
     {
         if ($min > $max) {
@@ -109,6 +113,7 @@ final class IntRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('IntRule::in() returns a new rule. The original is not modified.')]
     public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
         if ($values === []) {
@@ -127,6 +132,7 @@ final class IntRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('IntRule::notIn() returns a new rule. The original is not modified.')]
     public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
         if ($values === []) {

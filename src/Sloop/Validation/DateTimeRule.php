@@ -63,6 +63,7 @@ final class DateTimeRule extends TemporalRule
      * @return self
      * @throws \LogicException   When the field is required or a default has already been declared
      */
+    #[\NoDiscard('DateTimeRule::default() returns a new rule. The original is not modified.')]
     public function default(DateTimeInterface $value): self
     {
         return $this->withDefault(DateTimeImmutable::createFromInterface($value));

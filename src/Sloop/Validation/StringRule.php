@@ -47,6 +47,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws \LogicException When the field is required or a default has already been declared
      */
+    #[\NoDiscard('StringRule::default() returns a new rule. The original is not modified.')]
     public function default(string $value): self
     {
         return $this->withDefault($value);
@@ -78,6 +79,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $min is negative, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::minLength() returns a new rule. The original is not modified.')]
     public function minLength(int $min, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         self::assertLength($min);
@@ -95,6 +97,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $max is negative, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::maxLength() returns a new rule. The original is not modified.')]
     public function maxLength(int $max, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         self::assertLength($max);
@@ -112,6 +115,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $length is negative, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::exactLength() returns a new rule. The original is not modified.')]
     public function exactLength(int $length, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         self::assertLength($length);
@@ -129,6 +133,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $size is less than 1, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::blockSize() returns a new rule. The original is not modified.')]
     public function blockSize(int $size, ?string $message = null, LengthUnit $unit = LengthUnit::Graphemes, ?string $flag = null): self
     {
         if ($size < 1) {
@@ -150,6 +155,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When the pattern does not compile, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::regex() returns a new rule. The original is not modified.')]
     public function regex(string $pattern, ?string $message = null, ?string $flag = null): self
     {
         self::assertPattern($pattern);
@@ -166,6 +172,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::in() returns a new rule. The original is not modified.')]
     public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($values, 'in');
@@ -182,6 +189,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::notIn() returns a new rule. The original is not modified.')]
     public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($values, 'notIn');
@@ -225,6 +233,7 @@ final class StringRule extends FieldRule
      * @throws InvalidArgumentException When $needles is empty, a needle is empty, not valid UTF-8 or has more than 30 combining characters in a row, or the message template or the flag name is malformed
      * @throws TypeError                When a needle is not a string
      */
+    #[\NoDiscard('StringRule::notContains() returns a new rule. The original is not modified.')]
     public function notContains(array $needles, bool $ignoreCase = false, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($needles, 'notContains');
@@ -276,6 +285,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::notContainsField() returns a new rule. The original is not modified.')]
     public function notContainsField(string $field, bool $ignoreCase = false, ?string $message = null, ?string $flag = null): self
     {
         return $this->withCombiningRun()->withFieldComparison(
@@ -307,6 +317,7 @@ final class StringRule extends FieldRule
      * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template or the flag name is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
+    #[\NoDiscard('StringRule::chars() returns a new rule. The original is not modified.')]
     public function chars(array $sets, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($sets, 'chars');
@@ -349,6 +360,7 @@ final class StringRule extends FieldRule
      * @throws InvalidArgumentException When $sets is empty, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template or the flag name is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
+    #[\NoDiscard('StringRule::notChars() returns a new rule. The original is not modified.')]
     public function notChars(array $sets, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($sets, 'notChars');
@@ -395,6 +407,7 @@ final class StringRule extends FieldRule
      * @throws InvalidArgumentException When $sets is empty or names a set twice, $min is below 1 or above the number of sets, a listed string is empty, not valid UTF-8 or has more than 30 combining characters in a row, a CharSet pattern is unsafe to join (see CharSet), or the message template or the flag name is malformed
      * @throws RuntimeException         When ICU cannot split a listed string into grapheme clusters
      */
+    #[\NoDiscard('StringRule::minCharClasses() returns a new rule. The original is not modified.')]
     public function minCharClasses(int $min, array $sets, ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($sets, 'minCharClasses');
@@ -433,6 +446,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::email() returns a new rule. The original is not modified.')]
     public function email(bool $dns = false, ?string $message = null, ?string $flag = null): self
     {
         return $this->withCheck('email', [], static function (string $value) use ($dns): bool {
@@ -458,6 +472,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $schemes is empty, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::url() returns a new rule. The original is not modified.')]
     public function url(array $schemes = ['http', 'https'], ?string $message = null, ?string $flag = null): self
     {
         self::assertNotEmpty($schemes, 'url');
@@ -481,6 +496,7 @@ final class StringRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('StringRule::ip() returns a new rule. The original is not modified.')]
     public function ip(?string $message = null, ?string $flag = null): self
     {
         return $this->withCheck('ip', [], static fn (string $value): bool => filter_var($value, \FILTER_VALIDATE_IP) !== false, $message, flag: $flag);

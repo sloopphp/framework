@@ -276,7 +276,7 @@ final class DecimalRuleTest extends TestCase
     public function testAsNumberLeavesTheOriginalReturningStrings(): void
     {
         $base = Rule::decimal(10, 2);
-        $base->asNumber();
+        (void) $base->asNumber();
 
         $this->assertSame('1.00', self::valueOf($base, 1));
     }

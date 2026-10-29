@@ -372,7 +372,7 @@ final class ArrayRuleTest extends TestCase
     public function testDistinctLeavesTheRuleItWasCalledOnUnchanged(): void
     {
         $rule = Rule::list(Rule::string());
-        $rule->distinct();
+        (void) $rule->distinct();
 
         $this->assertSame([], self::failedRules($rule, ['a', 'a']));
     }

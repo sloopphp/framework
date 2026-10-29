@@ -140,6 +140,7 @@ final readonly class WindowExpression
      * @param  string|Expression ...$columns Columns to divide the rows by, or expressions producing them
      * @return self              A window dividing the rows by the columns it had and these
      */
+    #[\NoDiscard('WindowExpression::partitionBy() returns a new window. The original is not modified.')]
     public function partitionBy(string|Expression ...$columns): self
     {
         return new self(
@@ -170,6 +171,7 @@ final readonly class WindowExpression
      *
      * @see    BuilderWhere::orderBy() for the same rules applied to a statement
      */
+    #[\NoDiscard('WindowExpression::orderBy() returns a new window. The original is not modified.')]
     public function orderBy(string|Expression $column, string $direction = 'ASC'): self
     {
         // Read even where it is not written, so that a direction naming neither
@@ -210,6 +212,7 @@ final readonly class WindowExpression
      * @return self                     A window reading the rows between the two offsets
      * @throws InvalidArgumentException When the start comes after the end, or the function does not read a frame
      */
+    #[\NoDiscard('WindowExpression::rows() returns a new window. The original is not modified.')]
     public function rows(?int $start, ?int $end): self
     {
         return $this->withFrame(new WindowFrame(FrameUnit::Rows, $start, $end));
@@ -230,6 +233,7 @@ final readonly class WindowExpression
      * @return self                     A window reading the rows within the two distances
      * @throws InvalidArgumentException When the start comes after the end, or the function does not read a frame
      */
+    #[\NoDiscard('WindowExpression::range() returns a new window. The original is not modified.')]
     public function range(?int $start, ?int $end): self
     {
         return $this->withFrame(new WindowFrame(FrameUnit::Range, $start, $end));

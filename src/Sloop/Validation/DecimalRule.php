@@ -68,6 +68,7 @@ final class DecimalRule extends FieldRule
      * @return self
      * @throws LogicException When the bcmath extension is not loaded
      */
+    #[\NoDiscard('DecimalRule::asNumber() returns a new rule. The original is not modified.')]
     public function asNumber(): self
     {
         if (!class_exists(Number::class)) {
@@ -91,6 +92,7 @@ final class DecimalRule extends FieldRule
      * @throws InvalidArgumentException When the value is not a decimal or does not fit $precision and $scale
      * @throws LogicException           When the field is required or a default has already been declared
      */
+    #[\NoDiscard('DecimalRule::default() returns a new rule. The original is not modified.')]
     public function default(int|string $value): self
     {
         return $this->withDefault($this->defaultLiteral($value));
@@ -121,6 +123,7 @@ final class DecimalRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $min is not a decimal, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('DecimalRule::min() returns a new rule. The original is not modified.')]
     public function min(int|string $min, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($min);
@@ -137,6 +140,7 @@ final class DecimalRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $max is not a decimal, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('DecimalRule::max() returns a new rule. The original is not modified.')]
     public function max(int|string $max, ?string $message = null, ?string $flag = null): self
     {
         $bound = self::bound($max);
@@ -154,6 +158,7 @@ final class DecimalRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When a bound is not a decimal, $min is greater than $max, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('DecimalRule::between() returns a new rule. The original is not modified.')]
     public function between(int|string $min, int|string $max, ?string $message = null, ?string $flag = null): self
     {
         $lower = self::bound($min);

@@ -29,6 +29,7 @@ trait CountsElements
      * @return static
      * @throws InvalidArgumentException When $min is negative, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('minCount() returns a new rule. The original is not modified.')]
     public function minCount(int $min, ?string $message = null, ?string $flag = null): static
     {
         if ($min < 0) {
@@ -47,6 +48,7 @@ trait CountsElements
      * @return static
      * @throws InvalidArgumentException When $max is negative, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('maxCount() returns a new rule. The original is not modified.')]
     public function maxCount(int $max, ?string $message = null, ?string $flag = null): static
     {
         if ($max < 0) {
@@ -66,6 +68,7 @@ trait CountsElements
      * @return static
      * @throws InvalidArgumentException When $min is negative, greater than $max, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('betweenCount() returns a new rule. The original is not modified.')]
     public function betweenCount(int $min, int $max, ?string $message = null, ?string $flag = null): static
     {
         if ($min < 0) {
@@ -93,6 +96,7 @@ trait CountsElements
      * @return static
      * @throws InvalidArgumentException When $count is negative, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('exactCount() returns a new rule. The original is not modified.')]
     public function exactCount(int $count, ?string $message = null, ?string $flag = null): static
     {
         if ($count < 0) {

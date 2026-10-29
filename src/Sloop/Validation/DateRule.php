@@ -82,6 +82,7 @@ final class DateRule extends TemporalRule
      * @throws \LogicException          When the field is required or a default has already been declared
      * @throws InvalidArgumentException When the declared format cannot read back the value's date in the PHP default time zone (a validation where the clock reads another zone can still refuse it there)
      */
+    #[\NoDiscard('DateRule::default() returns a new rule. The original is not modified.')]
     public function default(DateTimeInterface $value): self
     {
         return $this->withDefault($this->heldLimit($value));
