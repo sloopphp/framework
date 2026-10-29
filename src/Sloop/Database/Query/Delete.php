@@ -30,7 +30,7 @@ use Sloop\Database\Exception\DatabaseException;
  * `strict_mode`, which refuses an unconditioned statement at the point it would
  * run. allowWithoutWhere() says that the whole table is what was meant.
  */
-class Delete extends BuilderWhere
+final class Delete extends BuilderWhere
 {
     /**
      * Start a DELETE against the given table.

@@ -155,11 +155,27 @@ final class InternalBoundaryTest extends TestCase
     /**
      * @param ReflectionClass<object> $class
      */
+    private function isExtendable(ReflectionClass $class): bool
+    {
+        return !$class->isFinal() && !$class->isInterface() && !$class->isTrait() && !$class->isEnum();
+    }
+
+    /**
+     * @param ReflectionClass<object> $class
+     */
     private function isExtendableValidationClass(ReflectionClass $class): bool
     {
         return str_starts_with($class->getName(), 'Sloop\\Validation\\')
-            && !$class->isFinal() && !$class->isInterface() && !$class->isTrait() && !$class->isEnum()
-            && !$this->isInternal($class);
+            && $this->isExtendable($class) && !$this->isInternal($class);
+    }
+
+    /**
+     * @param ReflectionClass<object> $class
+     */
+    private function isExtendableQueryClass(ReflectionClass $class): bool
+    {
+        return str_starts_with($class->getName(), 'Sloop\\Database\\Query\\')
+            && $this->isExtendable($class) && !\in_array($class->getName(), self::EXTENSION_POINTS, true);
     }
 
     /**
@@ -195,6 +211,30 @@ final class InternalBoundaryTest extends TestCase
         sort($names);
 
         return $names;
+    }
+
+    /**
+     * Classes the filter picks whose @phpstan-sealed list is missing or differs from their direct subclasses.
+     *
+     * @param  callable(ReflectionClass<object>): bool                              $picks Whether a class must be sealed
+     * @return array<string, array{sealed: list<string>, subclasses: list<string>}>
+     */
+    private function sealMismatches(callable $picks): array
+    {
+        $sources    = $this->sourceClasses();
+        $mismatches = [];
+        foreach ($sources as $class) {
+            if (!$picks($class)) {
+                continue;
+            }
+            $sealed   = $this->sealedNames($class);
+            $children = $this->directSubclassNames($class, $sources);
+            if ($sealed === [] || $sealed !== $children) {
+                $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
+            }
+        }
+
+        return $mismatches;
     }
 
     public function testPublicMethodsAreNotDeclaredOnInternalClasses(): void
@@ -238,19 +278,15 @@ final class InternalBoundaryTest extends TestCase
         // catches the other way, a name left in the list after its class stops
         // extending the base. A class with no subclass has nothing to seal it
         // to, so it fails here too and should be final instead.
-        $sources    = $this->sourceClasses();
-        $mismatches = [];
-        foreach ($sources as $class) {
-            if (!$this->isExtendableValidationClass($class)) {
-                continue;
-            }
-            $sealed   = $this->sealedNames($class);
-            $children = $this->directSubclassNames($class, $sources);
-            if ($sealed === [] || $sealed !== $children) {
-                $mismatches[$class->getName()] = ['sealed' => $sealed, 'subclasses' => $children];
-            }
-        }
+        self::assertSame([], $this->sealMismatches($this->isExtendableValidationClass(...)));
+    }
 
-        self::assertSame([], $mismatches);
+    public function testQueryClassesAreSealedToTheirSubclasses(): void
+    {
+        // A new statement or condition type is not built by subclassing a
+        // query class; only Grammar is extended. The abstract ones list their
+        // framework subclasses and the concrete ones are final, as with the
+        // Validation base classes above.
+        self::assertSame([], $this->sealMismatches($this->isExtendableQueryClass(...)));
     }
 }

@@ -21,6 +21,8 @@ use Sloop\Database\Connection;
  * `a OR b AND c` reaches the server as written and MySQL binds AND tighter than
  * OR. Where that is not what was meant, whereOpen() and whereClose() put the
  * parentheses in.
+ *
+ * @phpstan-sealed Delete|Select|Update
  */
 abstract class BuilderWhere extends Builder
 {

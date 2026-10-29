@@ -24,6 +24,8 @@ use LogicException;
  * inherits the machinery without inheriting a join() it could not write.
  *
  * @internal Shared by Select, Insert, Update and Delete, which are the types to name.
+ *
+ * @phpstan-sealed BuilderWhere|Insert
  */
 abstract class Builder extends Query
 {

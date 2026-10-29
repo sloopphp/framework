@@ -957,7 +957,7 @@ class Grammar
      * @param  WherePart                $part Part to compile
      * @return CompiledSql              The part as SQL, with the bindings it needs
      * @throws LogicException           When a nested statement names no table, or left a group of conditions open
-     * @throws InvalidArgumentException When an identifier is malformed
+     * @throws InvalidArgumentException When an identifier is malformed, or the part is a parenthesis (GroupBoundary)
      */
     protected function compileWherePart(WherePart $part): CompiledSql
     {

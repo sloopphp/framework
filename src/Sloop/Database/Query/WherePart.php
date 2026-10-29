@@ -11,6 +11,8 @@ namespace Sloop\Database\Query;
  * parentheses that group them and the fragments a caller wrote as SQL. Each of
  * those is described by its own class, and this is what they have in common —
  * every one of them joins to whatever came before it.
+ *
+ * @phpstan-sealed BetweenCondition|Condition|ExistsCondition|GroupBoundary|InCondition|JoinCondition|RawCondition
  */
 abstract readonly class WherePart
 {
