@@ -57,6 +57,7 @@ final class FileRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $max is below 1, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FileRule::maxSize() returns a new rule. The original is not modified.')]
     public function maxSize(int $max, ?string $message = null, ?string $flag = null): self
     {
         if ($max < 1) {
@@ -94,6 +95,7 @@ final class FileRule extends FieldRule
      * @return self
      * @throws InvalidArgumentException When $types is empty, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FileRule::mimeTypes() returns a new rule. The original is not modified.')]
     public function mimeTypes(array $types, ?string $message = null, ?string $flag = null): self
     {
         if ($types === []) {

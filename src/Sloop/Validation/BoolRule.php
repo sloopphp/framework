@@ -26,6 +26,7 @@ final class BoolRule extends FieldRule
      * @return self
      * @throws \LogicException When the field is required or a default has already been declared
      */
+    #[\NoDiscard('BoolRule::default() returns a new rule. The original is not modified.')]
     public function default(bool $value): self
     {
         return $this->withDefault($value);

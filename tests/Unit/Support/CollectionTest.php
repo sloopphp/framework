@@ -532,7 +532,7 @@ final class CollectionTest extends TestCase
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "active" must resolve to int or string, got bool.');
 
-        Collection::from([['active' => true]])->groupBy('active');
+        (void) Collection::from([['active' => true]])->groupBy('active');
     }
 
     public function testGroupByThrowsForMissingObjectProperty(): void
@@ -540,7 +540,7 @@ final class CollectionTest extends TestCase
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "type" must resolve to int or string, got null.');
 
-        Collection::from([new stdClass()])->groupBy('type');
+        (void) Collection::from([new stdClass()])->groupBy('type');
     }
 
     // -------------------------------------------------------

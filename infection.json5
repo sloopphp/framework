@@ -110,8 +110,8 @@
             // weakened check still fails the HMAC comparison for every key, so
             // decrypt() returns false either way; only the work done differs.
             "ignore": [
-                "Sloop\\Validation\\StringRule::clusters::724",
-                "Sloop\\Validation\\TimeRule::coerce::225",
+                "Sloop\\Validation\\StringRule::clusters::740",
+                "Sloop\\Validation\\TimeRule::coerce::234",
                 "Sloop\\Encryption\\Encryptor::openCbc::258"
             ]
         },
@@ -144,7 +144,7 @@
                 // reliably, so the domain extraction on this line is never
                 // compared against a live answer; only the negative path (a
                 // domain under .invalid) is tested.
-                "Sloop\\Validation\\StringRule::email::448",
+                "Sloop\\Validation\\StringRule::email::462",
                 // Connection::sleepBackoff / logQuerySuccess convert seconds to
                 // milliseconds with a literal 1000. Shifting it to 1001 changes
                 // a sleep duration or an elapsed-time reading by a tenth of a
@@ -170,8 +170,8 @@
         },
         "DecrementInteger": {
             "ignore": [
-                // StringRule::email::448: see IncrementInteger.
-                "Sloop\\Validation\\StringRule::email::448",
+                // StringRule::email::462: see IncrementInteger.
+                "Sloop\\Validation\\StringRule::email::462",
                 // Same millisecond-conversion literal as IncrementInteger above,
                 // in the opposite direction (1000 → 999).
                 "Sloop\\Database\\Connection::sleepBackoff",
@@ -210,26 +210,26 @@
             ]
         },
         "Plus": {
-            // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::462: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::448"
+                "Sloop\\Validation\\StringRule::email::462"
             ]
         },
         "NotIdentical": {
-            // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::462: see IncrementInteger (needs a live DNS lookup).
             // LimitInFrame::in::71 tests last that a result is kept, which is
             // always so once the limit matches. Turning the test around makes
             // every lookup miss, and the limit is brought into the frame again
             // with the same result; only the work differs.
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::448",
+                "Sloop\\Validation\\StringRule::email::462",
                 "Sloop\\Validation\\LimitInFrame::in::71"
             ]
         },
         "UnwrapSubstr": {
-            // StringRule::email::448: see IncrementInteger (needs a live DNS lookup).
+            // StringRule::email::462: see IncrementInteger (needs a live DNS lookup).
             "ignore": [
-                "Sloop\\Validation\\StringRule::email::448"
+                "Sloop\\Validation\\StringRule::email::462"
             ]
         },
         "CastFloat": {
@@ -386,7 +386,7 @@
                 // listed. Falling through walks the value's clusters against an
                 // empty list and counts nothing, so only the work differs.
                 // Pinned to the line so the final return stays covered.
-                "Sloop\\Validation\\StringRule::countListedKinds::674",
+                "Sloop\\Validation\\StringRule::countListedKinds::690",
                 // CombiningRun::edge returns the counts it cached for a code point.
                 // Falling through computes the same counts from the same NFKD form
                 // and caches them again, so only the work differs. Same shape as

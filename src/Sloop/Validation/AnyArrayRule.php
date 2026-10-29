@@ -27,6 +27,7 @@ final class AnyArrayRule extends ArrayRule
      * @return static
      * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('AnyArrayRule::distinct() returns a new rule. The original is not modified.')]
     public function distinct(?string $message = null, ?string $flag = null): static
     {
         return $this->withElementsCheck('distinct', static function (array $value): bool {

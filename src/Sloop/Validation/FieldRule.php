@@ -205,6 +205,7 @@ abstract class FieldRule
      * @throws LogicException            When a default has been declared, since the default would never be used, or requiredWith() / requiredIf() has, since the field would always be required
      * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('FieldRule::required() returns a new rule. The original is not modified.')]
     public function required(?string $message = null, ?string $flag = null): static
     {
         if ($this->hasDefault) {
@@ -236,6 +237,7 @@ abstract class FieldRule
      * @throws LogicException            When a field message has already been set
      * @throws \InvalidArgumentException When the template is malformed or contains `'{`
      */
+    #[\NoDiscard('FieldRule::message() returns a new rule. The original is not modified.')]
     public function message(string $message): static
     {
         if ($this->fieldMessage !== null) {
@@ -256,6 +258,7 @@ abstract class FieldRule
      * @return static
      * @throws LogicException When a label has already been set
      */
+    #[\NoDiscard('FieldRule::label() returns a new rule. The original is not modified.')]
     public function label(string $label): static
     {
         if ($this->displayLabel !== null) {
@@ -283,6 +286,7 @@ abstract class FieldRule
      * @return static
      * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('FieldRule::same() returns a new rule. The original is not modified.')]
     public function same(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparison(new Comparison('same', $field, $message, flag: self::checkedFlag($flag)));
@@ -297,6 +301,7 @@ abstract class FieldRule
      * @return static
      * @throws \InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('FieldRule::different() returns a new rule. The original is not modified.')]
     public function different(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparison(new Comparison('different', $field, $message, flag: self::checkedFlag($flag)));
@@ -318,6 +323,7 @@ abstract class FieldRule
      * @throws InvalidArgumentException When $fields is an empty list, or the message template or the flag name is malformed
      * @throws TypeError                When a name in the list is not a string
      */
+    #[\NoDiscard('FieldRule::requiredWith() returns a new rule. The original is not modified.')]
     public function requiredWith(string|array $fields, ?string $message = null, ?string $flag = null): static
     {
         if ($fields === []) {
@@ -355,6 +361,7 @@ abstract class FieldRule
      * @throws LogicException           When the field is required
      * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FieldRule::requiredIf() returns a new rule. The original is not modified.')]
     public function requiredIf(string $field, mixed $value, ?string $message = null, ?string $flag = null): static
     {
         return $this->withRequiredCondition(
@@ -397,6 +404,7 @@ abstract class FieldRule
      * @return static
      * @throws InvalidArgumentException When the name is malformed or one of the framework's rule names, or the message template or the flag name is malformed
      */
+    #[\NoDiscard('FieldRule::using() returns a new rule. The original is not modified.')]
     public function using(string $name, Closure $test, ?string $message = null, ?string $flag = null): static
     {
         if (preg_match('/\A[A-Za-z][A-Za-z0-9]*\z/', $name) !== 1) {
@@ -458,6 +466,7 @@ abstract class FieldRule
      * @return static
      * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the closure adds no rules or does anything other than add rules
      */
+    #[\NoDiscard('FieldRule::when() returns a new rule. The original is not modified.')]
     public function when(string $field, mixed $value, Closure $then): static
     {
         $values = self::conditionValues($value, 'when');

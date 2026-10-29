@@ -71,6 +71,7 @@ final class ListRule extends ArrayRule
      * @throws InvalidArgumentException When $value is not a list, holds an empty element where the element is required, or holds a value the element rule refuses at declaration
      * @throws \LogicException          When the field is required or a default has already been declared
      */
+    #[\NoDiscard('ListRule::default() returns a new rule. The original is not modified.')]
     public function default(array $value): static
     {
         return $this->withDefault($this->prepareElements($value));
@@ -92,6 +93,7 @@ final class ListRule extends ArrayRule
      * @return static
      * @throws InvalidArgumentException When the element is a type no two inputs can share (a file), or the message template or the flag name is malformed
      */
+    #[\NoDiscard('ListRule::distinct() returns a new rule. The original is not modified.')]
     public function distinct(?string $message = null, ?string $flag = null): static
     {
         if (!$this->element->comparesByValue()) {

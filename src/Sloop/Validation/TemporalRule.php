@@ -45,6 +45,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
+    #[\NoDiscard('TemporalRule::before() returns a new rule. The original is not modified.')]
     public function before(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('before', $limit, $message, false, $flag);
@@ -59,6 +60,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
+    #[\NoDiscard('TemporalRule::beforeOrEqual() returns a new rule. The original is not modified.')]
     public function beforeOrEqual(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('beforeOrEqual', $limit, $message, true, $flag);
@@ -73,6 +75,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
+    #[\NoDiscard('TemporalRule::after() returns a new rule. The original is not modified.')]
     public function after(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('after', $limit, $message, false, $flag);
@@ -87,6 +90,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed, or the limit cannot be brought into the field's frame
      */
+    #[\NoDiscard('TemporalRule::afterOrEqual() returns a new rule. The original is not modified.')]
     public function afterOrEqual(DateTimeInterface $limit, ?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonTo('afterOrEqual', $limit, $message, true, $flag);
@@ -108,6 +112,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::afterNow() returns a new rule. The original is not modified.')]
     public function afterNow(?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonToNow('afterNow', $message, false, $flag);
@@ -123,6 +128,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::afterOrEqualNow() returns a new rule. The original is not modified.')]
     public function afterOrEqualNow(?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonToNow('afterOrEqualNow', $message, true, $flag);
@@ -138,6 +144,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::beforeNow() returns a new rule. The original is not modified.')]
     public function beforeNow(?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonToNow('beforeNow', $message, false, $flag);
@@ -153,6 +160,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::beforeOrEqualNow() returns a new rule. The original is not modified.')]
     public function beforeOrEqualNow(?string $message = null, ?string $flag = null): static
     {
         return $this->withComparisonToNow('beforeOrEqualNow', $message, true, $flag);
@@ -179,6 +187,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::afterField() returns a new rule. The original is not modified.')]
     public function afterField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('afterField', $field, $message, static fn (int $order): bool => $order > 0, $flag);
@@ -193,6 +202,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::afterOrEqualField() returns a new rule. The original is not modified.')]
     public function afterOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('afterOrEqualField', $field, $message, static fn (int $order): bool => $order >= 0, $flag);
@@ -207,6 +217,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::beforeField() returns a new rule. The original is not modified.')]
     public function beforeField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('beforeField', $field, $message, static fn (int $order): bool => $order < 0, $flag);
@@ -221,6 +232,7 @@ abstract class TemporalRule extends FieldRule
      * @return static
      * @throws InvalidArgumentException When the message template or the flag name is malformed
      */
+    #[\NoDiscard('TemporalRule::beforeOrEqualField() returns a new rule. The original is not modified.')]
     public function beforeOrEqualField(string $field, ?string $message = null, ?string $flag = null): static
     {
         return $this->withOrderTo('beforeOrEqualField', $field, $message, static fn (int $order): bool => $order <= 0, $flag);

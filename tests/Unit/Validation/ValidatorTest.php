@@ -252,7 +252,7 @@ final class ValidatorTest extends TestCase
     public function testRequiredLeavesTheOriginalOptional(): void
     {
         $base = Rule::string();
-        $base->required();
+        (void) $base->required();
 
         $this->assertFalse(new Validator(['v' => $base])->validate([])->failed());
     }
@@ -260,7 +260,7 @@ final class ValidatorTest extends TestCase
     public function testDefaultLeavesTheOriginalWithoutDefault(): void
     {
         $base = Rule::string();
-        $base->default('x');
+        (void) $base->default('x');
 
         $this->assertSame(['v' => null], new Validator(['v' => $base])->validate([])->values());
     }
@@ -268,7 +268,7 @@ final class ValidatorTest extends TestCase
     public function testAddingARuleLeavesTheOriginalWithoutIt(): void
     {
         $base = Rule::string();
-        $base->minLength(5);
+        (void) $base->minLength(5);
 
         $this->assertFalse(new Validator(['v' => $base])->validate(['v' => 'ab'])->failed());
     }
@@ -276,7 +276,7 @@ final class ValidatorTest extends TestCase
     public function testComparisonLeavesTheOriginalWithoutIt(): void
     {
         $base = Rule::string();
-        $base->same('w');
+        (void) $base->same('w');
 
         $this->assertFalse(new Validator(['v' => $base, 'w' => Rule::string()])->validate(['v' => 'a', 'w' => 'b'])->failed());
     }
@@ -284,8 +284,8 @@ final class ValidatorTest extends TestCase
     public function testMessageAndLabelLeaveTheOriginalUnchanged(): void
     {
         $base = Rule::string()->required();
-        $base->message('custom {label}');
-        $base->label('Name');
+        (void) $base->message('custom {label}');
+        (void) $base->label('Name');
 
         $this->assertSame(
             ['v' => ['The v field is required.']],

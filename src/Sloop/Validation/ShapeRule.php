@@ -82,6 +82,7 @@ final class ShapeRule extends ArrayRule
      * @throws InvalidArgumentException When $value holds a key this shape does not declare, says nothing for a required one, or names a value a key's own rule refuses at declaration
      * @throws \LogicException          When the field is required or a default has already been declared
      */
+    #[\NoDiscard('ShapeRule::default() returns a new rule. The original is not modified.')]
     public function default(array $value): static
     {
         return $this->withDefault($this->fill($value));

@@ -121,7 +121,7 @@ final class WindowFrameTest extends TestCase
     public function testSettingAFrameLeavesTheWindowItWasCalledOnAlone(): void
     {
         $window = $this->runningSum();
-        $window->rows(-1, 0);
+        (void) $window->rows(-1, 0);
 
         $this->assertNull($window->frame);
     }

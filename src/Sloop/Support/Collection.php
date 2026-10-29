@@ -325,6 +325,7 @@ final readonly class Collection implements IteratorAggregate, Countable
      * @return self<self<T>>
      * @throws UnexpectedValueException                   If the field is missing or the extracted key is not int or string
      */
+    #[\NoDiscard('Collection::groupBy() returns a new Collection. The original is not modified.')]
     public function groupBy(string|callable $key): self
     {
         $groups = [];

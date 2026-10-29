@@ -40,6 +40,7 @@ abstract class ArrayRule extends FieldRule
      * @return static
      * @throws \LogicException         When the field is required or a default has already been declared
      */
+    #[\NoDiscard('ArrayRule::default() returns a new rule. The original is not modified.')]
     public function default(array $value): static
     {
         return $this->withDefault($value);

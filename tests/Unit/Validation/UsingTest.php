@@ -516,7 +516,7 @@ final class UsingTest extends TestCase
     public function testUsingLeavesTheRuleItWasCalledOnUnchanged(): void
     {
         $base = Rule::string();
-        $base->using('never', static fn (string $v): bool => false, message: 'x');
+        (void) $base->using('never', static fn (string $v): bool => false, message: 'x');
 
         self::assertSame([], self::failedRules($base, 'a'));
     }

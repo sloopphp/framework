@@ -797,7 +797,7 @@ final class WindowExpressionTest extends TestCase
         $this->expectException(TypeError::class);
 
         // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
-        Expression::rowNumber()->over()->orderBy(Expression::sum('amount')->over());
+        (void) Expression::rowNumber()->over()->orderBy(Expression::sum('amount')->over());
     }
 
     public function testPartitionByRefusesAWindowCallAsAColumn(): void
@@ -805,14 +805,14 @@ final class WindowExpressionTest extends TestCase
         $this->expectException(TypeError::class);
 
         // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
-        Expression::rowNumber()->over()->partitionBy(Expression::sum('amount')->over());
+        (void) Expression::rowNumber()->over()->partitionBy(Expression::sum('amount')->over());
     }
 
     public function testAddingToAWindowLeavesTheOneItWasBuiltFromAlone(): void
     {
         $plain = Expression::sum('amount')->over();
 
-        $plain->partitionBy('user_id')->orderBy('id');
+        (void) $plain->partitionBy('user_id')->orderBy('id');
 
         $this->assertSame([], $plain->partitions);
         $this->assertSame([], $plain->orders);
