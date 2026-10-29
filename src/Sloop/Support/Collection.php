@@ -9,6 +9,7 @@ use Countable;
 use InvalidArgumentException;
 use IteratorAggregate;
 use Traversable;
+use UnexpectedValueException;
 
 /**
  * Immutable fluent collection.
@@ -211,8 +212,9 @@ final readonly class Collection implements IteratorAggregate, Countable
      * Sum the items. When $by is null the items must be numeric; a string key
      * picks a field; a callable returns the numeric value per item.
      *
-     * @param  string|callable|null $by Key, callable, or null for the items themselves
+     * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float
+     * @throws UnexpectedValueException If an item, its field, or the callable's result is not int or float
      */
     public function sum(string|callable|null $by = null): int|float
     {
@@ -227,8 +229,9 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Compute the arithmetic mean. Returns null when the collection is empty.
      *
-     * @param  string|callable|null $by Key, callable, or null for the items themselves
+     * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float|null
+     * @throws UnexpectedValueException If an item, its field, or the callable's result is not int or float
      */
     public function avg(string|callable|null $by = null): int|float|null
     {
@@ -244,8 +247,9 @@ final readonly class Collection implements IteratorAggregate, Countable
      * When $by is a callable or key, the extracted numeric value is returned,
      * not the original item.
      *
-     * @param  string|callable|null $by Key, callable, or null for the items themselves
+     * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float|null
+     * @throws UnexpectedValueException If an item, its field, or the callable's result is not int or float
      */
     public function min(string|callable|null $by = null): int|float|null
     {
@@ -269,8 +273,9 @@ final readonly class Collection implements IteratorAggregate, Countable
      * When $by is a callable or key, the extracted numeric value is returned,
      * not the original item.
      *
-     * @param  string|callable|null $by Key, callable, or null for the items themselves
+     * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float|null
+     * @throws UnexpectedValueException If an item, its field, or the callable's result is not int or float
      */
     public function max(string|callable|null $by = null): int|float|null
     {
@@ -298,6 +303,7 @@ final readonly class Collection implements IteratorAggregate, Countable
      *
      * @param  string|(callable(T, array-key): array-key) $key Key name or key extractor
      * @return self<T>
+     * @throws UnexpectedValueException                   If the field is missing or the extracted key is not int or string
      */
     public function keyBy(string|callable $key): self
     {
@@ -317,6 +323,7 @@ final readonly class Collection implements IteratorAggregate, Countable
      *
      * @param  string|(callable(T, array-key): array-key) $key Key name or key extractor
      * @return self<self<T>>
+     * @throws UnexpectedValueException                   If the field is missing or the extracted key is not int or string
      */
     public function groupBy(string|callable $key): self
     {
@@ -458,13 +465,13 @@ final readonly class Collection implements IteratorAggregate, Countable
      * @param  T                        $value Item
      * @param  string|callable|null     $by    Extractor (null uses $value directly)
      * @return int|float
-     * @throws InvalidArgumentException If the extracted value is not numeric
+     * @throws UnexpectedValueException If the extracted value is not numeric
      */
     private function extractNumeric(mixed $value, string|callable|null $by): int|float
     {
         if ($by === null) {
             if (!\is_int($value) && !\is_float($value)) {
-                throw new InvalidArgumentException('Collection aggregation without a key requires numeric items.');
+                throw new UnexpectedValueException('Collection aggregation without a key requires numeric items.');
             }
 
             return $value;
@@ -473,7 +480,7 @@ final readonly class Collection implements IteratorAggregate, Countable
         if (\is_callable($by)) {
             $result = $by($value);
             if (!\is_int($result) && !\is_float($result)) {
-                throw new InvalidArgumentException('Aggregation callable must return int or float.');
+                throw new UnexpectedValueException('Aggregation callable must return int or float.');
             }
 
             return $result;
@@ -481,7 +488,7 @@ final readonly class Collection implements IteratorAggregate, Countable
 
         $extracted = $this->readMember($value, $by);
         if (!\is_int($extracted) && !\is_float($extracted)) {
-            throw new InvalidArgumentException('Aggregation key "' . $by . '" must resolve to int or float.');
+            throw new UnexpectedValueException('Aggregation key "' . $by . '" must resolve to int or float.');
         }
 
         return $extracted;
@@ -512,7 +519,7 @@ final readonly class Collection implements IteratorAggregate, Countable
      *
      * @param  mixed                    $value Extracted key candidate
      * @return int|string
-     * @throws InvalidArgumentException If the extracted value cannot be used as an array key
+     * @throws UnexpectedValueException If the extracted value cannot be used as an array key
      */
     private function coerceArrayKey(mixed $value): int|string
     {
@@ -520,6 +527,6 @@ final readonly class Collection implements IteratorAggregate, Countable
             return $value;
         }
 
-        throw new InvalidArgumentException('keyBy/groupBy key must resolve to int or string.');
+        throw new UnexpectedValueException('keyBy/groupBy key must resolve to int or string.');
     }
 }
