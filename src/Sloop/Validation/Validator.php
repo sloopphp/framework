@@ -108,16 +108,18 @@ final class Validator
     }
 
     /**
-     * A validator for the keys of a shape, which leaves the messages of using() to the validator holding the shape.
+     * A validator for the keys of a shape, which leaves the messages of using() and the count bounds of lists to the validator holding the shape.
      *
      * The shape's own message(), declared after its keys, can still give them
      * one, so only the outermost validator can tell whether one is missing.
+     * A list() without a count bound is reported with its path from the
+     * outermost field (`items.*.tags`), which only that validator knows.
      *
      * @internal Called by ShapeRule.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Rules of each key
      * @return self
-     * @throws InvalidArgumentException                  When the keys' rules are refused the way the constructor refuses them, apart from the messages of using()
+     * @throws InvalidArgumentException                  When the keys' rules are refused the way the constructor refuses them, apart from the messages of using() and the count bound of a list()
      */
     public static function forKeys(array $rules): self
     {
@@ -133,7 +135,7 @@ final class Validator
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name
      * @param  ClockInterface|null                          $clock Clock, or null for the system clock
      * @return void
-     * @throws InvalidArgumentException                     When the rules are refused the way the constructor describes, apart from the messages of using()
+     * @throws InvalidArgumentException                     When the rules are refused the way the constructor describes, apart from the messages of using() and the count bound of a list()
      */
     private function setUp(array $rules, ?ClockInterface $clock): void
     {

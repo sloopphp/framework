@@ -185,7 +185,7 @@ final class Rule
      * @param  array<array-key, FieldRule<covariant mixed>>                              $fields        Rules of each key, named (a numeric key is refused)
      * @param  ArraySanitize|(Closure(array<array-key, mixed>): array<array-key, mixed>) ...$sanitizers Applied in order once the value is an array
      * @return ShapeRule
-     * @throws \InvalidArgumentException                                                 When no key is declared, a key is not a name, or the keys' rules are refused the way Validator refuses them
+     * @throws \InvalidArgumentException                                                 When no key is declared, a key is not a name, or the keys' rules are refused the way Validator refuses them, apart from the messages of using() and the count bound of a list(), which the validator holding the shape checks
      */
     public static function shape(array $fields, ArraySanitize|Closure ...$sanitizers): ShapeRule
     {
