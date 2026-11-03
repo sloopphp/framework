@@ -77,7 +77,8 @@ final class Validator
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; fields required on each other include two with a default;
-     *                                                      or a rule given to using() has no message, from `message:` or the message() of its field or of a field holding it
+     *                                                      a rule given to using() has no message, from `message:` or the message() of its field or of a field holding it;
+     *                                                      or a list() at any depth has no maxCount(), exactCount() or betweenCount() outside when()
      */
     public function __construct(array $rules, ?ClockInterface $clock = null)
     {
@@ -94,6 +95,13 @@ final class Validator
                 throw new InvalidArgumentException(
                     'Field "' . $field . '" has a using("' . $name . '") rule without a message; '
                     . 'give it with message: or with message() on the field.',
+                );
+            }
+            $unbounded = $rule->unboundedList();
+            if ($unbounded !== null) {
+                throw new InvalidArgumentException(
+                    'The list() at "' . ($unbounded === '' ? $field : $field . '.' . $unbounded) . '" needs maxCount(), exactCount() or betweenCount(), '
+                    . 'so that an input failing every element cannot exhaust memory.',
                 );
             }
         }

@@ -113,7 +113,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAnEmptyArrayCanBeTheDeclaredDefault(): void
     {
-        $this->assertSame([], self::valueOf(Rule::list(Rule::int())->default([]), null));
+        $this->assertSame([], self::valueOf(Rule::list(Rule::int())->maxCount(100)->default([]), null));
     }
 
     public function testMinCountIsWhatRejectsAnEmptyArray(): void
@@ -288,21 +288,21 @@ final class ArrayRuleTest extends TestCase
     {
         self::assertErrorSame(
             new ValidationError('distinct', [], 'The v field has a duplicate value.'),
-            self::onlyError(Rule::list(Rule::string())->distinct(), ['a', 'b', 'a', 'b']),
+            self::onlyError(Rule::list(Rule::string())->maxCount(100)->distinct(), ['a', 'b', 'a', 'b']),
         );
-        $this->assertSame([], self::failedRules(Rule::list(Rule::string())->distinct(), ['a', 'b']));
+        $this->assertSame([], self::failedRules(Rule::list(Rule::string())->maxCount(100)->distinct(), ['a', 'b']));
     }
 
     public function testDistinctComparesTheElementsAfterTheyAreGivenTheirType(): void
     {
-        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::int())->distinct(), [1, '1']));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::int())->maxCount(100)->distinct(), [1, '1']));
         $this->assertSame([], self::failedRules(Rule::array()->distinct(), [1, '1']));
         $this->assertSame(['distinct'], self::failedRules(Rule::array()->distinct(), [1, 1]));
     }
 
     public function testDistinctComparesDatesByTheInstantTheyName(): void
     {
-        $rule = Rule::list(Rule::dateTime())->distinct();
+        $rule = Rule::list(Rule::dateTime())->maxCount(100)->distinct();
 
         $this->assertSame(['distinct'], self::failedRules($rule, ['2026-01-01T09:00:00+09:00', '2026-01-01T00:00:00Z']));
         $this->assertSame([], self::failedRules($rule, ['2026-01-01T09:00:00+09:00', '2026-01-01T09:00:00Z']));
@@ -310,19 +310,19 @@ final class ArrayRuleTest extends TestCase
 
     public function testDistinctComparesDecimalsByTheirNormalizedDigits(): void
     {
-        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::decimal(5, 2))->distinct(), ['1.5', '1.50']));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::decimal(5, 2))->maxCount(100)->distinct(), ['1.5', '1.50']));
     }
 
     public function testDistinctDoesNotCompareEmptyElements(): void
     {
-        $this->assertSame([], self::failedRules(Rule::list(Rule::string())->distinct(), ['a', '', null]));
+        $this->assertSame([], self::failedRules(Rule::list(Rule::string())->maxCount(100)->distinct(), ['a', '', null]));
         $this->assertSame([], self::failedRules(Rule::array()->distinct(), ['a', '', '', null, null]));
         $this->assertSame(['distinct'], self::failedRules(Rule::array()->distinct(), [0, '0', 0]));
     }
 
     public function testDistinctDoesNotRunWhenAnElementFailed(): void
     {
-        $this->assertSame([], self::failedRules(Rule::list(Rule::int())->distinct(), ['x', 'x']));
+        $this->assertSame([], self::failedRules(Rule::list(Rule::int())->maxCount(100)->distinct(), ['x', 'x']));
     }
 
     public function testDistinctComparesNestedArraysByTheirContents(): void
@@ -333,20 +333,20 @@ final class ArrayRuleTest extends TestCase
 
     public function testDistinctComparesDatesNestedInAListOrAShape(): void
     {
-        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::list(Rule::date()))->distinct(), [['2026-01-01'], ['2026-01-01']]));
-        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::shape(['d' => Rule::date()]))->distinct(), [['d' => '2026-01-01'], ['d' => '2026-01-01']]));
-        $this->assertSame([], self::failedRules(Rule::list(Rule::shape(['d' => Rule::date()]))->distinct(), [['d' => '2026-01-01'], ['d' => '2026-01-02']]));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::list(Rule::date())->maxCount(100))->maxCount(100)->distinct(), [['2026-01-01'], ['2026-01-01']]));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::shape(['d' => Rule::date()]))->maxCount(100)->distinct(), [['d' => '2026-01-01'], ['d' => '2026-01-01']]));
+        $this->assertSame([], self::failedRules(Rule::list(Rule::shape(['d' => Rule::date()]))->maxCount(100)->distinct(), [['d' => '2026-01-01'], ['d' => '2026-01-02']]));
     }
 
     public function testDistinctDoesNotCompareAnEmptyElementThatTakesTheElementDefault(): void
     {
-        $this->assertSame([], self::failedRules(Rule::list(Rule::string()->default('x'))->distinct(), ['', '']));
-        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::string()->default('x'))->distinct(), ['x', 'x']));
+        $this->assertSame([], self::failedRules(Rule::list(Rule::string()->default('x'))->maxCount(100)->distinct(), ['', '']));
+        $this->assertSame(['distinct'], self::failedRules(Rule::list(Rule::string()->default('x'))->maxCount(100)->distinct(), ['x', 'x']));
     }
 
     public function testDistinctUsesItsOwnMessage(): void
     {
-        $this->assertSame('vの値が重複しています', self::onlyError(Rule::list(Rule::string())->distinct('{label}の値が重複しています'), ['a', 'a'])->message);
+        $this->assertSame('vの値が重複しています', self::onlyError(Rule::list(Rule::string())->maxCount(100)->distinct('{label}の値が重複しています'), ['a', 'a'])->message);
     }
 
     public function testDistinctRefusesAMalformedMessage(): void
@@ -362,8 +362,8 @@ final class ArrayRuleTest extends TestCase
     public function testSameComparesDatesInListsByTheInstantTheyName(): void
     {
         $validator = new Validator([
-            'a' => Rule::list(Rule::dateTime()),
-            'b' => Rule::list(Rule::dateTime())->same('a'),
+            'a' => Rule::list(Rule::dateTime())->maxCount(100),
+            'b' => Rule::list(Rule::dateTime())->maxCount(100)->same('a'),
         ]);
 
         $this->assertSame([], $validator->validate(['a' => ['2026-01-01T09:00:00+09:00'], 'b' => ['2026-01-01T00:00:00Z']])->errors());
@@ -371,7 +371,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testDistinctLeavesTheRuleItWasCalledOnUnchanged(): void
     {
-        $rule = Rule::list(Rule::string());
+        $rule = Rule::list(Rule::string())->maxCount(100);
         (void) $rule->distinct();
 
         $this->assertSame([], self::failedRules($rule, ['a', 'a']));
@@ -390,12 +390,12 @@ final class ArrayRuleTest extends TestCase
 
     public function testListValidatesEveryElement(): void
     {
-        $this->assertSame([1, 2], self::valueOf(Rule::list(Rule::int()), ['1', '2']));
+        $this->assertSame([1, 2], self::valueOf(Rule::list(Rule::int())->maxCount(100), ['1', '2']));
     }
 
     public function testListReportsTheFailingElementUnderItsIndex(): void
     {
-        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => [1, 'x']])->errors();
+        $errors = new Validator(['v' => Rule::list(Rule::int())->maxCount(100)])->validate(['v' => [1, 'x']])->errors();
 
         $this->assertSame(['v.1'], array_keys($errors));
         self::assertErrorSame(new ValidationError('int', [], 'The 1 field must be an integer.'), $errors['v.1'][0]);
@@ -403,26 +403,26 @@ final class ArrayRuleTest extends TestCase
 
     public function testListReportsEveryFailingElementRatherThanStoppingAtTheFirst(): void
     {
-        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => ['x', 2, 'y']])->errors();
+        $errors = new Validator(['v' => Rule::list(Rule::int())->maxCount(100)])->validate(['v' => ['x', 2, 'y']])->errors();
 
         $this->assertSame(['v.0', 'v.2'], array_keys($errors));
     }
 
     public function testListRunsEveryRuleOfTheElement(): void
     {
-        $errors = new Validator(['v' => Rule::list(Rule::int()->min(10)->max(5))])->validate(['v' => [7]])->errors();
+        $errors = new Validator(['v' => Rule::list(Rule::int()->min(10)->max(5))->maxCount(100)])->validate(['v' => [7]])->errors();
 
         $this->assertSame(['min', 'max'], array_map(static fn (ValidationError $e): string => $e->rule, $errors['v.0']));
     }
 
     public function testListRenumbersTheValidatedValue(): void
     {
-        $this->assertSame([1, 2], self::valueOf(Rule::list(Rule::int()), [3 => '1', 9 => '2']));
+        $this->assertSame([1, 2], self::valueOf(Rule::list(Rule::int())->maxCount(100), [3 => '1', 9 => '2']));
     }
 
     public function testListCountsPositionsWhateverKeysTheInputCameUnder(): void
     {
-        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => ['a' => 1, 'b' => 'x']])->errors();
+        $errors = new Validator(['v' => Rule::list(Rule::int())->maxCount(100)])->validate(['v' => ['a' => 1, 'b' => 'x']])->errors();
 
         $this->assertSame(['v.1'], array_keys($errors));
     }
@@ -430,7 +430,7 @@ final class ArrayRuleTest extends TestCase
     public function testAnInputKeyReachesNeitherTheErrorNorTheMessage(): void
     {
         $hostile = '<script>alert(1)</script>';
-        $errors  = new Validator(['v' => Rule::list(Rule::string()->minLength(3))])
+        $errors  = new Validator(['v' => Rule::list(Rule::string()->minLength(3))->maxCount(100)])
             ->validate(['v' => [$hostile => 'x']])
             ->errors();
 
@@ -440,21 +440,21 @@ final class ArrayRuleTest extends TestCase
 
     public function testListDropsTheWholeFieldFromTheValuesWhenAnElementFails(): void
     {
-        $result = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => [1, 'x']]);
+        $result = new Validator(['v' => Rule::list(Rule::int())->maxCount(100)])->validate(['v' => [1, 'x']]);
 
         $this->assertSame([], $result->values());
     }
 
     public function testACountRuleSeesTheArrayTheSanitizersProduced(): void
     {
-        $rule = Rule::list(Rule::int(), ArraySanitize::RemoveEmpty)->minCount(2);
+        $rule = Rule::list(Rule::int(), ArraySanitize::RemoveEmpty)->maxCount(100)->minCount(2);
 
         $this->assertSame(['minCount'], self::failedRules($rule, [1, null, '']));
     }
 
     public function testAnEmptyElementOfAListTakesItsDeclaredDefault(): void
     {
-        $this->assertSame([1, 0], self::valueOf(Rule::list(Rule::int()->default(0)), [1, null]));
+        $this->assertSame([1, 0], self::valueOf(Rule::list(Rule::int()->default(0))->maxCount(100), [1, null]));
     }
 
     // ---------------------------------------------------------------
@@ -538,7 +538,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAListOfShapesKeysTheErrorByTheWholePath(): void
     {
-        $rule   = Rule::list(Rule::shape(['price' => Rule::int()]));
+        $rule   = Rule::list(Rule::shape(['price' => Rule::int()]))->maxCount(100);
         $errors = new Validator(['items' => $rule])->validate(['items' => [['price' => 1], ['price' => 'x']]])->errors();
 
         $this->assertSame(['items.1.price'], array_keys($errors));
@@ -550,7 +550,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAShapeOfListsKeysTheErrorByTheWholePath(): void
     {
-        $rule   = Rule::shape(['tags' => Rule::list(Rule::int())]);
+        $rule   = Rule::shape(['tags' => Rule::list(Rule::int())->maxCount(100)]);
         $errors = new Validator(['v' => $rule])->validate(['v' => ['tags' => ['x']]])->errors();
 
         $this->assertSame(['v.tags.0'], array_keys($errors));
@@ -558,7 +558,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testNestingHasNoDeclaredLimit(): void
     {
-        $rule   = Rule::list(Rule::list(Rule::list(Rule::int())));
+        $rule   = Rule::list(Rule::list(Rule::list(Rule::int())->maxCount(100))->maxCount(100))->maxCount(100);
         $errors = new Validator(['v' => $rule])->validate(['v' => [[[1, 'x']]]])->errors();
 
         $this->assertSame(['v.0.0.1'], array_keys($errors));
@@ -566,7 +566,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testTheLabelOfAnElementReplacesItsStepOfThePath(): void
     {
-        $rule   = Rule::list(Rule::shape(['price' => Rule::int()->label('unit price')]))->label('order lines');
+        $rule   = Rule::list(Rule::shape(['price' => Rule::int()->label('unit price')]))->maxCount(100)->label('order lines');
         $errors = new Validator(['items' => $rule])->validate(['items' => [['price' => 'x']]])->errors();
 
         $this->assertSame(['items.0.price'], array_keys($errors));
@@ -575,7 +575,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testTheLabelOfAListElementNamesItInTheMessage(): void
     {
-        $rule   = Rule::list(Rule::string()->label('tag')->minLength(3));
+        $rule   = Rule::list(Rule::string()->label('tag')->minLength(3))->maxCount(100);
         $errors = new Validator(['v' => $rule])->validate(['v' => ['ok!', 'ab']])->errors();
 
         $this->assertSame(['v.1'], array_keys($errors));
@@ -584,14 +584,14 @@ final class ArrayRuleTest extends TestCase
 
     public function testAListElementWithoutALabelIsNamedByItsIndex(): void
     {
-        $errors = new Validator(['v' => Rule::list(Rule::int())])->validate(['v' => ['x']])->errors();
+        $errors = new Validator(['v' => Rule::list(Rule::int())->maxCount(100)])->validate(['v' => ['x']])->errors();
 
         $this->assertSame('The 0 field must be an integer.', $errors['v.0'][0]->message);
     }
 
     public function testTheMessageOfAnElementAppliesToItsOwnFailures(): void
     {
-        $rule   = Rule::list(Rule::int()->message('Every quantity has to be a whole number.'));
+        $rule   = Rule::list(Rule::int()->message('Every quantity has to be a whole number.'))->maxCount(100);
         $errors = new Validator(['v' => $rule])->validate(['v' => ['x']])->errors();
 
         $this->assertSame('Every quantity has to be a whole number.', $errors['v.0'][0]->message);
@@ -621,7 +621,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testTheMessageOfOneRuleWinsOverTheMessageOfTheElement(): void
     {
-        $rule   = Rule::list(Rule::int()->min(10, 'At least ten.')->message('Not a whole number.'));
+        $rule   = Rule::list(Rule::int()->min(10, 'At least ten.')->message('Not a whole number.'))->maxCount(100);
         $errors = new Validator(['v' => $rule])->validate(['v' => [1]])->errors();
 
         $this->assertSame('At least ten.', $errors['v.0'][0]->message);
@@ -676,8 +676,8 @@ final class ArrayRuleTest extends TestCase
     #[DataProvider('elementsSayingNothing')]
     public function testADefaultSayingNothingForAnElementGivesWhatValidatingWouldHaveGiven(mixed $element): void
     {
-        $viaDefault = self::valueOf(Rule::list(Rule::int()->default(5))->default([$element, 1]), null);
-        $viaInput   = self::valueOf(Rule::list(Rule::int()->default(5)), [$element, 1]);
+        $viaDefault = self::valueOf(Rule::list(Rule::int()->default(5))->maxCount(100)->default([$element, 1]), null);
+        $viaInput   = self::valueOf(Rule::list(Rule::int()->default(5))->maxCount(100), [$element, 1]);
 
         $this->assertSame($viaInput, $viaDefault);
         $this->assertSame([5, 1], $viaDefault);
@@ -685,7 +685,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAListInsideTheDefaultOfAShapeFillsItsEmptyElements(): void
     {
-        $rule = Rule::shape(['l' => Rule::list(Rule::int()->default(7))])->default(['l' => [1, null]]);
+        $rule = Rule::shape(['l' => Rule::list(Rule::int()->default(7))->maxCount(100)])->default(['l' => [1, null]]);
 
         $this->assertSame(['l' => [1, 7]], self::valueOf($rule, null));
     }
@@ -703,13 +703,13 @@ final class ArrayRuleTest extends TestCase
 
     public function testAnEmptyElementOfADefaultStaysNullWhenTheElementDeclaresNoDefault(): void
     {
-        $this->assertSame([null, 1], self::valueOf(Rule::list(Rule::int())->default([null, 1]), null));
+        $this->assertSame([null, 1], self::valueOf(Rule::list(Rule::int())->maxCount(100)->default([null, 1]), null));
     }
 
     public function testTheDefaultOfAListKeepsTheElementsThatOnlyLookEmpty(): void
     {
-        $this->assertSame([0], self::valueOf(Rule::list(Rule::int()->default(5))->default([0]), null));
-        $this->assertSame([false], self::valueOf(Rule::list(Rule::bool()->required())->default([false]), null));
+        $this->assertSame([0], self::valueOf(Rule::list(Rule::int()->default(5))->maxCount(100)->default([0]), null));
+        $this->assertSame([false], self::valueOf(Rule::list(Rule::bool()->required())->maxCount(100)->default([false]), null));
     }
 
     public function testTheDefaultOfAShapeFillsInTheKeysItLeavesOut(): void
@@ -807,7 +807,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAnElementOfADefaultIsReducedByTheElementRule(): void
     {
-        $rule = Rule::list(Rule::date('Y-m'))->default([
+        $rule = Rule::list(Rule::date('Y-m'))->maxCount(100)->default([
             new DateTimeImmutable('2026-03-15'),
             new DateTimeImmutable('2026-04-20'),
         ]);
@@ -835,17 +835,17 @@ final class ArrayRuleTest extends TestCase
             static fn (array $v): mixed => $v['t'],
         ];
         yield 'a list' => [
-            static fn (DateTime $d): FieldRule => Rule::list(Rule::dateTime())->default([$d]),
+            static fn (DateTime $d): FieldRule => Rule::list(Rule::dateTime())->maxCount(100)->default([$d]),
             static fn (array $v): mixed => $v[0],
         ];
         yield 'a list of shapes' => [
-            static fn (DateTime $d): FieldRule => Rule::list(Rule::shape(['t' => Rule::dateTime()]))->default([['t' => $d]]),
+            static fn (DateTime $d): FieldRule => Rule::list(Rule::shape(['t' => Rule::dateTime()]))->maxCount(100)->default([['t' => $d]]),
             static fn (array $v): mixed => \is_array($v[0]) ? $v[0]['t'] : null,
         ];
         // A list at the top of a default is prepared by default() itself; only a
         // list a container holds is reached through prepareDefault().
         yield 'a shape holding a list' => [
-            static fn (DateTime $d): FieldRule => Rule::shape(['t' => Rule::list(Rule::dateTime())])->default(['t' => [$d]]),
+            static fn (DateTime $d): FieldRule => Rule::shape(['t' => Rule::list(Rule::dateTime())->maxCount(100)])->default(['t' => [$d]]),
             static fn (array $v): mixed => \is_array($v['t']) ? $v['t'][0] : null,
         ];
     }
@@ -975,7 +975,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAFloatElementOfADefaultTakesAnInt(): void
     {
-        $this->assertSame([1.0], self::valueOf(Rule::list(Rule::float())->default([1]), null));
+        $this->assertSame([1.0], self::valueOf(Rule::list(Rule::float())->maxCount(100)->default([1]), null));
     }
 
     /**
@@ -999,16 +999,16 @@ final class ArrayRuleTest extends TestCase
     public function testAnElementOfADefaultReachesTheCallerAsTheSameInputWould(FieldRule $element, mixed $default, mixed $input): void
     {
         $this->assertSameValue(
-            self::valueOf(Rule::list($element), [$input]),
-            self::valueOf(Rule::list($element)->default([$default]), null),
+            self::valueOf(Rule::list($element)->maxCount(100), [$input]),
+            self::valueOf(Rule::list($element)->maxCount(100)->default([$default]), null),
         );
         $this->assertSameValue(
             self::valueOf(Rule::shape(['k' => $element]), ['k' => $input]),
             self::valueOf(Rule::shape(['k' => $element])->default(['k' => $default]), null),
         );
         $this->assertSameValue(
-            self::valueOf(Rule::list(Rule::shape(['k' => $element])), [['k' => $input]]),
-            self::valueOf(Rule::list(Rule::shape(['k' => $element]))->default([['k' => $default]]), null),
+            self::valueOf(Rule::list(Rule::shape(['k' => $element]))->maxCount(100), [['k' => $input]]),
+            self::valueOf(Rule::list(Rule::shape(['k' => $element]))->maxCount(100)->default([['k' => $default]]), null),
         );
     }
 
@@ -1019,8 +1019,8 @@ final class ArrayRuleTest extends TestCase
     public function testAContainerDefaultComparesEqualToTheSameInput(FieldRule $element, mixed $default, mixed $input): void
     {
         $lists  = [
-            'a' => Rule::list($element)->default([$default]),
-            'b' => Rule::list($element)->same('a'),
+            'a' => Rule::list($element)->maxCount(100)->default([$default]),
+            'b' => Rule::list($element)->maxCount(100)->same('a'),
         ];
         $shapes = [
             'a' => Rule::shape(['k' => $element])->default(['k' => $default]),
@@ -1033,7 +1033,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testAnEmptyElementAndAWrittenOneOfADefaultHaveTheSameType(): void
     {
-        $value = self::valueOf(Rule::list(Rule::decimal(10, 2)->asNumber()->default('0'))->default(['1.5', null]), null);
+        $value = self::valueOf(Rule::list(Rule::decimal(10, 2)->asNumber()->default('0'))->maxCount(100)->default(['1.5', null]), null);
 
         $this->assertSameValue([new Number('1.50'), new Number('0.00')], $value);
     }
@@ -1043,7 +1043,7 @@ final class ArrayRuleTest extends TestCase
         // Building it for every empty element made an input of many nulls
         // cost the size of the default each time. The next validation builds
         // its own, so that no object is shared between two validations.
-        $rule = Rule::list(Rule::list(Rule::decimal(10, 2)->asNumber())->default(['1.5']));
+        $rule = Rule::list(Rule::list(Rule::decimal(10, 2)->asNumber())->maxCount(100)->default(['1.5']))->maxCount(100);
 
         $first  = self::valueOf($rule, [null, null]);
         $second = self::valueOf($rule, [null]);
@@ -1114,7 +1114,7 @@ final class ArrayRuleTest extends TestCase
 
     public function testUniqueRunsBeforeTheElementsAreGivenTheirType(): void
     {
-        $this->assertSame([1, 1], self::valueOf(Rule::list(Rule::int(), ArraySanitize::Unique), ['1', 1]));
+        $this->assertSame([1, 1], self::valueOf(Rule::list(Rule::int(), ArraySanitize::Unique)->maxCount(100), ['1', 1]));
     }
 
     public function testAClosureCanSanitizeTheArray(): void

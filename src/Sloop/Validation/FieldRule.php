@@ -957,7 +957,7 @@ abstract class FieldRule
      * dots (`*.tags`). maxCount(), exactCount() and betweenCount() bound the
      * count; one added by when() does not, as it runs only on a condition.
      *
-     * @internal Read by ValidatedRequest, which needs every list bounded so that a request failing every element cannot exhaust memory.
+     * @internal Read by Validator and ValidatedRequest, which need every list bounded so that an input failing every element cannot exhaust memory.
      *
      * @return string|null Path, or null when every list is bounded
      */

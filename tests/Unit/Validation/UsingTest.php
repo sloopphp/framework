@@ -163,7 +163,7 @@ final class UsingTest extends TestCase
     public function testUsingOnAListReceivesTheValidatedElements(): void
     {
         $seen = new Recorder(true);
-        $rule = Rule::list(Rule::int())->using('seen', $seen->test(...), message: 'x');
+        $rule = Rule::list(Rule::int())->maxCount(100)->using('seen', $seen->test(...), message: 'x');
 
         self::valueOf($rule, ['1', '02']);
 
@@ -172,7 +172,7 @@ final class UsingTest extends TestCase
 
     public function testUsingOnAnElementRunsForEachElement(): void
     {
-        $rule = Rule::list(Rule::int()->using('positive', static fn (int $v): bool => $v > 0, message: 'x'));
+        $rule = Rule::list(Rule::int()->using('positive', static fn (int $v): bool => $v > 0, message: 'x'))->maxCount(100);
 
         $errors = new Validator(['v' => $rule])->validate(['v' => ['1', '-2', '3']])->errors();
 
@@ -254,7 +254,7 @@ final class UsingTest extends TestCase
     public function testUsingDoesNotRunWhileAnElementFails(): void
     {
         $seen = new Recorder(false);
-        $rule = Rule::list(Rule::int())->using('seen', $seen->test(...), message: 'x');
+        $rule = Rule::list(Rule::int())->maxCount(100)->using('seen', $seen->test(...), message: 'x');
 
         $errors = new Validator(['v' => $rule])->validate(['v' => ['1', 'x']])->errors();
 
@@ -265,7 +265,7 @@ final class UsingTest extends TestCase
     public function testUsingDoesNotRunWhileARuleOnTheElementsFails(): void
     {
         $seen = new Recorder(false);
-        $rule = Rule::list(Rule::int())->distinct()->using('seen', $seen->test(...), message: 'x');
+        $rule = Rule::list(Rule::int())->maxCount(100)->distinct()->using('seen', $seen->test(...), message: 'x');
 
         self::assertSame(['distinct'], self::failedRules($rule, ['1', '1']));
         self::assertSame([], $seen->seen);
@@ -411,9 +411,9 @@ final class UsingTest extends TestCase
         yield 'on the field' => [static fn (): FieldRule => Rule::string()->using('nameTaken', static fn (string $v): bool => false)];
         yield 'on a field that also has a when()' => [static fn (): FieldRule => Rule::string()->using('nameTaken', static fn (string $v): bool => false)->when('v', 'x', static fn (StringRule $r): StringRule => $r->in(['a']))];
         yield 'added by when()' => [static fn (): FieldRule => Rule::string()->when('v', 'x', static fn (StringRule $r): StringRule => $r->using('nameTaken', static fn (string $v): bool => false))];
-        yield 'on an element' => [static fn (): FieldRule => Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))];
+        yield 'on an element' => [static fn (): FieldRule => Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))->maxCount(100)];
         yield 'on a key' => [static fn (): FieldRule => Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)])];
-        yield 'on a key of an element' => [static fn (): FieldRule => Rule::list(Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)]))];
+        yield 'on a key of an element' => [static fn (): FieldRule => Rule::list(Rule::shape(['k' => Rule::string()->using('nameTaken', static fn (string $v): bool => false)]))->maxCount(100)];
     }
 
     /**
@@ -438,14 +438,14 @@ final class UsingTest extends TestCase
 
     public function testAListTakesAnElementUsingWithoutAMessageWhenTheListGivesOne(): void
     {
-        $rule = Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))->message('Bad {label}.');
+        $rule = Rule::list(Rule::string()->using('nameTaken', static fn (string $v): bool => false))->maxCount(100)->message('Bad {label}.');
 
         self::assertSame('Bad 0.', self::onlyErrorAt($rule, ['a'], 'v.0')->message);
     }
 
     public function testAnElementTakesItsOwnMessageForItsUsing(): void
     {
-        $rule = Rule::list(Rule::string()->message('Bad element.')->using('nameTaken', static fn (string $v): bool => false));
+        $rule = Rule::list(Rule::string()->message('Bad element.')->using('nameTaken', static fn (string $v): bool => false))->maxCount(100);
 
         self::assertSame('Bad element.', self::onlyErrorAt($rule, ['a'], 'v.0')->message);
     }
@@ -576,7 +576,7 @@ final class UsingTest extends TestCase
     public function testUsingIsNotAppliedToTheDefaultOfAList(): void
     {
         $seen = new Recorder(false);
-        $rule = Rule::list(Rule::string()->using('element', $seen->test(...), message: 'x'))
+        $rule = Rule::list(Rule::string()->using('element', $seen->test(...), message: 'x'))->maxCount(100)
             ->default(['a'])
             ->using('list', $seen->test(...), message: 'y');
 
@@ -599,7 +599,7 @@ final class UsingTest extends TestCase
     public function testUsingOnAListReceivesTheDefaultOfAnEmptyElement(): void
     {
         $seen = new Recorder(true);
-        $rule = Rule::list(Rule::string()->default('z'))->using('seen', $seen->test(...), message: 'x');
+        $rule = Rule::list(Rule::string()->default('z'))->maxCount(100)->using('seen', $seen->test(...), message: 'x');
 
         self::valueOf($rule, ['', 'a']);
 

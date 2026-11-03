@@ -241,7 +241,7 @@ final class CurrentTimeTest extends TestCase
     public function testTheTimeReachesElementsKeysAndWhen(): void
     {
         $validator = new Validator([
-            'list'  => Rule::list(Rule::date()->afterNow()),
+            'list'  => Rule::list(Rule::date()->afterNow())->maxCount(100),
             'shape' => Rule::shape(['d' => Rule::date()->afterNow()]),
             'k'     => Rule::string(),
             'when'  => Rule::date()->when('k', 'x', static fn (FieldRule $r): FieldRule => $r->afterNow()),
@@ -384,7 +384,7 @@ final class CurrentTimeTest extends TestCase
         $validator = new Validator([
             'date'     => Rule::date()->default($instant),
             'dateTime' => Rule::dateTime()->default($instant),
-            'list'     => Rule::list(Rule::date())->default([$instant]),
+            'list'     => Rule::list(Rule::date())->maxCount(100)->default([$instant]),
             'shape'    => Rule::shape(['d' => Rule::dateTime()])->default(['d' => $instant]),
         ], self::clockAt('2026-10-18T06:00:00', 'UTC'));
 
@@ -401,7 +401,7 @@ final class CurrentTimeTest extends TestCase
     public function testEmptyElementsOfOneValidationShareTheDefault(): void
     {
         // Building the default for every empty element would cost its size each time.
-        $rule   = Rule::list(Rule::list(Rule::dateTime())->default([new DateTimeImmutable('2026-01-02T00:00:00Z')]));
+        $rule   = Rule::list(Rule::list(Rule::dateTime())->maxCount(100)->default([new DateTimeImmutable('2026-01-02T00:00:00Z')]))->maxCount(100);
         $values = self::listed(new Validator(['l' => $rule], self::clockAt('2026-10-18T06:00:00', 'UTC'))->validate(['l' => [null, null]])->values()['l']);
 
         $this->assertSame(self::listed($values[0])[0], self::listed($values[1])[0]);
@@ -411,9 +411,9 @@ final class CurrentTimeTest extends TestCase
     {
         $instant = new DateTimeImmutable('2026-01-02T00:00:00+09:00');
         $values  = new Validator([
-            'list'  => Rule::list(Rule::date())->default([$instant]),
+            'list'  => Rule::list(Rule::date())->maxCount(100)->default([$instant]),
             'shape' => Rule::shape(['d' => Rule::date()])->default(['d' => $instant]),
-            'empty' => Rule::list(Rule::date()->default($instant))->default([null]),
+            'empty' => Rule::list(Rule::date()->default($instant))->maxCount(100)->default([null]),
         ], self::clockAt('2026-10-18T06:00:00', 'UTC'))->validate([])->values();
 
         $this->assertSame('2026-01-01T00:00:00+00:00', self::formatted(self::listed($values['list'])[0]));
@@ -425,8 +425,8 @@ final class CurrentTimeTest extends TestCase
     {
         // The default falls on 1 January in UTC and on 2 January in Tokyo.
         $rules = [
-            'a' => Rule::list(Rule::date())->default([new DateTimeImmutable('2026-01-01T20:00:00Z')]),
-            'b' => Rule::list(Rule::date())->same('a'),
+            'a' => Rule::list(Rule::date())->maxCount(100)->default([new DateTimeImmutable('2026-01-01T20:00:00Z')]),
+            'b' => Rule::list(Rule::date())->maxCount(100)->same('a'),
         ];
         $input = ['b' => ['2026-01-01']];
 
