@@ -11,13 +11,11 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Sloop\Container\Container;
-use Sloop\Error\DomainException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Request\Request;
 use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
-use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Http\Stub\CacheKeyA;
 use Sloop\Tests\Unit\Http\Stub\CacheKeyAb;
 use Sloop\Tests\Unit\Http\Stub\CacheKeySameMethodA;
@@ -28,8 +26,6 @@ use Sloop\Tests\Unit\Http\Stub\ResponseDiController;
 
 final class RouteRequestHandlerTest extends TestCase
 {
-    use ThrowsAssertions;
-
     protected function setUp(): void
     {
         DiController::reset();
@@ -60,6 +56,12 @@ final class RouteRequestHandlerTest extends TestCase
         );
 
         return $handler->handle($serverRequest);
+    }
+
+    private function assertNotFound(string $message, ResponseInterface $response): void
+    {
+        $this->assertSame(HttpStatus::NotFound, $response->getStatusCode());
+        $this->assertSame('error:' . $message, (string) $response->getBody());
     }
 
     private function formatter(): ResponseFormatterInterface
@@ -175,10 +177,7 @@ final class RouteRequestHandlerTest extends TestCase
     {
         $name = ['requestAndInt' => 'id', 'requestAndFloat' => 'price', 'requestAndBool' => 'flag'][$method];
 
-        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, $method, [$name => $value]));
-
-        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame($message, $e->getMessage());
+        $this->assertNotFound($message, $this->dispatch(DiController::class, $method, [$name => $value]));
     }
 
     public function testPassesStringRouteParameterUnchanged(): void
@@ -223,18 +222,12 @@ final class RouteRequestHandlerTest extends TestCase
 
     public function testAnswersNotFoundForANonNumericIntParameter(): void
     {
-        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
-
-        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "id" is not a valid int.', $e->getMessage());
+        $this->assertNotFound('The route parameter "id" is not a valid int.', $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
     }
 
     public function testAnswersNotFoundForANonNumericFloatParameter(): void
     {
-        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']));
-
-        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "price" is not a valid float.', $e->getMessage());
+        $this->assertNotFound('The route parameter "price" is not a valid float.', $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']));
     }
 
     public function testThrowsOnUnsupportedUnionType(): void

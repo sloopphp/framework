@@ -21,7 +21,6 @@ use RuntimeException;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
-use Sloop\Error\DomainException;
 use Sloop\Http\Request\Request;
 use Sloop\Http\Request\ValidatedInput;
 use Sloop\Http\Request\ValidatedRequest;
@@ -74,7 +73,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface   $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
-     * @throws DomainException          With status 404 when an int, float or bool route parameter cannot be read as that type
      * @throws RuntimeException         If the controller cannot be resolved as an object, the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
      * @throws LogicException           If a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
@@ -120,8 +118,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  string                              $className    Controller class name
      * @param  string                              $method       Action method name
      * @param  Request                             $sloopRequest Sloop request wrapping the current PSR-7 request
-     * @return array<int, mixed>|ResponseInterface Positional arguments for the action, or the 400 / 422 response when a ValidatedRequest's input is refused
-     * @throws DomainException                     With status 404 when an int, float or bool route parameter cannot be read as that type
+     * @return array<int, mixed>|ResponseInterface Positional arguments for the action, the 404 response when an int, float or bool route parameter cannot be read as that type, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws RuntimeException                    If the entry registered as the clock is not one, or validating a ValidatedRequest fails the way Validator::validate() describes
      * @throws LogicException                      If a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException            If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
@@ -142,7 +139,11 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         foreach ($parameters as $parameter) {
             $class = self::validatedRequestClass($parameter);
             if ($class === null) {
-                $args[] = $this->resolveParameter($parameter, $sloopRequest);
+                $value = $this->routeValue($parameter);
+                if ($value instanceof ResponseInterface) {
+                    return $value;
+                }
+                $args[] = $value ?? $this->resolveParameter($parameter, $sloopRequest);
                 continue;
             }
 
@@ -182,10 +183,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      *
      * @param  class-string<ValidatedRequest>     $class        Subclass to fill
      * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
-     * @return ValidatedRequest|ResponseInterface The filled request, or a 400 when a field was sent twice, or a 422 with the errors
+     * @return ValidatedRequest|ResponseInterface The filled request, a 404 when an int, float or bool route parameter rules() asks for cannot be read as that type, a 400 when a field was sent twice, or a 422 with the errors
      * @throws LogicException                     If the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, a parameter of rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, or the parsed body is not an array
      * @throws UnexpectedValueException           If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
-     * @throws DomainException                    With status 404 when an int, float or bool route parameter rules() asks for cannot be read as that type
      * @throws RuntimeException                   If the entry registered as the clock is not one, or validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
@@ -209,7 +209,11 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
                     );
                 }
             }
-            $arguments[] = $this->resolveParameter($parameter, $sloopRequest);
+            $value = $this->routeValue($parameter);
+            if ($value instanceof ResponseInterface) {
+                return $value;
+            }
+            $arguments[] = $value ?? $this->resolveParameter($parameter, $sloopRequest);
         }
         $rules = $shape->rules($request, $arguments);
         // The rules are checked before any input is read, so a misdeclared rule surfaces whatever the client sent.
@@ -293,19 +297,42 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     }
 
     /**
-     * Resolve a single action parameter.
+     * The value of the route parameter a parameter reads, if it reads one.
+     *
+     * A class-typed parameter never reads the route. Any other parameter
+     * (untyped, or of a builtin, union or intersection type) reads the route
+     * parameter of its name when there is one.
+     *
+     * @param  ReflectionParameter                          $parameter Parameter to resolve
+     * @return int|float|bool|string|ResponseInterface|null The value read into the parameter's type, a 404 when an int, float or bool route parameter cannot be read as that type, or null when the parameter does not read the route
+     * @throws LogicException                               If the parameter matches a route parameter while having a union or intersection type, or a builtin type other than int, float, bool, string and mixed
+     */
+    private function routeValue(ReflectionParameter $parameter): int|float|bool|string|ResponseInterface|null
+    {
+        $type = $parameter->getType();
+        if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
+            return null;
+        }
+
+        $name = $parameter->getName();
+        if (!\array_key_exists($name, $this->params)) {
+            return null;
+        }
+
+        return $this->readRouteParameter($parameter, $this->params[$name]);
+    }
+
+    /**
+     * Resolve a single action parameter that does not read the route.
      *
      * A class-typed parameter receives the Sloop Request or an entry of the
-     * container and never reads the route. Any other parameter (untyped, or
-     * of a builtin, union or intersection type) takes the route parameter of
-     * its name; without one, it falls back to its default, then to null when
-     * its type allows null.
+     * container. Any other parameter falls back to its default, then to null
+     * when its type allows null.
      *
      * @param  ReflectionParameter    $parameter    Parameter to resolve
      * @param  Request                $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return mixed                  Resolved argument value
-     * @throws DomainException        With status 404 when an int, float or bool route parameter cannot be read as that type
-     * @throws LogicException         If the parameter is not of a class type and either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null
+     * @throws LogicException         If the parameter is not of a class type and declares neither a default nor a type that allows null
      * @throws EntryNotFoundException If a typed object parameter cannot be resolved by the container
      * @throws ContainerException     If a circular dependency is detected during resolution
      */
@@ -320,10 +347,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         }
 
         $name = $parameter->getName();
-
-        if (\array_key_exists($name, $this->params)) {
-            return self::readRouteParameter($parameter, $this->params[$name]);
-        }
 
         if ($parameter->isDefaultValueAvailable()) {
             return $parameter->getDefaultValue();
@@ -352,13 +375,12 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * resource, so the request is answered with 404, the status of an
      * unmatched route.
      *
-     * @param  ReflectionParameter   $parameter Parameter the value is for
-     * @param  string                $value     Route parameter value
-     * @return int|float|bool|string
-     * @throws LogicException        If the parameter has a union or intersection type, or a builtin type other than int, float, bool, string and mixed
-     * @throws DomainException       With status 404 when an int, float or bool route parameter cannot be read as that type
+     * @param  ReflectionParameter                     $parameter Parameter the value is for
+     * @param  string                                  $value     Route parameter value
+     * @return int|float|bool|string|ResponseInterface The value read into the parameter's type, or a 404 when an int, float or bool route parameter cannot be read as that type
+     * @throws LogicException                          If the parameter has a union or intersection type, or a builtin type other than int, float, bool, string and mixed
      */
-    private static function readRouteParameter(ReflectionParameter $parameter, string $value): int|float|bool|string
+    private function readRouteParameter(ReflectionParameter $parameter, string $value): int|float|bool|string|ResponseInterface
     {
         $type = $parameter->getType();
         $name = $parameter->getName();
@@ -373,7 +395,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
 
         $typeName = $type->getName();
 
-        // The value is the client's and stays out of the body.
         $parsed = match ($typeName) {
             'int'             => NumberParser::int($value),
             'float'           => NumberParser::float($value),
@@ -385,11 +406,11 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             ),
         };
 
-        if ($parsed === null) {
-            throw new DomainException('The route parameter "' . $name . '" is not a valid ' . $typeName . '.', HttpStatus::NotFound);
-        }
-
-        return $parsed;
+        // The value is the client's and stays out of the body.
+        return $parsed ?? $this->formatter->error(
+            'The route parameter "' . $name . '" is not a valid ' . $typeName . '.',
+            HttpStatus::NotFound,
+        );
     }
 
     /**

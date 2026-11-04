@@ -26,6 +26,8 @@ final class ApplicationBodyLimitTest extends TestCase
 
     private string $tmpDir;
 
+    private TestHandler $logs;
+
     private function writeFile(string $path, string $content): void
     {
         file_put_contents($this->tmpDir . '/' . $path, $content);
@@ -36,7 +38,8 @@ final class ApplicationBodyLimitTest extends TestCase
         $app     = new Application($this->tmpDir);
         $manager = $app->container->get(LogManager::class);
         $this->assertInstanceOf(LogManager::class, $manager);
-        $manager->channel()->setHandlers([new TestHandler()]);
+        $this->logs = new TestHandler();
+        $manager->channel()->setHandlers([$this->logs]);
 
         return $app;
     }
@@ -93,6 +96,7 @@ final class ApplicationBodyLimitTest extends TestCase
         $this->assertSame(413, $response->getStatusCode());
         $this->assertStringContainsString('The request body is larger than 1048576 bytes.', (string) $response->getBody());
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+        $this->assertSame([], $this->logs->getRecords());
     }
 
     public function testTheMessageNamesTheConfiguredLimit(): void
@@ -157,6 +161,7 @@ final class ApplicationBodyLimitTest extends TestCase
         $this->assertSame(400, $response->getStatusCode());
         $this->assertStringContainsString('The request URI or headers could not be read.', (string) $response->getBody());
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+        $this->assertSame([], $this->logs->getRecords());
     }
 
     /**

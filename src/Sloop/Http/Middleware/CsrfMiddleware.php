@@ -8,8 +8,8 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Sloop\Error\DomainException;
 use Sloop\Http\HttpStatus;
+use Sloop\Http\Response\ResponseFormatterInterface;
 
 /**
  * Middleware that rejects cross-site requests with an unsafe method (CSRF protection).
@@ -66,11 +66,12 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
      * default port. The application's own origin uses http or https; a trusted
      * origin may use another scheme (capacitor://localhost).
      *
-     * @param  string|null               $origin         Origin of the application; null compares the host and port of the Host header instead
-     * @param  list<string>              $trustedOrigins Origins allowed to send cross-site requests
-     * @throws \InvalidArgumentException If an origin is not written as above
+     * @param  ResponseFormatterInterface $formatter      Formatter that builds the 403 response of a rejected request
+     * @param  string|null                $origin         Origin of the application; null compares the host and port of the Host header instead
+     * @param  list<string>               $trustedOrigins Origins allowed to send cross-site requests
+     * @throws \InvalidArgumentException  If an origin is not written as above
      */
-    public function __construct(?string $origin = null, array $trustedOrigins = [])
+    public function __construct(private ResponseFormatterInterface $formatter, ?string $origin = null, array $trustedOrigins = [])
     {
         $this->origin = $origin === null ? null : Origin::configured($origin, true);
 
@@ -83,15 +84,16 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Reject a cross-site request with an unsafe method, otherwise pass it on.
+     * Answer a cross-site request with an unsafe method with a 403, otherwise pass it on.
      *
-     * The response of a checked request varies by Sec-Fetch-Site and Origin,
-     * so both are added to its Vary header.
+     * The 403 is returned, not thrown, so middleware outside this one (CORS
+     * among them) still adds its headers to it, and it is not logged. The
+     * response of a checked request, the 403 included, varies by
+     * Sec-Fetch-Site and Origin, so both are added to its Vary header.
      *
      * @param  ServerRequestInterface  $request Incoming request
      * @param  RequestHandlerInterface $handler Next handler
-     * @return ResponseInterface
-     * @throws DomainException         With status 403 when the request is not shown to come from the application or a trusted origin
+     * @return ResponseInterface       The response of the next handler, or a 403 when the request is not shown to come from the application or a trusted origin
      */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -101,7 +103,9 @@ final readonly class CsrfMiddleware implements MiddlewareInterface
 
         if (!$this->isAllowed($request)) {
             // Nothing the client sent is put in the message.
-            throw new DomainException('The request was rejected as a cross-site request.', HttpStatus::Forbidden);
+            return $this->withVary(
+                $this->formatter->error('The request was rejected as a cross-site request.', HttpStatus::Forbidden),
+            );
         }
 
         return $this->withVary($handler->handle($request));

@@ -16,14 +16,12 @@ use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Sloop\Clock\FrozenClock;
 use Sloop\Container\Container;
-use Sloop\Error\DomainException;
 use Sloop\Http\HttpStatus;
 use Sloop\Http\Request\ValidatedRequest;
 use Sloop\Http\Request\ValidatedRequestShape;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
-use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Http\Stub\DiService;
 use Sloop\Tests\Unit\Http\Stub\Validated\AbstractRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\BaseInRulesRequest;
@@ -66,8 +64,6 @@ use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
 {
-    use ThrowsAssertions;
-
     protected function setUp(): void
     {
         ValidatedController::reset();
@@ -356,28 +352,28 @@ final class ValidatedRequestTest extends TestCase
         $container = new Container();
         $container->instance(DiService::class, new DiService('svc'));
 
-        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(
+        $response = $this->dispatch(
             'update',
             new ServerRequest('PUT', '/dispatch')->withParsedBody(['name' => 'Ann']),
             ['id' => 'abc'],
             $container,
-        ));
+        );
 
-        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "id" is not a valid int.', $e->getMessage());
+        $this->assertSame(HttpStatus::NotFound, $response->getStatusCode());
+        $this->assertSame(['error' => ['message' => 'The route parameter "id" is not a valid int.', 'status' => 404]], self::body($response));
         $this->assertNull(ValidatedController::$last);
     }
 
     public function testAnswersNotFoundWhenABoolRouteParameterOfRulesIsNotABool(): void
     {
-        $e = $this->assertThrows(DomainException::class, fn () => $this->dispatch(
+        $response = $this->dispatch(
             'flagged',
             new ServerRequest('PUT', '/dispatch')->withParsedBody(['name' => 'Ann']),
             ['flag' => 'yes'],
-        ));
+        );
 
-        $this->assertSame(HttpStatus::NotFound, $e->statusCode);
-        $this->assertSame('The route parameter "flag" is not a valid bool.', $e->getMessage());
+        $this->assertSame(HttpStatus::NotFound, $response->getStatusCode());
+        $this->assertSame(['error' => ['message' => 'The route parameter "flag" is not a valid bool.', 'status' => 404]], self::body($response));
         $this->assertNull(ValidatedController::$last);
     }
 
