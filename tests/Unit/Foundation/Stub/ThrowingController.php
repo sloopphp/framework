@@ -18,4 +18,9 @@ final class ThrowingController
     {
         throw new \RuntimeException('secret internal detail');
     }
+
+    public function reflection(): ResponseInterface
+    {
+        throw new \ReflectionException('thrown by the action');
+    }
 }
