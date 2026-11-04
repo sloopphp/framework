@@ -21,6 +21,7 @@ use Sloop\Http\Request\ValidatedRequestShape;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Http\Stub\DiService;
 use Sloop\Tests\Unit\Http\Stub\Validated\AbstractRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\BaseInRulesRequest;
@@ -63,6 +64,8 @@ use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
 {
+    use ThrowsAssertions;
+
     protected function setUp(): void
     {
         ValidatedController::reset();
