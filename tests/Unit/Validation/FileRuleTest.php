@@ -56,7 +56,7 @@ final class FileRuleTest extends TestCase
 
     private static function png(string $clientType = 'image/png'): UploadedFile
     {
-        return self::upload((string) base64_decode(self::PNG, true), clientType: $clientType);
+        return self::upload(base64_decode(self::PNG, true), clientType: $clientType);
     }
 
     public function testValidatedValueIsTheUploadedFileItself(): void
@@ -350,7 +350,7 @@ final class FileRuleTest extends TestCase
             'attachments' => [
                 'name'     => ['a.txt', '', 'b.txt'],
                 'type'     => ['text/plain', '', 'text/plain'],
-                'tmp_name' => [$this->tmpFile('hello'), '', $this->tmpFile((string) base64_decode(self::PNG, true))],
+                'tmp_name' => [$this->tmpFile('hello'), '', $this->tmpFile(base64_decode(self::PNG, true))],
                 'error'    => [UPLOAD_ERR_OK, UPLOAD_ERR_NO_FILE, UPLOAD_ERR_OK],
                 'size'     => [5, 0, 70],
             ],
@@ -367,7 +367,7 @@ final class FileRuleTest extends TestCase
             'attachments' => [
                 'name'     => ['front' => 'a.txt', 'side' => '', 'back' => 'b.txt'],
                 'type'     => ['front' => 'text/plain', 'side' => '', 'back' => 'text/plain'],
-                'tmp_name' => ['front' => $this->tmpFile('hello'), 'side' => '', 'back' => $this->tmpFile((string) base64_decode(self::PNG, true))],
+                'tmp_name' => ['front' => $this->tmpFile('hello'), 'side' => '', 'back' => $this->tmpFile(base64_decode(self::PNG, true))],
                 'error'    => ['front' => UPLOAD_ERR_OK, 'side' => UPLOAD_ERR_NO_FILE, 'back' => UPLOAD_ERR_OK],
                 'size'     => ['front' => 5, 'side' => 0, 'back' => 70],
             ],
