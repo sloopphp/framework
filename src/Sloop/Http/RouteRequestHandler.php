@@ -469,8 +469,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * Reflect the action method a route names.
      *
      * Only this reflection is converted: a ReflectionException thrown by the
-     * action or a route middleware is the application's own and propagates
-     * unchanged.
+     * action's body or a route middleware's process() is the application's
+     * own and propagates unchanged.
      *
      * @param  string           $className Controller class name
      * @param  string           $method    Action method name
