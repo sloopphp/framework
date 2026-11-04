@@ -269,11 +269,11 @@ final class FileRuleTest extends TestCase
      */
     public static function containersHoldingAFile(): iterable
     {
-        yield 'a list of files' => [Rule::list(Rule::file())];
+        yield 'a list of files' => [Rule::list(Rule::file())->maxCount(100)];
         yield 'a shape with a file under a key' => [Rule::shape(['upload' => Rule::file()])];
-        yield 'a list of lists of files' => [Rule::list(Rule::list(Rule::file()))];
-        yield 'a list of shapes' => [Rule::list(Rule::shape(['upload' => Rule::file()]))];
-        yield 'a shape holding a list' => [Rule::shape(['uploads' => Rule::list(Rule::file())])];
+        yield 'a list of lists of files' => [Rule::list(Rule::list(Rule::file())->maxCount(100))->maxCount(100)];
+        yield 'a list of shapes' => [Rule::list(Rule::shape(['upload' => Rule::file()]))->maxCount(100)];
+        yield 'a shape holding a list' => [Rule::shape(['uploads' => Rule::list(Rule::file())->maxCount(100)])];
         yield 'a shape whose second key is a file' => [Rule::shape(['name' => Rule::string(), 'upload' => Rule::file()])];
     }
 
@@ -302,7 +302,7 @@ final class FileRuleTest extends TestCase
     {
         $declare = static fn (): mixed => new Validator([
             'uploads' => $container->same('name'),
-            'name'    => Rule::list(Rule::string()),
+            'name'    => Rule::list(Rule::string())->maxCount(100),
         ]);
 
         $this->assertSame(
@@ -356,7 +356,7 @@ final class FileRuleTest extends TestCase
             ],
         ]);
 
-        $result = new Validator(['attachments' => Rule::list(Rule::file()->mimeTypes(['text/plain']))])->validate($input);
+        $result = new Validator(['attachments' => Rule::list(Rule::file()->mimeTypes(['text/plain']))->maxCount(100)])->validate($input);
 
         $this->assertSame(['attachments.1'], array_keys($result->errors()));
     }
@@ -383,7 +383,7 @@ final class FileRuleTest extends TestCase
     {
         $empty = self::upload('', UPLOAD_ERR_NO_FILE);
 
-        $passing = new Validator(['p' => Rule::list(Rule::file())->minCount(1)])->validate(['p' => [$empty]]);
+        $passing = new Validator(['p' => Rule::list(Rule::file())->maxCount(100)->minCount(1)])->validate(['p' => [$empty]]);
 
         $this->assertSame(['p' => [null]], $passing->values());
         $this->assertSame(['maxCount'], self::failedRules(Rule::list(Rule::file())->maxCount(0), [$empty]));
@@ -395,7 +395,7 @@ final class FileRuleTest extends TestCase
             'photos' => ['name' => [''], 'type' => [''], 'tmp_name' => [''], 'error' => [UPLOAD_ERR_NO_FILE], 'size' => [0]],
         ]);
 
-        $result = new Validator(['photos' => Rule::list(Rule::file())->minCount(1)])->validate($input);
+        $result = new Validator(['photos' => Rule::list(Rule::file())->maxCount(100)->minCount(1)])->validate($input);
 
         $this->assertTrue($result->failed());
         $this->assertSame(['photos'], array_keys($result->errors()));
@@ -418,8 +418,8 @@ final class FileRuleTest extends TestCase
     public function testAListOfStringsIsStillComparedByValue(): void
     {
         $validator = new Validator([
-            'tags'  => Rule::list(Rule::string()),
-            'again' => Rule::list(Rule::string())->same('tags'),
+            'tags'  => Rule::list(Rule::string())->maxCount(100),
+            'again' => Rule::list(Rule::string())->maxCount(100)->same('tags'),
         ]);
 
         $this->assertFalse($validator->validate(['tags' => ['a'], 'again' => ['a']])->failed());

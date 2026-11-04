@@ -77,7 +77,8 @@ final class Validator
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
      *                                                      the named field's value; fields required on each other include two with a default;
-     *                                                      or a rule given to using() has no message, from `message:` or the message() of its field or of a field holding it
+     *                                                      a rule given to using() has no message, from `message:` or the message() of its field or of a field holding it;
+     *                                                      or a list() at any depth has no maxCount(), exactCount() or betweenCount() outside when()
      */
     public function __construct(array $rules, ?ClockInterface $clock = null)
     {
@@ -96,20 +97,29 @@ final class Validator
                     . 'give it with message: or with message() on the field.',
                 );
             }
+            $unbounded = $rule->unboundedList();
+            if ($unbounded !== null) {
+                throw new InvalidArgumentException(
+                    'The list() at "' . ($unbounded === '' ? $field : $field . '.' . $unbounded) . '" needs maxCount(), exactCount() or betweenCount(), '
+                    . 'so that an input failing every element cannot exhaust memory.',
+                );
+            }
         }
     }
 
     /**
-     * A validator for the keys of a shape, which leaves the messages of using() to the validator holding the shape.
+     * A validator for the keys of a shape, which leaves the messages of using() and the count bounds of lists to the validator holding the shape.
      *
      * The shape's own message(), declared after its keys, can still give them
      * one, so only the outermost validator can tell whether one is missing.
+     * A list() without a count bound is reported with its path from the
+     * outermost field (`items.*.tags`), which only that validator knows.
      *
      * @internal Called by ShapeRule.
      *
      * @param  array<string, FieldRule<covariant mixed>> $rules Rules of each key
      * @return self
-     * @throws InvalidArgumentException                  When the keys' rules are refused the way the constructor refuses them, apart from the messages of using()
+     * @throws InvalidArgumentException                  When the keys' rules are refused the way the constructor refuses them, apart from the messages of using() and the count bound of a list()
      */
     public static function forKeys(array $rules): self
     {
@@ -125,7 +135,7 @@ final class Validator
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name
      * @param  ClockInterface|null                          $clock Clock, or null for the system clock
      * @return void
-     * @throws InvalidArgumentException                     When the rules are refused the way the constructor describes, apart from the messages of using()
+     * @throws InvalidArgumentException                     When the rules are refused the way the constructor describes, apart from the messages of using() and the count bound of a list()
      */
     private function setUp(array $rules, ?ClockInterface $clock): void
     {

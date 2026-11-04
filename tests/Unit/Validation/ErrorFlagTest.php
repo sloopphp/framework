@@ -134,11 +134,11 @@ final class ErrorFlagTest extends TestCase
         yield 'file maxSize' => [static fn (): array => ['v' => Rule::file()->maxSize(1, flag: $f)], ['v' => $upload], 'maxSize'];
         yield 'file mimeTypes' => [static fn (): array => ['v' => Rule::file()->mimeTypes(['image/gif'], flag: $f)], ['v' => $upload], 'mimeTypes'];
 
-        yield 'list minCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->minCount(2, flag: $f)], ['v' => [1]], 'minCount'];
+        yield 'list minCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->maxCount(100)->minCount(2, flag: $f)], ['v' => [1]], 'minCount'];
         yield 'list maxCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->maxCount(0, flag: $f)], ['v' => [1]], 'maxCount'];
         yield 'list betweenCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->betweenCount(2, 3, flag: $f)], ['v' => [1]], 'betweenCount'];
         yield 'list exactCount' => [static fn (): array => ['v' => Rule::list(Rule::int())->exactCount(2, flag: $f)], ['v' => [1]], 'exactCount'];
-        yield 'list distinct' => [static fn (): array => ['v' => Rule::list(Rule::int())->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
+        yield 'list distinct' => [static fn (): array => ['v' => Rule::list(Rule::int())->maxCount(100)->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
         yield 'array distinct' => [static fn (): array => ['v' => Rule::array()->distinct(flag: $f)], ['v' => [1, 1]], 'distinct'];
     }
 
@@ -227,7 +227,7 @@ final class ErrorFlagTest extends TestCase
 
     public function testFlagOfAnElementRuleIsRaisedWhenAnElementFails(): void
     {
-        $rules = ['v' => Rule::list(Rule::int()->min(1, flag: 'flagged'))];
+        $rules = ['v' => Rule::list(Rule::int()->min(1, flag: 'flagged'))->maxCount(100)];
 
         $result = self::validate($rules, ['v' => [1, 0]]);
 
@@ -245,7 +245,7 @@ final class ErrorFlagTest extends TestCase
 
     public function testFlagOfAShapeNestedInAListIsDeclared(): void
     {
-        $rules = ['v' => Rule::list(Rule::shape(['n' => Rule::int()->min(1, flag: 'flagged')]))];
+        $rules = ['v' => Rule::list(Rule::shape(['n' => Rule::int()->min(1, flag: 'flagged')]))->maxCount(100)];
 
         self::assertFalse(self::validate($rules, ['v' => [['n' => 1]]])->hasFlag('flagged'));
         self::assertTrue(self::validate($rules, ['v' => [['n' => 0]]])->hasFlag('flagged'));
@@ -335,7 +335,7 @@ final class ErrorFlagTest extends TestCase
         yield 'requiredWith' => [static fn (string $f) => Rule::string()->requiredWith('o', flag: $f)];
         yield 'using' => [static fn (string $f) => Rule::string()->using('known', static fn (string $v): bool => true, flag: $f)];
         yield 'size' => [static fn (string $f) => Rule::list(Rule::int())->maxCount(1, flag: $f)];
-        yield 'elements' => [static fn (string $f) => Rule::list(Rule::int())->distinct(flag: $f)];
+        yield 'elements' => [static fn (string $f) => Rule::list(Rule::int())->maxCount(100)->distinct(flag: $f)];
         yield 'field comparison' => [static fn (string $f) => Rule::date()->afterField('o', flag: $f)];
         yield 'time comparison' => [static fn (string $f) => Rule::time()->before(TimeOfDay::of(1, 0), flag: $f)];
         yield 'current time' => [static fn (string $f) => Rule::date()->afterNow(flag: $f)];

@@ -10,6 +10,8 @@ use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
+use Sloop\Validation\FieldRule;
+use Sloop\Validation\ListRule;
 use Sloop\Validation\Rule;
 use Sloop\Validation\Sanitize;
 use Sloop\Validation\ValidationError;
@@ -691,5 +693,63 @@ final class ValidatorTest extends TestCase
 
         $this->assertThrows(InvalidArgumentException::class, static fn () => $base->with('b', Rule::int()->same('c')));
         $this->assertFalse($base->with('b', Rule::int()->same('a'))->validate(['a' => 1, 'b' => 1])->failed());
+    }
+
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>, string}>
+     */
+    public static function unboundedLists(): iterable
+    {
+        yield 'list without a bound'          => [Rule::list(Rule::int()), 'ids'];
+        yield 'inner list without a bound'    => [Rule::list(Rule::list(Rule::int()))->maxCount(5), 'ids.*'];
+        yield 'list in a shape'               => [Rule::shape(['tags' => Rule::list(Rule::int())]), 'ids.tags'];
+        yield 'list in a shape in a list'     => [Rule::list(Rule::shape(['tags' => Rule::list(Rule::int())]))->maxCount(5), 'ids.*.tags'];
+        yield 'bound only inside when()'      => [Rule::list(Rule::int())->when('kind', 'x', static fn (ListRule $r): ListRule => $r->maxCount(5)), 'ids'];
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $rule
+     */
+    #[DataProvider('unboundedLists')]
+    public function testAListWithoutAnUpperBoundOnItsCountIsRefused(FieldRule $rule, string $path): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => new Validator(['kind' => Rule::string(), 'ids' => $rule]));
+
+        $this->assertSame(
+            'The list() at "' . $path . '" needs maxCount(), exactCount() or betweenCount(), so that an input failing every element cannot exhaust memory.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testWithRefusesAListWithoutAnUpperBoundOnItsCount(): void
+    {
+        $base = new Validator(['a' => Rule::int()]);
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $base->with('ids', Rule::list(Rule::int())));
+
+        $this->assertStringStartsWith('The list() at "ids" needs maxCount()', $e->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{FieldRule<covariant mixed>}>
+     */
+    public static function boundedCounts(): iterable
+    {
+        yield 'maxCount'               => [Rule::list(Rule::int())->maxCount(5)];
+        yield 'exactCount'             => [Rule::list(Rule::int())->exactCount(5)];
+        yield 'betweenCount'           => [Rule::list(Rule::int())->betweenCount(1, 5)];
+        yield 'every depth bounded'    => [Rule::list(Rule::shape(['tags' => Rule::list(Rule::int())->maxCount(3)]))->maxCount(5)];
+        yield 'array without elements' => [Rule::array()];
+    }
+
+    /**
+     * @param FieldRule<covariant mixed> $rule
+     */
+    #[DataProvider('boundedCounts')]
+    public function testAListWithAnUpperBoundOnEveryDepthIsAccepted(FieldRule $rule): void
+    {
+        $validator = new Validator(['ids' => $rule]);
+
+        $this->assertTrue($validator->validate(['ids' => 'x'])->failed());
     }
 }

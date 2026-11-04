@@ -448,7 +448,7 @@ final class ConditionalRuleTest extends TestCase
         yield 'one mismatch in a list' => [Rule::string(), ['a', 1]];
         yield 'decimal field' => [Rule::decimal(5, 2), '1.00'];
         yield 'date field' => [Rule::date(), '2026-01-01'];
-        yield 'list field' => [Rule::list(Rule::string()), 'a'];
+        yield 'list field' => [Rule::list(Rule::string())->maxCount(100), 'a'];
     }
 
     /**
@@ -545,7 +545,7 @@ final class ConditionalRuleTest extends TestCase
     {
         $rules = [
             'kind'  => Rule::string(),
-            'items' => Rule::list(Rule::string())->when('kind', 'x', static fn (ListRule $r): ListRule => $r->minCount(3)->exactCount(4)),
+            'items' => Rule::list(Rule::string())->maxCount(100)->when('kind', 'x', static fn (ListRule $r): ListRule => $r->minCount(3)->exactCount(4)),
         ];
 
         $this->assertSame(['items' => ['minCount', 'exactCount']], self::failedRulesOf($rules, ['kind' => 'x', 'items' => ['a', 'b']]));
@@ -675,7 +675,7 @@ final class ConditionalRuleTest extends TestCase
     {
         $rules = [
             'kind' => Rule::string(),
-            'ids'  => Rule::list(Rule::int())->when('kind', 'x', static fn ($r) => $r->distinct()),
+            'ids'  => Rule::list(Rule::int())->maxCount(100)->when('kind', 'x', static fn ($r) => $r->distinct()),
         ];
 
         $this->assertSame(['ids.0' => ['int']], self::failedRulesOf($rules, ['kind' => 'x', 'ids' => ['a', 1, 1]]));
@@ -685,7 +685,7 @@ final class ConditionalRuleTest extends TestCase
     {
         $rules = [
             'kind' => Rule::string(),
-            'ids'  => Rule::list(Rule::int())->when('kind', 'x', static fn ($r) => $r->distinct()),
+            'ids'  => Rule::list(Rule::int())->maxCount(100)->when('kind', 'x', static fn ($r) => $r->distinct()),
         ];
 
         $this->assertSame(['ids' => ['distinct']], self::failedRulesOf($rules, ['kind' => 'x', 'ids' => [1, 1]]));
@@ -1078,7 +1078,7 @@ final class ConditionalRuleTest extends TestCase
             'source'  => Rule::string()
                 ->requiredIf('is_link', true)
                 ->when('is_link', true, static fn (StringRule $r): StringRule => $r->url()),
-        ]));
+        ]))->maxCount(100);
 
         $this->assertSame(
             ['v.0.source' => ['requiredIf'], 'v.1.source' => ['url']],
