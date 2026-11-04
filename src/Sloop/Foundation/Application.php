@@ -767,7 +767,7 @@ final class Application implements RequestHandlerInterface
      * Register the CSRF middleware built from security.csrf, checking every entry now.
      *
      * The middleware runs only where the application lists it, in
-     * config/middleware.php or on a route; both resolve this instance.
+     * config/middleware.php or on a route; both resolve the singleton below.
      *
      * @return void
      * @throws SecurityConfigException If security.csrf has an unsupported key, origin is not a string or null, trusted_origins is not a list of strings, or an origin is malformed
