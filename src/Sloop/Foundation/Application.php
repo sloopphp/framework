@@ -201,35 +201,31 @@ final class Application implements RequestHandlerInterface
      * receives its headers (traceparent, CORS, ...). A request whose body is
      * larger than security.max_body_size is answered with a 413 here, and one
      * whose JSON or form body could not be parsed with a 400, before routing,
-     * for the same reason. The size is checked first.
+     * for the same reason. The size is checked first. These two are answers
+     * to the client's input, not failures, so they are returned through the
+     * response formatter and not logged.
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
-     * @throws \RuntimeException      When the entry registered as the response formatter is not one while rendering an error
-     * @throws EntryNotFoundException When the response formatter cannot be resolved by the container while rendering an error
-     * @throws ContainerException     When resolving the response formatter detects a circular dependency while rendering an error
+     * @throws \RuntimeException      When the entry registered as the response formatter is not one while building an error response
+     * @throws EntryNotFoundException When the response formatter cannot be resolved by the container while building an error response
+     * @throws ContainerException     When resolving the response formatter detects a circular dependency while building an error response
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         if (RawBody::isTooLarge($request)) {
-            return $this->renderException(
-                new DomainException(
-                    'The request body is larger than ' . $this->maxBodySize . ' bytes.',
-                    HttpStatus::ContentTooLarge,
-                ),
+            return $this->resolveFormatter()->error(
+                'The request body is larger than ' . $this->maxBodySize . ' bytes.',
+                HttpStatus::ContentTooLarge,
             );
         }
 
         if (JsonBody::isMalformed($request)) {
-            return $this->renderException(
-                new DomainException('The request body is not valid JSON.', HttpStatus::BadRequest),
-            );
+            return $this->resolveFormatter()->error('The request body is not valid JSON.', HttpStatus::BadRequest);
         }
 
         if (FormBody::isMalformed($request)) {
-            return $this->renderException(
-                new DomainException('The request body could not be read as form data.', HttpStatus::BadRequest),
-            );
+            return $this->resolveFormatter()->error('The request body could not be read as form data.', HttpStatus::BadRequest);
         }
 
         try {
@@ -244,7 +240,6 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface    $request PSR-7 server request
      * @return ResponseInterface
-     * @throws DomainException           With status 404 when an int, float or bool route parameter cannot be read as that type
      * @throws \RuntimeException         When the response formatter or a route middleware does not have the expected type, the controller cannot be resolved as an object, the entry registered as the clock is not one, validating a ValidatedRequest fails the way Validator::validate() describes, reflecting the controller action or a ValidatedRequest subclass fails, or invoking its rules() fails
      * @throws \LogicException           When a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see \Sloop\Http\Request\ValidatedRequest), or the parsed body is not an array
      * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
@@ -291,19 +286,30 @@ final class Application implements RequestHandlerInterface
      * The primary error boundary lives in handle(), so error responses pass
      * back through the global middleware stack. This catch is a last resort
      * for exceptions thrown by the global middleware themselves, and for those
-     * thrown while the request is built from the globals (a URI that cannot be
-     * parsed); the error response it renders still receives the security headers.
+     * thrown while the request is built from the globals; the error response
+     * it renders still receives the security headers. A URI or header value
+     * from the globals that cannot be parsed is answered with a 400 before the
+     * middleware stack, also with the security headers, and is not logged.
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
-     * @throws \RuntimeException           When the entry registered as the response formatter is not one while rendering an error
-     * @throws EntryNotFoundException      When the response formatter cannot be resolved by the container while rendering an error
-     * @throws ContainerException          When resolving the response formatter detects a circular dependency while rendering an error
+     * @throws \RuntimeException           When the entry registered as the response formatter is not one while building an error response
+     * @throws EntryNotFoundException      When the response formatter cannot be resolved by the container while building an error response
+     * @throws ContainerException          When resolving the response formatter detects a circular dependency while building an error response
      */
     public function run(?ServerRequestInterface $serverRequest = null): ResponseInterface
     {
         try {
-            $serverRequest ??= $this->createServerRequestFromGlobals();
+            if ($serverRequest === null) {
+                $created = $this->createServerRequestFromGlobals();
+                if ($created instanceof ResponseInterface) {
+                    // The security headers middleware does not look at the request,
+                    // so a placeholder serves when none could be built.
+                    return $this->withSecurityHeaders(new ServerRequest('GET', '/'), $created);
+                }
+
+                $serverRequest = $created;
+            }
 
             return $this->buildMiddlewareDispatcher()->handle($serverRequest);
         } catch (\Throwable $e) {
@@ -761,7 +767,7 @@ final class Application implements RequestHandlerInterface
      * Register the CSRF middleware built from security.csrf, checking every entry now.
      *
      * The middleware runs only where the application lists it, in
-     * config/middleware.php or on a route; both resolve this instance.
+     * config/middleware.php or on a route; both resolve the binding below.
      *
      * @return void
      * @throws SecurityConfigException If security.csrf has an unsupported key, origin is not a string or null, trusted_origins is not a list of strings, or an origin is malformed
@@ -781,12 +787,18 @@ final class Application implements RequestHandlerInterface
         }
 
         try {
-            $middleware = new CsrfMiddleware($origin, $trusted);
+            // Only to check the origins now; the formatter does not take part in the check.
+            new CsrfMiddleware(new ApiResponseFormatter(), $origin, $trusted);
         } catch (\InvalidArgumentException $e) {
             throw new SecurityConfigException('security.csrf: ' . $e->getMessage(), previous: $e);
         }
 
-        $this->container->instance(CsrfMiddleware::class, $middleware);
+        // Built on each resolution, so the 403 takes the shape of the formatter
+        // bound at that time, the way the other error responses do.
+        $this->container->bind(
+            CsrfMiddleware::class,
+            fn (): CsrfMiddleware => new CsrfMiddleware($this->resolveFormatter(), $origin, $trusted),
+        );
     }
 
     /**
@@ -1296,11 +1308,13 @@ final class Application implements RequestHandlerInterface
      * than security.max_body_size is marked and not attached, and handle()
      * answers it with a 413.
      *
-     * @return ServerRequestInterface
-     * @throws DomainException           With status 400 when the URI or a header value the client sent cannot be parsed
-     * @throws \InvalidArgumentException When an uploaded file carries an error code PHP does not define
+     * @return ServerRequestInterface|ResponseInterface The request, or a 400 when the URI or a header value the client sent cannot be parsed
+     * @throws \InvalidArgumentException                When an uploaded file carries an error code PHP does not define
+     * @throws \RuntimeException                        When the entry registered as the response formatter is not one while building the 400
+     * @throws EntryNotFoundException                   When the response formatter cannot be resolved by the container while building the 400
+     * @throws ContainerException                       When resolving the response formatter detects a circular dependency while building the 400
      */
-    private function createServerRequestFromGlobals(): ServerRequestInterface
+    private function createServerRequestFromGlobals(): ServerRequestInterface|ResponseInterface
     {
         $method  = Arr::getString($_SERVER, 'REQUEST_METHOD', 'GET');
         $uri     = Arr::getString($_SERVER, 'REQUEST_URI', '/');
@@ -1308,9 +1322,9 @@ final class Application implements RequestHandlerInterface
 
         try {
             $request = new ServerRequest($method, $uri, $headers, null, '1.1', $_SERVER);
-        } catch (\InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException) {
             // The URI and the headers come from the client.
-            throw new DomainException('The request URI or headers could not be read.', HttpStatus::BadRequest, previous: $e);
+            return $this->resolveFormatter()->error('The request URI or headers could not be read.', HttpStatus::BadRequest);
         }
 
         // request_parse_body() finds nothing in php://input once something has

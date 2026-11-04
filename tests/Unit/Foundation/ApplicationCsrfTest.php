@@ -12,6 +12,8 @@ use Psr\Http\Message\ResponseInterface;
 use Sloop\Config\Config;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
+use Sloop\Http\Response\ApiResponseFormatter;
+use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Security\Exception\SecurityConfigException;
@@ -23,6 +25,8 @@ final class ApplicationCsrfTest extends TestCase
     use ThrowsAssertions;
 
     private string $tmpDir;
+
+    private TestHandler $logs;
 
     private function writeFile(string $path, string $content): void
     {
@@ -41,12 +45,13 @@ final class ApplicationCsrfTest extends TestCase
     /**
      * @param array<string, string> $headers
      */
-    private function post(string $path, array $headers): ResponseInterface
+    private function post(string $path, array $headers, ?Application $app = null): ResponseInterface
     {
-        $app     = new Application($this->tmpDir);
+        $app   ??= new Application($this->tmpDir);
         $manager = $app->container->get(LogManager::class);
         $this->assertInstanceOf(LogManager::class, $manager);
-        $manager->channel()->setHandlers([new TestHandler()]);
+        $this->logs = new TestHandler();
+        $manager->channel()->setHandlers([$this->logs]);
 
         return $app->run(new ServerRequest('POST', $path, $headers));
     }
@@ -99,6 +104,49 @@ final class ApplicationCsrfTest extends TestCase
         $this->assertSame(403, $response->getStatusCode());
         $this->assertStringContainsString('The request was rejected as a cross-site request.', (string) $response->getBody());
         $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+        $this->assertSame(['Sec-Fetch-Site', 'Origin'], $response->getHeader('Vary'));
+        $this->assertSame([], $this->logs->getRecords());
+    }
+
+    public function testTheRejectionPassesBackThroughAnOuterGlobalMiddleware(): void
+    {
+        $this->writeRoutes();
+        $this->writeFile('config/security.php', "<?php return ['cors' => ['allowed_origins' => ['https://spa.example']]];");
+        $this->writeFile(
+            'config/middleware.php',
+            '<?php return [\Sloop\Http\Middleware\CorsMiddleware::class, \Sloop\Http\Middleware\CsrfMiddleware::class];',
+        );
+
+        $response = $this->post('/open', ['Sec-Fetch-Site' => 'cross-site', 'Origin' => 'https://spa.example']);
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('https://spa.example', $response->getHeaderLine('Access-Control-Allow-Origin'));
+        $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+    }
+
+    public function testTheRejectionTakesTheShapeOfAFormatterBoundAfterBoot(): void
+    {
+        $this->writeRoutes();
+        $app = new Application($this->tmpDir);
+        $app->container->instance(ResponseFormatterInterface::class, new ApiResponseFormatter(JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+
+        $response = $this->post('/guarded', ['Sec-Fetch-Site' => 'cross-site'], $app);
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString("{\n    \"error\"", (string) $response->getBody());
+    }
+
+    public function testTheRejectionTakesTheShapeOfAFormatterBoundAfterAnEarlierRequest(): void
+    {
+        $this->writeRoutes();
+        $app = new Application($this->tmpDir);
+        $this->post('/guarded', ['Sec-Fetch-Site' => 'cross-site'], $app);
+        $app->container->instance(ResponseFormatterInterface::class, new ApiResponseFormatter(JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+
+        $response = $this->post('/guarded', ['Sec-Fetch-Site' => 'cross-site'], $app);
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString("{\n    \"error\"", (string) $response->getBody());
     }
 
     public function testRejectsACrossSiteRequestWithTheMiddlewareListedGlobally(): void

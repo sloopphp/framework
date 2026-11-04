@@ -17,7 +17,7 @@ namespace Sloop\Http;
  *
  * ```php
  * return $this->response($data)->status(HttpStatus::Ok)->json();
- * throw new DomainException('Validation failed', HttpStatus::UnprocessableEntity);
+ * return $this->response()->error('Not found', HttpStatus::NotFound);
  * ```
  *
  * ## Using non-standard / custom codes

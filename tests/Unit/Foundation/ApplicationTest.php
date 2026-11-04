@@ -290,14 +290,15 @@ final class ApplicationTest extends TestCase
             $router->get("/users/{id}", \Sloop\Tests\Unit\Foundation\Stub\UserController::class, "findById");
         ');
 
-        $app = new Application($this->tmpDir);
-        $this->captureLog($app);
+        $app      = new Application($this->tmpDir);
+        $handler  = $this->captureLog($app);
         $response = $app->run($this->createRequest('GET', '/users/abc'));
         $body     = $this->decodeJsonBody($response);
         $error    = $this->narrowToStringArray($body['error']);
 
         $this->assertSame(404, $response->getStatusCode());
         $this->assertSame('The route parameter "id" is not a valid int.', $error['message']);
+        $this->assertSame([], $handler->getRecords());
     }
 
     public function testRequestFromGlobalsCarriesUploadedFiles(): void
@@ -1186,14 +1187,15 @@ final class ApplicationTest extends TestCase
         );
         $request = $this->jsonRequest('{"name":');
 
-        $app = new Application($this->tmpDir);
-        $this->captureLog($app);
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
 
         $response = $app->run($request);
 
         $this->assertSame(400, $response->getStatusCode());
         $this->assertStringContainsString('The request body is not valid JSON.', (string) $response->getBody());
         $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+        $this->assertSame([], $handler->getRecords());
     }
 
     public function testMalformedJsonBodyIsA400EvenWithoutAMatchingRoute(): void
@@ -1222,14 +1224,15 @@ final class ApplicationTest extends TestCase
             1_048_576,
         );
 
-        $app = new Application($this->tmpDir);
-        $this->captureLog($app);
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
 
         $response = $app->run($request);
 
         $this->assertSame(400, $response->getStatusCode());
         $this->assertStringContainsString('The request body could not be read as form data.', (string) $response->getBody());
         $this->assertSame('test-id', $response->getHeaderLine('X-Request-Id'));
+        $this->assertSame([], $handler->getRecords());
     }
 
     public function testRouteMiddlewareRequestMutationIsVisibleToController(): void

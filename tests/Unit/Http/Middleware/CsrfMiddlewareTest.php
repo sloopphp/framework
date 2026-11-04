@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Sloop\Error\DomainException;
 use Sloop\Http\Middleware\CsrfMiddleware;
+use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Tests\Support\ThrowsAssertions;
 
 final class CsrfMiddlewareTest extends TestCase
@@ -47,6 +47,16 @@ final class CsrfMiddlewareTest extends TestCase
         return new ServerRequest($method, '/orders', $headers);
     }
 
+    private function assertRejected(ResponseInterface $response): void
+    {
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame(
+            ['error' => ['message' => 'The request was rejected as a cross-site request.', 'status' => 403]],
+            json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR),
+        );
+        $this->assertSame(['Sec-Fetch-Site', 'Origin'], $response->getHeader('Vary'));
+    }
+
     /**
      * @return array<string, array{array<string, string|list<string>>}>
      */
@@ -71,7 +81,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('allowedProvider')]
     public function testPassesAnUnsafeRequestFromTheSameOrigin(array $headers): void
     {
-        $response = new CsrfMiddleware()->process($this->request('POST', $headers), $this->handler());
+        $response = new CsrfMiddleware(new ApiResponseFormatter())->process($this->request('POST', $headers), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
     }
@@ -114,13 +124,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('rejectedProvider')]
     public function testRejectsAnUnsafeRequestNotShownToComeFromTheSameOrigin(array $headers): void
     {
-        $e = $this->assertThrows(
-            DomainException::class,
-            fn () => new CsrfMiddleware()->process($this->request('POST', $headers), $this->handler()),
-        );
-
-        $this->assertSame(403, $e->statusCode);
-        $this->assertSame('The request was rejected as a cross-site request.', $e->getMessage());
+        $this->assertRejected(new CsrfMiddleware(new ApiResponseFormatter())->process($this->request('POST', $headers), $this->handler()));
     }
 
     /**
@@ -140,10 +144,18 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('unsafeMethodProvider')]
     public function testChecksEveryMethodThatIsNotSafe(string $method): void
     {
-        $this->assertThrows(
-            DomainException::class,
-            fn () => new CsrfMiddleware()->process($this->request($method, ['Sec-Fetch-Site' => 'cross-site']), $this->handler()),
+        $this->assertRejected(
+            new CsrfMiddleware(new ApiResponseFormatter())->process($this->request($method, ['Sec-Fetch-Site' => 'cross-site']), $this->handler()),
         );
+    }
+
+    public function testBuildsTheRejectionWithTheGivenFormatter(): void
+    {
+        $response = new CsrfMiddleware(new ApiResponseFormatter(JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR))
+            ->process($this->request('POST', ['Sec-Fetch-Site' => 'cross-site']), $this->handler());
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString("{\n    \"error\"", (string) $response->getBody());
     }
 
     /**
@@ -162,7 +174,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('safeMethodProvider')]
     public function testPassesASafeMethodWithoutACheckOrVary(string $method): void
     {
-        $response = new CsrfMiddleware()->process($this->request($method, ['Sec-Fetch-Site' => 'cross-site']), $this->handler());
+        $response = new CsrfMiddleware(new ApiResponseFormatter())->process($this->request($method, ['Sec-Fetch-Site' => 'cross-site']), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertFalse($response->hasHeader('Vary'));
@@ -170,7 +182,7 @@ final class CsrfMiddlewareTest extends TestCase
 
     public function testAddsSecFetchSiteAndOriginToVaryOnACheckedRequest(): void
     {
-        $response = new CsrfMiddleware()->process(
+        $response = new CsrfMiddleware(new ApiResponseFormatter())->process(
             $this->request('POST', ['Sec-Fetch-Site' => 'same-origin']),
             $this->handler(['Vary' => 'Accept']),
         );
@@ -180,7 +192,7 @@ final class CsrfMiddlewareTest extends TestCase
 
     public function testDoesNotRepeatAVaryNameTheResponseAlreadyLists(): void
     {
-        $response = new CsrfMiddleware()->process(
+        $response = new CsrfMiddleware(new ApiResponseFormatter())->process(
             $this->request('POST', ['Sec-Fetch-Site' => 'same-origin']),
             $this->handler(['Vary' => 'Accept, ORIGIN']),
         );
@@ -207,7 +219,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('configuredOriginAllowedProvider')]
     public function testComparesWithTheConfiguredOriginInsteadOfHost(array $headers): void
     {
-        $response = new CsrfMiddleware('https://example.org')->process($this->request('POST', $headers), $this->handler());
+        $response = new CsrfMiddleware(new ApiResponseFormatter(), 'https://example.org')->process($this->request('POST', $headers), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
     }
@@ -229,9 +241,8 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('configuredOriginRejectedProvider')]
     public function testRejectsAnOriginOtherThanTheConfiguredOne(array $headers): void
     {
-        $this->assertThrows(
-            DomainException::class,
-            fn () => new CsrfMiddleware('https://example.org')->process($this->request('POST', $headers), $this->handler()),
+        $this->assertRejected(
+            new CsrfMiddleware(new ApiResponseFormatter(), 'https://example.org')->process($this->request('POST', $headers), $this->handler()),
         );
     }
 
@@ -254,7 +265,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('trustedProvider')]
     public function testPassesARequestFromATrustedOrigin(array $headers): void
     {
-        $response = new CsrfMiddleware(null, ['https://other.example', 'https://app.example'])
+        $response = new CsrfMiddleware(new ApiResponseFormatter(), null, ['https://other.example', 'https://app.example'])
             ->process($this->request('POST', $headers), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
@@ -278,16 +289,15 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('untrustedOriginProvider')]
     public function testRejectsACrossSiteRequestFromAnOriginNotTrustedExactly(string $origin): void
     {
-        $this->assertThrows(
-            DomainException::class,
-            fn () => new CsrfMiddleware(null, ['https://app.example', 'https://port.example:12'])
+        $this->assertRejected(
+            new CsrfMiddleware(new ApiResponseFormatter(), null, ['https://app.example', 'https://port.example:12'])
                 ->process($this->request('POST', ['Sec-Fetch-Site' => 'cross-site', 'Origin' => $origin]), $this->handler()),
         );
     }
 
     public function testPassesATrustedOriginWithAPort(): void
     {
-        $response = new CsrfMiddleware(null, ['https://port.example:12'])
+        $response = new CsrfMiddleware(new ApiResponseFormatter(), null, ['https://port.example:12'])
             ->process($this->request('POST', ['Sec-Fetch-Site' => 'cross-site', 'Origin' => 'https://port.example:12']), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
@@ -295,9 +305,8 @@ final class CsrfMiddlewareTest extends TestCase
 
     public function testRejectsACrossSiteRequestWithoutOriginEvenWithTrustedOrigins(): void
     {
-        $this->assertThrows(
-            DomainException::class,
-            fn () => new CsrfMiddleware(null, ['https://app.example'])
+        $this->assertRejected(
+            new CsrfMiddleware(new ApiResponseFormatter(), null, ['https://app.example'])
                 ->process($this->request('POST', ['Sec-Fetch-Site' => 'cross-site', 'Referer' => 'https://app.example/']), $this->handler()),
         );
     }
@@ -321,7 +330,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('misshapenOriginProvider')]
     public function testRejectsAMisshapenConfiguredOrigin(string $origin): void
     {
-        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware($origin));
+        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware(new ApiResponseFormatter(), $origin));
 
         $this->assertSame(
             'The origin "' . $origin . '" must be written as scheme://host or scheme://host:port with http or https and no path.',
@@ -334,7 +343,7 @@ final class CsrfMiddlewareTest extends TestCase
     {
         $e = $this->assertThrows(
             \InvalidArgumentException::class,
-            static fn () => new CsrfMiddleware(null, ['https://app.example', $origin]),
+            static fn () => new CsrfMiddleware(new ApiResponseFormatter(), null, ['https://app.example', $origin]),
         );
 
         $this->assertSame('The origin "' . $origin . '" must be written as scheme://host or scheme://host:port and no path.', $e->getMessage());
@@ -370,7 +379,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('unsendableOriginProvider')]
     public function testRejectsAConfiguredOriginBrowsersCannotSend(string $origin, string $reason): void
     {
-        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware($origin));
+        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware(new ApiResponseFormatter(), $origin));
 
         $this->assertSame('The origin "' . $origin . '"' . $reason, $e->getMessage());
     }
@@ -380,7 +389,7 @@ final class CsrfMiddlewareTest extends TestCase
     {
         $e = $this->assertThrows(
             \InvalidArgumentException::class,
-            static fn () => new CsrfMiddleware(null, ['https://app.example', $origin]),
+            static fn () => new CsrfMiddleware(new ApiResponseFormatter(), null, ['https://app.example', $origin]),
         );
 
         $this->assertSame('The origin "' . $origin . '"' . $reason, $e->getMessage());
@@ -388,7 +397,7 @@ final class CsrfMiddlewareTest extends TestCase
 
     public function testRejectsAnOwnOriginWithASchemeOtherThanHttpOrHttps(): void
     {
-        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware('capacitor://localhost'));
+        $e = $this->assertThrows(\InvalidArgumentException::class, static fn () => new CsrfMiddleware(new ApiResponseFormatter(), 'capacitor://localhost'));
 
         $this->assertSame(
             'The origin "capacitor://localhost" must be written as scheme://host or scheme://host:port with http or https and no path.',
@@ -416,7 +425,7 @@ final class CsrfMiddlewareTest extends TestCase
     #[DataProvider('canonicalTrustedOriginProvider')]
     public function testPassesACrossSiteRequestFromATrustedOriginWrittenAsBrowsersSendIt(string $trusted, string $sent): void
     {
-        $response = new CsrfMiddleware(null, [$trusted])
+        $response = new CsrfMiddleware(new ApiResponseFormatter(), null, [$trusted])
             ->process($this->request('POST', ['Sec-Fetch-Site' => 'cross-site', 'Origin' => $sent]), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
@@ -424,7 +433,7 @@ final class CsrfMiddlewareTest extends TestCase
 
     public function testAcceptsAnOriginWithANonDefaultPort(): void
     {
-        $response = new CsrfMiddleware('https://example.org:8443')
+        $response = new CsrfMiddleware(new ApiResponseFormatter(), 'https://example.org:8443')
             ->process($this->request('POST', ['Origin' => 'https://example.org:8443']), $this->handler());
 
         $this->assertSame(200, $response->getStatusCode());
