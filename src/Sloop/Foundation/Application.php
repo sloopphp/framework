@@ -767,7 +767,7 @@ final class Application implements RequestHandlerInterface
      * Register the CSRF middleware built from security.csrf, checking every entry now.
      *
      * The middleware runs only where the application lists it, in
-     * config/middleware.php or on a route; both resolve the singleton below.
+     * config/middleware.php or on a route; both resolve the binding below.
      *
      * @return void
      * @throws SecurityConfigException If security.csrf has an unsupported key, origin is not a string or null, trusted_origins is not a list of strings, or an origin is malformed
@@ -793,9 +793,9 @@ final class Application implements RequestHandlerInterface
             throw new SecurityConfigException('security.csrf: ' . $e->getMessage(), previous: $e);
         }
 
-        // The formatter is resolved when the middleware is first used, so the
-        // 403 takes the shape of a formatter the application binds after boot.
-        $this->container->singleton(
+        // Built on each resolution, so the 403 takes the shape of the formatter
+        // bound at that time, the way the other error responses do.
+        $this->container->bind(
             CsrfMiddleware::class,
             fn (): CsrfMiddleware => new CsrfMiddleware($this->resolveFormatter(), $origin, $trusted),
         );

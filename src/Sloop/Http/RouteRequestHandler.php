@@ -111,7 +111,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * by type: Request types receive the Sloop Request, ValidatedRequest
      * subclasses receive the validated input, other object types are
      * resolved from the container, and every other parameter takes the
-     * route parameter of its name (see resolveParameter()). Parameters are
+     * route parameter of its name (see routeValue()). Parameters are
      * resolved in declaration order, so a ValidatedRequest declared before a
      * route parameter answers with its 400 or 422 before that value is read.
      *

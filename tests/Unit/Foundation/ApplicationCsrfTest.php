@@ -136,6 +136,19 @@ final class ApplicationCsrfTest extends TestCase
         $this->assertStringContainsString("{\n    \"error\"", (string) $response->getBody());
     }
 
+    public function testTheRejectionTakesTheShapeOfAFormatterBoundAfterAnEarlierRequest(): void
+    {
+        $this->writeRoutes();
+        $app = new Application($this->tmpDir);
+        $this->post('/guarded', ['Sec-Fetch-Site' => 'cross-site'], $app);
+        $app->container->instance(ResponseFormatterInterface::class, new ApiResponseFormatter(JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+
+        $response = $this->post('/guarded', ['Sec-Fetch-Site' => 'cross-site'], $app);
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString("{\n    \"error\"", (string) $response->getBody());
+    }
+
     public function testRejectsACrossSiteRequestWithTheMiddlewareListedGlobally(): void
     {
         $this->writeRoutes();
