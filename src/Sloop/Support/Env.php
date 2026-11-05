@@ -59,10 +59,8 @@ final class Env
         } else {
             $value = getenv($key);
 
-            // A name the boot-time fixing did not hold is fixed here, at its
-            // first read, absence included. Such names are the ones getenv()
-            // without a name does not list as written: a name holding '.', ' '
-            // or '[', and one SetEnv passes under Apache's module.
+            // A name enableImmutable() did not fix is fixed here, at its first
+            // read, absence included.
             if (self::$immutable) {
                 self::$cache[$key] = $value;
             }

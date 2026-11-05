@@ -203,6 +203,17 @@ final class EnvTest extends TestCase
         $this->assertSame('first', Env::get('SLOOP_TEST_VAR'));
     }
 
+    public function testEnablingImmutableAgainDoesNotFixAVariableSetBetweenTheCalls(): void
+    {
+        putenv('SLOOP_TEST_ABSENT');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_ABSENT=between');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_ABSENT=at-first-read');
+
+        $this->assertSame('at-first-read', Env::get('SLOOP_TEST_ABSENT'));
+    }
+
     public function testImmutableKeepsAVariableNamedWithDigits(): void
     {
         putenv('9876543210=digits');
