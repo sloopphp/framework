@@ -16,6 +16,7 @@ use Sloop\Http\Middleware\CorsMiddleware;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Security\Exception\SecurityConfigException;
+use Sloop\Support\Env;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\ValidationMessages;
 
@@ -59,6 +60,7 @@ final class ApplicationCorsTest extends TestCase
 
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
     }
@@ -67,6 +69,7 @@ final class ApplicationCorsTest extends TestCase
     {
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
 

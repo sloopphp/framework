@@ -19,6 +19,7 @@ use Sloop\Foundation\Path;
 use Sloop\Log\Exception\LogConfigException;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
+use Sloop\Support\Env;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\ConfigRecordingChannelFactory;
 use Sloop\Validation\ValidationMessages;
@@ -50,6 +51,7 @@ final class ApplicationConfigCheckTest extends TestCase
 
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
     }
@@ -58,6 +60,7 @@ final class ApplicationConfigCheckTest extends TestCase
     {
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
         ConfigRecordingChannelFactory::$lastConfig = null;

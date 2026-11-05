@@ -13,6 +13,7 @@ use Sloop\Encryption\PasswordHasher;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Log\Log;
+use Sloop\Support\Env;
 use Sloop\Validation\ValidationMessages;
 
 final class ApplicationHashingTest extends TestCase
@@ -41,6 +42,7 @@ final class ApplicationHashingTest extends TestCase
 
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
     }
@@ -49,6 +51,7 @@ final class ApplicationHashingTest extends TestCase
     {
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
 

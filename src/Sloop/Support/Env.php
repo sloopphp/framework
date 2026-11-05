@@ -10,15 +10,19 @@ use Sloop\Config\InvalidConfigException;
 /**
  * Immutable environment variable accessor.
  *
- * Values are cached on first access and remain immutable for the process lifetime.
- * Use withEnv() for temporary overrides in tests.
+ * Once immutable mode is enabled, each variable keeps the value it had when
+ * the mode was enabled, or, for a variable the process environment did not
+ * list then, the value (or absence) it had when first read. Use withEnv() for
+ * temporary overrides in tests.
  */
 final class Env
 {
     /**
-     * Cached environment variable values.
+     * Cached environment variable values; false marks a variable fixed as not set.
      *
-     * @var array<string, string|false>
+     * A variable named with digits only is keyed by an int, as PHP keys it.
+     *
+     * @var array<array-key, string|false>
      */
     private static array $cache = [];
 
@@ -52,14 +56,14 @@ final class Env
 
         if (\array_key_exists($key, self::$cache)) {
             $value = self::$cache[$key];
+        } else {
+            $value = getenv($key);
 
-            return $value === false ? $default : $value;
-        }
-
-        $value = getenv($key);
-
-        if (self::$immutable && $value !== false) {
-            self::$cache[$key] = $value;
+            // A name enableImmutable() did not fix is fixed here, at its first
+            // read, absence included.
+            if (self::$immutable) {
+                self::$cache[$key] = $value;
+            }
         }
 
         if ($value === false) {
@@ -76,13 +80,49 @@ final class Env
     }
 
     /**
-     * Enable immutable mode. Once enabled, cached values cannot be changed.
+     * Enable immutable mode, fixing the environment as it stands now.
+     *
+     * Every variable the process environment lists is read once here and keeps
+     * that value. A name it does not list is read once, at its first get(),
+     * and keeps that value or its absence. Calling this again while the mode
+     * is on keeps the values fixed the first time. Application calls it at
+     * boot, before the config is read.
      *
      * @return void
      */
     public static function enableImmutable(): void
     {
+        if (self::$immutable) {
+            return;
+        }
+
+        // getenv() without a name only supplies the names. Each value is read
+        // with getenv($name), as get() reads it: under Apache's module that
+        // prefers a SetEnv value over the process one, and under FPM a
+        // parameter whose name PHP rewrote ('.' to '_', 'a[b]' to an array)
+        // finds nothing under the rewritten name and is fixed as not set.
+        $fixed = [];
+        foreach (array_keys(self::processEnvironment()) as $name) {
+            $fixed[$name] = getenv((string) $name);
+        }
+
+        // A value withEnv() is holding wins over the process environment. The
+        // union keeps a variable named with digits under its own name.
+        self::$cache     = self::$cache + $fixed;
         self::$immutable = true;
+    }
+
+    /**
+     * The variables getenv() without a name lists.
+     *
+     * PHP keys a name made of digits only by an int, so the keys are not all
+     * strings.
+     *
+     * @return array<array-key, string>
+     */
+    private static function processEnvironment(): array
+    {
+        return getenv();
     }
 
     /**
@@ -99,11 +139,14 @@ final class Env
      * Execute a callback with temporary environment variable overrides.
      *
      * Overrides bypass the immutable cache for the duration of the callback.
-     * Original environment and cache state are restored after execution.
+     * Original environment and cache state are restored after execution. When
+     * the callback enables immutable mode (by booting an Application), an
+     * overridden variable not fixed before is read again, at its next get(),
+     * from the restored environment.
      *
      * @template T
-     * @param  array<string, string|null> $variables Variables to set (null to unset)
-     * @param  callable(): T              $callback  Code to execute with overrides
+     * @param  array<array-key, string|null> $variables Variables to set (null to unset); a name made of digits only arrives as an int key
+     * @param  callable(): T                 $callback  Code to execute with overrides
      * @return T
      */
     public static function withEnv(array $variables, callable $callback): mixed
@@ -112,8 +155,10 @@ final class Env
         $originalCache = [];
         $hadCache      = [];
 
+        // A name made of digits only arrives as an int key, which getenv() and
+        // putenv() do not take under strict types; it is passed as a string.
         foreach ($variables as $key => $value) {
-            $originalEnv[$key] = getenv($key);
+            $originalEnv[$key] = getenv((string) $key);
             $hadCache[$key]    = \array_key_exists($key, self::$cache);
 
             if ($hadCache[$key]) {
@@ -121,7 +166,7 @@ final class Env
             }
 
             if ($value === null) {
-                putenv($key);
+                putenv((string) $key);
                 unset(self::$cache[$key]);
             } else {
                 putenv($key . '=' . $value);
@@ -134,7 +179,7 @@ final class Env
         } finally {
             foreach ($variables as $key => $ignored) {
                 if ($originalEnv[$key] === false) {
-                    putenv($key);
+                    putenv((string) $key);
                 } else {
                     putenv($key . '=' . $originalEnv[$key]);
                 }

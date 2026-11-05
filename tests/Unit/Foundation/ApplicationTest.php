@@ -42,6 +42,7 @@ use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Log\TraceContext;
 use Sloop\Routing\Router;
+use Sloop\Support\Env;
 use Sloop\Tests\Support\JsonBodyAssertions;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Foundation\Stub\ChannelFactoryWithUnboundDependency;
@@ -105,6 +106,7 @@ final class ApplicationTest extends TestCase
 
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
     }
@@ -113,6 +115,7 @@ final class ApplicationTest extends TestCase
     {
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
 
@@ -223,6 +226,43 @@ final class ApplicationTest extends TestCase
 
         $this->assertTrue(Config::isLoaded());
         $this->assertSame('TestApp', Config::get('app.name'));
+    }
+
+    public function testFixesTheEnvironmentBeforeTheConfigIsRead(): void
+    {
+        $this->writeConfig('app.php', '<?php return ["name" => env("SLOOP_APP_TEST_NAME")];');
+        putenv('SLOOP_APP_TEST_NAME=at-boot');
+        try {
+            new Application($this->tmpDir);
+            putenv('SLOOP_APP_TEST_NAME=changed');
+
+            $this->assertTrue(Env::isImmutable());
+            $this->assertSame('at-boot', Config::get('app.name'));
+            $this->assertSame('at-boot', Env::get('SLOOP_APP_TEST_NAME'));
+        } finally {
+            putenv('SLOOP_APP_TEST_NAME');
+        }
+    }
+
+    public function testReadsAppEnvFromTheFixedEnvironment(): void
+    {
+        $this->writeConfig('app.php', '<?php return ["name" => "base"];');
+        mkdir($this->tmpDir . '/config/staging');
+        $this->writeConfig('staging/app.php', '<?php return ["name" => "staging"];');
+        mkdir($this->tmpDir . '/config/production');
+        $this->writeConfig('production/app.php', '<?php return ["name" => "production"];');
+
+        $original = getenv('APP_ENV');
+        putenv('APP_ENV=staging');
+        try {
+            Env::enableImmutable();
+            putenv('APP_ENV=production');
+            new Application($this->tmpDir);
+        } finally {
+            putenv($original === false ? 'APP_ENV' : 'APP_ENV=' . $original);
+        }
+
+        $this->assertSame('staging', Config::get('app.name'));
     }
 
     public function testLoadsValidationMessagesOnBoot(): void

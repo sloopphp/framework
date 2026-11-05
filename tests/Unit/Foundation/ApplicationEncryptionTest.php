@@ -13,6 +13,7 @@ use Sloop\Encryption\Exception\EncryptionConfigException;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Log\Log;
+use Sloop\Support\Env;
 use Sloop\Validation\ValidationMessages;
 
 final class ApplicationEncryptionTest extends TestCase
@@ -32,6 +33,7 @@ final class ApplicationEncryptionTest extends TestCase
 
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
     }
@@ -40,6 +42,7 @@ final class ApplicationEncryptionTest extends TestCase
     {
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
 
