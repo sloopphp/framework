@@ -62,6 +62,7 @@ use Sloop\Routing\Route;
 use Sloop\Routing\Router;
 use Sloop\Security\Exception\SecurityConfigException;
 use Sloop\Support\Arr;
+use Sloop\Support\Env;
 use Sloop\Validation\ValidationMessages;
 
 /**
@@ -152,6 +153,9 @@ final class Application implements RequestHandlerInterface
     /**
      * Create and boot the application.
      *
+     * The environment variables are fixed first (Env::enableImmutable()), so
+     * env() returns the values the process had at boot for its whole life.
+     *
      * @param  string                    $basePath Application root directory
      * @throws InvalidConfigException    If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)
      * @throws \RuntimeException         If the base directory does not exist, or the config directory cannot be scanned
@@ -161,6 +165,8 @@ final class Application implements RequestHandlerInterface
     public function __construct(string $basePath)
     {
         Path::init($basePath);
+        // The config files read env(), so the environment is fixed before them.
+        Env::enableImmutable();
 
         $this->container = new Container();
         $this->router    = new Router();
@@ -577,8 +583,7 @@ final class Application implements RequestHandlerInterface
             return;
         }
 
-        $environment = getenv('APP_ENV');
-        Config::load($configPath, \is_string($environment) ? $environment : null);
+        Config::load($configPath, Env::get('APP_ENV'));
     }
 
     /**

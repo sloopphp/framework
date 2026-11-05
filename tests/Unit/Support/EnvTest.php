@@ -23,6 +23,8 @@ final class EnvTest extends TestCase
     protected function tearDown(): void
     {
         putenv('SLOOP_TEST_VAR');
+        putenv('SLOOP_TEST_ABSENT');
+        putenv('9876543210');
         Env::reset();
     }
 
@@ -144,6 +146,65 @@ final class EnvTest extends TestCase
         $this->assertTrue(Env::isImmutable());
     }
 
+    public function testImmutableFixesAVariableNotReadBeforeItChanges(): void
+    {
+        putenv('SLOOP_TEST_VAR=at-enable');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_VAR=changed');
+
+        $this->assertSame('at-enable', Env::get('SLOOP_TEST_VAR'));
+    }
+
+    public function testImmutableKeepsAVariableUnsetAtEnableUnset(): void
+    {
+        putenv('SLOOP_TEST_ABSENT');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_ABSENT=appeared');
+
+        $this->assertNull(Env::get('SLOOP_TEST_ABSENT'));
+        $this->assertSame('fallback', Env::get('SLOOP_TEST_ABSENT', 'fallback'));
+    }
+
+    public function testImmutableKeepsAVariableRemovedAfterEnable(): void
+    {
+        putenv('SLOOP_TEST_VAR=at-enable');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_VAR');
+
+        $this->assertSame('at-enable', Env::get('SLOOP_TEST_VAR'));
+    }
+
+    public function testEnablingImmutableAgainKeepsTheFirstValues(): void
+    {
+        putenv('SLOOP_TEST_VAR=first');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_VAR=second');
+        putenv('SLOOP_TEST_ABSENT=appeared');
+        Env::enableImmutable();
+
+        $this->assertSame('first', Env::get('SLOOP_TEST_VAR'));
+        $this->assertNull(Env::get('SLOOP_TEST_ABSENT'));
+    }
+
+    public function testImmutableKeepsAVariableNamedWithDigits(): void
+    {
+        putenv('9876543210=digits');
+        Env::enableImmutable();
+        putenv('9876543210=changed');
+
+        $this->assertSame('digits', Env::get('9876543210'));
+    }
+
+    public function testImmutableDoesNotReadTheEnvironmentAfterEnable(): void
+    {
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_ABSENT=appeared');
+
+        $this->expectException(InvalidConfigException::class);
+
+        Env::get('SLOOP_TEST_ABSENT', required: true);
+    }
+
     // -------------------------------------------------------
     // withEnv
     // -------------------------------------------------------
@@ -212,6 +273,47 @@ final class EnvTest extends TestCase
 
         $this->assertSame('overridden', $result);
         $this->assertSame('cached', Env::get('SLOOP_TEST_VAR'));
+    }
+
+    public function testWithEnvRemovesAndRestoresAVariableInImmutableMode(): void
+    {
+        putenv('SLOOP_TEST_VAR=fixed');
+        Env::enableImmutable();
+
+        $inside = Env::withEnv(['SLOOP_TEST_VAR' => null], fn () => Env::get('SLOOP_TEST_VAR'));
+
+        $this->assertNull($inside);
+        $this->assertSame('fixed', Env::get('SLOOP_TEST_VAR'));
+    }
+
+    public function testWithEnvSetsAndRemovesAVariableUnsetInImmutableMode(): void
+    {
+        putenv('SLOOP_TEST_ABSENT');
+        Env::enableImmutable();
+
+        $inside = Env::withEnv(['SLOOP_TEST_ABSENT' => 'temporary'], fn () => Env::get('SLOOP_TEST_ABSENT'));
+
+        $this->assertSame('temporary', $inside);
+        $this->assertNull(Env::get('SLOOP_TEST_ABSENT'));
+    }
+
+    public function testImmutableEnabledInsideWithEnvFixesTheOriginalValues(): void
+    {
+        putenv('SLOOP_TEST_VAR=original');
+        putenv('SLOOP_TEST_ABSENT');
+
+        $inside = Env::withEnv(
+            ['SLOOP_TEST_VAR' => 'overridden', 'SLOOP_TEST_ABSENT' => 'temporary'],
+            static function (): ?string {
+                Env::enableImmutable();
+
+                return Env::get('SLOOP_TEST_VAR');
+            },
+        );
+
+        $this->assertSame('overridden', $inside);
+        $this->assertSame('original', Env::get('SLOOP_TEST_VAR'));
+        $this->assertNull(Env::get('SLOOP_TEST_ABSENT'));
     }
 
     // -------------------------------------------------------

@@ -17,6 +17,7 @@ use Sloop\Http\Response\ResponseFormatterInterface;
 use Sloop\Log\Log;
 use Sloop\Log\LogManager;
 use Sloop\Security\Exception\SecurityConfigException;
+use Sloop\Support\Env;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Validation\ValidationMessages;
 
@@ -65,6 +66,7 @@ final class ApplicationCsrfTest extends TestCase
 
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
     }
@@ -73,6 +75,7 @@ final class ApplicationCsrfTest extends TestCase
     {
         Path::reset();
         Config::reset();
+        Env::reset();
         Log::reset();
         ValidationMessages::reset();
 

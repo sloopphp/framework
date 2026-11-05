@@ -10,8 +10,10 @@ use Sloop\Config\InvalidConfigException;
 /**
  * Immutable environment variable accessor.
  *
- * Values are cached on first access and remain immutable for the process lifetime.
- * Use withEnv() for temporary overrides in tests.
+ * Once immutable mode is enabled, the environment as it stood at that moment
+ * is fixed for the process lifetime: a variable set later is not seen, and
+ * one changed later keeps its earlier value. Use withEnv() for temporary
+ * overrides in tests.
  */
 final class Env
 {
@@ -56,11 +58,9 @@ final class Env
             return $value === false ? $default : $value;
         }
 
-        $value = getenv($key);
-
-        if (self::$immutable && $value !== false) {
-            self::$cache[$key] = $value;
-        }
+        // In immutable mode the cache holds every variable that was set when
+        // the mode was enabled, so one missing from it is not set.
+        $value = self::$immutable ? false : getenv($key);
 
         if ($value === false) {
             if ($required) {
@@ -76,12 +76,24 @@ final class Env
     }
 
     /**
-     * Enable immutable mode. Once enabled, cached values cannot be changed.
+     * Enable immutable mode, fixing the environment as it stands now.
+     *
+     * Every variable is read once here; afterwards get() no longer reads the
+     * process environment, so a variable set or changed later is not seen.
+     * Calling this again while the mode is on keeps the values fixed the
+     * first time. Application calls it at boot, before the config is read.
      *
      * @return void
      */
     public static function enableImmutable(): void
     {
+        if (self::$immutable) {
+            return;
+        }
+
+        // A value withEnv() is holding wins over the process environment. The
+        // union keeps a variable named with digits under its own name.
+        self::$cache     = self::$cache + getenv();
         self::$immutable = true;
     }
 
@@ -99,7 +111,9 @@ final class Env
      * Execute a callback with temporary environment variable overrides.
      *
      * Overrides bypass the immutable cache for the duration of the callback.
-     * Original environment and cache state are restored after execution.
+     * Original environment and cache state are restored after execution. When
+     * the callback enables immutable mode (by booting an Application), the
+     * overridden variables are fixed at their original values afterwards.
      *
      * @template T
      * @param  array<string, string|null> $variables Variables to set (null to unset)
@@ -111,6 +125,7 @@ final class Env
         $originalEnv   = [];
         $originalCache = [];
         $hadCache      = [];
+        $wasImmutable  = self::$immutable;
 
         foreach ($variables as $key => $value) {
             $originalEnv[$key] = getenv($key);
@@ -141,6 +156,10 @@ final class Env
 
                 if ($hadCache[$key]) {
                     self::$cache[$key] = $originalCache[$key];
+                } elseif (!$wasImmutable && self::$immutable && $originalEnv[$key] !== false) {
+                    // Immutable mode was enabled inside the callback and fixed
+                    // the override; fix the value the process really had.
+                    self::$cache[$key] = $originalEnv[$key];
                 } else {
                     unset(self::$cache[$key]);
                 }
