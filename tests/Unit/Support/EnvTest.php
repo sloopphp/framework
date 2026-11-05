@@ -297,6 +297,28 @@ final class EnvTest extends TestCase
         $this->assertNull(Env::get('SLOOP_TEST_ABSENT'));
     }
 
+    public function testWithEnvKeepsAVariableSetAfterEnableUnsetAfterwards(): void
+    {
+        putenv('SLOOP_TEST_ABSENT');
+        Env::enableImmutable();
+        putenv('SLOOP_TEST_ABSENT=set-later');
+
+        $inside = Env::withEnv(['SLOOP_TEST_ABSENT' => 'temporary'], fn () => Env::get('SLOOP_TEST_ABSENT'));
+
+        $this->assertSame('temporary', $inside);
+        $this->assertNull(Env::get('SLOOP_TEST_ABSENT'));
+    }
+
+    public function testWithEnvInMutableModeLeavesTheVariableUnfixedAfterwards(): void
+    {
+        putenv('SLOOP_TEST_VAR=original');
+
+        Env::withEnv(['SLOOP_TEST_VAR' => 'overridden'], static fn (): null => null);
+        putenv('SLOOP_TEST_VAR=changed');
+
+        $this->assertSame('changed', Env::get('SLOOP_TEST_VAR'));
+    }
+
     public function testImmutableEnabledInsideWithEnvFixesTheOriginalValues(): void
     {
         putenv('SLOOP_TEST_VAR=original');
