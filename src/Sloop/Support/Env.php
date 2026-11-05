@@ -59,10 +59,10 @@ final class Env
         } else {
             $value = getenv($key);
 
-            // A name getenv() without a name does not list as written is fixed
-            // here, at its first read, absence included: one holding '.', ' '
-            // or '[' (left out, or rewritten under FPM), or one SetEnv passes
-            // under Apache's module.
+            // A name the boot-time fixing did not hold is fixed here, at its
+            // first read, absence included. Such names are the ones getenv()
+            // without a name does not list as written: a name holding '.', ' '
+            // or '[', and one SetEnv passes under Apache's module.
             if (self::$immutable) {
                 self::$cache[$key] = $value;
             }

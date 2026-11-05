@@ -336,6 +336,18 @@ final class EnvTest extends TestCase
         $this->assertSame('original', Env::get('9876543210'));
     }
 
+    public function testWithEnvRemovesAndRestoresAVariableNamedWithDigits(): void
+    {
+        putenv('9876543210');
+
+        $removed = Env::withEnv(['9876543210' => null], fn () => Env::get('9876543210'));
+        $added   = Env::withEnv(['9876543210' => 'temporary'], fn () => Env::get('9876543210'));
+
+        $this->assertNull($removed);
+        $this->assertSame('temporary', $added);
+        $this->assertFalse(getenv('9876543210'));
+    }
+
     public function testImmutableEnabledInsideWithEnvFixesTheOriginalValues(): void
     {
         putenv('SLOOP_TEST_VAR=original');
