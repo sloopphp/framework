@@ -153,8 +153,8 @@ final class Application implements RequestHandlerInterface
     /**
      * Create and boot the application.
      *
-     * The environment variables are fixed first (Env::enableImmutable()), so
-     * env() returns the values the process had at boot for its whole life.
+     * The environment variables are fixed first (see Env::enableImmutable()),
+     * so env() keeps returning the same value for a name for the process's whole life.
      *
      * @param  string                    $basePath Application root directory
      * @throws InvalidConfigException    If a config file, or one of its entries, is malformed (a subclass of it names the area: DatabaseConfigException, EncryptionConfigException, LogConfigException or SecurityConfigException)

@@ -244,13 +244,22 @@ final class ApplicationTest extends TestCase
         }
     }
 
-    public function testReadsAppEnvThroughEnv(): void
+    public function testReadsAppEnvFromTheFixedEnvironment(): void
     {
         $this->writeConfig('app.php', '<?php return ["name" => "base"];');
         mkdir($this->tmpDir . '/config/staging');
         $this->writeConfig('staging/app.php', '<?php return ["name" => "staging"];');
+        mkdir($this->tmpDir . '/config/production');
+        $this->writeConfig('production/app.php', '<?php return ["name" => "production"];');
 
-        Env::withEnv(['APP_ENV' => 'staging'], fn () => new Application($this->tmpDir));
+        putenv('APP_ENV=staging');
+        try {
+            Env::enableImmutable();
+            putenv('APP_ENV=production');
+            new Application($this->tmpDir);
+        } finally {
+            putenv('APP_ENV');
+        }
 
         $this->assertSame('staging', Config::get('app.name'));
     }
