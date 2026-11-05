@@ -13,6 +13,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
+use ReflectionException;
 use Sloop\Clock\FrozenClock;
 use Sloop\Container\Container;
 use Sloop\Http\HttpStatus;
@@ -415,7 +416,7 @@ final class ValidatedRequestTest extends TestCase
     {
         // rules() runs through ReflectionMethod::invokeArgs(); what its body
         // throws is the application's own and must not be converted.
-        $e = $this->assertThrows(\ReflectionException::class, fn () => $this->dispatch(
+        $e = $this->assertThrows(ReflectionException::class, fn () => $this->dispatch(
             'reflectingRules',
             new ServerRequest('POST', '/dispatch'),
         ));
