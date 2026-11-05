@@ -10,17 +10,19 @@ use Sloop\Config\InvalidConfigException;
 /**
  * Immutable environment variable accessor.
  *
- * Once immutable mode is enabled, the environment as it stood at that moment
- * is fixed for the process lifetime: a variable set later is not seen, and
- * one changed later keeps its earlier value. Use withEnv() for temporary
- * overrides in tests.
+ * Once immutable mode is enabled, each variable keeps the value it had when
+ * the mode was enabled, or, for a variable the process environment did not
+ * list then, the value (or absence) it had when first read. Use withEnv() for
+ * temporary overrides in tests.
  */
 final class Env
 {
     /**
-     * Cached environment variable values.
+     * Cached environment variable values; false marks a variable fixed as not set.
      *
-     * @var array<string, string|false>
+     * A variable named with digits only is keyed by an int, as PHP keys it.
+     *
+     * @var array<array-key, string|false>
      */
     private static array $cache = [];
 
@@ -54,13 +56,16 @@ final class Env
 
         if (\array_key_exists($key, self::$cache)) {
             $value = self::$cache[$key];
+        } else {
+            $value = getenv($key);
 
-            return $value === false ? $default : $value;
+            // getenv() without a name leaves out names holding '.', ' ' or '['
+            // and, under Apache's module, the variables SetEnv passes; those
+            // are fixed here, at their first read, absence included.
+            if (self::$immutable) {
+                self::$cache[$key] = $value;
+            }
         }
-
-        // In immutable mode the cache holds every variable that was set when
-        // the mode was enabled, so one missing from it is not set.
-        $value = self::$immutable ? false : getenv($key);
 
         if ($value === false) {
             if ($required) {
@@ -78,10 +83,11 @@ final class Env
     /**
      * Enable immutable mode, fixing the environment as it stands now.
      *
-     * Every variable is read once here; afterwards get() no longer reads the
-     * process environment, so a variable set or changed later is not seen.
-     * Calling this again while the mode is on keeps the values fixed the
-     * first time. Application calls it at boot, before the config is read.
+     * Every variable the process environment lists is read once here and keeps
+     * that value. A name it does not list is read once, at its first get(),
+     * and keeps that value or its absence. Calling this again while the mode
+     * is on keeps the values fixed the first time. Application calls it at
+     * boot, before the config is read.
      *
      * @return void
      */
@@ -112,8 +118,9 @@ final class Env
      *
      * Overrides bypass the immutable cache for the duration of the callback.
      * Original environment and cache state are restored after execution. When
-     * the callback enables immutable mode (by booting an Application), the
-     * overridden variables are fixed at their original values afterwards.
+     * the callback enables immutable mode (by booting an Application), an
+     * overridden variable not fixed before is read again, at its next get(),
+     * from the restored environment.
      *
      * @template T
      * @param  array<string, string|null> $variables Variables to set (null to unset)
@@ -125,7 +132,6 @@ final class Env
         $originalEnv   = [];
         $originalCache = [];
         $hadCache      = [];
-        $wasImmutable  = self::$immutable;
 
         foreach ($variables as $key => $value) {
             $originalEnv[$key] = getenv($key);
@@ -156,10 +162,6 @@ final class Env
 
                 if ($hadCache[$key]) {
                     self::$cache[$key] = $originalCache[$key];
-                } elseif (!$wasImmutable && self::$immutable && $originalEnv[$key] !== false) {
-                    // Immutable mode was enabled inside the callback and fixed
-                    // the override; fix the value the process really had.
-                    self::$cache[$key] = $originalEnv[$key];
                 } else {
                     unset(self::$cache[$key]);
                 }
