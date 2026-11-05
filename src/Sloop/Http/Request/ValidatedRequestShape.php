@@ -149,7 +149,7 @@ final class ValidatedRequestShape
      * @param  list<mixed>                               $arguments Resolved arguments of rules()
      * @return array<string, FieldRule<covariant mixed>> Rules keyed by field name
      * @throws LogicException                            When rules() does not return field rules keyed by name, a rule has no property or a property no rule, a property's type does not match its rule, or a list() has no upper bound on its count
-     * @throws ReflectionException                       When rules() throws one, which propagates unwrapped, or $request is not an instance of the class this shape was read from
+     * @throws ReflectionException                       When rules() throws one, which propagates unwrapped, or $request is not an instance of the class that declares rules()
      */
     public function rules(ValidatedRequest $request, array $arguments): array
     {

@@ -189,7 +189,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @throws RuntimeException                   If validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
      * @throws ContainerException                 If a circular dependency is detected during resolution
-     * @throws ReflectionException                If its rules() throws one, which propagates unwrapped (reflecting the subclass does not fail: validatedRequestClass() passes only classes that exist)
+     * @throws ReflectionException                If its rules() throws one, which propagates unwrapped (reflecting the subclass does not fail: validatedRequestClass() passes only classes that exist; and $request is created from that class, so invokeArgs() accepts it)
      * @throws InvalidArgumentException           If the Validator refuses the rules, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      */
     private function validatedRequest(string $class, Request $sloopRequest): ValidatedRequest|ResponseInterface
