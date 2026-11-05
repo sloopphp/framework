@@ -59,9 +59,10 @@ final class Env
         } else {
             $value = getenv($key);
 
-            // getenv() without a name leaves out names holding '.', ' ' or '['
-            // and, under Apache's module, the variables SetEnv passes; those
-            // are fixed here, at their first read, absence included.
+            // A name getenv() without a name does not list as written is fixed
+            // here, at its first read, absence included: one holding '.', ' '
+            // or '[' (left out, or rewritten under FPM), or one SetEnv passes
+            // under Apache's module.
             if (self::$immutable) {
                 self::$cache[$key] = $value;
             }
@@ -97,10 +98,33 @@ final class Env
             return;
         }
 
+        // getenv() without a name only supplies the names. Each value is read
+        // with getenv($name), as get() reads it: under Apache's module that
+        // prefers a SetEnv value over the process one, and under FPM a
+        // parameter whose name PHP rewrote ('.' to '_', 'a[b]' to an array)
+        // finds nothing under the rewritten name and is fixed as not set.
+        $fixed = [];
+        foreach (array_keys(self::processEnvironment()) as $name) {
+            $fixed[$name] = getenv((string) $name);
+        }
+
         // A value withEnv() is holding wins over the process environment. The
         // union keeps a variable named with digits under its own name.
-        self::$cache     = self::$cache + getenv();
+        self::$cache     = self::$cache + $fixed;
         self::$immutable = true;
+    }
+
+    /**
+     * The variables getenv() without a name lists.
+     *
+     * PHP keys a name made of digits only by an int, so the keys are not all
+     * strings.
+     *
+     * @return array<array-key, string>
+     */
+    private static function processEnvironment(): array
+    {
+        return getenv();
     }
 
     /**
@@ -123,8 +147,8 @@ final class Env
      * from the restored environment.
      *
      * @template T
-     * @param  array<string, string|null> $variables Variables to set (null to unset)
-     * @param  callable(): T              $callback  Code to execute with overrides
+     * @param  array<array-key, string|null> $variables Variables to set (null to unset); a name made of digits only arrives as an int key
+     * @param  callable(): T                 $callback  Code to execute with overrides
      * @return T
      */
     public static function withEnv(array $variables, callable $callback): mixed
@@ -133,8 +157,10 @@ final class Env
         $originalCache = [];
         $hadCache      = [];
 
+        // A name made of digits only arrives as an int key, which getenv() and
+        // putenv() do not take under strict types; it is passed as a string.
         foreach ($variables as $key => $value) {
-            $originalEnv[$key] = getenv($key);
+            $originalEnv[$key] = getenv((string) $key);
             $hadCache[$key]    = \array_key_exists($key, self::$cache);
 
             if ($hadCache[$key]) {
@@ -142,7 +168,7 @@ final class Env
             }
 
             if ($value === null) {
-                putenv($key);
+                putenv((string) $key);
                 unset(self::$cache[$key]);
             } else {
                 putenv($key . '=' . $value);
@@ -155,7 +181,7 @@ final class Env
         } finally {
             foreach ($variables as $key => $ignored) {
                 if ($originalEnv[$key] === false) {
-                    putenv($key);
+                    putenv((string) $key);
                 } else {
                     putenv($key . '=' . $originalEnv[$key]);
                 }

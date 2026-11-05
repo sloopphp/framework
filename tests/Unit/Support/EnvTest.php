@@ -325,6 +325,17 @@ final class EnvTest extends TestCase
         $this->assertSame('changed', Env::get('SLOOP_TEST_VAR'));
     }
 
+    public function testWithEnvTakesAVariableNamedWithDigits(): void
+    {
+        putenv('9876543210=original');
+
+        $inside = Env::withEnv(['9876543210' => 'temporary'], fn () => Env::get('9876543210'));
+
+        $this->assertSame('temporary', $inside);
+        $this->assertSame('original', getenv('9876543210'));
+        $this->assertSame('original', Env::get('9876543210'));
+    }
+
     public function testImmutableEnabledInsideWithEnvFixesTheOriginalValues(): void
     {
         putenv('SLOOP_TEST_VAR=original');
