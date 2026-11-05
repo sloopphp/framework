@@ -61,6 +61,13 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function reflectingRules(ReflectingRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function noRules(NoRulesRequest $request): string
     {
         self::$last = $request;

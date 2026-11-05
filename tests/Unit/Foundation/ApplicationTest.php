@@ -460,6 +460,7 @@ final class ApplicationTest extends TestCase
         $this->assertTrue($handler->hasCriticalThatContains(
             'Middleware must implement MiddlewareInterface: ' . HealthController::class,
         ));
+        $this->assertInstanceOf(\LogicException::class, $handler->getRecords()[0]->context['exception'] ?? null);
     }
 
     public function testMultipleRouteMiddlewaresExecuteInRegisteredOrder(): void
@@ -951,6 +952,7 @@ final class ApplicationTest extends TestCase
         $this->assertTrue($handler->hasCriticalThatContains(
             'Controller must be an object: NonObjectController',
         ));
+        $this->assertInstanceOf(\LogicException::class, $handler->getRecords()[0]->context['exception'] ?? null);
     }
 
     public function testBuildMiddlewareDispatcherThrowsForInvalidMiddleware(): void
@@ -1013,12 +1015,12 @@ final class ApplicationTest extends TestCase
         $this->assertStringContainsString(UnboundDependency::class, $exception->getMessage());
     }
 
-    public function testHandleConvertsReflectionExceptionToRuntimeException(): void
+    public function testAMissingActionMethodIsALogicException(): void
     {
-        // Route to a non-existent action method; RouteRequestHandler raises
-        // \ReflectionException, which Application::handle wraps into a
-        // \RuntimeException. The error boundary in run() then logs it and
-        // returns a generic 500 without leaking Reflection internals.
+        // Route to a non-existent action method. The route is code, so the
+        // \ReflectionException is wrapped into a \LogicException; the error
+        // boundary in run() then logs it and returns a generic 500 without
+        // leaking Reflection internals.
         $this->writeRoutes('<?php
             $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "nonExistentMethod");
         ');
@@ -1036,13 +1038,50 @@ final class ApplicationTest extends TestCase
         // wording, which this test does not own.
         $this->assertTrue($handler->hasCriticalThatMatches('/Failed to reflect controller action: \S/'));
         $this->assertTrue($handler->hasCriticalThatContains('nonExistentMethod'));
+        $exception = $handler->getRecords()[0]->context['exception'] ?? null;
+        $this->assertInstanceOf(\LogicException::class, $exception);
+        $this->assertInstanceOf(\ReflectionException::class, $exception->getPrevious());
     }
 
-    public function testHandleConvertsReflectionExceptionThroughMiddlewareDispatcher(): void
+    public function testAReflectionExceptionThrownByTheActionIsNotWrapped(): void
     {
-        // Even when the route is wrapped by a middleware dispatcher, a
-        // \ReflectionException raised inside the final handler must still be
-        // normalized at the Application::handle level and caught by run().
+        $this->writeRoutes('<?php
+            $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "reflection");
+        ');
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/test'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $exception = $handler->getRecords()[0]->context['exception'] ?? null;
+        $this->assertInstanceOf(\ReflectionException::class, $exception);
+        $this->assertSame('thrown by the action', $exception->getMessage());
+    }
+
+    public function testAReflectionExceptionThrownByARouteMiddlewareIsNotWrapped(): void
+    {
+        $this->writeRoutes('<?php
+            $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check")
+                ->middleware(\Sloop\Tests\Unit\Foundation\Stub\ReflectionThrowingMiddleware::class);
+        ');
+
+        $app     = new Application($this->tmpDir);
+        $handler = $this->captureLog($app);
+
+        $response = $app->run($this->createRequest('GET', '/test'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $exception = $handler->getRecords()[0]->context['exception'] ?? null;
+        $this->assertInstanceOf(\ReflectionException::class, $exception);
+        $this->assertSame('thrown by the middleware', $exception->getMessage());
+    }
+
+    public function testAMissingActionMethodBehindARouteMiddlewareIsALogicException(): void
+    {
+        // Even when the route is wrapped by a middleware dispatcher, the
+        // missing action method surfaces as the same \LogicException.
         $this->writeRoutes('<?php
             $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "nonExistentMethod")
                 ->middleware(\Sloop\Tests\Unit\Foundation\Stub\XRequestIdMiddleware::class);
@@ -1061,6 +1100,7 @@ final class ApplicationTest extends TestCase
         // wording, which this test does not own.
         $this->assertTrue($handler->hasCriticalThatMatches('/Failed to reflect controller action: \S/'));
         $this->assertTrue($handler->hasCriticalThatContains('nonExistentMethod'));
+        $this->assertInstanceOf(\LogicException::class, $handler->getRecords()[0]->context['exception'] ?? null);
     }
 
     public function testDomainExceptionMessageAndStatusAreExposedToTheClient(): void
@@ -1332,13 +1372,28 @@ final class ApplicationTest extends TestCase
         $this->assertSame('custom factory was used', $e->getMessage());
     }
 
+    public function testRunThrowsALogicExceptionWhenTheFormatterBindingIsNotAFormatter(): void
+    {
+        // The error boundary itself needs the formatter, so this one reaches the caller of run().
+        $this->writeRoutes('<?php
+            $router->get("/test", \Sloop\Tests\Unit\Foundation\Stub\HealthController::class, "check");
+        ');
+
+        $app = new Application($this->tmpDir);
+        $app->container->instance(ResponseFormatterInterface::class, new \stdClass());
+        $this->captureLog($app);
+
+        $e = $this->assertThrows(\LogicException::class, fn () => $app->run($this->createRequest('GET', '/test')));
+        $this->assertSame('Failed to resolve ResponseFormatterInterface from container.', $e->getMessage());
+    }
+
     public function testConnectionManagerThrowsWhenConnectionFactoryBindingIsInvalid(): void
     {
         $app = new Application($this->tmpDir);
 
         $app->container->instance(ConnectionFactory::class, new \stdClass());
 
-        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $e = $this->assertThrows(\LogicException::class, static fn () => $app->container->get(ConnectionManager::class));
         $this->assertSame(
             'Container binding for ' . ConnectionFactory::class . ' must implement ConnectionFactory.',
             $e->getMessage(),
@@ -1397,7 +1452,7 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(ReplicaSelectorRegistry::class, new \stdClass());
 
-        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $e = $this->assertThrows(\LogicException::class, static fn () => $app->container->get(ConnectionManager::class));
         $this->assertSame(
             'Container binding for ' . ReplicaSelectorRegistry::class . ' must be a ReplicaSelectorRegistry.',
             $e->getMessage(),
@@ -1410,7 +1465,7 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(DeadReplicaCache::class, new \stdClass());
 
-        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $e = $this->assertThrows(\LogicException::class, static fn () => $app->container->get(ConnectionManager::class));
         $this->assertSame(
             'Container binding for ' . DeadReplicaCache::class . ' must implement DeadReplicaCache.',
             $e->getMessage(),
@@ -1423,7 +1478,7 @@ final class ApplicationTest extends TestCase
 
         $app->container->instance(LogManager::class, new \stdClass());
 
-        $e = $this->assertThrows(\RuntimeException::class, static fn () => $app->container->get(ConnectionManager::class));
+        $e = $this->assertThrows(\LogicException::class, static fn () => $app->container->get(ConnectionManager::class));
         $this->assertSame(
             'Container binding for ' . LogManager::class . ' must be a LogManager.',
             $e->getMessage(),

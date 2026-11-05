@@ -191,10 +191,6 @@ final class Application implements RequestHandlerInterface
      * This is the final request handler invoked after all middleware.
      * It resolves the route, creates the controller via DI, and invokes the action.
      *
-     * PHP's `\ReflectionException` (raised when the action method cannot be
-     * resolved) is normalized into a `\RuntimeException` so callers do not
-     * need to handle Reflection internals.
-     *
      * This is also the error boundary: exceptions from route middleware and
      * controllers are converted into error responses here, so the error
      * response still flows back through the global middleware stack and
@@ -207,7 +203,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface $request PSR-7 server request
      * @return ResponseInterface
-     * @throws \RuntimeException      When the entry registered as the response formatter is not one while building an error response
+     * @throws \LogicException        When the entry registered as the response formatter is not one while building an error response
      * @throws EntryNotFoundException When the response formatter cannot be resolved by the container while building an error response
      * @throws ContainerException     When resolving the response formatter detects a circular dependency while building an error response
      */
@@ -240,12 +236,13 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface    $request PSR-7 server request
      * @return ResponseInterface
-     * @throws \RuntimeException         When the response formatter or a route middleware does not have the expected type, the controller cannot be resolved as an object, the entry registered as the clock is not one, validating a ValidatedRequest fails the way Validator::validate() describes, reflecting the controller action or a ValidatedRequest subclass fails, or invoking its rules() fails
-     * @throws \LogicException           When a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see \Sloop\Http\Request\ValidatedRequest), or the parsed body is not an array
+     * @throws \RuntimeException         When validating a ValidatedRequest fails the way Validator::validate() describes
+     * @throws \LogicException           When the response formatter or a route middleware does not have the expected type, the controller cannot be resolved as an object, the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see \Sloop\Http\Request\ValidatedRequest), or the parsed body is not an array
      * @throws \UnexpectedValueException When a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws \InvalidArgumentException When the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException    When the response formatter, the controller, a route middleware or a typed dependency cannot be resolved by the container
      * @throws ContainerException        When dependency resolution detects a circular dependency
+     * @throws \ReflectionException      When the rules() of a ValidatedRequest subclass throws one, which propagates unwrapped
      */
     private function dispatchRoute(ServerRequestInterface $request): ResponseInterface
     {
@@ -266,18 +263,11 @@ final class Application implements RequestHandlerInterface
             $this->resolveFormatter(),
         );
 
-        try {
-            if ($route->middleware === []) {
-                return $finalHandler->handle($request);
-            }
-
-            return $this->buildRouteMiddlewareDispatcher($route, $finalHandler)->handle($request);
-        } catch (\ReflectionException $e) {
-            throw new \RuntimeException(
-                'Failed to reflect controller action: ' . $e->getMessage(),
-                previous: $e,
-            );
+        if ($route->middleware === []) {
+            return $finalHandler->handle($request);
         }
+
+        return $this->buildRouteMiddlewareDispatcher($route, $finalHandler)->handle($request);
     }
 
     /**
@@ -293,7 +283,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  ServerRequestInterface|null $serverRequest PSR-7 server request (null = create from globals)
      * @return ResponseInterface
-     * @throws \RuntimeException           When the entry registered as the response formatter is not one while building an error response
+     * @throws \LogicException             When the entry registered as the response formatter is not one while building an error response
      * @throws EntryNotFoundException      When the response formatter cannot be resolved by the container while building an error response
      * @throws ContainerException          When resolving the response formatter detects a circular dependency while building an error response
      */
@@ -364,7 +354,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  \Throwable             $e Uncaught exception propagated past all middleware
      * @return ResponseInterface
-     * @throws \RuntimeException      When the entry registered as the response formatter is not one
+     * @throws \LogicException        When the entry registered as the response formatter is not one
      * @throws EntryNotFoundException When the response formatter cannot be resolved by the container
      * @throws ContainerException     When resolving the response formatter detects a circular dependency
      */
@@ -373,7 +363,7 @@ final class Application implements RequestHandlerInterface
         try {
             $exceptionHandler = $this->container->get(ExceptionHandler::class);
             if (!$exceptionHandler instanceof ExceptionHandler) {
-                throw new \RuntimeException('Failed to resolve ExceptionHandler from container.');
+                throw new \LogicException('Failed to resolve ExceptionHandler from container.');
             }
 
             $status = $exceptionHandler->handle($e);
@@ -439,7 +429,7 @@ final class Application implements RequestHandlerInterface
      *
      * @param  Container              $container Container holding the LogManager singleton
      * @return ExceptionHandler
-     * @throws \RuntimeException      When the LogManager binding resolves to an unexpected type
+     * @throws \LogicException        When the LogManager binding resolves to an unexpected type
      * @throws EntryNotFoundException When the LogManager binding cannot be resolved
      * @throws ContainerException     When dependency resolution detects a circular dependency
      */
@@ -447,7 +437,7 @@ final class Application implements RequestHandlerInterface
     {
         $logManager = $container->get(LogManager::class);
         if (!$logManager instanceof LogManager) {
-            throw new \RuntimeException('Failed to resolve LogManager from container.');
+            throw new \LogicException('Failed to resolve LogManager from container.');
         }
 
         return new ExceptionHandler($logManager->channel());
@@ -530,34 +520,34 @@ final class Application implements RequestHandlerInterface
      *
      * @param  Container         $container Container used to resolve the ConnectionFactory / ReplicaSelectorRegistry / DeadReplicaCache bindings
      * @return ConnectionManager
-     * @throws \RuntimeException If any required binding does not implement its declared interface
+     * @throws \LogicException   If any required binding does not implement its declared interface
      */
     private function createConnectionManager(Container $container): ConnectionManager
     {
         $factory = $container->get(ConnectionFactory::class);
         if (!$factory instanceof ConnectionFactory) {
-            throw new \RuntimeException(
+            throw new \LogicException(
                 'Container binding for ' . ConnectionFactory::class . ' must implement ConnectionFactory.',
             );
         }
 
         $replicaSelectors = $container->get(ReplicaSelectorRegistry::class);
         if (!$replicaSelectors instanceof ReplicaSelectorRegistry) {
-            throw new \RuntimeException(
+            throw new \LogicException(
                 'Container binding for ' . ReplicaSelectorRegistry::class . ' must be a ReplicaSelectorRegistry.',
             );
         }
 
         $deadCache = $container->get(DeadReplicaCache::class);
         if (!$deadCache instanceof DeadReplicaCache) {
-            throw new \RuntimeException(
+            throw new \LogicException(
                 'Container binding for ' . DeadReplicaCache::class . ' must implement DeadReplicaCache.',
             );
         }
 
         $logManager = $container->get(LogManager::class);
         if (!$logManager instanceof LogManager) {
-            throw new \RuntimeException(
+            throw new \LogicException(
                 'Container binding for ' . LogManager::class . ' must be a LogManager.',
             );
         }
@@ -1151,17 +1141,18 @@ final class Application implements RequestHandlerInterface
      * Initialize the logger and register the framework processors.
      *
      * @return void
+     * @throws \LogicException If the LogManager or TraceContext binding resolves to an unexpected type
      */
     private function bootLog(): void
     {
         $manager = $this->container->get(LogManager::class);
         if (!$manager instanceof LogManager) {
-            throw new \RuntimeException('Failed to resolve LogManager from container.');
+            throw new \LogicException('Failed to resolve LogManager from container.');
         }
 
         $context = $this->container->get(TraceContext::class);
         if (!$context instanceof TraceContext) {
-            throw new \RuntimeException('Failed to resolve TraceContext from container.');
+            throw new \LogicException('Failed to resolve TraceContext from container.');
         }
 
         $manager->pushProcessor(new TraceIdProcessor($context));
@@ -1261,7 +1252,7 @@ final class Application implements RequestHandlerInterface
      * @param  Route                $route        Matched route
      * @param  RouteRequestHandler  $finalHandler Handler that invokes the controller
      * @return MiddlewareDispatcher
-     * @throws \RuntimeException    If a middleware class does not implement MiddlewareInterface
+     * @throws \LogicException      If a middleware class does not implement MiddlewareInterface
      */
     private function buildRouteMiddlewareDispatcher(Route $route, RouteRequestHandler $finalHandler): MiddlewareDispatcher
     {
@@ -1270,7 +1261,7 @@ final class Application implements RequestHandlerInterface
         foreach ($route->middleware as $middlewareClass) {
             $middleware = $this->container->get($middlewareClass);
             if (!$middleware instanceof MiddlewareInterface) {
-                throw new \RuntimeException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
+                throw new \LogicException('Middleware must implement MiddlewareInterface: ' . $middlewareClass);
             }
 
             $dispatcher->pipe($middleware);
@@ -1283,7 +1274,7 @@ final class Application implements RequestHandlerInterface
      * Resolve the response formatter from the container.
      *
      * @return ResponseFormatterInterface
-     * @throws \RuntimeException          When the entry registered as ResponseFormatterInterface is not one
+     * @throws \LogicException            When the entry registered as ResponseFormatterInterface is not one
      * @throws EntryNotFoundException     When the formatter cannot be resolved by the container
      * @throws ContainerException         When dependency resolution detects a circular dependency
      */
@@ -1291,7 +1282,7 @@ final class Application implements RequestHandlerInterface
     {
         $formatter = $this->container->get(ResponseFormatterInterface::class);
         if (!$formatter instanceof ResponseFormatterInterface) {
-            throw new \RuntimeException('Failed to resolve ResponseFormatterInterface from container.');
+            throw new \LogicException('Failed to resolve ResponseFormatterInterface from container.');
         }
 
         return $formatter;
@@ -1310,7 +1301,7 @@ final class Application implements RequestHandlerInterface
      *
      * @return ServerRequestInterface|ResponseInterface The request, or a 400 when the URI or a header value the client sent cannot be parsed
      * @throws \InvalidArgumentException                When an uploaded file carries an error code PHP does not define
-     * @throws \RuntimeException                        When the entry registered as the response formatter is not one while building the 400
+     * @throws \LogicException                          When the entry registered as the response formatter is not one while building the 400
      * @throws EntryNotFoundException                   When the response formatter cannot be resolved by the container while building the 400
      * @throws ContainerException                       When resolving the response formatter detects a circular dependency while building the 400
      */

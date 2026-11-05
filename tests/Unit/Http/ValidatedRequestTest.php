@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
-use RuntimeException;
+use ReflectionException;
 use Sloop\Clock\FrozenClock;
 use Sloop\Container\Container;
 use Sloop\Http\HttpStatus;
@@ -22,6 +22,7 @@ use Sloop\Http\Request\ValidatedRequestShape;
 use Sloop\Http\Response\ApiResponseFormatter;
 use Sloop\Http\RouteRequestHandler;
 use Sloop\Routing\Route;
+use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Http\Stub\DiService;
 use Sloop\Tests\Unit\Http\Stub\Validated\AbstractRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\BaseInRulesRequest;
@@ -64,6 +65,8 @@ use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
 {
+    use ThrowsAssertions;
+
     protected function setUp(): void
     {
         ValidatedController::reset();
@@ -403,10 +406,23 @@ final class ValidatedRequestTest extends TestCase
         $container = new Container();
         $container->instance(ClockInterface::class, new DiService());
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('The entry registered as Psr\\Clock\\ClockInterface is not a clock.');
 
         $this->dispatch('clocked', new ServerRequest('POST', '/dispatch'), [], $container);
+    }
+
+    public function testAReflectionExceptionThrownByRulesIsNotWrapped(): void
+    {
+        // rules() runs through ReflectionMethod::invokeArgs(); what its body
+        // throws is the application's own and must not be converted.
+        $e = $this->assertThrows(ReflectionException::class, fn () => $this->dispatch(
+            'reflectingRules',
+            new ServerRequest('POST', '/dispatch'),
+        ));
+
+        $this->assertSame('thrown by rules', $e->getMessage());
+        $this->assertNull($e->getPrevious());
     }
 
     public function testResolvesAParameterOfRulesWithAUnionTypeLikeTheAction(): void
