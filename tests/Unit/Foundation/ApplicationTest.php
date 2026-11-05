@@ -252,13 +252,14 @@ final class ApplicationTest extends TestCase
         mkdir($this->tmpDir . '/config/production');
         $this->writeConfig('production/app.php', '<?php return ["name" => "production"];');
 
+        $original = getenv('APP_ENV');
         putenv('APP_ENV=staging');
         try {
             Env::enableImmutable();
             putenv('APP_ENV=production');
             new Application($this->tmpDir);
         } finally {
-            putenv('APP_ENV');
+            putenv($original === false ? 'APP_ENV' : 'APP_ENV=' . $original);
         }
 
         $this->assertSame('staging', Config::get('app.name'));
