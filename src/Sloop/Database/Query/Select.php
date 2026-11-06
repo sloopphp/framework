@@ -2051,7 +2051,7 @@ final class Select extends BuilderWhere
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
