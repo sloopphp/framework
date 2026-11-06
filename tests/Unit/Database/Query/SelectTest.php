@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database\Query;
 
+use Closure;
 use InvalidArgumentException;
 use LogicException;
 use Monolog\Handler\TestHandler;
@@ -414,12 +415,36 @@ final class SelectTest extends TestCase
         $this->connection->select()->from('users')->offset(-1);
     }
 
-    public function testAnOffsetWithoutALimitIsRejected(): void
+    /**
+     * @return array<string, array{Closure(Connection): mixed}>
+     */
+    public static function offsetWithoutLimitProvider(): array
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageIsOrContains('offset needs a limit');
+        return [
+            'the statement itself'         => [static fn (Connection $c): mixed => $c->select()->from('users')->offset(10)->toSql()],
+            'get()'                        => [static fn (Connection $c): mixed => $c->select()->from('users')->offset(10)->get()],
+            'the first of a union'         => [static fn (Connection $c): mixed => $c->select()->from('users')->offset(10)->union($c->select()->from('users'))->toSql()],
+            'a statement added to a union' => [static fn (Connection $c): mixed => $c->select()->from('users')->union($c->select()->from('users')->offset(10))->toSql()],
+            'the combined rows'            => [static fn (Connection $c): mixed => $c->select()->from('users')->union($c->select()->from('users'))->offset(10)->toSql()],
+            'a subquery in whereIn()'      => [static fn (Connection $c): mixed => $c->select()->from('users')->whereIn('id', $c->select()->from('users')->offset(10))->toSql()],
+            'a subquery in from()'         => [static fn (Connection $c): mixed => $c->select()->from($c->select()->from('users')->offset(10), 'u')->toSql()],
+            'a statement named by with()'  => [static fn (Connection $c): mixed => $c->select()->with('x', $c->select()->from('users')->offset(10))->from('x')->toSql()],
+        ];
+    }
 
-        $this->connection->select()->from('users')->offset(10)->toSql();
+    #[DataProvider('offsetWithoutLimitProvider')]
+    public function testAnOffsetWithoutALimitIsAMissingCallRatherThanABadArgument(Closure $compile): void
+    {
+        $e = $this->assertThrows(LogicException::class, fn (): mixed => $compile($this->connection));
+
+        $this->assertSame(LogicException::class, $e::class);
+        $this->assertStringContainsString('offset needs a limit', $e->getMessage());
+    }
+
+    public function testShortcutsThatWriteNoOffsetOrSupplyALimitAcceptAnOffsetAlone(): void
+    {
+        $this->assertNull($this->connection->select()->from('users')->offset(10)->first());
+        $this->assertSame(0, $this->connection->select()->from('users')->offset(10)->count());
     }
 
     public function testEveryChainingMethodReturnsTheSameBuilder(): void
