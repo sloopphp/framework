@@ -274,8 +274,7 @@ final class Connection
      * @param  bool                        $atomicBatch Whether to wrap the whole call in one transaction
      * @param  Closure(int, int):void|null $onProgress  Called after each chunk with rows written so far and the chunk index
      * @return int                         Number of rows written
-     * @throws LogicException              When $chunkSize is below 1
-     * @throws InvalidArgumentException    When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
+     * @throws InvalidArgumentException    When $chunkSize is below 1, an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
      * @throws DatabaseException           When a statement fails, or a transaction cannot be started, committed or rolled back
      *
      * @noinspection PhpDocMissingThrowsInspection — callback-thrown exceptions rethrown unchanged per coding-standards
@@ -289,7 +288,7 @@ final class Connection
         ?Closure $onProgress = null,
     ): int {
         if ($chunkSize < 1) {
-            throw new LogicException('chunkSize must be at least 1, got ' . $chunkSize . '.');
+            throw new InvalidArgumentException('chunkSize must be at least 1, got ' . $chunkSize . '.');
         }
 
         if ($atomicBatch && !$this->pdo->inTransaction()) {
@@ -1044,13 +1043,14 @@ final class Connection
      * Any other exception is re-thrown immediately after rollback.
      *
      * @template TReturn
-     * @param  Closure(self): TReturn $callback    Receives this Connection
-     * @param  IsolationLevel         $level       Isolation level for each attempt
-     * @param  int                    $maxAttempts Maximum attempts (1 = no retry)
-     * @param  int                    $backoffMs   Milliseconds between retries
-     * @return TReturn                Return value from the successful attempt
-     * @throws LogicException         When arguments are invalid or already in a transaction
-     * @throws DatabaseException      When begin/commit fails or retries are exhausted
+     * @param  Closure(self): TReturn   $callback    Receives this Connection
+     * @param  IsolationLevel           $level       Isolation level for each attempt
+     * @param  int                      $maxAttempts Maximum attempts (1 = no retry)
+     * @param  int                      $backoffMs   Milliseconds between retries
+     * @return TReturn                  Return value from the successful attempt
+     * @throws InvalidArgumentException When $maxAttempts is below 1 or $backoffMs is negative
+     * @throws LogicException           When already in a transaction
+     * @throws DatabaseException        When begin/commit fails or retries are exhausted
      *
      * @noinspection PhpDocMissingThrowsInspection — callback-thrown exceptions rethrown unchanged per coding-standards
      * @noinspection PhpUnhandledExceptionInspection
@@ -1062,11 +1062,11 @@ final class Connection
         int $backoffMs = 0,
     ): mixed {
         if ($maxAttempts < 1) {
-            throw new LogicException('maxAttempts must be at least 1, got ' . $maxAttempts . '.');
+            throw new InvalidArgumentException('maxAttempts must be at least 1, got ' . $maxAttempts . '.');
         }
 
         if ($backoffMs < 0) {
-            throw new LogicException('backoffMs must not be negative, got ' . $backoffMs . '.');
+            throw new InvalidArgumentException('backoffMs must not be negative, got ' . $backoffMs . '.');
         }
 
         if ($this->pdo->inTransaction()) {

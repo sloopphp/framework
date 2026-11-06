@@ -7,7 +7,6 @@ namespace Sloop\Tests\Unit\Database;
 use ArrayObject;
 use Generator;
 use InvalidArgumentException;
-use LogicException;
 use PDO;
 use Pdo\Sqlite;
 use PHPUnit\Framework\TestCase;
@@ -190,7 +189,7 @@ final class ConnectionInsertChunkedTest extends TestCase
     public function testRefusesAChunkSizeBelowOne(): void
     {
         $thrown = $this->assertThrows(
-            LogicException::class,
+            InvalidArgumentException::class,
             fn (): int => $this->connection->insertChunked('users', [['name' => 'alice']], chunkSize: 0),
         );
 

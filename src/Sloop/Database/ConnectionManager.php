@@ -6,7 +6,6 @@ namespace Sloop\Database;
 
 use Closure;
 use InvalidArgumentException;
-use LogicException;
 use Psr\Log\LoggerInterface;
 use Sloop\Database\Config\ConnectionConfigResolver;
 use Sloop\Database\Config\PoolConfig;
@@ -292,8 +291,7 @@ final class ConnectionManager
      * @param  bool                        $atomicBatch Whether to wrap the whole call in one transaction
      * @param  Closure(int, int):void|null $onProgress  Called after each chunk with rows written so far and the chunk index
      * @return int                         Number of rows written
-     * @throws LogicException              When $chunkSize is below 1
-     * @throws InvalidArgumentException    When an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
+     * @throws InvalidArgumentException    When $chunkSize is below 1, an identifier is malformed, an element is not a row, a row names no column, or a row names different columns than the first
      * @throws DatabaseConfigException     When the default pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
      * @throws DatabaseException           When a statement fails, or a transaction cannot be started, committed or rolled back

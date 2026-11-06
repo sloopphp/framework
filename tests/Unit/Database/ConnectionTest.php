@@ -604,7 +604,7 @@ final class ConnectionTest extends TestCase
     public function testTransactionRejectsNonPositiveMaxAttempts(): void
     {
         $e = $this->assertThrows(
-            LogicException::class,
+            InvalidArgumentException::class,
             fn () => $this->connection->transaction(
                 static fn (): string => 'ok',
                 IsolationLevel::Default,
@@ -617,7 +617,7 @@ final class ConnectionTest extends TestCase
     public function testTransactionRejectsNegativeBackoff(): void
     {
         $e = $this->assertThrows(
-            LogicException::class,
+            InvalidArgumentException::class,
             fn () => $this->connection->transaction(
                 static fn (): string => 'ok',
                 IsolationLevel::Default,
