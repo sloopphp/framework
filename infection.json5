@@ -407,14 +407,14 @@
                 // so only the work differs. Pinned to the line because the
                 // method's other return is killable. Same shape as the two
                 // Str cache hits above.
-                "Sloop\\Database\\ConnectionManager::resolvePool::699",
+                "Sloop\\Database\\ConnectionManager::resolvePool::697",
                 // Connection::castRow returns the row untouched when no column
                 // is converted. Falling through walks the same row and copies
                 // every value across unchanged, because the isset() on an empty
                 // cast map is false for every column, so the array that comes
                 // out is equal to the one that went in. Pinned to the line
                 // because the method's other return is killable.
-                "Sloop\\Database\\Connection::castRow::685",
+                "Sloop\\Database\\Connection::castRow::684",
                 // Connection::castForColumn returns early when the driver
                 // reports no native type for the column. Falling through
                 // compares that missing type against DATE, DATETIME,
@@ -424,7 +424,7 @@
                 // suite uses, across all three presets: 30 of 30 agree.
                 // Pinned to the line because the method's other return is
                 // killable.
-                "Sloop\\Database\\Connection::castForColumn::659",
+                "Sloop\\Database\\Connection::castForColumn::658",
                 // Route::compilePattern returns early for patterns without a
                 // placeholder. Falling through compiles a regex that match()
                 // never consults, because it short-circuits on an empty
@@ -497,13 +497,13 @@
                 // own", which is what a second caller would need.
                 // Pinned to the line: the GroupBoundary list above it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileReading::1172",
+                "Sloop\\Database\\Query\\Select::compileReading::1173",
                 // Select::compileOverUnion extends the same list for the same
                 // caller, reading a combined statement: chunkById() refuses a
                 // sort before it gets here, so the list is empty there too.
                 // Pinned to the line: the condition list beside it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileOverUnion::1287"
+                "Sloop\\Database\\Query\\Select::compileOverUnion::1289"
             ]
         }
     },
