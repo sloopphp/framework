@@ -242,7 +242,7 @@ final class Container implements ContainerInterface
      * @param  string                 $className Class being resolved (for error messages)
      * @return mixed
      * @throws EntryNotFoundException If the parameter has no default value and its type cannot be provided, or if resolving its type, or a dependency of it, finds an entry missing or not instantiable
-     * @throws ContainerException     If resolving its type, or a dependency of it, detects a circular dependency or fails to instantiate, or if a parameter that is not a single class type has no default value
+     * @throws ContainerException     If this parameter is not a single class type and has no default value, or if resolving its type, or a dependency of it, detects a circular dependency, fails to instantiate a class, or meets such a parameter
      */
     private function resolveParameter(ReflectionParameter $param, string $className): mixed
     {
