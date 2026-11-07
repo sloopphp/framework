@@ -444,8 +444,8 @@ final class ValidatedRequestTest extends TestCase
 
     public function testThrowsForAnUntypedParameterOfRulesTheRouteDoesNotName(): void
     {
-        // rules() has no positional fallback, so a lone untyped parameter is
-        // resolved by name like any other and is required in PHP.
+        // A lone untyped parameter is resolved by name like any other and is
+        // required in PHP.
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
 

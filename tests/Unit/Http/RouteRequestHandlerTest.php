@@ -84,22 +84,35 @@ final class RouteRequestHandlerTest extends TestCase
         };
     }
 
-    public function testInvokesLegacyUntypedSignatureWithPositionalArgs(): void
+    public function testMatchesRouteParametersByNameWhenNoParameterIsTyped(): void
     {
-        $this->dispatch(DiController::class, 'legacyUntyped', ['id' => '42']);
+        $this->dispatch(DiController::class, 'untypedOnly', ['other' => 'x', 'id' => '42']);
 
         $this->assertSame('42', DiController::$lastId);
-        $this->assertInstanceOf(Request::class, DiController::$lastRequest);
     }
 
-    public function testPassesLegacyArgumentsByPositionWhenRouteParameterNamesDiffer(): void
+    public function testThrowsWhenNoParameterIsTypedAndTheRouteDoesNotNameOne(): void
     {
-        // Untyped legacy signatures are filled positionally, so a route
-        // parameter whose name does not match the method's parameter must
-        // still arrive; binding by name would fail here.
-        $this->dispatch(DiController::class, 'legacyUntyped', ['userId' => '42']);
+        // A route parameter whose name differs is not passed by position.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
 
-        $this->assertSame('42', DiController::$lastId);
+        $this->dispatch(DiController::class, 'untypedOnly', ['userId' => '42']);
+    }
+
+    public function testDoesNotInjectTheRequestIntoAnUntypedParameter(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: request');
+
+        $this->dispatch(DiController::class, 'untypedRequestAndId', ['id' => '42']);
+    }
+
+    public function testPassesNoArgumentsToAnActionWithoutParameters(): void
+    {
+        $this->dispatch(DiController::class, 'noParameters', ['id' => '42']);
+
+        $this->assertSame(0, DiController::$lastArgumentCount);
     }
 
     public function testInjectsSloopRequestForTypedRequestParameter(): void

@@ -25,15 +25,29 @@ final class DiController
 
     public static ?DiService $lastService = null;
 
+    public static ?int $lastArgumentCount = null;
+
     public static function reset(): void
     {
-        self::$lastRequest = null;
-        self::$lastId      = null;
-        self::$lastPrice   = null;
-        self::$lastFlag    = null;
-        self::$lastName    = null;
-        self::$lastPage    = null;
-        self::$lastService = null;
+        self::$lastArgumentCount = null;
+        self::$lastRequest       = null;
+        self::$lastId            = null;
+        self::$lastPrice         = null;
+        self::$lastFlag          = null;
+        self::$lastName          = null;
+        self::$lastPage          = null;
+        self::$lastService       = null;
+    }
+
+    /**
+     * @param mixed $id
+     *
+     * @noinspection PhpMissingParamTypeInspection, PhpUnused
+     */
+    public function untypedOnly($id): string
+    {
+        self::$lastId = $id;
+        return 'untypedOnly';
     }
 
     /**
@@ -42,11 +56,18 @@ final class DiController
      *
      * @noinspection PhpMissingParamTypeInspection, PhpUnused
      */
-    public function legacyUntyped($request, $id): string
+    public function untypedRequestAndId($request, $id): string
     {
         self::$lastRequest = $request instanceof Request ? $request : null;
         self::$lastId      = $id;
-        return 'legacy';
+        return 'untypedRequestAndId';
+    }
+
+    /** @noinspection PhpUnused */
+    public function noParameters(): string
+    {
+        self::$lastArgumentCount = \func_num_args();
+        return 'noParameters';
     }
 
     /** @noinspection PhpUnused */

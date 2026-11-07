@@ -74,7 +74,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  ServerRequestInterface   $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
      * @throws RuntimeException         If validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException           If the controller cannot be resolved as an object, the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException           If the controller cannot be resolved as an object, the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
@@ -106,9 +106,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Build the argument list for the controller action.
      *
-     * When every parameter is untyped, falls back to the legacy positional
-     * pattern `[Request, ...routeParams]`. Otherwise resolves each parameter
-     * by type: Request types receive the Sloop Request, ValidatedRequest
+     * Resolves each parameter by type: Request types receive the Sloop Request, ValidatedRequest
      * subclasses receive the validated input, other object types are
      * resolved from the container, and every other parameter takes the
      * route parameter of its name (see routeValue()). Parameters are
@@ -120,7 +118,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  Request                             $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, the 404 response when an int, float or bool route parameter cannot be read as that type, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws RuntimeException                    If validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException                      If the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException                      If the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException            If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
@@ -130,10 +128,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     private function buildActionArguments(string $className, string $method, Request $sloopRequest): array|ResponseInterface
     {
         $parameters = self::reflectParameters($className, $method);
-
-        if (self::isLegacyParameterList($parameters)) {
-            return [$sloopRequest, ...array_values($this->params)];
-        }
 
         $args = [];
         foreach ($parameters as $parameter) {
@@ -422,25 +416,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     private static function unsupportedType(string $name): LogicException
     {
         return new LogicException('Unsupported parameter type for ' . $name . ': only named types are supported in method DI.');
-    }
-
-    /**
-     * Check if every parameter in the list is untyped (legacy controller signature).
-     *
-     * @param  array<int, ReflectionParameter> $parameters Parameters to inspect
-     * @return bool                            True if no parameter declares a type
-     *
-     * @noinspection PhpArrayAllCanBeUsedInspection
-     */
-    private static function isLegacyParameterList(array $parameters): bool
-    {
-        foreach ($parameters as $parameter) {
-            if ($parameter->getType() !== null) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**

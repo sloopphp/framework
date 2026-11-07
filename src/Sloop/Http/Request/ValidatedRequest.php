@@ -33,8 +33,8 @@ namespace Sloop\Http\Request;
  * string together with the body, and a field sent in both is answered with
  * a 400 (as is a field sent as both a form value and a file). The
  * parameters of rules() are resolved the way the action's are: objects
- * from the container, the others from the route parameter of their name
- * (an untyped one too, since rules() has no positional form). It cannot
+ * from the container, the others (untyped ones included) from the route
+ * parameter of their name. It cannot
  * take the Request or another ValidatedRequest, which would let it read the
  * raw input; asking for either is reported with a LogicException.
  *
