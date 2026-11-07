@@ -138,7 +138,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
                 if ($value instanceof ResponseInterface) {
                     return $value;
                 }
-                if ($value === null && self::takesNoRouteValue($parameter)) {
+                if ($value === null && self::canTakeNoArgument($parameter)) {
                     break;
                 }
                 $args[] = $value ?? $this->resolveParameter($parameter, $sloopRequest);
@@ -211,7 +211,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             if ($value instanceof ResponseInterface) {
                 return $value;
             }
-            if ($value === null && self::takesNoRouteValue($parameter)) {
+            if ($value === null && self::canTakeNoArgument($parameter)) {
                 break;
             }
             $arguments[] = $value ?? $this->resolveParameter($parameter, $sloopRequest);
@@ -309,7 +309,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  ReflectionParameter $parameter Parameter that read no route value
      * @return bool                True if the parameter is variadic and not of a single class type
      */
-    private static function takesNoRouteValue(ReflectionParameter $parameter): bool
+    private static function canTakeNoArgument(ReflectionParameter $parameter): bool
     {
         if (!$parameter->isVariadic()) {
             return false;
