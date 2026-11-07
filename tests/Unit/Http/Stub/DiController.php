@@ -82,6 +82,20 @@ final class DiController
     }
 
     /** @noinspection PhpUnused */
+    public function unionVariadic(int|string ...$ids): string
+    {
+        self::$lastId = $ids;
+        return 'unionVariadic';
+    }
+
+    /** @noinspection PhpUnused */
+    public function serviceVariadic(DiService ...$services): string
+    {
+        self::$lastId = $services;
+        return 'serviceVariadic';
+    }
+
+    /** @noinspection PhpUnused */
     public function noParameters(): string
     {
         self::$lastArgumentCount = \func_num_args();

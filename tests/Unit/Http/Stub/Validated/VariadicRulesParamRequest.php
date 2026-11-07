@@ -15,7 +15,7 @@ final class VariadicRulesParamRequest extends ValidatedRequest
     /**
      * @return array<string, FieldRule<covariant mixed>>
      */
-    protected function rules(int ...$ids): array
+    protected function rules(int|string ...$ids): array
     {
         return ['name' => Rule::string()->default(\count($ids) . ' ids')];
     }

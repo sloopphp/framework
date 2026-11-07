@@ -130,6 +130,22 @@ final class RouteRequestHandlerTest extends TestCase
         $this->assertSame([], DiController::$lastId);
     }
 
+    public function testPassesNothingToAUnionVariadicParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'unionVariadic', []);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testResolvesAClassTypedVariadicParameterFromTheContainer(): void
+    {
+        $this->dispatch(DiController::class, 'serviceVariadic', []);
+
+        $this->assertIsArray(DiController::$lastId);
+        $this->assertCount(1, DiController::$lastId);
+        $this->assertInstanceOf(DiService::class, DiController::$lastId[0]);
+    }
+
     public function testPassesTheRouteParameterOfItsNameToAVariadicParameter(): void
     {
         $this->dispatch(DiController::class, 'intVariadic', ['ids' => '7']);
