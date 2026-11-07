@@ -309,6 +309,17 @@
                 "Sloop\\Foundation\\Application::run::314"
             ]
         },
+        "Break_": {
+            // RouteRequestHandler::buildActionArguments and ::validatedRequest
+            // stop the argument loop at a variadic parameter the route does
+            // not name. PHP allows only one variadic parameter and only as
+            // the last one, so `continue` reaches the end of the loop with the
+            // same arguments. Each method has this one `break` only.
+            "ignore": [
+                "Sloop\\Http\\RouteRequestHandler::buildActionArguments",
+                "Sloop\\Http\\RouteRequestHandler::validatedRequest"
+            ]
+        },
         "FalseValue": {
             // Application::createServerRequestFromGlobals::1341: see IncrementInteger
             // (php://input is always '' in a PHPUnit process).

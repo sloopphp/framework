@@ -34,9 +34,9 @@ namespace Sloop\Http\Request;
  * a 400 (as is a field sent as both a form value and a file). The
  * parameters of rules() are resolved the way the action's are: objects
  * from the container, the others (untyped ones included) from the route
- * parameter of their name. It cannot
- * take the Request or another ValidatedRequest, which would let it read the
- * raw input; asking for either is reported with a LogicException.
+ * parameter of their name. It cannot take the Request or another
+ * ValidatedRequest, which would let it read the raw input; asking for
+ * either is reported with a LogicException.
  *
  * The properties are `private(set)` rather than `readonly` because the
  * framework fills them after construction, which static analysers report for

@@ -58,9 +58,27 @@ final class DiController
      */
     public function untypedRequestAndId($request, $id): string
     {
-        self::$lastRequest = $request instanceof Request ? $request : null;
-        self::$lastId      = $id;
+        self::$lastName = $request;
+        self::$lastId   = $id;
         return 'untypedRequestAndId';
+    }
+
+    /**
+     * @param mixed ...$ids
+     *
+     * @noinspection PhpMissingParamTypeInspection, PhpUnused
+     */
+    public function untypedVariadic(...$ids): string
+    {
+        self::$lastId = $ids;
+        return 'untypedVariadic';
+    }
+
+    /** @noinspection PhpUnused */
+    public function intVariadic(int ...$ids): string
+    {
+        self::$lastId = $ids;
+        return 'intVariadic';
     }
 
     /** @noinspection PhpUnused */

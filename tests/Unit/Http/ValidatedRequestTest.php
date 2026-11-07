@@ -61,6 +61,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\UntypedRulesParamRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedController;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\ValidatedUnionInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\VariadicRulesParamRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\WrongTypeRequest;
 
 final class ValidatedRequestTest extends TestCase
@@ -450,6 +451,15 @@ final class ValidatedRequestTest extends TestCase
         $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
 
         $this->dispatch('untypedRulesParam', new ServerRequest('POST', '/dispatch'));
+    }
+
+    public function testPassesNothingToAVariadicParameterOfRulesTheRouteDoesNotName(): void
+    {
+        $response = $this->dispatch('variadicRulesParam', new ServerRequest('POST', '/dispatch'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(VariadicRulesParamRequest::class, ValidatedController::$last);
+        $this->assertSame('0 ids', ValidatedController::$last->name);
     }
 
     public function testRefusesARouteParameterForAnArrayParameterOfRules(): void

@@ -108,6 +108,35 @@ final class RouteRequestHandlerTest extends TestCase
         $this->dispatch(DiController::class, 'untypedRequestAndId', ['id' => '42']);
     }
 
+    public function testPassesTheRouteParameterNamedRequestToAnUntypedRequestParameter(): void
+    {
+        $this->dispatch(DiController::class, 'untypedRequestAndId', ['request' => 'r', 'id' => '42']);
+
+        $this->assertSame('r', DiController::$lastName);
+        $this->assertSame('42', DiController::$lastId);
+    }
+
+    public function testPassesNothingToAVariadicParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'untypedVariadic', ['other' => '1']);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testPassesNothingToATypedVariadicParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'intVariadic', []);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testPassesTheRouteParameterOfItsNameToAVariadicParameter(): void
+    {
+        $this->dispatch(DiController::class, 'intVariadic', ['ids' => '7']);
+
+        $this->assertSame([7], DiController::$lastId);
+    }
+
     public function testPassesNoArgumentsToAnActionWithoutParameters(): void
     {
         $this->dispatch(DiController::class, 'noParameters', ['id' => '42']);
