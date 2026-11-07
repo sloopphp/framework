@@ -34,6 +34,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\FileUploadRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InjectedRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\InnerUnboundedListRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\IntersectionInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\IntVariadicRulesParamRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MatrixRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\MutablePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\NestedFormRequest;
@@ -460,6 +461,15 @@ final class ValidatedRequestTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertInstanceOf(VariadicRulesParamRequest::class, ValidatedController::$last);
         $this->assertSame('0 ids', ValidatedController::$last->name);
+    }
+
+    public function testPassesTheRouteValueOfItsNameToAVariadicParameterOfRules(): void
+    {
+        $response = $this->dispatch('intVariadicRulesParam', new ServerRequest('POST', '/dispatch'), ['ids' => '7']);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertInstanceOf(IntVariadicRulesParamRequest::class, ValidatedController::$last);
+        $this->assertSame('7', ValidatedController::$last->name);
     }
 
     public function testRefusesARouteParameterForAnArrayParameterOfRules(): void

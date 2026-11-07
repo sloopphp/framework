@@ -283,6 +283,11 @@ final class RouteRequestHandlerTest extends TestCase
         $this->assertNotFound('The route parameter "id" is not a valid int.', $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
     }
 
+    public function testAnswersNotFoundForANonNumericIntVariadicParameter(): void
+    {
+        $this->assertNotFound('The route parameter "ids" is not a valid int.', $this->dispatch(DiController::class, 'intVariadic', ['ids' => 'abc']));
+    }
+
     public function testAnswersNotFoundForANonNumericFloatParameter(): void
     {
         $this->assertNotFound('The route parameter "price" is not a valid float.', $this->dispatch(DiController::class, 'requestAndFloat', ['price' => 'xyz']));
