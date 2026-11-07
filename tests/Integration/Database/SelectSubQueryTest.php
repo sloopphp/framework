@@ -74,17 +74,19 @@ final class SelectSubQueryTest extends TransactionalIntegrationTestCase
         $this->assertStringContainsString('1241', $thrown->getMessage());
     }
 
-    public function testTheServerRefusesASubqueryThatCarriesARowWindow(): void
+    public function testALimitedStatementReadAsATableStandsWhereTheSetDoes(): void
     {
-        // Neither engine supports LIMIT inside an IN subquery, and both say so
-        // rather than answering with a subset, so this is left to them as well.
-        $select = $this->connection->select('id')
+        // Both engines refuse LIMIT inside an IN subquery (1235), so the
+        // builder refuses it and points here: read the limited rows as a
+        // table, and select the column from that.
+        $limited = $this->connection->select('user_id')->from('posts')->orderBy('user_id')->limit(1);
+
+        $ids = $this->connection->select('id')
             ->from('users')
-            ->whereIn('id', $this->publishedAuthors()->limit(1));
+            ->whereIn('id', $this->connection->select('t.user_id')->from($limited, 't'))
+            ->pluck('id');
 
-        $thrown = $this->assertThrows(QueryException::class, static fn () => $select->get());
-
-        $this->assertStringContainsString('1235', $thrown->getMessage());
+        $this->assertSame([1], $ids);
     }
 
     public function testANullAmongTheSubqueryRowsMakesNotInMatchNothing(): void

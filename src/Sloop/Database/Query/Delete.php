@@ -70,12 +70,13 @@ final class Delete extends BuilderWhere
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
-     * @throws LogicException           When a group of conditions was left open, or an offset was set
+     * @throws LogicException           When a group of conditions was left open, an offset was set, or the set of an IN test carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compile(): CompiledSql
     {
         $this->requireGroupsClosed();
+        $this->requireMembershipSetsUnlimited();
 
         if ($this->offset !== null) {
             throw new LogicException(
@@ -99,7 +100,7 @@ final class Delete extends BuilderWhere
      * so where this runs is whatever the route answers now.
      *
      * @return int                         Rows removed
-     * @throws LogicException              When a group of conditions was left open, an offset was set, or the connection is in strict mode and nothing narrows the statement
+     * @throws LogicException              When a group of conditions was left open, an offset was set, the set of an IN test carries a limit, or the connection is in strict mode and nothing narrows the statement
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained

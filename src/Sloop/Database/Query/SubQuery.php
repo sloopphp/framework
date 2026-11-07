@@ -36,7 +36,7 @@ final readonly class SubQuery
      * Write the held statement as SQL together with the values it needs.
      *
      * @return CompiledSql              The statement and its bindings, the bindings in placeholder order
-     * @throws LogicException           When the statement names no table, a group of conditions was left open, or an offset has no limit
+     * @throws LogicException           When the statement names no table, a group of conditions was left open, an offset has no limit, or the set of an IN test carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compile(): CompiledSql

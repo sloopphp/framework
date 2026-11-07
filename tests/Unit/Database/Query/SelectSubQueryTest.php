@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Database\Query;
 
+use Closure;
 use InvalidArgumentException;
 use LogicException;
 use PDO;
 use Pdo\Sqlite;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\Query\Expression;
@@ -199,6 +201,122 @@ final class SelectSubQueryTest extends TestCase
             ->whereIn('id', $this->connection->select('user_id')->from('orders')->whereOpen());
 
         $this->assertThrows(LogicException::class, static fn () => $select->toSql());
+    }
+
+    /**
+     * @return array<string, array{Closure(Connection): mixed}>
+     */
+    public static function limitedSetProvider(): array
+    {
+        $ids = static fn (Connection $c): Select => $c->select('user_id')->from('orders');
+
+        return [
+            'whereIn()'                    => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->limit(1))->toSql()],
+            'andWhereIn()'                 => [static fn (Connection $c): mixed => $c->select('id')->from('users')->andWhereIn('id', $ids($c)->limit(1))->toSql()],
+            'orWhereIn()'                  => [static fn (Connection $c): mixed => $c->select('id')->from('users')->where('id', 1)->orWhereIn('id', $ids($c)->limit(1))->toSql()],
+            'whereNotIn()'                 => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereNotIn('id', $ids($c)->limit(1))->toSql()],
+            'andWhereNotIn()'              => [static fn (Connection $c): mixed => $c->select('id')->from('users')->andWhereNotIn('id', $ids($c)->limit(1))->toSql()],
+            'orWhereNotIn()'               => [static fn (Connection $c): mixed => $c->select('id')->from('users')->where('id', 1)->orWhereNotIn('id', $ids($c)->limit(1))->toSql()],
+            'whereNotInOrNull()'           => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereNotInOrNull('id', $ids($c)->limit(1))->toSql()],
+            'andWhereNotInOrNull()'        => [static fn (Connection $c): mixed => $c->select('id')->from('users')->andWhereNotInOrNull('id', $ids($c)->limit(1))->toSql()],
+            'orWhereNotInOrNull()'         => [static fn (Connection $c): mixed => $c->select('id')->from('users')->where('id', 1)->orWhereNotInOrNull('id', $ids($c)->limit(1))->toSql()],
+            'a limit of zero'              => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->limit(0))->toSql()],
+            'a limit with an offset'       => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->limit(1)->offset(1))->toSql()],
+            'the combined rows'            => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->union($ids($c))->limit(1))->toSql()],
+            'the first of a union'         => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->limit(1)->union($ids($c)))->toSql()],
+            'a statement added to a union' => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->union($ids($c)->limit(1)))->toSql()],
+            'a union inside an added one'  => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->union($ids($c)->union($ids($c)->limit(1))))->toSql()],
+            'a nested set'                 => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->whereIn('user_id', $ids($c)->limit(1)))->toSql()],
+            'a shortcut'                   => [static fn (Connection $c): mixed => $c->select('id')->from('users')->whereIn('id', $ids($c)->limit(1))->count()],
+            'an update'                    => [static fn (Connection $c): mixed => $c->update('users')->set(['status' => 'blocked'])->whereIn('id', $ids($c)->limit(1))->toSql()],
+            'a delete'                     => [static fn (Connection $c): mixed => $c->delete('users')->whereIn('id', $ids($c)->limit(1))->toSql()],
+        ];
+    }
+
+    #[DataProvider('limitedSetProvider')]
+    public function testASetThatCarriesALimitIsRefusedWhenTheStatementCompiles(Closure $compile): void
+    {
+        $e = $this->assertThrows(LogicException::class, fn (): mixed => $compile($this->connection));
+
+        $this->assertSame(LogicException::class, $e::class);
+        $this->assertStringContainsString('both servers refuse LIMIT there (1235)', $e->getMessage());
+    }
+
+    public function testTheRefusalNamesTheShapeTheServersTake(): void
+    {
+        $select = $this->connection->select('id')
+            ->from('users')
+            ->whereIn('id', $this->paidUserIds()->limit(1));
+
+        $e = $this->assertThrows(LogicException::class, static fn () => $select->toSql());
+
+        $this->assertSame(
+            'The set of an IN test cannot carry a limit: both servers refuse LIMIT there (1235),'
+                . ' on the statement and on any statement combined with it by union(). Read the limited'
+                . ' rows as a table with from($statement, $alias), and select the column from that.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testALimitAddedAfterTheSetWasHandedOverIsRefused(): void
+    {
+        // The set is read when the outer statement compiles, so a limit given
+        // to it afterwards would reach the server all the same.
+        $ids    = $this->connection->select('user_id')->from('orders');
+        $select = $this->connection->select('id')->from('users')->whereIn('id', $ids);
+
+        $ids->limit(1);
+
+        $this->assertThrows(LogicException::class, static fn () => $select->toSql());
+    }
+
+    /**
+     * @return array<string, array{Closure(Connection): string, string}>
+     */
+    public static function limitOutsideTheSetProvider(): array
+    {
+        return [
+            'a derived table read by the set' => [
+                static fn (Connection $c): string => $c->select('id')->from('users')
+                    ->whereIn('id', $c->select('t.user_id')->from($c->select('user_id')->from('orders')->limit(1), 't'))
+                    ->toSql(),
+                'SELECT `id` FROM `users` WHERE `id` IN (SELECT `t`.`user_id` FROM (SELECT `user_id` FROM `orders` LIMIT 1) AS `t`)',
+            ],
+            'a statement the set names with with()' => [
+                static fn (Connection $c): string => $c->select('id')->from('users')
+                    ->whereIn('id', $c->select('user_id')->with('t', $c->select('user_id')->from('orders')->limit(1))->from('t'))
+                    ->toSql(),
+                'SELECT `id` FROM `users` WHERE `id` IN (WITH `t` AS (SELECT `user_id` FROM `orders` LIMIT 1) SELECT `user_id` FROM `t`)',
+            ],
+            'a statement in the select list of the set' => [
+                static fn (Connection $c): string => $c->select('id')->from('users')
+                    ->whereIn('id', $c->select([$c->select('user_id')->from('orders')->limit(1), 'first'])->from('users'))
+                    ->toSql(),
+                'SELECT `id` FROM `users` WHERE `id` IN (SELECT (SELECT `user_id` FROM `orders` LIMIT 1) AS `first` FROM `users`)',
+            ],
+            'a statement asked whether it returns a row' => [
+                static fn (Connection $c): string => $c->select('id')->from('users')
+                    ->whereExists($c->select('user_id')->from('orders')->limit(1))
+                    ->toSql(),
+                'SELECT `id` FROM `users` WHERE EXISTS (SELECT `user_id` FROM `orders` LIMIT 1)',
+            ],
+            'the outer statement' => [
+                static fn (Connection $c): string => $c->select('id')->from('users')
+                    ->whereIn('id', $c->select('user_id')->from('orders'))
+                    ->limit(1)
+                    ->toSql(),
+                'SELECT `id` FROM `users` WHERE `id` IN (SELECT `user_id` FROM `orders`) LIMIT 1',
+            ],
+        ];
+    }
+
+    #[DataProvider('limitOutsideTheSetProvider')]
+    public function testALimitTheServersTakeIsLeftAlone(Closure $compile, string $sql): void
+    {
+        // Both servers take a LIMIT a level below the set, or on a statement
+        // that is not standing as one; the first case is the rewrite the
+        // refusal points to.
+        $this->assertSame($sql, $compile($this->connection));
     }
 
     public function testAnEmptyArrayIsStillRefused(): void

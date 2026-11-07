@@ -227,7 +227,7 @@ class Grammar
      *
      * @param  SelectSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open or has an offset without a limit, or a window's RANGE frame has an offset without exactly one sort term
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit or holds an IN test whose set carries a limit, or a window's RANGE frame has an offset without exactly one sort term
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileSelect(SelectSpec $spec): CompiledSql
@@ -273,7 +273,7 @@ class Grammar
      *
      * @param  UnionSpec                $spec Parts of the combined statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
-     * @throws LogicException           When a statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileUnion(UnionSpec $spec): CompiledSql
@@ -313,7 +313,7 @@ class Grammar
      *
      * @param  UpdateSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileUpdate(UpdateSpec $spec): CompiledSql
@@ -432,7 +432,7 @@ class Grammar
      *
      * @param  DeleteSpec               $spec Parts of the statement
      * @return CompiledSql              SQL and bindings, the bindings in placeholder order
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compileDelete(DeleteSpec $spec): CompiledSql
@@ -468,7 +468,7 @@ class Grammar
      *
      * @param  list<CommonTableExpression> $commonTables Statements the clause names, in the order they are written
      * @return CompiledSql                 The clause ending in a space, with the bindings of the statements it names; empty when there are none
-     * @throws LogicException              When a statement named here names no table itself, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException              When a statement named here names no table itself, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException    When an identifier inside a statement named here is malformed
      */
     protected function compileWith(array $commonTables): CompiledSql
@@ -577,7 +577,7 @@ class Grammar
      *
      * @param  list<string|Expression|SelectedColumn|WindowExpression|FunctionCall> $columns Columns to select; empty selects everything
      * @return CompiledSql                                                          Select list and the bindings of anything in it that carries values
-     * @throws LogicException                                                       When a statement in the list names no table, left a group of conditions open or has an offset without a limit, or a window's RANGE frame has an offset without exactly one sort term
+     * @throws LogicException                                                       When a statement in the list names no table, left a group of conditions open, has an offset without a limit or holds an IN test whose set carries a limit, or a window's RANGE frame has an offset without exactly one sort term
      * @throws InvalidArgumentException                                             When an identifier is malformed, or the grammar writes no such window call or aggregate
      */
     protected function compileColumns(array $columns): CompiledSql
@@ -613,7 +613,7 @@ class Grammar
      *
      * @param  SelectedColumn           $column What to select and the name to return it under
      * @return CompiledSql              The position as written, with the bindings of anything carrying values
-     * @throws LogicException           When a statement in the list names no table, left a group of conditions open or has an offset without a limit, or a window's RANGE frame has an offset without exactly one sort term
+     * @throws LogicException           When a statement in the list names no table, left a group of conditions open, has an offset without a limit or holds an IN test whose set carries a limit, or a window's RANGE frame has an offset without exactly one sort term
      * @throws InvalidArgumentException When an identifier is malformed, or the grammar writes no such window call or aggregate
      */
     protected function compileSelectedColumn(SelectedColumn $column): CompiledSql
@@ -646,7 +646,7 @@ class Grammar
      *
      * @param  string|TableSource       $table What the statement reads from; a bare string names a table with no alias
      * @return CompiledSql              FROM clause led by a space, with the bindings of a statement read as a table
-     * @throws LogicException           When a statement read as a table names none itself, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a statement read as a table names none itself, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When the table name is malformed, or an identifier inside a statement read as a table is
      */
     protected function compileFrom(string|TableSource $table): CompiledSql
@@ -885,7 +885,7 @@ class Grammar
      *
      * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @return CompiledSql              WHERE clause led by a space, empty when there are no conditions
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileWhere(array $conditions): CompiledSql
@@ -908,7 +908,7 @@ class Grammar
      * @param  list<WherePart>          $conditions Parts of the clause in the order they were added
      * @param  string                   $lead       Keyword introducing the clause, spaced as it is written
      * @return CompiledSql              The clause led by the keyword, empty when nothing would reach the server
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileConditionList(array $conditions, string $lead): CompiledSql
@@ -956,7 +956,7 @@ class Grammar
      *
      * @param  WherePart                $part Part to compile
      * @return CompiledSql              The part as SQL, with the bindings it needs
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed, or the part is a parenthesis (GroupBoundary)
      */
     protected function compileWherePart(WherePart $part): CompiledSql
@@ -1298,7 +1298,7 @@ class Grammar
      *
      * @param  InCondition              $condition Membership test to compile
      * @return CompiledSql              The test as SQL, with the bindings it needs
-     * @throws LogicException           When a nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When a nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileIn(InCondition $condition): CompiledSql
@@ -1337,7 +1337,7 @@ class Grammar
      *
      * @param  ExistsCondition          $condition Presence test to compile
      * @return CompiledSql              The test as SQL, with the bindings it needs
-     * @throws LogicException           When the nested statement names no table, left a group of conditions open, or has an offset without a limit
+     * @throws LogicException           When the nested statement names no table, left a group of conditions open, has an offset without a limit, or holds an IN test whose set carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     protected function compileExists(ExistsCondition $condition): CompiledSql

@@ -68,6 +68,17 @@ abstract class BuilderWhere extends Builder
     private bool $groupLeftOpenInCallback = false;
 
     /**
+     * Statements standing as the set of an IN test, in the order they were given.
+     *
+     * Kept beside the conditions holding them so that the check made when the
+     * statement compiles can ask each one about its row limit, which the
+     * condition carrying it does not expose.
+     *
+     * @var list<Select>
+     */
+    private array $membershipSets = [];
+
+    /**
      * Terms of the ORDER BY clause, in the order they were added.
      *
      * @var list<Order>
@@ -254,7 +265,11 @@ abstract class BuilderWhere extends Builder
      *
      * A statement stands where a set does and is read when this one is
      * compiled, so a condition added to it afterwards is part of what runs. It
-     * has to return a single column; the server says so if it does not.
+     * has to return a single column; the server says so if it does not. It
+     * cannot carry a limit, nor can a statement combined with it by union():
+     * both servers refuse LIMIT there, so this statement is refused when it is
+     * compiled. Reading the limited rows as a table with from() and selecting
+     * the column from that is taken by both.
      *
      * On an UPDATE or a DELETE, a statement that reads the table being written
      * is refused by MySQL and run by MariaDB. Neither is wrong: the syntax is
@@ -866,6 +881,43 @@ abstract class BuilderWhere extends Builder
     }
 
     /**
+     * Refuse a statement standing as the set of an IN test that carries a row limit.
+     *
+     * Both servers refuse LIMIT inside the set of IN and NOT IN (1235), on the
+     * statement itself and on any statement combined with it by union(). The
+     * set is read when this statement compiles, and limit() may be called on
+     * it after it was handed over, so it is checked here rather than when the
+     * test was added. A LIMIT a level further down — in a table the set reads
+     * from, a statement it names in a WITH clause, or one in its select list —
+     * is taken by both servers and is not looked at.
+     *
+     * @return void
+     * @throws LogicException When a set carries a row limit
+     */
+    protected function requireMembershipSetsUnlimited(): void
+    {
+        foreach ($this->membershipSets as $set) {
+            if ($set->carriesRowLimit()) {
+                throw new LogicException(
+                    'The set of an IN test cannot carry a limit: both servers refuse LIMIT there (1235),'
+                        . ' on the statement and on any statement combined with it by union(). Read the limited'
+                        . ' rows as a table with from($statement, $alias), and select the column from that.',
+                );
+            }
+        }
+    }
+
+    /**
+     * Whether this statement carries a row limit of its own.
+     *
+     * @return bool True when limit() was called on it
+     */
+    protected function carriesRowLimit(): bool
+    {
+        return $this->limit !== null;
+    }
+
+    /**
      * Record the opening of a group.
      *
      * @param  Conjunction $conjunction How the group joins to what precedes it
@@ -1059,7 +1111,7 @@ abstract class BuilderWhere extends Builder
     ): static {
         $this->conditions[] = new InCondition(
             $column,
-            $values instanceof Select ? new SubQuery($values) : $values,
+            $this->toMembershipSet($values),
             negated: $negated,
             conjunction: $conjunction,
         );
@@ -1083,7 +1135,7 @@ abstract class BuilderWhere extends Builder
     {
         $exclusion = new InCondition(
             $column,
-            $values instanceof Select ? new SubQuery($values) : $values,
+            $this->toMembershipSet($values),
             negated: true,
             conjunction: Conjunction::And,
         );
@@ -1093,6 +1145,23 @@ abstract class BuilderWhere extends Builder
         $this->addNullTest(Conjunction::Or, $column, negated: false);
 
         return $this->closeGroup();
+    }
+
+    /**
+     * Wrap a statement standing as a set, remembering it for the check made at compile time.
+     *
+     * @param  array<int|string, mixed>|Select   $values Values making up the set, or a statement whose rows make it up
+     * @return array<int|string, mixed>|SubQuery The values as given, or the statement wrapped
+     */
+    private function toMembershipSet(array|Select $values): array|SubQuery
+    {
+        if (!$values instanceof Select) {
+            return $values;
+        }
+
+        $this->membershipSets[] = $values;
+
+        return new SubQuery($values);
     }
 
     /**
