@@ -197,7 +197,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     {
         if (\is_callable($needle)) {
             foreach ($this->items as $key => $value) {
-                if ($needle($value, $key)) {
+                if ((bool) $needle($value, $key)) {
                     return true;
                 }
             }
