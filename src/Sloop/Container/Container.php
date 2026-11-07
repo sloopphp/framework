@@ -231,26 +231,31 @@ final class Container implements ContainerInterface
     /**
      * Resolve a single constructor parameter.
      *
+     * A class-typed parameter falls back to its default value only when the
+     * container cannot provide its type at all: nothing is registered for it
+     * and it is not an instantiable class. A type the container can provide
+     * is resolved, and any failure while resolving it is thrown even when a
+     * default value exists, so a missing dependency further down is not
+     * silently replaced by the default.
+     *
      * @param  ReflectionParameter    $param     Parameter to resolve
      * @param  string                 $className Class being resolved (for error messages)
      * @return mixed
-     * @throws EntryNotFoundException If a typed parameter cannot be resolved
-     * @throws ContainerException     If the parameter cannot be resolved
+     * @throws EntryNotFoundException If the parameter has no default value and its type cannot be provided, or if resolving its type, or a dependency of it, finds an entry missing or not instantiable
+     * @throws ContainerException     If this parameter is not a single class type and has no default value, or if resolving its type, or a dependency of it, detects a circular dependency, fails to instantiate a class, or meets such a parameter
      */
     private function resolveParameter(ReflectionParameter $param, string $className): mixed
     {
         $type = $param->getType();
 
         if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
-            try {
-                return $this->get($type->getName());
-            } catch (EntryNotFoundException $e) {
-                if ($param->isDefaultValueAvailable()) {
-                    return $param->getDefaultValue();
-                }
+            $typeName = $type->getName();
 
-                throw $e;
+            if (!$this->has($typeName) && $param->isDefaultValueAvailable()) {
+                return $param->getDefaultValue();
             }
+
+            return $this->get($typeName);
         }
 
         if ($param->isDefaultValueAvailable()) {

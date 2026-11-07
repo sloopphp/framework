@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Container;
 
+use Closure;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
@@ -11,9 +13,12 @@ use Psr\Container\NotFoundExceptionInterface;
 use Sloop\Container\Container;
 use Sloop\Container\ContainerException;
 use Sloop\Container\EntryNotFoundException;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class ContainerTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private Container $container;
 
     protected function setUp(): void
@@ -301,6 +306,75 @@ final class ContainerTest extends TestCase
         $this->assertNull($result->dependency);
     }
 
+    public function testAutowireNullableFallsToDefaultForUnboundAbstractClass(): void
+    {
+        $result = $this->container->get(ClassWithNullableAbstractDependency::class);
+
+        $this->assertInstanceOf(ClassWithNullableAbstractDependency::class, $result);
+        $this->assertNull($result->dependency);
+    }
+
+    /**
+     * @return array<string, array{Closure(Container): void, class-string, string}>
+     */
+    public static function brokenOptionalDependencyProvider(): array
+    {
+        return [
+            'a dependency of the dependency is missing' => [
+                static function (Container $c): void {
+                },
+                ClassWithNullableBrokenDependency::class,
+                'Entry not found: ' . SimpleInterface::class,
+            ],
+            'the dependency is bound to a class that does not exist' => [
+                static function (Container $c): void {
+                    $c->bind(SimpleClass::class, 'Nonexistent\\Concrete');
+                },
+                ClassWithNullableDependency::class,
+                'Entry not found: Nonexistent\\Concrete',
+            ],
+            'the closure binding of the dependency asks for a missing entry' => [
+                static function (Container $c): void {
+                    $c->bind(SimpleClass::class, static fn (Container $c): mixed => $c->get('Nonexistent\\Class'));
+                },
+                ClassWithNullableDependency::class,
+                'Entry not found: Nonexistent\\Class',
+            ],
+            'the interface is bound to a class whose dependency is missing' => [
+                static function (Container $c): void {
+                    $c->bind(SimpleInterface::class, ImplementationWithMissingDependency::class);
+                },
+                ClassWithNullableInterfaceDependency::class,
+                'Entry is not instantiable: ' . AbstractService::class,
+            ],
+            'the dependency is a singleton whose dependency is missing' => [
+                static function (Container $c): void {
+                    $c->singleton(ClassWithInterfaceDependency::class, ClassWithInterfaceDependency::class);
+                },
+                ClassWithNullableBrokenDependency::class,
+                'Entry not found: ' . SimpleInterface::class,
+            ],
+        ];
+    }
+
+    /**
+     * @param Closure(Container): void $setup
+     * @param class-string             $className
+     */
+    #[DataProvider('brokenOptionalDependencyProvider')]
+    public function testAutowireThrowsWhenAnOptionalDependencyIsRegisteredOrAutowirableButFails(Closure $setup, string $className, string $message): void
+    {
+        $setup($this->container);
+
+        $e = $this->assertThrows(
+            EntryNotFoundException::class,
+            fn () => $this->container->get($className),
+        );
+
+        $this->assertSame(EntryNotFoundException::class, $e::class);
+        $this->assertSame($message, $e->getMessage());
+    }
+
     public function testAutowireUnionTypeWithoutDefaultThrows(): void
     {
         $this->expectException(ContainerException::class);
@@ -441,6 +515,30 @@ readonly class ClassWithNullableInterfaceDependency
 {
     public function __construct(
         public ?SimpleInterface $dependency = null,
+    ) {
+    }
+}
+
+readonly class ClassWithNullableAbstractDependency
+{
+    public function __construct(
+        public ?AbstractService $dependency = null,
+    ) {
+    }
+}
+
+readonly class ClassWithNullableBrokenDependency
+{
+    public function __construct(
+        public ?ClassWithInterfaceDependency $dependency = null,
+    ) {
+    }
+}
+
+readonly class ImplementationWithMissingDependency implements SimpleInterface
+{
+    public function __construct(
+        public AbstractService $dependency,
     ) {
     }
 }
