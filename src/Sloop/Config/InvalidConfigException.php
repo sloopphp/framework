@@ -13,8 +13,9 @@ use RuntimeException;
  * environment variables, so a mistake in them shows only once the
  * application runs where it is deployed; that is why this extends
  * RuntimeException. Catch this class to handle every kind of config error at
- * once. The subclasses name the area the setting belongs to; Config::load()
- * and Env::get() throw this class itself.
+ * once. The subclasses name the area the setting belongs to; Config::load(),
+ * the typed accessors of Config (getString() / getInt() / getFloat() /
+ * getBool()) and Env::get() throw this class itself.
  */
 class InvalidConfigException extends RuntimeException
 {
