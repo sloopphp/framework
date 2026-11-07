@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Config;
 
+use Closure;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -162,11 +163,45 @@ final class ConfigTest extends TestCase
         $this->assertSame('fallback', Config::getString('database.missing', 'fallback'));
     }
 
-    public function testGetStringReturnsDefaultWhenValueIsNotString(): void
+    /**
+     * @return array<string, array{Closure(): mixed, string}>
+     */
+    public static function wrongTypeProvider(): array
+    {
+        return [
+            'getString() on an int'         => [static fn (): mixed => Config::getString('database.port', 'fallback'), 'Config database.port must be a string, int given.'],
+            'getInt() on a numeric string'  => [static fn (): mixed => Config::getInt('database.port_as_string', 5432), 'Config database.port_as_string must be an int, string given.'],
+            'getInt() on a float'           => [static fn (): mixed => Config::getInt('database.timeout'), 'Config database.timeout must be an int, float given.'],
+            'getFloat() on a string'        => [static fn (): mixed => Config::getFloat('database.host'), 'Config database.host must be a float or an int, string given.'],
+            'getBool() on an int'           => [static fn (): mixed => Config::getBool('database.port', true), 'Config database.port must be a bool, int given.'],
+            'getString() on an array'       => [static fn (): mixed => Config::getString('database'), 'Config database must be a string, array given.'],
+        ];
+    }
+
+    /**
+     * @param Closure(): mixed $read
+     */
+    #[DataProvider('wrongTypeProvider')]
+    public function testTypedAccessorThrowsWhenTheValueHasAnotherType(Closure $read, string $message): void
     {
         Config::load($this->fixturesPath);
 
-        $this->assertSame('fallback', Config::getString('database.port', 'fallback'));
+        $e = $this->assertThrows(InvalidConfigException::class, $read);
+
+        $this->assertSame(InvalidConfigException::class, $e::class);
+        $this->assertSame($message, $e->getMessage());
+    }
+
+    public function testTypedAccessorReturnsTheDefaultWhenTheValueIsNull(): void
+    {
+        Config::load($this->fixturesPath);
+
+        Config::withConfig(['database.unset' => null], function (): void {
+            $this->assertSame('fallback', Config::getString('database.unset', 'fallback'));
+            $this->assertSame(7, Config::getInt('database.unset', 7));
+            $this->assertSame(1.5, Config::getFloat('database.unset', 1.5));
+            $this->assertTrue(Config::getBool('database.unset', true));
+        });
     }
 
     public function testGetIntReturnsIntValue(): void
@@ -182,13 +217,6 @@ final class ConfigTest extends TestCase
 
         $this->assertSame(0, Config::getInt('database.missing'));
         $this->assertSame(5432, Config::getInt('database.missing', 5432));
-    }
-
-    public function testGetIntRejectsNumericString(): void
-    {
-        Config::load($this->fixturesPath);
-
-        $this->assertSame(5432, Config::getInt('database.port_as_string', 5432));
     }
 
     public function testGetFloatReturnsFloatValue(): void
@@ -228,13 +256,6 @@ final class ConfigTest extends TestCase
 
         $this->assertFalse(Config::getBool('database.missing'));
         $this->assertTrue(Config::getBool('database.missing', true));
-    }
-
-    public function testGetBoolReturnsDefaultWhenValueIsNotBool(): void
-    {
-        Config::load($this->fixturesPath);
-
-        $this->assertTrue(Config::getBool('database.port', true));
     }
 
     // ---------------------------------------------------------------
