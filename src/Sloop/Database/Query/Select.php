@@ -1091,7 +1091,7 @@ final class Select extends BuilderWhere
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
-     * @throws LogicException           When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException           When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compile(): CompiledSql
@@ -1122,7 +1122,7 @@ final class Select extends BuilderWhere
      * @param  Order|null                                                                            $thenBy     Sort term to add after the builder's own, or null for none
      * @param  bool                                                                                  $overGroups Whether a statement that groups its rows is read as a table of its own
      * @return CompiledSql
-     * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                                              When an identifier is malformed
      */
     private function compileReading(
@@ -1140,6 +1140,7 @@ final class Select extends BuilderWhere
             ?? throw new LogicException('A SELECT reads from a table; call from() before compiling the statement.');
 
         $this->requireGroupsClosed();
+        $this->requireMembershipSetsUnlimited();
         $this->requireJoinsUsable();
         $this->requireHavingGroupsClosed();
         self::requireOffsetLimited($limit, $offset);
@@ -1185,7 +1186,7 @@ final class Select extends BuilderWhere
      * @param  int|null                 $limit  Most combined rows to read, or null for all of them
      * @param  int|null                 $offset Combined rows to skip first, or null to start at the top
      * @return CompiledSql
-     * @throws LogicException           When the statement holds a lock, the combined rows are sorted by a window call, a statement sorts inside its parentheses without a limit, a statement carries a WITH clause it cannot carry, one added names no table or left a group of conditions open, or an offset has no limit
+     * @throws LogicException           When the statement holds a lock, the combined rows are sorted by a window call, a statement sorts inside its parentheses without a limit, a statement carries a WITH clause it cannot carry, one added names no table or left a group of conditions open, an offset has no limit, or the set of an IN test carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     private function compileUnion(TableSource $from, ?int $limit, ?int $offset): CompiledSql
@@ -1262,7 +1263,7 @@ final class Select extends BuilderWhere
      * @param  WherePart|null                                                                        $alsoWhere Condition on the combined rows, or null for none
      * @param  Order|null                                                                            $thenBy    Sort term to add after the builder's own, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                                        When the statement holds a lock, a statement sorts inside its parentheses without a limit, a statement carries a WITH clause it cannot carry, one added names no table or left a group of conditions open, or an offset has no limit
+     * @throws LogicException                                                                        When the statement holds a lock, a statement sorts inside its parentheses without a limit, a statement carries a WITH clause it cannot carry, one added names no table or left a group of conditions open, an offset has no limit, or the set of an IN test carries a limit
      * @throws InvalidArgumentException                                                              When an identifier is malformed
      */
     private function compileOverUnion(
@@ -1312,7 +1313,7 @@ final class Select extends BuilderWhere
      * @param  WherePart|null                                                                        $alsoWhere Condition on the grouped rows, or null for none
      * @param  Order|null                                                                            $thenBy    Sort term for the grouped rows, or null for none
      * @return CompiledSql
-     * @throws LogicException                                                                        When a statement named in a WITH clause carries one of its own, or an offset has no limit
+     * @throws LogicException                                                                        When a statement named in a WITH clause carries one of its own, an offset has no limit, or the set of an IN test carries a limit
      * @throws InvalidArgumentException                                                              When an identifier is malformed
      */
     private function compileOverGroups(
@@ -1405,6 +1406,31 @@ final class Select extends BuilderWhere
                 );
             }
         }
+    }
+
+    /**
+     * Whether this statement, or any statement combined with it, carries a row limit.
+     *
+     * Once union() is called the limit written before it belongs to the first
+     * statement and a limit written after it to the combined rows; a statement
+     * added may carry one of its own, and may itself be a union.
+     *
+     * @return bool True when any of those carries a limit
+     */
+    #[\Override]
+    protected function carriesRowLimit(): bool
+    {
+        if (parent::carriesRowLimit() || $this->ownLimit !== null) {
+            return true;
+        }
+
+        foreach ($this->unions as ['query' => $query]) {
+            if ($query->carriesRowLimit()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1516,7 +1542,7 @@ final class Select extends BuilderWhere
      * @param  Order|null                                                                            $thenBy     Sort term to add after the builder's own, or null for none
      * @param  bool                                                                                  $overGroups Whether a statement that groups its rows is read as a table of its own
      * @return Result                                                                                Rows the statement read
-     * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                                                                        When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                                              When an identifier is malformed
      * @throws DatabaseConfigException                                                               When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                                           When the connection cannot be obtained
@@ -1545,7 +1571,7 @@ final class Select extends BuilderWhere
      * can land on either route, which that method describes.
      *
      * @return Result                      Rows the statement read
-     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1566,7 +1592,7 @@ final class Select extends BuilderWhere
      * offset(1)->first() reads the second row.
      *
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null>|null The row, or null when nothing matched
-     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                                                      When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                            When an identifier is malformed
      * @throws DatabaseConfigException                                             When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                         When the connection cannot be obtained
@@ -1588,7 +1614,7 @@ final class Select extends BuilderWhere
      *
      * @param  string                                       $column Column to read
      * @return int|float|string|bool|DateTimeImmutable|null Its value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed
      * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1614,7 +1640,7 @@ final class Select extends BuilderWhere
      * The same rows execute() would return, without going through Result.
      *
      * @return list<array<array-key, int|float|string|bool|DateTimeImmutable|null>> Rows in the order they were read
-     * @throws LogicException                                                       When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                                                       When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                             When an identifier is malformed
      * @throws DatabaseConfigException                                              When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                          When the connection cannot be obtained
@@ -1648,7 +1674,7 @@ final class Select extends BuilderWhere
      * then reports the wait, and SKIP LOCKED counts what it could take.
      *
      * @return int                         How many rows matched
-     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, the lock is NOWAIT, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the lock is NOWAIT, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1686,7 +1712,7 @@ final class Select extends BuilderWhere
      * over, so a row that is present reads as absent while it is held.
      *
      * @return bool                        True when at least one row matched
-     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1704,7 +1730,7 @@ final class Select extends BuilderWhere
      * The negation of exists(), including its reading under SKIP LOCKED.
      *
      * @return bool                        True when nothing matched
-     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1731,7 +1757,7 @@ final class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to add up: a column name, or an expression to total
      * @return int|float|string|bool|DateTimeImmutable|null The total, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed
      * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1752,7 +1778,7 @@ final class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to average: a column name, or an expression to average
      * @return int|float|string|bool|DateTimeImmutable|null The average, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed
      * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1773,7 +1799,7 @@ final class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to take the smallest of: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null The smallest value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed
      * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1792,7 +1818,7 @@ final class Select extends BuilderWhere
      *
      * @param  string|Expression                            $column What to take the largest of: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null The largest value, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed
      * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1830,7 +1856,7 @@ final class Select extends BuilderWhere
      * @param  string                                       $method   Name of the method being asked for
      * @param  string|Expression                            $column   What to aggregate: a column name, or an expression
      * @return int|float|string|bool|DateTimeImmutable|null Value the call produced, or null when nothing matched
-     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                               When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                     When an identifier is malformed
      * @throws DatabaseConfigException                      When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                  When the connection cannot be obtained
@@ -1869,7 +1895,7 @@ final class Select extends BuilderWhere
      * @param  string                                                         $valueColumn Column whose values are returned
      * @param  string|null                                                    $keyColumn   Column whose values key them, or null for a list
      * @return array<array-key, int|float|string|bool|DateTimeImmutable|null> Values, keyed when a key column was given
-     * @throws LogicException                                                 When no table has been named, a group of conditions was left open, an offset has no limit, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException                                                 When no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement is combined with others and a column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException                                       When an identifier is malformed or the two columns come back under one name
      * @throws DatabaseConfigException                                        When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException                                    When the connection cannot be obtained
@@ -1938,7 +1964,7 @@ final class Select extends BuilderWhere
      * @param  int                         $perPage Most rows the page carries
      * @param  int                         $page    1-based number of the page to read
      * @return Paginator                   The page, with the size of the set it came from
-     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, an offset has no limit, the rows are held with NOWAIT, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the rows are held with NOWAIT, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the page size or number is below one, or an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -1985,7 +2011,7 @@ final class Select extends BuilderWhere
      * @param  int                         $size     Most rows a batch carries
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, an offset has no limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When a row window is already set, no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained
@@ -2051,7 +2077,7 @@ final class Select extends BuilderWhere
      * @param  callable                    $callback Given (Result $batch, int $index); returning false stops the walk
      * @param  string                      $column   Column to walk by; has to be selected and to hold a value per row
      * @return bool                        False when the callback stopped the walk, true when the rows ran out
-     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, an offset has no limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
+     * @throws LogicException              When a row window or a sort is already set, no table has been named, a group of conditions was left open, an offset has no limit, the set of an IN test carries a limit, the statement groups its rows or is combined with others and the column is named with its table, or a union holds a lock, a sort or a WITH clause it cannot carry, or a statement named in a WITH clause carries one of its own
      * @throws InvalidArgumentException    When the batch size is below one, or an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained

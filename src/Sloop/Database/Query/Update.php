@@ -315,12 +315,13 @@ final class Update extends BuilderWhere
      * Write this statement as SQL together with the values its placeholders need.
      *
      * @return CompiledSql
-     * @throws LogicException           When there is nothing to assign, a group of conditions or of ON conditions was left open, a join carries no ON condition, a join is paired with ORDER BY or LIMIT, or an offset was set
+     * @throws LogicException           When there is nothing to assign, a group of conditions or of ON conditions was left open, a join carries no ON condition, a join is paired with ORDER BY or LIMIT, an offset was set, or the set of an IN test carries a limit
      * @throws InvalidArgumentException When an identifier is malformed
      */
     public function compile(): CompiledSql
     {
         $this->requireGroupsClosed();
+        $this->requireMembershipSetsUnlimited();
         $this->requireJoinsUsable();
 
         if ($this->joins !== [] && ($this->orders !== [] || $this->limit !== null)) {
@@ -365,7 +366,7 @@ final class Update extends BuilderWhere
      * so where this runs is whatever the route answers now.
      *
      * @return int                         Rows changed
-     * @throws LogicException              When there is nothing to assign, a group of conditions or of ON conditions was left open, a join carries no ON condition, a join is paired with ORDER BY or LIMIT, an offset was set, or the connection is in strict mode and nothing narrows the statement
+     * @throws LogicException              When there is nothing to assign, a group of conditions or of ON conditions was left open, a join carries no ON condition, a join is paired with ORDER BY or LIMIT, an offset was set, the set of an IN test carries a limit, or the connection is in strict mode and nothing narrows the statement
      * @throws InvalidArgumentException    When an identifier is malformed
      * @throws DatabaseConfigException     When the pool name is not defined or its config is malformed
      * @throws DatabaseConnectionException When the connection cannot be obtained

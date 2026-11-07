@@ -98,9 +98,10 @@ final class SelectWhereExistsTest extends TransactionalIntegrationTestCase
 
     public function testTheServerTakesAStatementCarryingARowWindow(): void
     {
-        // The other shape a membership test is refused for, with 1235. Asking
-        // whether a row came back is answered the same whether or not the
-        // statement was cut short, so neither server objects.
+        // A LIMIT in the set of a membership test is refused by both servers
+        // (1235), and by the builder before it is sent. Asking whether a row
+        // came back is answered the same whether or not the statement was cut
+        // short, so neither server objects here, and neither does the builder.
         $ids = $this->connection->select('id')
             ->from('users')
             ->whereExists($this->connection->select('id')->from('posts')->orderBy('id', 'DESC')->limit(1))

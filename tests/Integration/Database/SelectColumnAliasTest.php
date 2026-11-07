@@ -146,7 +146,8 @@ final class SelectColumnAliasTest extends TransactionalIntegrationTestCase
     public function testAStatementInTheSelectListMayNarrowItselfToOneRow(): void
     {
         // Unlike the set of an IN condition, where both engines refuse a LIMIT
-        // (1235), one standing as a column takes it.
+        // (1235) and the builder refuses it first, one standing as a column
+        // takes it.
         $firstTitle = $this->connection->select('title')
             ->from('posts')
             ->where('posts.user_id', Expression::of('users.id'))
