@@ -208,6 +208,20 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function variadicRulesParam(VariadicRulesParamRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function intVariadicRulesParam(IntVariadicRulesParamRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function arrayRulesParam(ArrayRulesParamRequest $request): string
     {
         self::$last = $request;
