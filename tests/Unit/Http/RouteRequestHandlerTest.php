@@ -84,22 +84,80 @@ final class RouteRequestHandlerTest extends TestCase
         };
     }
 
-    public function testInvokesLegacyUntypedSignatureWithPositionalArgs(): void
+    public function testMatchesRouteParametersByNameWhenNoParameterIsTyped(): void
     {
-        $this->dispatch(DiController::class, 'legacyUntyped', ['id' => '42']);
+        $this->dispatch(DiController::class, 'untypedOnly', ['other' => 'x', 'id' => '42']);
 
         $this->assertSame('42', DiController::$lastId);
-        $this->assertInstanceOf(Request::class, DiController::$lastRequest);
     }
 
-    public function testPassesLegacyArgumentsByPositionWhenRouteParameterNamesDiffer(): void
+    public function testThrowsWhenNoParameterIsTypedAndTheRouteDoesNotNameOne(): void
     {
-        // Untyped legacy signatures are filled positionally, so a route
-        // parameter whose name does not match the method's parameter must
-        // still arrive; binding by name would fail here.
-        $this->dispatch(DiController::class, 'legacyUntyped', ['userId' => '42']);
+        // A route parameter whose name differs is not passed by position.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: id');
 
+        $this->dispatch(DiController::class, 'untypedOnly', ['userId' => '42']);
+    }
+
+    public function testDoesNotInjectTheRequestIntoAnUntypedParameter(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageIsOrContains('Route parameter not found: request');
+
+        $this->dispatch(DiController::class, 'untypedRequestAndId', ['id' => '42']);
+    }
+
+    public function testPassesTheRouteParameterNamedRequestToAnUntypedRequestParameter(): void
+    {
+        $this->dispatch(DiController::class, 'untypedRequestAndId', ['request' => 'r', 'id' => '42']);
+
+        $this->assertSame('r', DiController::$lastName);
         $this->assertSame('42', DiController::$lastId);
+    }
+
+    public function testPassesNothingToAVariadicParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'untypedVariadic', ['other' => '1']);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testPassesNothingToATypedVariadicParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'intVariadic', []);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testPassesNothingToAUnionVariadicParameterTheRouteDoesNotName(): void
+    {
+        $this->dispatch(DiController::class, 'unionVariadic', []);
+
+        $this->assertSame([], DiController::$lastId);
+    }
+
+    public function testResolvesAClassTypedVariadicParameterFromTheContainer(): void
+    {
+        $this->dispatch(DiController::class, 'serviceVariadic', []);
+
+        $this->assertIsArray(DiController::$lastId);
+        $this->assertCount(1, DiController::$lastId);
+        $this->assertInstanceOf(DiService::class, DiController::$lastId[0]);
+    }
+
+    public function testPassesTheRouteParameterOfItsNameToAVariadicParameter(): void
+    {
+        $this->dispatch(DiController::class, 'intVariadic', ['ids' => '7']);
+
+        $this->assertSame([7], DiController::$lastId);
+    }
+
+    public function testPassesNoArgumentsToAnActionWithoutParameters(): void
+    {
+        $this->dispatch(DiController::class, 'noParameters', ['id' => '42']);
+
+        $this->assertSame(0, DiController::$lastArgumentCount);
     }
 
     public function testInjectsSloopRequestForTypedRequestParameter(): void
@@ -223,6 +281,11 @@ final class RouteRequestHandlerTest extends TestCase
     public function testAnswersNotFoundForANonNumericIntParameter(): void
     {
         $this->assertNotFound('The route parameter "id" is not a valid int.', $this->dispatch(DiController::class, 'requestAndInt', ['id' => 'abc']));
+    }
+
+    public function testAnswersNotFoundForANonNumericIntVariadicParameter(): void
+    {
+        $this->assertNotFound('The route parameter "ids" is not a valid int.', $this->dispatch(DiController::class, 'intVariadic', ['ids' => 'abc']));
     }
 
     public function testAnswersNotFoundForANonNumericFloatParameter(): void

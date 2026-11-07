@@ -74,7 +74,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  ServerRequestInterface   $request PSR-7 request as passed through the route middleware chain
      * @return ResponseInterface
      * @throws RuntimeException         If validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException           If the controller cannot be resolved as an object, the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException           If the controller cannot be resolved as an object, the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while being neither variadic nor declaring a default or a type that allows null, a ValidatedRequest subclass the action takes is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws InvalidArgumentException If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException   If the controller or a typed dependency cannot be resolved by the container
@@ -106,12 +106,11 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     /**
      * Build the argument list for the controller action.
      *
-     * When every parameter is untyped, falls back to the legacy positional
-     * pattern `[Request, ...routeParams]`. Otherwise resolves each parameter
-     * by type: Request types receive the Sloop Request, ValidatedRequest
-     * subclasses receive the validated input, other object types are
-     * resolved from the container, and every other parameter takes the
-     * route parameter of its name (see routeValue()). Parameters are
+     * Resolves each parameter by type: Request types receive the Sloop
+     * Request, ValidatedRequest subclasses receive the validated input, other
+     * object types are resolved from the container, and every other
+     * parameter takes the route parameter of its name (see routeValue()); a
+     * variadic one the route does not name takes nothing. Parameters are
      * resolved in declaration order, so a ValidatedRequest declared before a
      * route parameter answers with its 400 or 422 before that value is read.
      *
@@ -120,7 +119,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  Request                             $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return array<int, mixed>|ResponseInterface Positional arguments for the action, the 404 response when an int, float or bool route parameter cannot be read as that type, or the 400 / 422 response when a ValidatedRequest's input is refused
      * @throws RuntimeException                    If validating a ValidatedRequest fails the way Validator::validate() describes
-     * @throws LogicException                      If the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type (for the action, an untyped one only when another of its parameters has a type) either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
+     * @throws LogicException                      If the action method cannot be reflected, the entry registered as the clock is not one, a parameter of the action or of a ValidatedRequest's rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while being neither variadic nor declaring a default or a type that allows null, a ValidatedRequest subclass is declared wrongly (see ValidatedRequest), or the parsed body is not an array
      * @throws UnexpectedValueException            If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws InvalidArgumentException            If the Validator refuses the rules of a ValidatedRequest subclass, or Rule::date()'s format cannot read back a limit, a default or today's date (see Validator::validate())
      * @throws EntryNotFoundException              If a typed object dependency cannot be resolved by the container
@@ -131,10 +130,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     {
         $parameters = self::reflectParameters($className, $method);
 
-        if (self::isLegacyParameterList($parameters)) {
-            return [$sloopRequest, ...array_values($this->params)];
-        }
-
         $args = [];
         foreach ($parameters as $parameter) {
             $class = self::validatedRequestClass($parameter);
@@ -142,6 +137,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
                 $value = $this->routeValue($parameter);
                 if ($value instanceof ResponseInterface) {
                     return $value;
+                }
+                if ($value === null && self::canTakeNoArgument($parameter)) {
+                    break;
                 }
                 $args[] = $value ?? $this->resolveParameter($parameter, $sloopRequest);
                 continue;
@@ -184,7 +182,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * @param  class-string<ValidatedRequest>     $class        Subclass to fill
      * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return ValidatedRequest|ResponseInterface The filled request, a 404 when an int, float or bool route parameter rules() asks for cannot be read as that type, a 400 when a field was sent twice, or a 422 with the errors
-     * @throws LogicException                     If the entry registered as the clock is not one, the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, a parameter of rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while declaring neither a default nor a type that allows null, or the parsed body is not an array
+     * @throws LogicException                     If the entry registered as the clock is not one, the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, a parameter of rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while being neither variadic nor declaring a default or a type that allows null, or the parsed body is not an array
      * @throws UnexpectedValueException           If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws RuntimeException                   If validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
@@ -212,6 +210,9 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             $value = $this->routeValue($parameter);
             if ($value instanceof ResponseInterface) {
                 return $value;
+            }
+            if ($value === null && self::canTakeNoArgument($parameter)) {
+                break;
             }
             $arguments[] = $value ?? $this->resolveParameter($parameter, $sloopRequest);
         }
@@ -294,6 +295,28 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
         }
 
         return $clock;
+    }
+
+    /**
+     * Check if a parameter that found no route parameter takes no argument.
+     *
+     * A variadic parameter can be called with no values in PHP, so when the
+     * route does not name it, it receives none instead of a default or an
+     * error. It is always the last parameter, so the argument list ends
+     * there. A class-typed variadic parameter still resolves from the
+     * container like any class-typed parameter.
+     *
+     * @param  ReflectionParameter $parameter Parameter that read no route value
+     * @return bool                True if the parameter is variadic and not of a single class type
+     */
+    private static function canTakeNoArgument(ReflectionParameter $parameter): bool
+    {
+        if (!$parameter->isVariadic()) {
+            return false;
+        }
+        $type = $parameter->getType();
+
+        return !$type instanceof ReflectionNamedType || $type->isBuiltin();
     }
 
     /**
@@ -422,25 +445,6 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
     private static function unsupportedType(string $name): LogicException
     {
         return new LogicException('Unsupported parameter type for ' . $name . ': only named types are supported in method DI.');
-    }
-
-    /**
-     * Check if every parameter in the list is untyped (legacy controller signature).
-     *
-     * @param  array<int, ReflectionParameter> $parameters Parameters to inspect
-     * @return bool                            True if no parameter declares a type
-     *
-     * @noinspection PhpArrayAllCanBeUsedInspection
-     */
-    private static function isLegacyParameterList(array $parameters): bool
-    {
-        foreach ($parameters as $parameter) {
-            if ($parameter->getType() !== null) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**
