@@ -113,66 +113,121 @@ final class Config
     /**
      * Get a string configuration value using dot notation.
      *
-     * Returns the default if the key is missing or the value is not a string.
-     * Strict: only actual string values are accepted (no implicit casting).
+     * Returns the default if the key is missing or its value is null.
+     * Strict: only actual string values are accepted (no implicit casting);
+     * a value of another type is a mistake in the config file and throws.
      *
-     * @param  string $key     Dot-notated configuration key
-     * @param  string $default Value to return if the key is missing or not a string
+     * @param  string                 $key     Dot-notated configuration key
+     * @param  string                 $default Value to return if the key is missing or its value is null
      * @return string
+     * @throws InvalidConfigException If the value is neither null nor a string
      */
     public static function getString(string $key, string $default = ''): string
     {
-        return Arr::getString(self::getInstance()->items, $key, $default);
+        $value = self::get($key);
+        if ($value === null) {
+            return $default;
+        }
+        if (!\is_string($value)) {
+            throw self::wrongType($key, 'a string', $value);
+        }
+
+        return $value;
     }
 
     /**
      * Get an int configuration value using dot notation.
      *
-     * Returns the default if the key is missing or the value is not an int.
+     * Returns the default if the key is missing or its value is null.
      * Strict: numeric strings such as '3306' are not accepted, so a port
-     * written as a quoted string in a config file falls back to the default
-     * rather than being silently converted.
+     * written as a quoted string in a config file throws rather than being
+     * silently converted or replaced by the default.
      *
-     * @param  string $key     Dot-notated configuration key
-     * @param  int    $default Value to return if the key is missing or not an int
+     * @param  string                 $key     Dot-notated configuration key
+     * @param  int                    $default Value to return if the key is missing or its value is null
      * @return int
+     * @throws InvalidConfigException If the value is neither null nor an int
      */
     public static function getInt(string $key, int $default = 0): int
     {
-        return Arr::getInt(self::getInstance()->items, $key, $default);
+        $value = self::get($key);
+        if ($value === null) {
+            return $default;
+        }
+        if (!\is_int($value)) {
+            throw self::wrongType($key, 'an int', $value);
+        }
+
+        return $value;
     }
 
     /**
      * Get a float configuration value using dot notation.
      *
-     * Returns the default if the key is missing or the value is neither float
-     * nor int. Int values are promoted to float to match PHP's native type
-     * promotion behavior.
+     * Returns the default if the key is missing or its value is null. Int
+     * values are promoted to float to match PHP's native type promotion
+     * behavior; a value of any other type throws.
      *
-     * @param  string $key     Dot-notated configuration key
-     * @param  float  $default Value to return if the key is missing or not numeric
+     * @param  string                 $key     Dot-notated configuration key
+     * @param  float                  $default Value to return if the key is missing or its value is null
      * @return float
+     * @throws InvalidConfigException If the value is neither null, a float nor an int
      */
     public static function getFloat(string $key, float $default = 0.0): float
     {
-        return Arr::getFloat(self::getInstance()->items, $key, $default);
+        $value = self::get($key);
+        if ($value === null) {
+            return $default;
+        }
+        if (!\is_float($value) && !\is_int($value)) {
+            throw self::wrongType($key, 'a float or an int', $value);
+        }
+
+        return (float) $value;
     }
 
     /**
      * Get a bool configuration value using dot notation.
      *
-     * Returns the default if the key is missing or the value is not a bool.
-     * Strict: truthy values such as 1 or 'true' are not accepted. Values that
-     * come from environment variables should be normalized by Env before
-     * being placed into a config file.
+     * Returns the default if the key is missing or its value is null.
+     * Strict: truthy values such as 1 or 'true' are not accepted and throw.
+     * Values that come from environment variables should be normalized by
+     * Env before being placed into a config file.
      *
-     * @param  string $key     Dot-notated configuration key
-     * @param  bool   $default Value to return if the key is missing or not a bool
+     * @param  string                 $key     Dot-notated configuration key
+     * @param  bool                   $default Value to return if the key is missing or its value is null
      * @return bool
+     * @throws InvalidConfigException If the value is neither null nor a bool
      */
     public static function getBool(string $key, bool $default = false): bool
     {
-        return Arr::getBool(self::getInstance()->items, $key, $default);
+        $value = self::get($key);
+        if ($value === null) {
+            return $default;
+        }
+        if (!\is_bool($value)) {
+            throw self::wrongType($key, 'a bool', $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Build the exception for a value of the wrong type.
+     *
+     * The message names the key and the types, not the value, which may be
+     * a secret such as a password.
+     *
+     * @param  string                 $key      Dot-notated configuration key
+     * @param  string                 $expected Description of the expected type, with its article
+     * @param  mixed                  $value    Value found under the key
+     * @return InvalidConfigException
+     */
+    private static function wrongType(string $key, string $expected, mixed $value): InvalidConfigException
+    {
+        return new InvalidConfigException(
+            'Config ' . $key . ' must be ' . $expected . ', ' . get_debug_type($value) . ' given.'
+        );
     }
 
     /**
