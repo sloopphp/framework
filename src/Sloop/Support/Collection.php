@@ -417,11 +417,12 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Sort items by a named field or a value extractor, preserving keys.
      * As in keyBy(), a string is always a field name. A field that holds null
-     * sorts as null; an item without the field at all is an error.
+     * sorts as null; an item on which the field is not set (see hasMember())
+     * is an error.
      *
      * @param  string|(callable(T): mixed) $by Key name or value extractor
      * @return self<T>
-     * @throws UnexpectedValueException    If $by is a field name and an item does not have that field
+     * @throws UnexpectedValueException    If $by is a field name and the field is not set on an item
      */
     public function sortBy(string|callable $by): self
     {
