@@ -539,8 +539,8 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Tell whether an array or object item has a named member, even when it holds null.
      *
-     * For an object, a member is a property visible from outside it (a public
-     * one, which may hold null) or one the object reports as set through
+     * For an object, a member is a property readable from this class's scope
+     * (which may hold null) or one the object reports as set through
      * __isset(), the same members readMember() can read.
      *
      * @param  mixed  $value Item
