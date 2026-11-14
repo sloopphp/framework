@@ -234,6 +234,7 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Compute the arithmetic mean. Returns null when the collection is empty.
+     * $by is read as in sum(): a string is always a field name.
      *
      * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float|null
@@ -251,7 +252,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Return the smallest numeric value. Returns null when the collection is empty.
      * When $by is a callable or key, the extracted numeric value is returned,
-     * not the original item.
+     * not the original item. $by is read as in sum(): a string is always a field name.
      *
      * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float|null
@@ -277,7 +278,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     /**
      * Return the largest numeric value. Returns null when the collection is empty.
      * When $by is a callable or key, the extracted numeric value is returned,
-     * not the original item.
+     * not the original item. $by is read as in sum(): a string is always a field name.
      *
      * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float|null
@@ -428,7 +429,7 @@ final readonly class Collection implements IteratorAggregate, Countable
             foreach ($this->items as $value) {
                 if (!$this->hasMember($value, $by)) {
                     throw new UnexpectedValueException(
-                        'sortBy key "' . $by . '" is missing from an item of type ' . get_debug_type($value) . '.',
+                        'sortBy key "' . $by . '" is not set on an item of type ' . get_debug_type($value) . '.',
                     );
                 }
             }

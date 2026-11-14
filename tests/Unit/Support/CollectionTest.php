@@ -826,7 +826,7 @@ final class CollectionTest extends TestCase
     public function testSortByThrowsWhenAnArrayItemLacksTheField(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('sortBy key "n" is missing from an item of type array.');
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type array.');
 
         Collection::from([['n' => 1], ['m' => 2]])->sortBy('n');
     }
@@ -834,7 +834,7 @@ final class CollectionTest extends TestCase
     public function testSortByThrowsWhenAnObjectItemLacksTheProperty(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('sortBy key "n" is missing from an item of type stdClass.');
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type stdClass.');
 
         Collection::from([new stdClass()])->sortBy('n');
     }
@@ -851,7 +851,7 @@ final class CollectionTest extends TestCase
         };
 
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('sortBy key "n" is missing from an item of type class@anonymous.');
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type class@anonymous.');
 
         Collection::from([$item])->sortBy('n');
     }
@@ -859,15 +859,39 @@ final class CollectionTest extends TestCase
     public function testSortByThrowsForScalarItemsInsteadOfCallingAPhpFunction(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('sortBy key "strlen" is missing from an item of type string.');
+        $this->expectExceptionMessageIsOrContains('sortBy key "strlen" is not set on an item of type string.');
 
         Collection::from(['ccc', 'a', 'bb'])->sortBy('strlen');
+    }
+
+    public function testSortByThrowsWhenIssetReportsANullMagicPropertyAsUnset(): void
+    {
+        $item = new readonly class (null) {
+            public function __construct(private ?int $stored)
+            {
+            }
+
+            public function __isset(string $name): bool
+            {
+                return $name === 'n' && $this->stored !== null;
+            }
+
+            public function __get(string $name): ?int
+            {
+                return $this->stored;
+            }
+        };
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type class@anonymous.');
+
+        Collection::from([$item])->sortBy('n');
     }
 
     public function testSortByThrowsForASingleItemThatLacksTheField(): void
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessageIsOrContains('sortBy key "n" is missing from an item of type array.');
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type array.');
 
         Collection::from([['m' => 1]])->sortBy('n');
     }
