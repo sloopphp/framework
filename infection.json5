@@ -115,17 +115,6 @@
                 "Sloop\\Encryption\\Encryptor::openCbc::258"
             ]
         },
-        "CastBool": {
-            // Collection::contains casts the predicate's result with `(bool)`
-            // inside an if condition. is_callable() narrows the needle to a
-            // bare callable, so the static analysis sees the result as mixed;
-            // the cast only states that the result is read as a boolean. PHP
-            // reads an if condition the same way, so dropping the cast changes
-            // nothing.
-            "ignore": [
-                "Sloop\\Support\\Collection::contains::200"
-            ]
-        },
         "CastString": {
             // Expression::elt casts an int position with `(string) $position`
             // and then only concatenates it into the SQL. PHP coerces the int
@@ -482,12 +471,7 @@
                 // Arr::last returns end($array) for the callback-less case. The
                 // fall-through calls first() on the reversed array with a null
                 // callback, which resolves to the same element.
-                "Sloop\\Support\\Arr::last::181",
-                // Collection::contains returns false after an exhausted
-                // callable scan. Falling through runs in_array() with the
-                // callable as the needle, which is never present among the
-                // items, so the result is false either way.
-                "Sloop\\Support\\Collection::contains::205"
+                "Sloop\\Support\\Arr::last::181"
             ]
         },
         "CloneRemoval": {

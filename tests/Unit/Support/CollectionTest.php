@@ -6,6 +6,7 @@ namespace Sloop\Tests\Unit\Support;
 
 use ArrayIterator;
 use InvalidArgumentException;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 use Sloop\Support\Collection;
 use stdClass;
@@ -13,8 +14,7 @@ use UnexpectedValueException;
 
 final class CollectionTest extends TestCase
 {
-    // A key extractor passed as a string, so that it can return a non-key
-    // without its declared return type being rejected by static analysis.
+    // An extractor that tests pass as an array callable ([self::class, 'halve']).
     public static function halve(int $n): float
     {
         return $n / 2;
@@ -240,14 +240,28 @@ final class CollectionTest extends TestCase
         $this->assertFalse(Collection::from([1, 2, 3])->contains(99));
     }
 
-    public function testContainsWithCallable(): void
+    public function testContainsComparesStrictly(): void
     {
-        $this->assertTrue(Collection::from([1, 2, 3])->contains(fn (int $n): bool => $n > 2));
+        $this->assertFalse(Collection::from([1, 'x', 3])->contains('1'));
     }
 
-    public function testContainsCallableReturnsFalseWhenNoMatch(): void
+    public function testContainsComparesAPhpFunctionNameAsAValue(): void
     {
-        $this->assertFalse(Collection::from([1, 2, 3])->contains(fn (int $n): bool => $n > 10));
+        $words = Collection::from(['count', 'x']);
+
+        $this->assertTrue($words->contains('count'));
+        $this->assertFalse($words->contains('strlen'));
+    }
+
+    public function testContainsComparesAClosureAsAValueWithoutCallingIt(): void
+    {
+        $present = static fn (): bool => true;
+        $absent  = static fn (): bool => true;
+
+        $items = Collection::from([$present, 1]);
+
+        $this->assertTrue($items->contains($present));
+        $this->assertFalse($items->contains($absent));
     }
 
     public function testContainsOnEmpty(): void
@@ -255,6 +269,42 @@ final class CollectionTest extends TestCase
         $empty = Collection::from([1])->filter(fn (int $n): bool => false);
 
         $this->assertFalse($empty->contains(1));
+    }
+
+    // -------------------------------------------------------
+    // containsMatching
+    // -------------------------------------------------------
+
+    public function testContainsMatchingReturnsTrueWhenAnItemMatches(): void
+    {
+        $this->assertTrue(Collection::from([1, 2, 3])->containsMatching(fn (int $n): bool => $n > 2));
+    }
+
+    public function testContainsMatchingReturnsFalseWhenNoItemMatches(): void
+    {
+        $this->assertFalse(Collection::from([1, 2, 3])->containsMatching(fn (int $n): bool => $n > 10));
+    }
+
+    public function testContainsMatchingPassesKeyToPredicate(): void
+    {
+        $items = Collection::from(['a' => 1, 'b' => 2]);
+
+        $this->assertTrue($items->containsMatching(fn (int $n, int|string $key): bool => $key === 'b'));
+        $this->assertFalse($items->containsMatching(fn (int $n, int|string $key): bool => $key === 'c'));
+    }
+
+    public function testContainsMatchingStopsAtTheFirstMatch(): void
+    {
+        $matched = Collection::from([1, 2, 3])->containsMatching(
+            fn (int $n): bool => $n === 3 ? throw new LogicException('read past the first match') : $n === 2,
+        );
+
+        $this->assertTrue($matched);
+    }
+
+    public function testContainsMatchingOnEmptyReturnsFalse(): void
+    {
+        $this->assertFalse(Collection::from([])->containsMatching(fn (mixed $v): bool => true));
     }
 
     // -------------------------------------------------------
@@ -283,6 +333,41 @@ final class CollectionTest extends TestCase
         $total = Collection::from([1, 2, 3])->sum(fn (int $n): int => $n * 10);
 
         $this->assertSame(60, $total);
+    }
+
+    public function testAggregatesReadAFieldNamedLikeAPhpFunction(): void
+    {
+        $rows = Collection::from([['count' => 3], ['count' => 4], ['count' => 1]]);
+
+        $this->assertSame(8, $rows->sum('count'));
+        $this->assertSame(1, $rows->min('count'));
+        $this->assertSame(4, $rows->max('count'));
+        $this->assertSame(8 / 3, $rows->avg('count'));
+    }
+
+    public function testSumThrowsForAPhpFunctionNameThatIsNotAField(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('Aggregation key "strlen" must resolve to int or float, got null.');
+
+        Collection::from(['abc', 'de'])->sum('strlen');
+    }
+
+    public function testSumAcceptsAnArrayCallable(): void
+    {
+        $this->assertSame(3.0, Collection::from([2, 4])->sum([self::class, 'halve']));
+    }
+
+    public function testSumAcceptsAnObjectWithInvoke(): void
+    {
+        $double = new class () {
+            public function __invoke(int $n): int
+            {
+                return $n * 2;
+            }
+        };
+
+        $this->assertSame(12, Collection::from([2, 4])->sum($double));
     }
 
     public function testSumMixedIntFloat(): void
@@ -484,18 +569,22 @@ final class CollectionTest extends TestCase
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageIsOrContains('keyBy/groupBy callable must return int or string, got float.');
 
-        Collection::from([3])->keyBy(self::class . '::halve');
+        Collection::from([3])->keyBy(fn (int $n): mixed => $n / 2);
     }
 
-    public function testKeyByTreatsPhpFunctionNameAsCallable(): void
+    public function testKeyByReadsAFieldNamedLikeAPhpFunction(): void
     {
-        // Regression: 'count' is a valid PHP function name, so is_callable() returns true
-        // and keyBy evaluates it as a callable instead of a field name. count() on each row
-        // returns 1, collapsing both items into key 1 with last-write-wins. This test pins
-        // the current behavior so future changes are noticed.
-        $result = Collection::from([['count' => 'apple'], ['count' => 'banana']])->keyBy('count');
+        $result = Collection::from([['key' => 'apple'], ['key' => 'banana']])->keyBy('key');
 
-        $this->assertSame([1 => ['count' => 'banana']], $result->asArray());
+        $this->assertSame(['apple' => ['key' => 'apple'], 'banana' => ['key' => 'banana']], $result->asArray());
+    }
+
+    public function testKeyByThrowsForAPhpFunctionNameThatIsNotAField(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('keyBy/groupBy key "strlen" must resolve to int or string, got null.');
+
+        Collection::from(['abc'])->keyBy('strlen');
     }
 
     // -------------------------------------------------------
@@ -525,6 +614,14 @@ final class CollectionTest extends TestCase
 
         $this->assertSame([1, 3, 5], $groups['odd']->asArray());
         $this->assertSame([2, 4], $groups['even']->asArray());
+    }
+
+    public function testGroupByReadsAFieldNamedLikeAPhpFunction(): void
+    {
+        $groups = Collection::from([['count' => 1], ['count' => 1], ['count' => 2]])->groupBy('count')->asArray();
+
+        $this->assertSame([1, 2], array_keys($groups));
+        $this->assertCount(2, $groups[1]);
     }
 
     public function testGroupByThrowsForBoolKey(): void
@@ -680,6 +777,123 @@ final class CollectionTest extends TestCase
             ->sortBy(fn (string $s): int => \strlen($s));
 
         $this->assertSame(['apple', 'banana', 'cherry'], array_values($result->asArray()));
+    }
+
+    public function testSortByReadsAFieldNamedLikeAPhpFunction(): void
+    {
+        $result = Collection::from([['count' => 3], ['count' => 1], ['count' => 2]])->sortBy('count');
+
+        $this->assertSame([1, 2, 3], array_column($result->asArray(), 'count'));
+    }
+
+    public function testSortByPlacesANullFieldFirst(): void
+    {
+        $result = Collection::from([['n' => 3], ['n' => null], ['n' => 1]])->sortBy('n');
+
+        $this->assertSame([1 => ['n' => null], 2 => ['n' => 1], 0 => ['n' => 3]], $result->asArray());
+    }
+
+    public function testSortByReadsANullPublicProperty(): void
+    {
+        $three    = new stdClass();
+        $three->n = 3;
+        $none     = new stdClass();
+        $none->n  = null;
+
+        $this->assertSame([1 => $none, 0 => $three], Collection::from([$three, $none])->sortBy('n')->asArray());
+    }
+
+    public function testSortByReadsAPropertyThatTheObjectReportsAsSet(): void
+    {
+        $one    = new stdClass();
+        $one->n = 1;
+
+        $two = new class () {
+            public function __isset(string $name): bool
+            {
+                return $name === 'n';
+            }
+
+            public function __get(string $name): int
+            {
+                return 2;
+            }
+        };
+
+        $this->assertSame([1 => $one, 0 => $two], Collection::from([$two, $one])->sortBy('n')->asArray());
+    }
+
+    public function testSortByThrowsWhenAnArrayItemLacksTheField(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type array.');
+
+        Collection::from([['n' => 1], ['m' => 2]])->sortBy('n');
+    }
+
+    public function testSortByThrowsWhenAnObjectItemLacksTheProperty(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type stdClass.');
+
+        Collection::from([new stdClass()])->sortBy('n');
+    }
+
+    public function testSortByThrowsWhenTheOnlyMatchingPropertyIsPrivate(): void
+    {
+        $item = new class () {
+            private int $n = 1;
+
+            public function n(): int
+            {
+                return $this->n;
+            }
+        };
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type class@anonymous.');
+
+        Collection::from([$item])->sortBy('n');
+    }
+
+    public function testSortByThrowsForScalarItemsInsteadOfCallingAPhpFunction(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "strlen" is not set on an item of type string.');
+
+        Collection::from(['ccc', 'a', 'bb'])->sortBy('strlen');
+    }
+
+    public function testSortByThrowsWhenIssetReportsANullMagicPropertyAsUnset(): void
+    {
+        $item = new readonly class (null) {
+            public function __construct(private ?int $stored)
+            {
+            }
+
+            public function __isset(string $name): bool
+            {
+                return $name === 'n' && $this->stored !== null;
+            }
+
+            public function __get(string $name): ?int
+            {
+                return $this->stored;
+            }
+        };
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type class@anonymous.');
+
+        Collection::from([$item])->sortBy('n');
+    }
+
+    public function testSortByThrowsForASingleItemThatLacksTheField(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessageIsOrContains('sortBy key "n" is not set on an item of type array.');
+
+        Collection::from([['m' => 1]])->sortBy('n');
     }
 
     public function testReverseFlipsOrder(): void
