@@ -183,34 +183,40 @@ final readonly class Collection implements IteratorAggregate, Countable
     }
 
     /**
-     * Check whether the collection contains a value.
+     * Check whether the collection contains a value, compared strictly.
      *
-     * Accepts either a literal value (strict comparison) or a predicate.
-     * Note: `is_callable()` matches PHP function-name strings such as `'count'`
-     * or `'strlen'`, so when items are strings those values are evaluated as
-     * predicates, not compared. Use `filter()` + `first()` if the ambiguity matters.
+     * A closure or a function name is compared as a value, never called. Use
+     * containsMatching() to test the items with a predicate.
      *
-     * @param  T|(callable(T, array-key): bool) $needle Value or predicate
+     * @param  T    $needle Value to look for
      * @return bool
      */
     public function contains(mixed $needle): bool
     {
-        if (\is_callable($needle)) {
-            foreach ($this->items as $key => $value) {
-                if ((bool) $needle($value, $key)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         return \in_array($needle, $this->items, true);
     }
 
     /**
-     * Sum the items. When $by is null the items must be numeric; a string key
-     * picks a field; a callable returns the numeric value per item.
+     * Check whether any item satisfies the predicate. Stops at the first match.
+     *
+     * @param  callable(T, array-key): bool $fn Predicate
+     * @return bool
+     */
+    public function containsMatching(callable $fn): bool
+    {
+        foreach ($this->items as $key => $value) {
+            if ($fn($value, $key)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Sum the items. When $by is null the items must be numeric; a string is
+     * always a field name, even when it names a PHP function such as 'count';
+     * any other callable returns the numeric value per item.
      *
      * @param  string|callable|null     $by Key, callable, or null for the items themselves
      * @return int|float
@@ -296,10 +302,8 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Re-key the collection by a field name or key extractor. Duplicate keys overwrite.
-     * Note: `is_callable()` matches PHP function-name strings such as `'count'`
-     * or `'strlen'`, so passing those as a field name will invoke them as
-     * callables instead of reading a field. Use a closure when the field name
-     * shadows a PHP function.
+     * A string is always a field name, even when it names a PHP function such
+     * as 'count'; any other callable extracts the key.
      *
      * @param  string|(callable(T, array-key): array-key) $key Key name or key extractor
      * @return self<T>
@@ -309,7 +313,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     {
         $result = [];
         foreach ($this->items as $k => $value) {
-            $extracted = \is_callable($key) ? $key($value, $k) : $this->readMember($value, $key);
+            $extracted = \is_string($key) ? $this->readMember($value, $key) : $key($value, $k);
             $result[$this->coerceArrayKey($extracted, $key)] = $value;
         }
 
@@ -318,8 +322,8 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Group the items by a field name or key extractor.
-     * Each group is itself a Collection. Same is_callable caveat as keyBy applies:
-     * a field name matching a PHP function name will be invoked as a callable.
+     * Each group is itself a Collection. As in keyBy(), a string is always a
+     * field name.
      *
      * @param  string|(callable(T, array-key): array-key) $key Key name or key extractor
      * @return self<self<T>>
@@ -330,7 +334,7 @@ final readonly class Collection implements IteratorAggregate, Countable
     {
         $groups = [];
         foreach ($this->items as $k => $value) {
-            $extracted = \is_callable($key) ? $key($value, $k) : $this->readMember($value, $key);
+            $extracted = \is_string($key) ? $this->readMember($value, $key) : $key($value, $k);
             $groups[$this->coerceArrayKey($extracted, $key)][] = $value;
         }
 
@@ -411,18 +415,29 @@ final readonly class Collection implements IteratorAggregate, Countable
 
     /**
      * Sort items by a named field or a value extractor, preserving keys.
-     * Same is_callable caveat as keyBy applies: a field name matching a PHP
-     * function name will be invoked as a callable.
+     * As in keyBy(), a string is always a field name. A field that holds null
+     * sorts as null; an item without the field at all is an error.
      *
      * @param  string|(callable(T): mixed) $by Key name or value extractor
      * @return self<T>
+     * @throws UnexpectedValueException    If $by is a field name and an item does not have that field
      */
     public function sortBy(string|callable $by): self
     {
+        if (\is_string($by)) {
+            foreach ($this->items as $value) {
+                if (!$this->hasMember($value, $by)) {
+                    throw new UnexpectedValueException(
+                        'sortBy key "' . $by . '" is missing from an item of type ' . get_debug_type($value) . '.',
+                    );
+                }
+            }
+        }
+
         $items = $this->items;
         uasort($items, function (mixed $a, mixed $b) use ($by): int {
-            $va = \is_callable($by) ? $by($a) : $this->readMember($a, $by);
-            $vb = \is_callable($by) ? $by($b) : $this->readMember($b, $by);
+            $va = \is_string($by) ? $this->readMember($a, $by) : $by($a);
+            $vb = \is_string($by) ? $this->readMember($b, $by) : $by($b);
 
             return $va <=> $vb;
         });
@@ -480,25 +495,25 @@ final readonly class Collection implements IteratorAggregate, Countable
             return $value;
         }
 
-        if (\is_callable($by)) {
-            $result = $by($value);
-            if (!\is_int($result) && !\is_float($result)) {
+        if (\is_string($by)) {
+            $extracted = $this->readMember($value, $by);
+            if (!\is_int($extracted) && !\is_float($extracted)) {
                 throw new UnexpectedValueException(
-                    'Aggregation callable must return int or float, got ' . get_debug_type($result) . '.',
+                    'Aggregation key "' . $by . '" must resolve to int or float, got ' . get_debug_type($extracted) . '.',
                 );
             }
 
-            return $result;
+            return $extracted;
         }
 
-        $extracted = $this->readMember($value, $by);
-        if (!\is_int($extracted) && !\is_float($extracted)) {
+        $result = $by($value);
+        if (!\is_int($result) && !\is_float($result)) {
             throw new UnexpectedValueException(
-                'Aggregation key "' . $by . '" must resolve to int or float, got ' . get_debug_type($extracted) . '.',
+                'Aggregation callable must return int or float, got ' . get_debug_type($result) . '.',
             );
         }
 
-        return $extracted;
+        return $result;
     }
 
     /**
@@ -522,6 +537,26 @@ final readonly class Collection implements IteratorAggregate, Countable
     }
 
     /**
+     * Tell whether an array or object item has a named member, even when it holds null.
+     *
+     * For an object, a member is a property visible from outside it (a public
+     * one, which may hold null) or one the object reports as set through
+     * __isset(), the same members readMember() can read.
+     *
+     * @param  mixed  $value Item
+     * @param  string $key   Member name
+     * @return bool
+     */
+    private function hasMember(mixed $value, string $key): bool
+    {
+        if (\is_array($value)) {
+            return \array_key_exists($key, $value);
+        }
+
+        return \is_object($value) && (isset($value->{$key}) || \array_key_exists($key, get_object_vars($value)));
+    }
+
+    /**
      * Narrow an arbitrary value to an array key for keyBy/groupBy.
      *
      * The message names the field when the key was read from one, so a
@@ -538,7 +573,7 @@ final readonly class Collection implements IteratorAggregate, Countable
             return $value;
         }
 
-        $source = \is_callable($key) ? 'keyBy/groupBy callable must return' : 'keyBy/groupBy key "' . $key . '" must resolve to';
+        $source = \is_string($key) ? 'keyBy/groupBy key "' . $key . '" must resolve to' : 'keyBy/groupBy callable must return';
 
         throw new UnexpectedValueException($source . ' int or string, got ' . get_debug_type($value) . '.');
     }
