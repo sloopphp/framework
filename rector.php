@@ -12,7 +12,8 @@ use Rector\Php85\Rector\ArrayDimFetch\ArrayFirstLastRector;
 // sys_get_temp_dir(), shared by every worktree. As with phpstan.neon's tmpDir,
 // that cache holds the stub paths of the worktree that wrote it first, and the
 // others fail once that worktree is removed. Both caches go under build/
-// (git-ignored) instead, in separate directories: sharing one mixes them.
+// (git-ignored) instead. They are kept apart because the PHPStan inside Rector
+// writes its own cache/ under the container directory.
 // Rector refuses a container cache directory that does not exist yet (a fresh
 // checkout has no build/), so it is created here, the one place that the gate,
 // CI and a direct run all go through.
