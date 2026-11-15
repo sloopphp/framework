@@ -4,6 +4,12 @@
 
 parameters:
     level: max
+    # Keep the cache inside this checkout. The default (sys_get_temp_dir()/phpstan)
+    # is shared by every worktree, and its reflection cache holds the absolute
+    # path of the stubs of whichever worktree wrote it first; once that worktree
+    # is removed, the others fail with "... .stub is not a file". Relative to
+    # this file, so it lands in build/ (git-ignored) wherever PHPStan is run from.
+    tmpDir: build/phpstan
     paths:
         - src
         - lang

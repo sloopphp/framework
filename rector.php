@@ -8,7 +8,22 @@ use Rector\Php84\Rector\Foreach_\ForeachToArrayAllRector;
 use Rector\Php84\Rector\Foreach_\ForeachToArrayAnyRector;
 use Rector\Php85\Rector\ArrayDimFetch\ArrayFirstLastRector;
 
+// Rector runs PHPStan inside and, by default, keeps its caches in
+// sys_get_temp_dir(), shared by every worktree. As with phpstan.neon's tmpDir,
+// that cache holds the stub paths of the worktree that wrote it first, and the
+// others fail once that worktree is removed. Both caches go under build/
+// (git-ignored) instead. They are kept apart because the PHPStan inside Rector
+// writes its own cache/ under the container directory.
+// Rector refuses a container cache directory that does not exist yet (a fresh
+// checkout has no build/), so it is created here, the one place that the gate,
+// CI and a direct run all go through.
+$containerCacheDirectory = __DIR__ . '/build/rector/container';
+if (!\is_dir($containerCacheDirectory)) {
+    \mkdir($containerCacheDirectory, 0o777, true);
+}
+
 return RectorConfig::configure()
+    ->withCache(cacheDirectory: __DIR__ . '/build/rector/files', containerCacheDirectory: $containerCacheDirectory)
     ->withPaths([
         __DIR__ . '/src',
         __DIR__ . '/tests',
