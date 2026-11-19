@@ -142,6 +142,10 @@ final class ValidatorTest extends TestCase
             ['a.0' => Rule::list(Rule::int())->maxCount(3), 'a' => Rule::list(Rule::list(Rule::int())->maxCount(3))->maxCount(3)],
             'Field "a.0" and field "a" element would both report their errors under "a.0"',
         ];
+        yield 'elements of two lists at different steps' => [
+            ['a.0.x' => Rule::list(Rule::int())->maxCount(3), 'a' => Rule::list(Rule::shape(['x.0' => Rule::int()]))->maxCount(3)],
+            'Field "a.0.x" element and field "a" element key "x.0" would both report their errors under "a.0.x.0"',
+        ];
         yield 'trailing dot and an empty key' => [
             ['a.' => Rule::int(), 'a' => Rule::shape(['' => Rule::int()])],
             'Field "a." and field "a" key "" would both report their errors under "a."',
