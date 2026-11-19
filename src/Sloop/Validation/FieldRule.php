@@ -950,6 +950,32 @@ abstract class FieldRule
     abstract public function valueType(): string;
 
     /**
+     * Where an error of this field can be reported, the field itself first.
+     *
+     * Each path lists the steps from the field down to a value that can fail:
+     * the key of a shape as declared, or null for an element of a list,
+     * whatever its position. The field itself is the empty path.
+     *
+     * @internal Read by Validator, which refuses two declarations whose errors would share a key.
+     *
+     * @return non-empty-list<list<string|null>>
+     */
+    public function errorPaths(): array
+    {
+        return [[], ...$this->childErrorPaths()];
+    }
+
+    /**
+     * Where an error of a value inside this field can be reported, as errorPaths() describes it.
+     *
+     * @return list<list<string|null>>
+     */
+    protected function childErrorPaths(): array
+    {
+        return [];
+    }
+
+    /**
      * Path to the first list() in this field, the field itself included, that declares no upper bound on its count.
      *
      * The path is relative to the field: '' for the field itself, `*` for

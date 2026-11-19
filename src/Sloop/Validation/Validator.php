@@ -72,7 +72,8 @@ final class Validator
      *
      * @param  array<array-key, FieldRule<covariant mixed>> $rules Field rules keyed by field name (PHP turns a numeric key into an int, which is refused here)
      * @param  ClockInterface|null                          $clock Clock the rules comparing with the current time read; null for the system clock
-     * @throws InvalidArgumentException                     When a field name is a number; a rule names a field that has no rule; a same() / different() side cannot be compared;
+     * @throws InvalidArgumentException                     When a field name is a number; two declarations would report their errors under the same key
+     *                                                      (a dot in a field name or a key of a shape making it the key of another); a rule names a field that has no rule; a same() / different() side cannot be compared;
      *                                                      a comparison names its own field, or an order or containment comparison names a field of another type;
      *                                                      notContainsField() is declared without maxLength() / exactLength() in code points or bytes;
      *                                                      a requiredWith() / requiredIf() names its own field; a requiredIf() / when() value cannot be
@@ -149,6 +150,7 @@ final class Validator
             }
             $named[$field] = $rule;
         }
+        self::assertDistinctErrorKeys($named);
         foreach ($named as $field => $rule) {
             self::assertComparisons($named, $field, $rule);
             self::assertConditions($named, $field, $rule);
@@ -668,6 +670,225 @@ final class Validator
                 . '" have a default, so which one is required would depend on the order they are checked.',
             );
         }
+    }
+
+    /**
+     * Refuse two declarations whose errors would be reported under the same key.
+     *
+     * A key joins the field name and the steps below it with dots, so a dot
+     * in a field name or in a key of a shape can make it the key of another
+     * declaration: `a.b` and the key `b` of a shape `a`, or `items.0` and the
+     * elements of a list `items`. An element stands for every position, as
+     * a decimal without a leading zero, whether or not the count of the list
+     * lets one be reached.
+     *
+     * Only a dot in a field name calls for the comparison here. Two
+     * declarations under one field part below a shape, whose own validator
+     * compared them when the shape was declared; two fields without a dot
+     * differ in their first step and cannot meet.
+     *
+     * The declaration reported first is the one declared first.
+     *
+     * @param  array<string, FieldRule<covariant mixed>> $rules Field rules keyed by field name
+     * @return void
+     * @throws InvalidArgumentException                  When two declarations would report their errors under the same key
+     */
+    private static function assertDistinctErrorKeys(array $rules): void
+    {
+        if (!self::hasDottedName(array_keys($rules))) {
+            return;
+        }
+
+        $declared = self::declarations($rules);
+
+        // Declarations whose keys can meet share a group: their steps agree
+        // once every element and every position is read as "some position".
+        // Each group keeps its members three ways: by the exact key of those
+        // without an element, those with an element, and all of them.
+        $exact    = [];
+        $elements = [];
+        $all      = [];
+        foreach ($declared as $index => $declaration) {
+            $group   = self::keyGroup($declaration['steps']);
+            $key     = \in_array(null, $declaration['steps'], true) ? null : serialize($declaration['steps']);
+            $earlier = self::earlierMeeting($declaration['steps'], $key, $exact[$group] ?? [], $key === null ? ($all[$group] ?? []) : ($elements[$group] ?? []), $declared);
+            if ($earlier !== null) {
+                $first = $declared[$earlier];
+                throw new InvalidArgumentException(
+                    ucfirst(self::declaration($first['field'], $first['path'])) . ' and ' . self::declaration($declaration['field'], $declaration['path'])
+                    . ' would both report their errors under "' . self::sharedKey($first['steps'], $declaration['steps']) . '"; '
+                    . 'rename one, as a dot in a name cannot be told from the dots that join a path.',
+                );
+            }
+            if ($key === null) {
+                $elements[$group][] = $index;
+            } else {
+                $exact[$group][$key] = $index;
+            }
+            $all[$group][] = $index;
+        }
+    }
+
+    /**
+     * Every place an error can be reported under, in the order declared: each field, then the places below it.
+     *
+     * @param  array<string, FieldRule<covariant mixed>>                                               $rules Field rules keyed by field name
+     * @return list<array{field: string, path: list<string|null>, steps: non-empty-list<string|null>}>
+     */
+    private static function declarations(array $rules): array
+    {
+        $declared = [];
+        foreach ($rules as $field => $rule) {
+            foreach ($rule->errorPaths() as $path) {
+                $declared[] = ['field' => $field, 'path' => $path, 'steps' => self::keySteps($field, $path)];
+            }
+        }
+
+        return $declared;
+    }
+
+    /**
+     * Whether any of the names has a dot.
+     *
+     * @param  list<string> $names Field names, or keys of a shape
+     * @return bool
+     */
+    private static function hasDottedName(array $names): bool
+    {
+        foreach ($names as $name) {
+            if (str_contains($name, '.')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The group of a key: its steps with every element and every position read as "some position".
+     *
+     * @param  non-empty-list<string|null> $steps Steps of a key
+     * @return string
+     */
+    private static function keyGroup(array $steps): string
+    {
+        return serialize(array_map(static fn (?string $step): ?string => $step === null || self::isPosition($step) ? null : $step, $steps));
+    }
+
+    /**
+     * The first declaration of a group whose key can be the same as this one, or null when none can.
+     *
+     * A key without an element meets only its exact copy or a key with an
+     * element; one with an element is compared with every member. Members are
+     * in the order declared, so the first that meets is the earliest.
+     *
+     * @param  non-empty-list<string|null>                                                             $steps      Steps of the key
+     * @param  string|null                                                                             $key        The steps serialized when they hold no element, null when they do
+     * @param  array<string, int>                                                                      $exact      Earlier members of the group without an element, by their serialized steps
+     * @param  list<int>                                                                               $candidates Earlier members to compare step by step: all of them for a key with an element, those with an element otherwise
+     * @param  list<array{field: string, path: list<string|null>, steps: non-empty-list<string|null>}> $declared   Every declaration, by index
+     * @return int|null
+     */
+    private static function earlierMeeting(array $steps, ?string $key, array $exact, array $candidates, array $declared): ?int
+    {
+        if ($key !== null && isset($exact[$key])) {
+            return $exact[$key];
+        }
+        foreach ($candidates as $other) {
+            if (self::stepsMeet($steps, $declared[$other]['steps'])) {
+                return $other;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The steps of a key, the dots of names split apart, with null for an element of a list.
+     *
+     * @param  string                      $field Field name
+     * @param  list<string|null>           $path  Steps below the field, as FieldRule::errorPaths() gives them
+     * @return non-empty-list<string|null>
+     */
+    private static function keySteps(string $field, array $path): array
+    {
+        $steps = explode('.', $field);
+        foreach ($path as $step) {
+            if ($step === null) {
+                $steps[] = null;
+            } else {
+                array_push($steps, ...explode('.', $step));
+            }
+        }
+
+        return $steps;
+    }
+
+    /**
+     * Whether the step is how a position of a list is written in a key: a decimal without a sign or a leading zero.
+     *
+     * @param  string $step Step of a key
+     * @return bool
+     */
+    private static function isPosition(string $step): bool
+    {
+        return $step !== '' && $step[0] !== '-' && (string) (int) $step === $step;
+    }
+
+    /**
+     * Whether two keys of the same group can be the same key: each step equal, or one of them an element.
+     *
+     * @param  list<string|null> $steps One key
+     * @param  list<string|null> $other Another key with as many steps
+     * @return bool
+     */
+    private static function stepsMeet(array $steps, array $other): bool
+    {
+        foreach ($steps as $i => $step) {
+            if ($step !== null && $other[$i] !== null && $step !== $other[$i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The key two meeting keys can both be: at an element of one, the step the other has there.
+     *
+     * The first two keys that meet never both have an element at the same
+     * step: the lists holding those elements would have met first, as each
+     * list is declared before its element.
+     *
+     * @param  list<string|null> $steps One key
+     * @param  list<string|null> $other Another key that meets it
+     * @return string
+     */
+    private static function sharedKey(array $steps, array $other): string
+    {
+        $shared = [];
+        foreach ($steps as $i => $step) {
+            $shared[] = $step ?? $other[$i];
+        }
+
+        return implode('.', $shared);
+    }
+
+    /**
+     * How a declaration is named in a message: the field, then each key of a shape and each element of a list below it.
+     *
+     * @param  string            $field Field name
+     * @param  list<string|null> $path  Steps below the field
+     * @return string
+     */
+    private static function declaration(string $field, array $path): string
+    {
+        $described = 'field "' . $field . '"';
+        foreach ($path as $step) {
+            $described .= $step === null ? ' element' : ' key "' . $step . '"';
+        }
+
+        return $described;
     }
 
     /**

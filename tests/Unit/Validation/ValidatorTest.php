@@ -77,6 +77,167 @@ final class ValidatorTest extends TestCase
         );
     }
 
+    // ---------------------------------------------------------------
+    // Error keys of two declarations that coincide
+    // ---------------------------------------------------------------
+
+    /**
+     * @return iterable<string, array{array<string, FieldRule<covariant mixed>>, string}>
+     */
+    public static function collidingDeclarations(): iterable
+    {
+        yield 'dotted field and a key of a shape' => [
+            ['a.b' => Rule::int(), 'a' => Rule::shape(['b' => Rule::int()])],
+            'Field "a.b" and field "a" key "b" would both report their errors under "a.b"',
+        ];
+        yield 'dotted field and a shape inside a shape' => [
+            ['a.b' => Rule::int(), 'a' => Rule::shape(['b' => Rule::shape(['c' => Rule::int()])])],
+            'Field "a.b" and field "a" key "b" would both report their errors under "a.b"',
+        ];
+        yield 'every field name has a dot' => [
+            ['a.b' => Rule::shape(['c' => Rule::int()]), 'a.b.c' => Rule::int()],
+            'Field "a.b" key "c" and field "a.b.c" would both report their errors under "a.b.c"',
+        ];
+        yield 'dotted field and a dotted key' => [
+            ['a.b.c' => Rule::int(), 'a' => Rule::shape(['b.c' => Rule::int()])],
+            'Field "a.b.c" and field "a" key "b.c" would both report their errors under "a.b.c"',
+        ];
+        yield 'field after the shape it collides with' => [
+            ['a' => Rule::shape(['b' => Rule::int()]), 'a.b' => Rule::int()],
+            'Field "a" key "b" and field "a.b" would both report their errors under "a.b"',
+        ];
+        yield 'dotted field and an element of a list' => [
+            ['items.0' => Rule::int(), 'items' => Rule::list(Rule::int())->maxCount(3)],
+            'Field "items.0" and field "items" element would both report their errors under "items.0"',
+        ];
+        yield 'field after the list it collides with' => [
+            ['items' => Rule::list(Rule::int())->maxCount(3), 'items.0' => Rule::int()],
+            'Field "items" element and field "items.0" would both report their errors under "items.0"',
+        ];
+        yield 'list meeting two earlier fields names the first' => [
+            ['a.0' => Rule::int(), 'a.1' => Rule::int(), 'a' => Rule::list(Rule::int())->maxCount(3)],
+            'Field "a.0" and field "a" element would both report their errors under "a.0"',
+        ];
+        yield 'position the count bound never reaches' => [
+            ['items.5' => Rule::int(), 'items' => Rule::list(Rule::int())->maxCount(3)],
+            'Field "items.5" and field "items" element would both report their errors under "items.5"',
+        ];
+        yield 'dotted field and a key of a shape in a list' => [
+            ['items.0.p' => Rule::int(), 'items' => Rule::list(Rule::shape(['p' => Rule::int()]))->maxCount(3)],
+            'Field "items.0.p" and field "items" element key "p" would both report their errors under "items.0.p"',
+        ];
+        yield 'dotted field and a list in a list' => [
+            ['m.0.1' => Rule::int(), 'm' => Rule::list(Rule::list(Rule::int())->maxCount(3))->maxCount(3)],
+            'Field "m.0.1" and field "m" element element would both report their errors under "m.0.1"',
+        ];
+        yield 'dotted field and a list in a shape' => [
+            ['s.l.0' => Rule::int(), 's' => Rule::shape(['l' => Rule::list(Rule::int())->maxCount(3)])],
+            'Field "s.l.0" and field "s" key "l" element would both report their errors under "s.l.0"',
+        ];
+        yield 'element of a dotted list and a dotted key' => [
+            ['a.1' => Rule::list(Rule::int())->maxCount(9), 'a' => Rule::shape(['1.5' => Rule::int()])],
+            'Field "a.1" element and field "a" key "1.5" would both report their errors under "a.1.5"',
+        ];
+        yield 'dotted list and an element of a list' => [
+            ['a.0' => Rule::list(Rule::int())->maxCount(3), 'a' => Rule::list(Rule::list(Rule::int())->maxCount(3))->maxCount(3)],
+            'Field "a.0" and field "a" element would both report their errors under "a.0"',
+        ];
+        yield 'elements of two lists at different steps' => [
+            ['a.0.x' => Rule::list(Rule::int())->maxCount(3), 'a' => Rule::list(Rule::shape(['x.0' => Rule::int()]))->maxCount(3)],
+            'Field "a.0.x" element and field "a" element key "x.0" would both report their errors under "a.0.x.0"',
+        ];
+        yield 'trailing dot and an empty key' => [
+            ['a.' => Rule::int(), 'a' => Rule::shape(['' => Rule::int()])],
+            'Field "a." and field "a" key "" would both report their errors under "a."',
+        ];
+    }
+
+    /**
+     * @param array<string, FieldRule<covariant mixed>> $rules
+     */
+    #[DataProvider('collidingDeclarations')]
+    public function testDeclarationsReportingErrorsUnderTheSameKeyAreRefused(array $rules, string $message): void
+    {
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => new Validator($rules));
+
+        $this->assertSame(
+            $message . '; rename one, as a dot in a name cannot be told from the dots that join a path.',
+            $e->getMessage(),
+        );
+    }
+
+    public function testKeysOfAShapeReportingErrorsUnderTheSameKeyAreRefusedWhenTheShapeIsDeclared(): void
+    {
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::shape(['b.c' => Rule::int(), 'b' => Rule::shape(['c' => Rule::int()])]),
+        );
+
+        $this->assertStringStartsWith('Field "b.c" and field "b" key "c" would both report', $e->getMessage());
+    }
+
+    public function testWithRefusesAFieldReportingErrorsUnderTheKeyOfAnother(): void
+    {
+        $base = new Validator(['a' => Rule::shape(['b' => Rule::int()])]);
+
+        $e = $this->assertThrows(InvalidArgumentException::class, static fn () => $base->with('a.b', Rule::int()));
+
+        $this->assertStringStartsWith('Field "a" key "b" and field "a.b" would both report', $e->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{array<string, FieldRule<covariant mixed>>, array<string, mixed>, list<string>}>
+     */
+    public static function dottedNamesWithKeysOfTheirOwn(): iterable
+    {
+        yield 'dotted field beside a scalar' => [
+            ['a.b' => Rule::int(), 'a' => Rule::int()],
+            ['a.b' => 'x', 'a' => 'y'],
+            ['a.b', 'a'],
+        ];
+        yield 'name after a list that is not a position' => [
+            ['items.x' => Rule::int(), 'items' => Rule::list(Rule::int())->maxCount(3)],
+            ['items.x' => 'x', 'items' => ['y']],
+            ['items.x', 'items.0'],
+        ];
+        yield 'leading zero' => [
+            ['items.00' => Rule::int(), 'items' => Rule::list(Rule::int())->maxCount(3)],
+            ['items.00' => 'x', 'items' => ['y']],
+            ['items.00', 'items.0'],
+        ];
+        yield 'negative number' => [
+            ['items.-1' => Rule::int(), 'items' => Rule::list(Rule::int())->maxCount(3)],
+            ['items.-1' => 'x', 'items' => ['y']],
+            ['items.-1', 'items.0'],
+        ];
+        yield 'elements of a list beside a field at another position' => [
+            ['x.1.5' => Rule::int(), 'x.0' => Rule::list(Rule::int())->maxCount(3)],
+            ['x.1.5' => 'x', 'x.0' => ['y']],
+            ['x.1.5', 'x.0.0'],
+        ];
+        yield 'dotted key beside another key' => [
+            ['a' => Rule::shape(['b.c' => Rule::int(), 'b' => Rule::int()])],
+            ['a' => ['b.c' => 'x', 'b' => 'y']],
+            ['a.b.c', 'a.b'],
+        ];
+    }
+
+    /**
+     * @param array<string, FieldRule<covariant mixed>> $rules
+     * @param array<string, mixed>                      $data
+     * @param list<string>                              $keys
+     */
+    #[DataProvider('dottedNamesWithKeysOfTheirOwn')]
+    public function testDottedNamesWhoseErrorsHaveKeysOfTheirOwnAreAccepted(array $rules, array $data, array $keys): void
+    {
+        $errors = new Validator($rules)->validate($data)->errors();
+
+        $this->assertSame($keys, array_keys($errors));
+        foreach ($errors as $list) {
+            $this->assertCount(1, $list);
+        }
+    }
+
     public function testValidInputYieldsValuesAndNoErrors(): void
     {
         $result = new Validator([
