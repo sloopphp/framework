@@ -308,6 +308,19 @@
                 "Sloop\\Validation\\Validator::sharedKey"
             ]
         },
+        "Ternary": {
+            // Validator::assertDistinctErrorKeys::713 decides which of its two
+            // stores a declaration goes to: the lookup by exact key, or the list
+            // compared step by step. Swapped, every declaration is still compared
+            // with every earlier one that can meet it (earlierMeeting falls back
+            // to stepsMeet), and two keys that both hold an element at the same
+            // step never meet first (see sharedKey), so the same pair is found;
+            // only the work done differs. Pinned to the line: the choice of
+            // candidates on the next line is killed by the same mutator.
+            "ignore": [
+                "Sloop\\Validation\\Validator::assertDistinctErrorKeys::713"
+            ]
+        },
         "Break_": {
             // RouteRequestHandler::buildActionArguments and ::validatedRequest
             // stop the argument loop at a variadic parameter the route does
@@ -531,13 +544,7 @@
                 // sort before it gets here, so the list is empty there too.
                 // Pinned to the line: the condition list beside it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileOverUnion::1290",
-                // Validator::assertDistinctErrorKeys starts a group with an empty
-                // 'exact'; without it, earlierMeeting reads the missing key
-                // through isset() and withMember creates it, the same as an empty
-                // one. Pinned to the line: the declaration built above it is
-                // killed by the same mutator.
-                "Sloop\\Validation\\Validator::assertDistinctErrorKeys::714"
+                "Sloop\\Database\\Query\\Select::compileOverUnion::1290"
             ]
         }
     },

@@ -699,20 +699,19 @@ final class Validator
             return;
         }
 
-        $declared = [];
-        foreach ($rules as $field => $rule) {
-            foreach ($rule->errorPaths() as $path) {
-                $declared[] = ['field' => $field, 'path' => $path, 'steps' => self::keySteps($field, $path)];
-            }
-        }
+        $declared = self::declarations($rules);
 
         // Declarations whose keys can meet share a group: their steps agree
         // once every element and every position is read as "some position".
-        $groups = [];
+        // Each group keeps its members three ways: by the exact key of those
+        // without an element, those with an element, and all of them.
+        $exact    = [];
+        $elements = [];
+        $all      = [];
         foreach ($declared as $index => $declaration) {
             $group   = self::keyGroup($declaration['steps']);
-            $members = $groups[$group] ?? ['exact' => [], 'elements' => [], 'all' => []];
-            $earlier = self::earlierMeeting($declaration['steps'], $members, $declared);
+            $key     = \in_array(null, $declaration['steps'], true) ? null : serialize($declaration['steps']);
+            $earlier = self::earlierMeeting($declaration['steps'], $key, $exact[$group] ?? [], $key === null ? ($all[$group] ?? []) : ($elements[$group] ?? []), $declared);
             if ($earlier !== null) {
                 $first = $declared[$earlier];
                 throw new InvalidArgumentException(
@@ -721,8 +720,31 @@ final class Validator
                     . 'rename one, as a dot in a name cannot be told from the dots that join a path.',
                 );
             }
-            $groups[$group] = self::withMember($members, $index, $declaration['steps']);
+            if ($key === null) {
+                $elements[$group][] = $index;
+            } else {
+                $exact[$group][$key] = $index;
+            }
+            $all[$group][] = $index;
         }
+    }
+
+    /**
+     * Every place an error can be reported under, in the order declared: each field, then the places below it.
+     *
+     * @param  array<string, FieldRule<covariant mixed>>                                               $rules Field rules keyed by field name
+     * @return list<array{field: string, path: list<string|null>, steps: non-empty-list<string|null>}>
+     */
+    private static function declarations(array $rules): array
+    {
+        $declared = [];
+        foreach ($rules as $field => $rule) {
+            foreach ($rule->errorPaths() as $path) {
+                $declared[] = ['field' => $field, 'path' => $path, 'steps' => self::keySteps($field, $path)];
+            }
+        }
+
+        return $declared;
     }
 
     /**
@@ -760,44 +782,25 @@ final class Validator
      * element; one with an element is compared with every member. Members are
      * in the order declared, so the first that meets is the earliest.
      *
-     * @param  non-empty-list<string|null>                                                             $steps    Steps of the key
-     * @param  array{exact: array<string, int>, elements: list<int>, all: list<int>}                   $members  Earlier declarations of the group: by their exact key, those with an element, and all of them
-     * @param  list<array{field: string, path: list<string|null>, steps: non-empty-list<string|null>}> $declared Every declaration, by index
+     * @param  non-empty-list<string|null>                                                             $steps      Steps of the key
+     * @param  string|null                                                                             $key        The steps serialized when they hold no element, null when they do
+     * @param  array<string, int>                                                                      $exact      Earlier members of the group without an element, by their serialized steps
+     * @param  list<int>                                                                               $candidates Earlier members to compare step by step: all of them for a key with an element, those with an element otherwise
+     * @param  list<array{field: string, path: list<string|null>, steps: non-empty-list<string|null>}> $declared   Every declaration, by index
      * @return int|null
      */
-    private static function earlierMeeting(array $steps, array $members, array $declared): ?int
+    private static function earlierMeeting(array $steps, ?string $key, array $exact, array $candidates, array $declared): ?int
     {
-        $exact = \in_array(null, $steps, true) ? null : serialize($steps);
-        if ($exact !== null && isset($members['exact'][$exact])) {
-            return $members['exact'][$exact];
+        if ($key !== null && isset($exact[$key])) {
+            return $exact[$key];
         }
-        foreach ($exact === null ? $members['all'] : $members['elements'] as $other) {
+        foreach ($candidates as $other) {
             if (self::stepsMeet($steps, $declared[$other]['steps'])) {
                 return $other;
             }
         }
 
         return null;
-    }
-
-    /**
-     * The members of a group with one more declaration.
-     *
-     * @param  array{exact: array<string, int>, elements: list<int>, all: list<int>} $members Earlier declarations of the group
-     * @param  int                                                                   $index   Index of the declaration
-     * @param  non-empty-list<string|null>                                           $steps   Steps of its key
-     * @return array{exact: array<string, int>, elements: list<int>, all: list<int>}
-     */
-    private static function withMember(array $members, int $index, array $steps): array
-    {
-        if (\in_array(null, $steps, true)) {
-            $members['elements'][] = $index;
-        } else {
-            $members['exact'][serialize($steps)] = $index;
-        }
-        $members['all'][] = $index;
-
-        return $members;
     }
 
     /**
