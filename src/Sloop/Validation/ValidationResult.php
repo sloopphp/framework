@@ -89,9 +89,9 @@ final readonly class ValidationResult
      *
      * A failure inside an array is keyed by the path down to the value that
      * failed, with the steps joined by dots: the second element of `items` is
-     * `items.1`, and its `price` key is `items.1.price`. A field name or a key
-     * holding a dot of its own is therefore ambiguous here: a field `a.b` and
-     * the key `b` of a field `a` are both reported as `a.b`.
+     * `items.1`, and its `price` key is `items.1.price`. Each key belongs to
+     * one declaration: the Validator refuses a field `a.b` beside the key `b`
+     * of a shape `a`, and any other pair a dot would report under one key.
      *
      * @return array<string, non-empty-list<ValidationError>>
      */
