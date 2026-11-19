@@ -122,7 +122,11 @@
             // same string. The cast states the intent that the branch and the
             // Expression branch both yield SQL text, so it stays in the source.
             "ignore": [
-                "Sloop\\Database\\Query\\Expression::elt::108"
+                "Sloop\\Database\\Query\\Expression::elt::108",
+                // ShapeRule::childErrorPaths casts the key of $fields, which the
+                // constructor has already refused unless it is a string; the cast
+                // only tells PHPStan what the array-key type cannot.
+                "Sloop\\Validation\\ShapeRule::childErrorPaths"
             ]
         },
         "IncrementInteger": {
@@ -258,16 +262,17 @@
             // method, for which private and protected behave the same. Made
             // private by hand, it fails DecimalRuleTest, so the full suite
             // does detect it.
-            // FieldRule::childUsingWithoutMessage, FieldRule::childFlags and
-            // FieldRule::childUnboundedList are the same: ListRule and
-            // ShapeRule override them, and made private by hand the tests
-            // stop with a fatal error (#[\Override] finds no parent;
-            // UsingTest / ErrorFlagTest / ValueTypeTest).
+            // FieldRule::childUsingWithoutMessage, FieldRule::childFlags,
+            // FieldRule::childUnboundedList and FieldRule::childErrorPaths are
+            // the same: ListRule and ShapeRule override them, and made private
+            // by hand the tests stop with a fatal error (#[\Override] finds no
+            // parent; UsingTest / ErrorFlagTest / ValueTypeTest / ValidatorTest).
             "ignore": [
                 "Sloop\\Validation\\FieldRule::typeParams",
                 "Sloop\\Validation\\FieldRule::childUsingWithoutMessage",
                 "Sloop\\Validation\\FieldRule::childFlags",
-                "Sloop\\Validation\\FieldRule::childUnboundedList"
+                "Sloop\\Validation\\FieldRule::childUnboundedList",
+                "Sloop\\Validation\\FieldRule::childErrorPaths"
             ]
         },
         "AssignCoalesce": {
@@ -295,7 +300,12 @@
             // same response.
             "ignore": [
                 "Sloop\\Support\\Str::camel",
-                "Sloop\\Foundation\\Application::run::314"
+                "Sloop\\Foundation\\Application::run::314",
+                // Validator::sharedKey takes, step by step, whichever of two
+                // meeting keys is not an element. Where both are steps, meeting
+                // means they are the same step, so reading the other key first
+                // gives the same string.
+                "Sloop\\Validation\\Validator::sharedKey"
             ]
         },
         "Break_": {
@@ -313,7 +323,12 @@
             // Application::createServerRequestFromGlobals::1341: see IncrementInteger
             // (php://input is always '' in a PHPUnit process).
             "ignore": [
-                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1341"
+                "Sloop\\Foundation\\Application::createServerRequestFromGlobals::1341",
+                // Validator::hasDottedName only lets assertDistinctErrorKeys skip
+                // the comparison when no field name has a dot; answering true
+                // runs the comparison, which finds nothing for such names (see
+                // ReturnRemoval). The method holds no other false literal.
+                "Sloop\\Validation\\Validator::hasDottedName"
             ]
         },
         "RoundingFamily": {
@@ -369,6 +384,13 @@
             // the visible output is unchanged; only an unobservable performance
             // difference remains. Equivalent in black-box test terms.
             "ignore": [
+                // Validator::assertDistinctErrorKeys returns early when no field
+                // name has a dot. Two declarations under one field were compared
+                // by the shape between them when it was declared, and two fields
+                // without a dot differ in their first step, so the comparison
+                // would find nothing; only the work done differs. The method
+                // holds no other return.
+                "Sloop\\Validation\\Validator::assertDistinctErrorKeys",
                 // Encryptor::openCbc returns false for a body that is not whole
                 // AES blocks, and Base64Url::decode for text outside the base64url
                 // alphabet. Without either return the later checks reject the
@@ -509,7 +531,13 @@
                 // sort before it gets here, so the list is empty there too.
                 // Pinned to the line: the condition list beside it is killed
                 // by the same mutator.
-                "Sloop\\Database\\Query\\Select::compileOverUnion::1290"
+                "Sloop\\Database\\Query\\Select::compileOverUnion::1290",
+                // Validator::assertDistinctErrorKeys starts a group with an empty
+                // 'exact'; without it, earlierMeeting reads the missing key
+                // through isset() and withMember creates it, the same as an empty
+                // one. Pinned to the line: the declaration built above it is
+                // killed by the same mutator.
+                "Sloop\\Validation\\Validator::assertDistinctErrorKeys::714"
             ]
         }
     },

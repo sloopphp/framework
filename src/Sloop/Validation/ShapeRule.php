@@ -313,6 +313,24 @@ final class ShapeRule extends ArrayRule
     }
 
     /**
+     * Where the errors of the keys are reported: under each declared key, then the paths inside it.
+     *
+     * @return list<list<string|null>>
+     */
+    #[\Override]
+    protected function childErrorPaths(): array
+    {
+        $paths = [];
+        foreach ($this->fields as $key => $rule) {
+            foreach ($rule->errorPaths() as $path) {
+                $paths[] = [(string) $key, ...$path];
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
      * The first unbounded list inside the keys, prefixed with its key.
      *
      * @return string|null

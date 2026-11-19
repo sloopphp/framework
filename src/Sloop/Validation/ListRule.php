@@ -286,6 +286,17 @@ final class ListRule extends ArrayRule
     }
 
     /**
+     * Where the errors of the elements are reported: under any position, then the paths inside the element.
+     *
+     * @return list<list<string|null>>
+     */
+    #[\Override]
+    protected function childErrorPaths(): array
+    {
+        return array_map(static fn (array $path): array => [null, ...$path], $this->element->errorPaths());
+    }
+
+    /**
      * This list itself when it declares no upper bound on its count, otherwise the first unbounded list inside its element.
      *
      * @return string|null
