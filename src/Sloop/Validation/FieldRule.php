@@ -353,16 +353,17 @@ abstract class FieldRule
      * empty without a default or failed a rule of its own, counted the same
      * way as in requiredWith().
      *
-     * @param  string                   $field   Name of the other field
-     * @param  mixed                    $value   Value, or list of values, that makes this field required
-     * @param  string|null              $message Message for this rule only
-     * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
+     * @param  string                                                                  $field   Name of the other field
+     * @param  string|int|float|bool|BackedEnum|list<string|int|float|bool|BackedEnum> $value   Value, or list of values (keys are ignored), that makes this field required
+     * @param  string|null                                                             $message Message for this rule only
+     * @param  string|null                                                             $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
-     * @throws LogicException           When the field is required
-     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the message template or the flag name is malformed
+     * @throws LogicException                                                          When the field is required
+     * @throws InvalidArgumentException                                                When $value is an empty list, or the message template or the flag name is malformed
+     * @throws TypeError                                                               When $value, or a value in the list, is not a string, int, float, bool or backed enum case
      */
     #[\NoDiscard('FieldRule::requiredIf() returns a new rule. The original is not modified.')]
-    public function requiredIf(string $field, mixed $value, ?string $message = null, ?string $flag = null): static
+    public function requiredIf(string $field, string|int|float|bool|BackedEnum|array $value, ?string $message = null, ?string $flag = null): static
     {
         return $this->withRequiredCondition(
             new RequiredCondition('requiredIf', [$field], self::conditionValues($value, 'requiredIf'), $message, self::checkedFlag($flag)),
@@ -460,14 +461,15 @@ abstract class FieldRule
      * The other field is compared as in requiredIf(). A failure added by
      * another field's when() does not stop the comparison.
      *
-     * @param  string                   $field Name of the other field
-     * @param  mixed                    $value Value, or list of values, that makes the rules apply
-     * @param  Closure(static): mixed   $then  Adds the rules to the rule it receives and returns it
+     * @param  string                                                                  $field Name of the other field
+     * @param  string|int|float|bool|BackedEnum|list<string|int|float|bool|BackedEnum> $value Value, or list of values (keys are ignored), that makes the rules apply
+     * @param  Closure(static): mixed                                                  $then  Adds the rules to the rule it receives and returns it
      * @return static
-     * @throws InvalidArgumentException When $value is null, an empty list or holds something no field yields, or the closure adds no rules or does anything other than add rules
+     * @throws InvalidArgumentException                                                When $value is an empty list, or the closure adds no rules or does anything other than add rules
+     * @throws TypeError                                                               When $value, or a value in the list, is not a string, int, float, bool or backed enum case
      */
     #[\NoDiscard('FieldRule::when() returns a new rule. The original is not modified.')]
-    public function when(string $field, mixed $value, Closure $then): static
+    public function when(string $field, string|int|float|bool|BackedEnum|array $value, Closure $then): static
     {
         $values = self::conditionValues($value, 'when');
         $probe  = $this->withoutRules()->withoutRuleMarks();
@@ -1256,12 +1258,17 @@ abstract class FieldRule
     /**
      * Read the value, or list of values, given to requiredIf() / when().
      *
-     * @param  mixed                                            $value  Value as the caller gave it
-     * @param  string                                           $method Method name, for the message
+     * The list's keys are ignored; a value in it of another type is named by
+     * its position, not by its key, so nothing from the array itself reaches
+     * the message.
+     *
+     * @param  string|int|float|bool|BackedEnum|array<array-key, mixed> $value  Value as the caller gave it; a list is checked here, as its type does not reach the elements
+     * @param  string                                                   $method Method name, for the message
      * @return non-empty-list<string|int|float|bool|BackedEnum>
-     * @throws InvalidArgumentException                         When $value is null, an empty list, or holds something no field yields
+     * @throws InvalidArgumentException                                 When $value is an empty list
+     * @throws TypeError                                                When a value in the list is not a string, int, float, bool or backed enum case
      */
-    private static function conditionValues(mixed $value, string $method): array
+    private static function conditionValues(string|int|float|bool|BackedEnum|array $value, string $method): array
     {
         $values = \is_array($value) ? $value : [$value];
         if ($values === []) {
@@ -1270,8 +1277,8 @@ abstract class FieldRule
         $checked = [];
         foreach ($values as $one) {
             if (!\is_string($one) && !\is_int($one) && !\is_float($one) && !\is_bool($one) && !$one instanceof BackedEnum) {
-                throw new InvalidArgumentException(
-                    $method . '() compares with a string, int, float, bool or backed enum case, got ' . get_debug_type($one) . '.',
+                throw new TypeError(
+                    $method . '() compares with a string, int, float, bool or backed enum case, got ' . get_debug_type($one) . ' at position ' . \count($checked) . '.',
                 );
             }
             $checked[] = $one;

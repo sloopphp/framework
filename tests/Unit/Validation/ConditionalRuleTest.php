@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sloop\Tests\Unit\Validation;
 
+use BackedEnum;
 use Closure;
 use InvalidArgumentException;
 use LogicException;
@@ -14,6 +15,7 @@ use RuntimeException;
 use Sloop\Tests\Support\ThrowsAssertions;
 use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Tests\Unit\Validation\Stub\Priority;
+use Sloop\Tests\Unit\Validation\Stub\Suit;
 use Sloop\Validation\Chars;
 use Sloop\Validation\DecimalRule;
 use Sloop\Validation\FieldRule;
@@ -364,31 +366,95 @@ final class ConditionalRuleTest extends TestCase
         $this->assertSame([['requiredWith', ['other' => 'a']]], array_map(static fn (ValidationError $e): array => [$e->rule, $e->params], $errors));
     }
 
-    /**
-     * @return iterable<string, array{Closure(): mixed, string}>
-     */
-    public static function badConditionValues(): iterable
+    public function testAConditionRefusesAnEmptyList(): void
     {
-        $type = static fn (string $method, string $got): string => $method . '() compares with a string, int, float, bool or backed enum case, got ' . $got . '.';
+        $required = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->requiredIf('a', []));
+        $when     = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::string()->when('a', [], static fn (StringRule $r): StringRule => $r->url()),
+        );
 
-        yield 'requiredIf, null' => [static fn () => Rule::string()->requiredIf('a', null), $type('requiredIf', 'null')];
-        yield 'requiredIf, empty list' => [static fn () => Rule::string()->requiredIf('a', []), 'requiredIf() needs at least one value.'];
-        yield 'requiredIf, nested list' => [static fn () => Rule::string()->requiredIf('a', [['x']]), $type('requiredIf', 'array')];
-        yield 'requiredIf, object' => [static fn () => Rule::string()->requiredIf('a', new \stdClass()), $type('requiredIf', 'stdClass')];
-        yield 'requiredIf, null in the list' => [static fn () => Rule::string()->requiredIf('a', ['x', null]), $type('requiredIf', 'null')];
-        yield 'when, empty list' => [static fn () => Rule::string()->when('a', [], static fn (StringRule $r): StringRule => $r->url()), 'when() needs at least one value.'];
-        yield 'when, null' => [static fn () => Rule::string()->when('a', null, static fn (StringRule $r): StringRule => $r->url()), $type('when', 'null')];
+        $this->assertSame('requiredIf() needs at least one value.', $required->getMessage());
+        $this->assertSame('when() needs at least one value.', $when->getMessage());
     }
 
     /**
-     * @param Closure(): mixed $declare
+     * @return iterable<string, array{mixed, string}>
      */
-    #[DataProvider('badConditionValues')]
-    public function testAConditionRefusesAValueNoFieldCanHold(Closure $declare, string $message): void
+    public static function valuesOfAnotherType(): iterable
     {
-        $thrown = $this->assertThrows(InvalidArgumentException::class, $declare);
+        yield 'null' => [null, 'null'];
+        yield 'object' => [new \stdClass(), 'stdClass'];
+        yield 'closure' => [static fn (): int => 1, 'Closure'];
+        yield 'enum without values' => [Suit::Hearts, Suit::class];
+    }
 
-        $this->assertSame($message, $thrown->getMessage());
+    #[DataProvider('valuesOfAnotherType')]
+    public function testRequiredIfRefusesAValueOfAnotherType(mixed $value, string $type): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->requiredIf('a', $value),
+        );
+
+        $this->assertStringStartsWith('Sloop\Validation\FieldRule::requiredIf(): Argument #2 ($value) must be of type', $thrown->getMessage());
+        $this->assertStringContainsString(', ' . $type . ' given', $thrown->getMessage());
+    }
+
+    #[DataProvider('valuesOfAnotherType')]
+    public function testWhenRefusesAValueOfAnotherType(mixed $value, string $type): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->when('a', $value, static fn (StringRule $r): StringRule => $r->url()),
+        );
+
+        $this->assertStringStartsWith('Sloop\Validation\FieldRule::when(): Argument #2 ($value) must be of type', $thrown->getMessage());
+        $this->assertStringContainsString(', ' . $type . ' given', $thrown->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{array<array-key, mixed>, string}>
+     */
+    public static function listsHoldingAnotherType(): iterable
+    {
+        yield 'null' => [['x', null], 'null at position 1'];
+        yield 'nested list' => [[['x']], 'array at position 0'];
+        yield 'object' => [['x', 'y', new \stdClass()], 'stdClass at position 2'];
+        yield 'enum without values' => [[Suit::Hearts], Suit::class . ' at position 0'];
+        yield 'after a key' => [['k' => 'x', 'm' => null], 'null at position 1'];
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    #[DataProvider('listsHoldingAnotherType')]
+    public function testRequiredIfRefusesAListHoldingAnotherType(array $values, string $got): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->requiredIf('a', $values),
+        );
+
+        $this->assertSame('requiredIf() compares with a string, int, float, bool or backed enum case, got ' . $got . '.', $thrown->getMessage());
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    #[DataProvider('listsHoldingAnotherType')]
+    public function testWhenRefusesAListHoldingAnotherType(array $values, string $got): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->when('a', $values, static fn (StringRule $r): StringRule => $r->url()),
+        );
+
+        $this->assertSame('when() compares with a string, int, float, bool or backed enum case, got ' . $got . '.', $thrown->getMessage());
     }
 
     public function testRequiredIfCannotFollowRequired(): void
@@ -435,7 +501,7 @@ final class ConditionalRuleTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{FieldRule<covariant mixed>, mixed}>
+     * @return iterable<string, array{FieldRule<covariant mixed>, string|int|float|bool|BackedEnum|list<string|int|float|bool|BackedEnum>}>
      */
     public static function mismatchedTypes(): iterable
     {
@@ -452,10 +518,11 @@ final class ConditionalRuleTest extends TestCase
     }
 
     /**
-     * @param FieldRule<covariant mixed> $other
+     * @param FieldRule<covariant mixed>                                              $other
+     * @param string|int|float|bool|BackedEnum|list<string|int|float|bool|BackedEnum> $value
      */
     #[DataProvider('mismatchedTypes')]
-    public function testARequiredIfValueThatTheOtherFieldCannotHoldIsRefused(FieldRule $other, mixed $value): void
+    public function testARequiredIfValueThatTheOtherFieldCannotHoldIsRefused(FieldRule $other, string|int|float|bool|BackedEnum|array $value): void
     {
         $this->assertThrows(
             InvalidArgumentException::class,
@@ -464,10 +531,11 @@ final class ConditionalRuleTest extends TestCase
     }
 
     /**
-     * @param FieldRule<covariant mixed> $other
+     * @param FieldRule<covariant mixed>                                              $other
+     * @param string|int|float|bool|BackedEnum|list<string|int|float|bool|BackedEnum> $value
      */
     #[DataProvider('mismatchedTypes')]
-    public function testAWhenValueThatTheOtherFieldCannotHoldIsRefused(FieldRule $other, mixed $value): void
+    public function testAWhenValueThatTheOtherFieldCannotHoldIsRefused(FieldRule $other, string|int|float|bool|BackedEnum|array $value): void
     {
         $this->assertThrows(
             InvalidArgumentException::class,
