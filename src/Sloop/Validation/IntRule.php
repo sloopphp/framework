@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Validation;
 
 use InvalidArgumentException;
+use TypeError;
 
 /**
  * Rules for a field whose validated value is an int.
@@ -112,13 +113,12 @@ final class IntRule extends FieldRule
      * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
      * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
+     * @throws TypeError                When a value in the list is not an int
      */
     #[\NoDiscard('IntRule::in() returns a new rule. The original is not modified.')]
     public function in(array $values, ?string $message = null, ?string $flag = null): self
     {
-        if ($values === []) {
-            throw new InvalidArgumentException('in() needs at least one value.');
-        }
+        self::assertCandidates($values, 'in');
 
         return $this->withCheck('in', ['values' => $values], static fn (int $value): bool => \in_array($value, $values, true), $message, flag: $flag);
     }
@@ -131,15 +131,40 @@ final class IntRule extends FieldRule
      * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
      * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
+     * @throws TypeError                When a value in the list is not an int
      */
     #[\NoDiscard('IntRule::notIn() returns a new rule. The original is not modified.')]
     public function notIn(array $values, ?string $message = null, ?string $flag = null): self
     {
-        if ($values === []) {
-            throw new InvalidArgumentException('notIn() needs at least one value.');
-        }
+        self::assertCandidates($values, 'notIn');
 
         return $this->withCheck('notIn', ['values' => $values], static fn (int $value): bool => !\in_array($value, $values, true), $message, flag: $flag);
+    }
+
+    /**
+     * Reject an empty candidate list, or a candidate that is not an int, which no validated value could equal.
+     *
+     * A candidate of another type is named by its position, not by its key,
+     * so nothing from the array itself reaches the message.
+     *
+     * @param  array<array-key, mixed>  $values Candidates as declared
+     * @param  string                   $rule   Rule name for the message
+     * @return void
+     * @throws InvalidArgumentException When $values is empty
+     * @throws TypeError                When a candidate is not an int
+     */
+    private static function assertCandidates(array $values, string $rule): void
+    {
+        if ($values === []) {
+            throw new InvalidArgumentException($rule . '() needs at least one value.');
+        }
+        $position = 0;
+        foreach ($values as $value) {
+            if (!\is_int($value)) {
+                throw new TypeError($rule . '() needs ints, got ' . get_debug_type($value) . ' at position ' . $position . '.');
+            }
+            ++$position;
+        }
     }
 
     /**

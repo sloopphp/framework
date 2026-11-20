@@ -8,8 +8,10 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sloop\Tests\Support\ThrowsAssertions;
+use Sloop\Tests\Unit\Validation\Stub\Payment;
 use Sloop\Validation\Rule;
 use Sloop\Validation\ValidationError;
+use TypeError;
 
 final class NumberRulesTest extends TestCase
 {
@@ -123,6 +125,50 @@ final class NumberRulesTest extends TestCase
     {
         $this->assertSame('in() needs at least one value.', $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::int()->in([]))->getMessage());
         $this->assertSame('notIn() needs at least one value.', $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::int()->notIn([]))->getMessage());
+    }
+
+    /**
+     * @return iterable<string, array{array<array-key, mixed>, string}>
+     */
+    public static function intCandidatesOfAnotherType(): iterable
+    {
+        yield 'numeric string' => [['1'], 'string at position 0'];
+        yield 'float' => [[1, 1.0], 'float at position 1'];
+        yield 'bool' => [[true], 'bool at position 0'];
+        yield 'null' => [[1, 2, null], 'null at position 2'];
+        yield 'enum case' => [[Payment::Cash], Payment::class . ' at position 0'];
+        yield 'nested list' => [[[1]], 'array at position 0'];
+        yield 'after a key' => [['k' => 1, 'm' => '2'], 'string at position 1'];
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    #[DataProvider('intCandidatesOfAnotherType')]
+    public function testIntInRefusesACandidateOfAnotherType(array $values, string $got): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::int()->in($values),
+        );
+
+        $this->assertSame('in() needs ints, got ' . $got . '.', $thrown->getMessage());
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    #[DataProvider('intCandidatesOfAnotherType')]
+    public function testIntNotInRefusesACandidateOfAnotherType(array $values, string $got): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::int()->notIn($values),
+        );
+
+        $this->assertSame('notIn() needs ints, got ' . $got . '.', $thrown->getMessage());
     }
 
     // ---------------------------------------------------------------

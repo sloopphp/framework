@@ -350,6 +350,51 @@ final class StringRuleTest extends TestCase
         $this->assertSame(['in'], self::failedRules(Rule::string()->in(['1.0']), '1'));
     }
 
+    /**
+     * @return iterable<string, array{array<array-key, mixed>, string}>
+     */
+    public static function stringCandidatesOfAnotherType(): iterable
+    {
+        yield 'int' => [['a', 1], 'int at position 1'];
+        yield 'float' => [[1.5], 'float at position 0'];
+        yield 'bool' => [[false], 'bool at position 0'];
+        yield 'null' => [['a', 'b', null], 'null at position 2'];
+        yield 'enum case' => [[AppChars::Greek], AppChars::class . ' at position 0'];
+        yield 'object' => [[new \stdClass()], 'stdClass at position 0'];
+        yield 'nested list' => [[['a']], 'array at position 0'];
+        yield 'after a key' => [['k' => 'a', 'm' => 1], 'int at position 1'];
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    #[DataProvider('stringCandidatesOfAnotherType')]
+    public function testInRefusesACandidateOfAnotherType(array $values, string $got): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->in($values),
+        );
+
+        $this->assertSame('in() needs strings, got ' . $got . '.', $thrown->getMessage());
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    #[DataProvider('stringCandidatesOfAnotherType')]
+    public function testNotInRefusesACandidateOfAnotherType(array $values, string $got): void
+    {
+        $thrown = $this->assertThrows(
+            TypeError::class,
+            // @phpstan-ignore argument.type (the point of the test is that the type refuses it)
+            static fn () => Rule::string()->notIn($values),
+        );
+
+        $this->assertSame('notIn() needs strings, got ' . $got . '.', $thrown->getMessage());
+    }
+
     // ---------------------------------------------------------------
     // notContains
     // ---------------------------------------------------------------
