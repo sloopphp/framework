@@ -9,9 +9,12 @@ use LogicException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Foundation\Path;
+use Sloop\Tests\Support\ThrowsAssertions;
 
 final class PathTest extends TestCase
 {
+    use ThrowsAssertions;
+
     private string $fixturePath;
 
     protected function setUp(): void
@@ -230,5 +233,22 @@ final class PathTest extends TestCase
         $this->expectExceptionMessageIsOrContains('Base path must not be empty');
 
         Path::init('');
+    }
+
+    public function testInitRejectsAPathWithANulByteAsAnInvalidArgument(): void
+    {
+        $thrown = $this->assertThrows(InvalidArgumentException::class, fn () => Path::init($this->fixturePath . "\0tail"));
+
+        $this->assertSame('Base path must not contain a NUL byte.', $thrown->getMessage());
+        $this->assertFalse(Path::isInitialized());
+    }
+
+    public function testInitRejectsAPathToAFile(): void
+    {
+        $thrown = $this->assertThrows(RuntimeException::class, static fn () => Path::init(__FILE__));
+
+        $this->assertSame(RuntimeException::class, $thrown::class);
+        $this->assertSame('Base path is not a directory: ' . __FILE__, $thrown->getMessage());
+        $this->assertFalse(Path::isInitialized());
     }
 }
