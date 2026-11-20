@@ -176,13 +176,14 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
      * Validate the input of the request into a ValidatedRequest subclass.
      *
      * rules() receives its arguments the way an action does, except the
-     * Request and other ValidatedRequests: a validated request never reads
+     * Request, other ValidatedRequests and the PSR-7 ServerRequestInterface
+     * (with the classes implementing it): a validated request never reads
      * the raw request.
      *
      * @param  class-string<ValidatedRequest>     $class        Subclass to fill
      * @param  Request                            $sloopRequest Sloop request wrapping the current PSR-7 request
      * @return ValidatedRequest|ResponseInterface The filled request, a 404 when an int, float or bool route parameter rules() asks for cannot be read as that type, a 400 when a field was sent twice, or a 422 with the errors
-     * @throws LogicException                     If the entry registered as the clock is not one, the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request or a ValidatedRequest, a parameter of rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while being neither variadic nor declaring a default or a type that allows null, or the parsed body is not an array
+     * @throws LogicException                     If the entry registered as the clock is not one, the subclass is declared wrongly (see ValidatedRequest), rules() asks for the Request, a ValidatedRequest or a ServerRequestInterface, a parameter of rules() that is not of a class type either matches a route parameter while having a union or intersection type or a builtin type other than int, float, bool, string and mixed, or matches none while being neither variadic nor declaring a default or a type that allows null, or the parsed body is not an array
      * @throws UnexpectedValueException           If a sanitizer closure or a closure given to using() of a ValidatedRequest rule returns the wrong type
      * @throws RuntimeException                   If validation fails the way Validator::validate() describes (PCRE, a file's stream, ICU, a message pattern)
      * @throws EntryNotFoundException             If an object rules() asks for cannot be resolved by the container
@@ -201,7 +202,7 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             // union that names the Request is refused even when it allows null.
             foreach (self::namedTypes($parameter->getType()) as $named) {
                 $name = $named->getName();
-                if ($name === Request::class || is_a($name, ValidatedRequest::class, true)) {
+                if ($name === Request::class || is_a($name, ValidatedRequest::class, true) || is_a($name, ServerRequestInterface::class, true)) {
                     throw new LogicException(
                         $class . '::rules() cannot receive ' . $name . ': a validated request reads only its validated input.',
                     );

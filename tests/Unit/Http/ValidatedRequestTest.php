@@ -13,6 +13,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use ReflectionException;
 use Sloop\Clock\FrozenClock;
 use Sloop\Container\Container;
@@ -54,6 +55,9 @@ use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotArrayRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesNotFieldRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesRecorder;
 use Sloop\Tests\Unit\Http\Stub\Validated\RuleWithoutPropertyRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\ServerRequestClassInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\ServerRequestInRulesRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\ServerRequestUnionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\StaticRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\TrimmedRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\UnboundedListRequest;
@@ -876,13 +880,41 @@ final class ValidatedRequestTest extends TestCase
             'rules() takes the Request in a union' => ['requestUnionInRules', RequestUnionInRulesRequest::class . '::rules() cannot receive Sloop\Http\Request\Request: a validated request reads only its validated input.'],
             'rules() takes a ValidatedRequest in a union' => ['validatedUnionInRules', ValidatedUnionInRulesRequest::class . '::rules() cannot receive ' . CreateUserRequest::class . ': a validated request reads only its validated input.'],
             'rules() takes a ValidatedRequest as the second type of an intersection' => ['intersectionInRules', IntersectionInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
-            'rules() takes the base class' => ['baseInRules', BaseInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
+            'rules() takes the PSR-7 server request' => ['serverRequestInRules', ServerRequestInRulesRequest::class . '::rules() cannot receive ' . ServerRequestInterface::class . ': a validated request reads only its validated input.'],
+            'rules() takes a PSR-7 server request class' => ['serverRequestClassInRules', ServerRequestClassInRulesRequest::class . '::rules() cannot receive ' . ServerRequest::class . ': a validated request reads only its validated input.'],
+            'rules() takes the PSR-7 server request in a union' => ['serverRequestUnionInRules', ServerRequestUnionInRulesRequest::class . '::rules() cannot receive ' . ServerRequestInterface::class . ': a validated request reads only its validated input.'],
+            'rules() takes the base class' => ['baseInRules',BaseInRulesRequest::class . '::rules() cannot receive ' . ValidatedRequest::class . ': a validated request reads only its validated input.'],
             'the base class itself' => ['base', ValidatedRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
             'private property of a parent' => ['inheritedPrivate', PrivateHelperBase::class . '::$helper must be declared public private(set): every property of a validated request receives a validated value.'],
             'list() without an upper bound' => ['unboundedList', UnboundedListRequest::class . ': the list() at "items" needs maxCount(), exactCount() or betweenCount(), so that a request failing every element cannot exhaust memory.'],
             'inner list() without an upper bound' => ['innerUnboundedList', InnerUnboundedListRequest::class . ': the list() at "items.*.tags" needs maxCount(), exactCount() or betweenCount(), so that a request failing every element cannot exhaust memory.'],
             'abstract class' => ['abstract', AbstractRequest::class . ' cannot be instantiated, so it cannot be validated into.'],
         ];
+    }
+
+    /**
+     * @return array<string, array{string, class-string, string}>
+     */
+    public static function serverRequestsRegistered(): array
+    {
+        return [
+            'under the interface' => ['serverRequestInRules', ServerRequestInterface::class, ServerRequestInRulesRequest::class . '::rules() cannot receive ' . ServerRequestInterface::class . ': a validated request reads only its validated input.'],
+            'under the class' => ['serverRequestClassInRules', ServerRequest::class, ServerRequestClassInRulesRequest::class . '::rules() cannot receive ' . ServerRequest::class . ': a validated request reads only its validated input.'],
+            'in a union' => ['serverRequestUnionInRules', ServerRequestInterface::class, ServerRequestUnionInRulesRequest::class . '::rules() cannot receive ' . ServerRequestInterface::class . ': a validated request reads only its validated input.'],
+        ];
+    }
+
+    #[DataProvider('serverRequestsRegistered')]
+    public function testRefusesTheServerRequestInRulesEvenWhenTheContainerHoldsIt(string $action, string $id, string $message): void
+    {
+        $request   = new ServerRequest('POST', '/dispatch?token=raw');
+        $container = new Container();
+        $container->instance($id, $request);
+
+        $thrown = $this->assertThrows(LogicException::class, fn () => $this->dispatch($action, $request, container: $container));
+
+        $this->assertSame($message, $thrown->getMessage());
+        $this->assertNull(ValidatedController::$last);
     }
 
     #[DataProvider('misdeclaredRequests')]

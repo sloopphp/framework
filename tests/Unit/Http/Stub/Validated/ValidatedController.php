@@ -187,6 +187,27 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function serverRequestInRules(ServerRequestInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function serverRequestClassInRules(ServerRequestClassInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
+    public function serverRequestUnionInRules(ServerRequestUnionInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function intersectionInRules(IntersectionInRulesRequest $request): string
     {
         self::$last = $request;
