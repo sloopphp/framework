@@ -12,6 +12,11 @@ use ShipMonk\ComposerDependencyAnalyser\Config\ErrorType;
 //
 // ext-bcmath is optional in the same way: DecimalRule::asNumber() needs it and
 // throws when it is missing, while every other decimal feature works without it.
+//
+// sloop\http\request\REQUEST is Sloop\Http\Request\Request spelled in another
+// case on purpose: RequestCaseInRulesRequest checks that rules() refuses it. PHP
+// resolves it, but the analyser looks it up as a new file and finds none.
 return (new Configuration())
     ->ignoreErrorsOnExtension('ext-apcu', [ErrorType::DEV_DEPENDENCY_IN_PROD])
-    ->ignoreErrorsOnExtension('ext-bcmath', [ErrorType::DEV_DEPENDENCY_IN_PROD]);
+    ->ignoreErrorsOnExtension('ext-bcmath', [ErrorType::DEV_DEPENDENCY_IN_PROD])
+    ->ignoreUnknownClasses(['sloop\http\request\REQUEST']);
