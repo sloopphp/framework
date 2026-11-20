@@ -30,6 +30,15 @@ declare(strict_types=1);
  * slowest killed mutant needs about 0.4s of wall time, so the margin to the
  * timeout is around 75x on that machine.
  *
+ * Versions move the section too. After phpunit 13.4.5 (2026-10-29), mutants of
+ * Select::compileReading() that had survived as timeouted or errored started to
+ * land on killed, through "Maximum call stack size reached" or a crashed
+ * process, and were listed as no longer surviving on every run. An entry marked
+ * "hangs": true is a mutant that never terminates. The gate accepts it as
+ * killed, errored or timeouted alike, and --update keeps the entry and its mark
+ * even when the run reports it killed. Mark only a mutant seen not to
+ * terminate when put in place by hand, and give that reason in the pull request.
+ *
  * Skipped mutants fail the run outright. Infection marks a mutant skipped when
  * its nominal test time already exceeds the timeout, so the mutant is never
  * executed, and MSI removes it from the denominator instead of counting it
@@ -61,13 +70,25 @@ final readonly class Mutant
      * @param string $method  Enclosing scope such as ClassName::methodName, empty when unresolved
      * @param string $mutator Infection mutator name
      * @param string $diff    Added and removed lines of the mutation, newline separated
+     * @param bool   $hangs   Whether the baseline marks the mutation as one that never terminates
      */
     public function __construct(
         public string $file,
         public string $method,
         public string $mutator,
         public string $diff,
+        public bool $hangs = false,
     ) {
+    }
+
+    /**
+     * Return the same mutant with the hanging mark set.
+     *
+     * @return self Marked copy
+     */
+    public function marked(): self
+    {
+        return new self($this->file, $this->method, $this->mutator, $this->diff, true);
     }
 
     /**
@@ -98,16 +119,29 @@ final readonly class Mutant
     /**
      * Build a mutant from one entry of the committed baseline.
      *
+     * The hanging mark is written by hand, so a value other than a boolean is
+     * refused rather than read as unmarked.
+     *
      * @param  array<array-key, mixed> $entry Single baseline entry
      * @return self                    Mutant with missing fields treated as empty
+     * @throws \RuntimeException       When hangs is present and not a boolean
      */
     public static function fromBaselineEntry(array $entry): self
     {
+        $hangs = $entry['hangs'] ?? false;
+        if (!\is_bool($hangs)) {
+            throw new \RuntimeException(
+                'hangs must be true or false in the baseline entry for ' . Json::asString($entry['file'] ?? null)
+                . ', got ' . get_debug_type($hangs) . '.',
+            );
+        }
+
         return new self(
             Json::asString($entry['file'] ?? null),
             Json::asString($entry['method'] ?? null),
             Json::asString($entry['mutator'] ?? null),
             Json::asString($entry['diff'] ?? null),
+            $hangs,
         );
     }
 
@@ -137,16 +171,24 @@ final readonly class Mutant
     /**
      * Return the mutant as it is stored in the baseline file.
      *
-     * @return array{file: string, method: string, mutator: string, diff: string} Serialisable form
+     * The hanging mark is written only when set, so unmarked entries keep
+     * their four fields.
+     *
+     * @return array{file: string, method: string, mutator: string, diff: string, hangs?: true} Serialisable form
      */
     public function toArray(): array
     {
-        return [
+        $array = [
             'file'    => $this->file,
             'method'  => $this->method,
             'mutator' => $this->mutator,
             'diff'    => $this->diff,
         ];
+        if ($this->hangs) {
+            $array['hangs'] = true;
+        }
+
+        return $array;
     }
 
     /**
@@ -670,10 +712,11 @@ final class MutationBaseline
                 self::readSection($report, 'timeouted', $rootDir),
                 self::readSection($report, 'errored', $rootDir),
             );
+            $killed  = self::readSection($report, 'killed', $rootDir);
 
             return $update
-                ? self::write($baselinePath, $allowed)
-                : self::check($baselinePath, $allowed);
+                ? self::write($baselinePath, $allowed, $killed)
+                : self::check($baselinePath, $allowed, $killed);
         } catch (\RuntimeException $exception) {
             self::writeError($errorStream, $exception->getMessage());
 
@@ -795,7 +838,7 @@ final class MutationBaseline
      *
      * @param  string            $path Absolute path to the baseline file
      * @return list<Mutant>      Allowed mutants, in the order the file lists them
-     * @throws \RuntimeException When the baseline is missing or unusable
+     * @throws \RuntimeException When the baseline is missing or unusable, or an entry carries a hangs that is not a boolean
      */
     private static function readBaseline(string $path): array
     {
@@ -826,15 +869,99 @@ final class MutationBaseline
     }
 
     /**
+     * Count the entries the baseline marks as hanging, per key.
+     *
+     * @param  list<Mutant>       $baseline Mutants the baseline allows
+     * @return array<string, int> Marked entries per key
+     */
+    private static function hangingKeys(array $baseline): array
+    {
+        $keys = [];
+        foreach ($baseline as $mutant) {
+            if ($mutant->hangs) {
+                $keys[$mutant->key()] = ($keys[$mutant->key()] ?? 0) + 1;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * Return the mutants of the run that count against the baseline.
+     *
+     * A hanging mutant never reaches an assertion: whether the runner reports
+     * it killed, errored or timed out depends on how the process stops, which
+     * PHP, PHPUnit, memory and the timeout all move. So for a key the baseline
+     * marks as hanging, a killed mutant counts the same as a surviving one,
+     * up to the number of marked entries. Two mutants can share a key, such as
+     * the same parameter default in two methods; when only one of them hangs,
+     * the other is an ordinary kill and is not taken in.
+     *
+     * Both limits hold: no more killed mutants than marked entries, and no more
+     * mutants in all than the baseline holds for the key. The surviving count
+     * alone is not the limit, since an unmarked entry under the same key can
+     * survive while the marked one lands on killed.
+     *
+     * @param  list<Mutant> $allowed  Mutants that survived in any form
+     * @param  list<Mutant> $killed   Mutants a test run stopped
+     * @param  list<Mutant> $baseline Mutants the baseline allows
+     * @return list<Mutant> Surviving mutants, then killed ones under a hanging key
+     */
+    private static function withKilledHanging(array $allowed, array $killed, array $baseline): array
+    {
+        $hangingKeys    = self::hangingKeys($baseline);
+        $baselineCounts = self::countByKey($baseline);
+        $mutants        = $allowed;
+        $counts         = self::countByKey($allowed);
+        $taken          = [];
+        foreach ($killed as $mutant) {
+            $key = $mutant->key();
+            if (($taken[$key] ?? 0) < ($hangingKeys[$key] ?? 0) && ($counts[$key] ?? 0) < ($baselineCounts[$key] ?? 0)) {
+                $mutants[]    = $mutant;
+                $counts[$key] = ($counts[$key] ?? 0) + 1;
+                $taken[$key]  = ($taken[$key] ?? 0) + 1;
+            }
+        }
+
+        return $mutants;
+    }
+
+    /**
      * Rewrite the baseline file from the latest run.
      *
-     * @param  string       $path    Absolute path to the baseline file
-     * @param  list<Mutant> $allowed Mutants allowed to survive
-     * @return int          Process exit code
+     * An entry the current baseline marks as hanging keeps its mark, and stays
+     * when the run reported it killed.
+     *
+     * @param  string            $path    Absolute path to the baseline file
+     * @param  list<Mutant>      $allowed Mutants allowed to survive
+     * @param  list<Mutant>      $killed  Mutants a test run stopped
+     * @return int               Process exit code
+     * @throws \RuntimeException When an existing baseline file is unusable, or an entry carries a hangs that is not a boolean
      */
-    private static function write(string $path, array $allowed): int
+    private static function write(string $path, array $allowed, array $killed): int
     {
-        $mutants = $allowed;
+        try {
+            $baseline = is_file($path) ? self::readBaseline($path) : [];
+        } catch (\RuntimeException $exception) {
+            // Deleting the file would let --update start over, but it would
+            // also drop every hangs mark without a word.
+            throw new \RuntimeException(
+                $exception->getMessage() . \PHP_EOL . 'Fix the file and rerun --update; deleting it drops every "hangs" mark.',
+                0,
+                $exception,
+            );
+        }
+        $hangingKeys = self::hangingKeys($baseline);
+        $marked      = [];
+        $mutants     = [];
+        foreach (self::withKilledHanging($allowed, $killed, $baseline) as $mutant) {
+            $key = $mutant->key();
+            if (($marked[$key] ?? 0) < ($hangingKeys[$key] ?? 0)) {
+                $mutant       = $mutant->marked();
+                $marked[$key] = ($marked[$key] ?? 0) + 1;
+            }
+            $mutants[] = $mutant;
+        }
         usort($mutants, static fn (Mutant $a, Mutant $b): int => $a->key() <=> $b->key());
 
         $encoded = json_encode(
@@ -861,15 +988,17 @@ final class MutationBaseline
     /**
      * Compare the latest run against the baseline.
      *
-     * @param  string       $path    Absolute path to the baseline file
-     * @param  list<Mutant> $allowed Mutants that survived in any form in the latest run
-     * @return int          Process exit code
+     * @param  string            $path    Absolute path to the baseline file
+     * @param  list<Mutant>      $allowed Mutants that survived in any form in the latest run
+     * @param  list<Mutant>      $killed  Mutants a test run stopped in the latest run
+     * @return int               Process exit code
+     * @throws \RuntimeException When the baseline is missing or unusable, or an entry carries a hangs that is not a boolean
      */
-    private static function check(string $path, array $allowed): int
+    private static function check(string $path, array $allowed, array $killed): int
     {
         $baseline       = self::readBaseline($path);
         $baselineCounts = self::countByKey($baseline);
-        self::reportResolved($baseline, self::countByKey($allowed));
+        self::reportResolved($baseline, self::countByKey(self::withKilledHanging($allowed, $killed, $baseline)));
 
         // Compared by occurrence count, not by presence: a second identical
         // mutant in the same method is a regression even when the first one
@@ -943,9 +1072,13 @@ final class MutationBaseline
 
         echo 'Being killed in this run does not mean an entry is gone. A mutant that does', \PHP_EOL,
         'not terminate lands on killed, errored or timeouted depending on how the', \PHP_EOL,
-        'runner stops it, and can come back in the next run. Read its processOutput in', \PHP_EOL,
-        'build/infection/infection.json. Keep the entry when the error is "Maximum call', \PHP_EOL,
-        'stack size ... reached" or the output ends at "Premature end of PHP process".', \PHP_EOL,
+        'runner stops it, which the PHP and PHPUnit versions, memory and the timeout', \PHP_EOL,
+        'all move. Read its processOutput in build/infection/infection.json. When the', \PHP_EOL,
+        'error is "Maximum call stack size ... reached", the output ends at "Premature', \PHP_EOL,
+        'end of PHP process", or it stops after the PHPUnit header, put the mutation in', \PHP_EOL,
+        'place by hand under timeout and a memory_limit. If it does not terminate, add', \PHP_EOL,
+        '"hangs": true to the entry; the gate then accepts it in any of the three', \PHP_EOL,
+        'sections. One key can cover two mutants, of which only one may hang.', \PHP_EOL,
         'Remove it from .claude/mutation-baseline.json by hand when PHPUnit reports', \PHP_EOL,
         'FAILURES!, ERRORS! or "OK, but there were issues!" for any other reason', \PHP_EOL,
         '(phpunit.xml fails on warnings, notices, deprecations and risky tests).', \PHP_EOL,
