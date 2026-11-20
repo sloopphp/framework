@@ -395,6 +395,15 @@ final class StringRuleTest extends TestCase
         $this->assertSame('notIn() needs strings, got ' . $got . '.', $thrown->getMessage());
     }
 
+    public function testInAndNotInRefuseACandidateInInvalidUtf8(): void
+    {
+        $in    = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->in(['a', "\xFF"]));
+        $notIn = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->notIn(["\xC3"]));
+
+        $this->assertSame('in() needs values in valid UTF-8, got invalid UTF-8 at position 1.', $in->getMessage());
+        $this->assertSame('notIn() needs values in valid UTF-8, got invalid UTF-8 at position 0.', $notIn->getMessage());
+    }
+
     // ---------------------------------------------------------------
     // notContains
     // ---------------------------------------------------------------

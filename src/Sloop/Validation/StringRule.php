@@ -170,7 +170,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message Message for this rule only
      * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
+     * @throws InvalidArgumentException When $values is empty or holds a value not in valid UTF-8, or the message template or the flag name is malformed
      * @throws TypeError                When a value in the list is not a string
      */
     #[\NoDiscard('StringRule::in() returns a new rule. The original is not modified.')]
@@ -188,7 +188,7 @@ final class StringRule extends FieldRule
      * @param  string|null              $message Message for this rule only
      * @param  string|null              $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return self
-     * @throws InvalidArgumentException When $values is empty, or the message template or the flag name is malformed
+     * @throws InvalidArgumentException When $values is empty or holds a value not in valid UTF-8, or the message template or the flag name is malformed
      * @throws TypeError                When a value in the list is not a string
      */
     #[\NoDiscard('StringRule::notIn() returns a new rule. The original is not modified.')]
@@ -951,15 +951,15 @@ final class StringRule extends FieldRule
     }
 
     /**
-     * Reject a candidate of in() / notIn() that is not a string, which no validated value could equal.
+     * Reject a candidate of in() / notIn() that no validated value could equal: one that is not a string, or not valid UTF-8.
      *
-     * A candidate of another type is named by its position, not by its key,
-     * so nothing from the array itself reaches the message.
+     * A refused candidate is named by its position, not by its key, so
+     * nothing from the array itself reaches the message.
      *
      * @param  array<array-key, mixed>  $values Candidates as declared
      * @param  string                   $rule   Rule name for the message
      * @return void
-     * @throws InvalidArgumentException When $values is empty
+     * @throws InvalidArgumentException When $values is empty, or a candidate is not valid UTF-8
      * @throws TypeError                When a candidate is not a string
      */
     private static function assertStringCandidates(array $values, string $rule): void
@@ -969,6 +969,9 @@ final class StringRule extends FieldRule
         foreach ($values as $value) {
             if (!\is_string($value)) {
                 throw new TypeError($rule . '() needs strings, got ' . get_debug_type($value) . ' at position ' . $position . '.');
+            }
+            if (!mb_check_encoding($value, 'UTF-8')) {
+                throw new InvalidArgumentException($rule . '() needs values in valid UTF-8, got invalid UTF-8 at position ' . $position . '.');
             }
             ++$position;
         }
