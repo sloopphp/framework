@@ -28,13 +28,17 @@ final class Path
      *
      * @param  string                   $basePath Absolute path to the application root directory
      * @return void
-     * @throws InvalidArgumentException If the path is empty
-     * @throws RuntimeException         If the directory does not exist
+     * @throws InvalidArgumentException If the path is empty or contains a NUL byte
+     * @throws RuntimeException         If the path does not exist, or points to something other than a directory
      */
     public static function init(string $basePath): void
     {
         if ($basePath === '') {
             throw new InvalidArgumentException('Base path must not be empty.');
+        }
+
+        if (str_contains($basePath, "\0")) {
+            throw new InvalidArgumentException('Base path must not contain a NUL byte.');
         }
 
         $resolved = realpath($basePath);
@@ -43,6 +47,10 @@ final class Path
             throw new RuntimeException(
                 'Base path does not exist: ' . $basePath
             );
+        }
+
+        if (!is_dir($resolved)) {
+            throw new RuntimeException('Base path is not a directory: ' . $basePath);
         }
 
         self::$basePath = $resolved;
