@@ -202,7 +202,8 @@ final readonly class RouteRequestHandler implements RequestHandlerInterface
             // union that names the Request is refused even when it allows null.
             foreach (self::namedTypes($parameter->getType()) as $named) {
                 $name = $named->getName();
-                if ($name === Request::class || is_a($name, ValidatedRequest::class, true) || is_a($name, ServerRequestInterface::class, true)) {
+                // is_a(), not ===: a class name is case-insensitive and may be an alias.
+                if (is_a($name, Request::class, true) || is_a($name, ValidatedRequest::class, true) || is_a($name, ServerRequestInterface::class, true)) {
                     throw new LogicException(
                         $class . '::rules() cannot receive ' . $name . ': a validated request reads only its validated input.',
                     );

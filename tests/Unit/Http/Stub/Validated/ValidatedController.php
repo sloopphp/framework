@@ -187,6 +187,13 @@ final class ValidatedController
         return 'ok';
     }
 
+    public function requestCaseInRules(RequestCaseInRulesRequest $request): string
+    {
+        self::$last = $request;
+
+        return 'ok';
+    }
+
     public function serverRequestInRules(ServerRequestInRulesRequest $request): string
     {
         self::$last = $request;

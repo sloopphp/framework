@@ -15,9 +15,12 @@ use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use ReflectionException;
+use ReflectionMethod;
+use ReflectionNamedType;
 use Sloop\Clock\FrozenClock;
 use Sloop\Container\Container;
 use Sloop\Http\HttpStatus;
+use Sloop\Http\Request\Request;
 use Sloop\Http\Request\ValidatedRequest;
 use Sloop\Http\Request\ValidatedRequestShape;
 use Sloop\Http\Response\ApiResponseFormatter;
@@ -48,6 +51,7 @@ use Sloop\Tests\Unit\Http\Stub\Validated\PrivatePropertyRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyDefaultRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\PropertyWithoutRuleRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RenamingRequest;
+use Sloop\Tests\Unit\Http\Stub\Validated\RequestCaseInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RequestInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RequestUnionInRulesRequest;
 use Sloop\Tests\Unit\Http\Stub\Validated\RulesListRequest;
@@ -914,6 +918,23 @@ final class ValidatedRequestTest extends TestCase
         $thrown = $this->assertThrows(LogicException::class, fn () => $this->dispatch($action, $request, container: $container));
 
         $this->assertSame($message, $thrown->getMessage());
+        $this->assertNull(ValidatedController::$last);
+    }
+
+    public function testRefusesTheRequestSpelledInAnotherCaseEvenWhenTheContainerCanBuildIt(): void
+    {
+        $rules = new ReflectionMethod(RequestCaseInRulesRequest::class, 'rules');
+        $type  = $rules->getParameters()[0]->getType();
+        $this->assertInstanceOf(ReflectionNamedType::class, $type);
+        $this->assertNotSame(Request::class, $type->getName());
+
+        $request   = new ServerRequest('POST', '/dispatch?token=raw');
+        $container = new Container();
+        $container->instance(ServerRequestInterface::class, $request);
+
+        $thrown = $this->assertThrows(LogicException::class, fn () => $this->dispatch('requestCaseInRules', $request, container: $container));
+
+        $this->assertSame(RequestCaseInRulesRequest::class . '::rules() cannot receive ' . $type->getName() . ': a validated request reads only its validated input.', $thrown->getMessage());
         $this->assertNull(ValidatedController::$last);
     }
 
