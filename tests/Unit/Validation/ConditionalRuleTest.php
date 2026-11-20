@@ -378,6 +378,18 @@ final class ConditionalRuleTest extends TestCase
         $this->assertSame('when() needs at least one value.', $when->getMessage());
     }
 
+    public function testAConditionRefusesAValueInInvalidUtf8(): void
+    {
+        $single = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->requiredIf('a', "\xFF"));
+        $list   = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Rule::string()->when('a', ['x', "\xC3"], static fn (StringRule $r): StringRule => $r->url()),
+        );
+
+        $this->assertSame('requiredIf() needs values in valid UTF-8, got invalid UTF-8 at position 0.', $single->getMessage());
+        $this->assertSame('when() needs values in valid UTF-8, got invalid UTF-8 at position 1.', $list->getMessage());
+    }
+
     /**
      * @return iterable<string, array{mixed, string}>
      */
