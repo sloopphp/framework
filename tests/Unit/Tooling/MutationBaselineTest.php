@@ -94,7 +94,7 @@ final class MutationBaselineTest extends TestCase
         ]);
     }
 
-    private function markHanging(string $file): void
+    private function markHanging(string $file, mixed $mark = true): void
     {
         $path     = $this->workDir . '/baseline.json';
         $baseline = json_decode((string) file_get_contents($path), true, 512, \JSON_THROW_ON_ERROR);
@@ -104,7 +104,7 @@ final class MutationBaselineTest extends TestCase
         foreach ($baseline['allowed'] as $entry) {
             self::assertIsArray($entry);
             if (\is_string($entry['file']) && basename($entry['file']) === $file) {
-                $entry['hangs'] = true;
+                $entry['hangs'] = $mark;
             }
             $allowed[] = $entry;
         }
@@ -381,6 +381,7 @@ final class MutationBaselineTest extends TestCase
         self::assertStringContainsString('does not mean an entry is gone', $this->output);
         $prose = (string) preg_replace('/\s+/', ' ', $this->output);
         self::assertStringContainsString('"Premature end of PHP process"', $prose);
+        self::assertStringContainsString('put the mutation in place by hand under timeout and a memory_limit', $prose);
         self::assertStringContainsString('add "hangs": true to the entry', $prose);
         self::assertStringContainsString('"OK, but there were', $this->output);
         self::assertStringNotContainsString('Shrink the baseline', $this->output);
@@ -454,6 +455,40 @@ final class MutationBaselineTest extends TestCase
             [['file' => 'Kept.php', 'hangs' => false], ['file' => 'Loop.php', 'hangs' => true]],
             $this->baselineFilesAndMarks(),
         );
+    }
+
+    public function testUpdateTakesInOnlyAsManyKilledMutantsUnderAHangingKeyAsTheBaselineMarks(): void
+    {
+        $hangs    = $this->entry('Shared.php', 40, 'FalseValue', '-        bool $flag = false,', '+        bool $flag = true,');
+        $ordinary = $this->entry('Shared.php', 90, 'FalseValue', '-        bool $flag = false,', '+        bool $flag = true,');
+        $this->writeBaselineFrom($this->reportWith(['timeouted' => [$hangs]]));
+        $this->markHanging('Shared.php');
+
+        $this->writeBaselineFrom($this->reportWith(['killed' => [$hangs, $ordinary]]));
+
+        self::assertSame([['file' => 'Shared.php', 'hangs' => true]], $this->baselineFilesAndMarks());
+    }
+
+    public function testASecondMutantUnderAHangingKeyThatEscapesIsARegression(): void
+    {
+        $hangs    = $this->entry('Shared.php', 40, 'FalseValue', '-        bool $flag = false,', '+        bool $flag = true,');
+        $ordinary = $this->entry('Shared.php', 90, 'FalseValue', '-        bool $flag = false,', '+        bool $flag = true,');
+        $this->writeBaselineFrom($this->reportWith(['timeouted' => [$hangs]]));
+        $this->markHanging('Shared.php');
+
+        self::assertSame(1, $this->check($this->reportWith(['killed' => [$hangs], 'escaped' => [$ordinary], 'timeouted' => [$hangs]])));
+        self::assertStringContainsString('survived that are not in the baseline', $this->output);
+    }
+
+    public function testAHangsMarkThatIsNotABooleanIsRefused(): void
+    {
+        $hangs = $this->entry('Loop.php', 40, 'Ternary', '-        return $a ? f() : g();', '+        return $a ? g() : f();');
+        $this->writeBaselineFrom($this->reportWith(['timeouted' => [$hangs]]));
+        $this->markHanging('Loop.php', 'true');
+
+        self::assertSame(2, $this->check($this->reportWith(['timeouted' => [$hangs]])));
+        self::assertStringContainsString('hangs must be true or false', $this->errors);
+        self::assertStringContainsString('got string', $this->errors);
     }
 
     public function testOneOfTwoIdenticalBaselineEntriesThatNoLongerSurvivesIsReported(): void
