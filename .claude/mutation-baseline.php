@@ -897,20 +897,29 @@ final class MutationBaseline
      * the same parameter default in two methods; when only one of them hangs,
      * the other is an ordinary kill and is not taken in.
      *
-     * @param  list<Mutant>       $allowed     Mutants that survived in any form
-     * @param  list<Mutant>       $killed      Mutants a test run stopped
-     * @param  array<string, int> $hangingKeys Marked entries per key
-     * @return list<Mutant>       Surviving mutants, then killed ones under a hanging key
+     * Both limits hold: no more killed mutants than marked entries, and no more
+     * mutants in all than the baseline holds for the key. The surviving count
+     * alone is not the limit, since an unmarked entry under the same key can
+     * survive while the marked one lands on killed.
+     *
+     * @param  list<Mutant> $allowed  Mutants that survived in any form
+     * @param  list<Mutant> $killed   Mutants a test run stopped
+     * @param  list<Mutant> $baseline Mutants the baseline allows
+     * @return list<Mutant> Surviving mutants, then killed ones under a hanging key
      */
-    private static function withKilledHanging(array $allowed, array $killed, array $hangingKeys): array
+    private static function withKilledHanging(array $allowed, array $killed, array $baseline): array
     {
-        $mutants = $allowed;
-        $counts  = self::countByKey($allowed);
+        $hangingKeys    = self::hangingKeys($baseline);
+        $baselineCounts = self::countByKey($baseline);
+        $mutants        = $allowed;
+        $counts         = self::countByKey($allowed);
+        $taken          = [];
         foreach ($killed as $mutant) {
             $key = $mutant->key();
-            if (($counts[$key] ?? 0) < ($hangingKeys[$key] ?? 0)) {
+            if (($taken[$key] ?? 0) < ($hangingKeys[$key] ?? 0) && ($counts[$key] ?? 0) < ($baselineCounts[$key] ?? 0)) {
                 $mutants[]    = $mutant;
                 $counts[$key] = ($counts[$key] ?? 0) + 1;
+                $taken[$key]  = ($taken[$key] ?? 0) + 1;
             }
         }
 
@@ -927,14 +936,25 @@ final class MutationBaseline
      * @param  list<Mutant>      $allowed Mutants allowed to survive
      * @param  list<Mutant>      $killed  Mutants a test run stopped
      * @return int               Process exit code
-     * @throws \RuntimeException When an existing baseline file is unusable
+     * @throws \RuntimeException When an existing baseline file is unusable, or an entry carries a hangs that is not a boolean
      */
     private static function write(string $path, array $allowed, array $killed): int
     {
-        $hangingKeys = is_file($path) ? self::hangingKeys(self::readBaseline($path)) : [];
+        try {
+            $baseline = is_file($path) ? self::readBaseline($path) : [];
+        } catch (\RuntimeException $exception) {
+            // Deleting the file would let --update start over, but it would
+            // also drop every hangs mark without a word.
+            throw new \RuntimeException(
+                $exception->getMessage() . \PHP_EOL . 'Fix the file and rerun --update; deleting it drops every "hangs" mark.',
+                0,
+                $exception,
+            );
+        }
+        $hangingKeys = self::hangingKeys($baseline);
         $marked      = [];
         $mutants     = [];
-        foreach (self::withKilledHanging($allowed, $killed, $hangingKeys) as $mutant) {
+        foreach (self::withKilledHanging($allowed, $killed, $baseline) as $mutant) {
             $key = $mutant->key();
             if (($marked[$key] ?? 0) < ($hangingKeys[$key] ?? 0)) {
                 $mutant       = $mutant->marked();
@@ -972,13 +992,13 @@ final class MutationBaseline
      * @param  list<Mutant>      $allowed Mutants that survived in any form in the latest run
      * @param  list<Mutant>      $killed  Mutants a test run stopped in the latest run
      * @return int               Process exit code
-     * @throws \RuntimeException When the baseline is missing or unusable
+     * @throws \RuntimeException When the baseline is missing or unusable, or an entry carries a hangs that is not a boolean
      */
     private static function check(string $path, array $allowed, array $killed): int
     {
         $baseline       = self::readBaseline($path);
         $baselineCounts = self::countByKey($baseline);
-        self::reportResolved($baseline, self::countByKey(self::withKilledHanging($allowed, $killed, self::hangingKeys($baseline))));
+        self::reportResolved($baseline, self::countByKey(self::withKilledHanging($allowed, $killed, $baseline)));
 
         // Compared by occurrence count, not by presence: a second identical
         // mutant in the same method is a regression even when the first one

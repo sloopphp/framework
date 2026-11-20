@@ -112,6 +112,26 @@ final class MutationBaselineTest extends TestCase
         file_put_contents($path, json_encode($baseline, \JSON_THROW_ON_ERROR));
     }
 
+    private function unmarkOne(string $file): void
+    {
+        $path     = $this->workDir . '/baseline.json';
+        $baseline = json_decode((string) file_get_contents($path), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($baseline);
+        self::assertIsArray($baseline['allowed']);
+        $allowed = [];
+        $done    = false;
+        foreach ($baseline['allowed'] as $entry) {
+            self::assertIsArray($entry);
+            if (!$done && \is_string($entry['file']) && basename($entry['file']) === $file) {
+                unset($entry['hangs']);
+                $done = true;
+            }
+            $allowed[] = $entry;
+        }
+        $baseline['allowed'] = $allowed;
+        file_put_contents($path, json_encode($baseline, \JSON_THROW_ON_ERROR));
+    }
+
     /**
      * @return list<array{file: string, hangs: bool}>
      */
@@ -469,15 +489,37 @@ final class MutationBaselineTest extends TestCase
         self::assertSame([['file' => 'Shared.php', 'hangs' => true]], $this->baselineFilesAndMarks());
     }
 
-    public function testASecondMutantUnderAHangingKeyThatEscapesIsARegression(): void
+    public function testTwoEntriesUnderOneKeyWithOneMarkedKeepBothWhenTheMarkedOneLandsOnKilled(): void
     {
         $hangs    = $this->entry('Shared.php', 40, 'FalseValue', '-        bool $flag = false,', '+        bool $flag = true,');
         $ordinary = $this->entry('Shared.php', 90, 'FalseValue', '-        bool $flag = false,', '+        bool $flag = true,');
-        $this->writeBaselineFrom($this->reportWith(['timeouted' => [$hangs]]));
+        $this->writeBaselineFrom($this->reportWith(['timeouted' => [$hangs], 'escaped' => [$ordinary]]));
         $this->markHanging('Shared.php');
+        $this->unmarkOne('Shared.php');
+        $run = $this->reportWith(['killed' => [$hangs], 'escaped' => [$ordinary]]);
 
-        self::assertSame(1, $this->check($this->reportWith(['killed' => [$hangs], 'escaped' => [$ordinary], 'timeouted' => [$hangs]])));
-        self::assertStringContainsString('survived that are not in the baseline', $this->output);
+        self::assertSame(0, $this->check($run));
+        self::assertStringNotContainsString('no longer survive', $this->output);
+
+        $this->writeBaselineFrom($run);
+
+        self::assertSame(
+            [['file' => 'Shared.php', 'hangs' => true], ['file' => 'Shared.php', 'hangs' => false]],
+            $this->baselineFilesAndMarks(),
+        );
+    }
+
+    public function testUpdateOnAnUnreadableBaselineSaysNotToDeleteIt(): void
+    {
+        file_put_contents($this->workDir . '/baseline.json', '{"allowed": [');
+        file_put_contents($this->workDir . '/report.json', json_encode($this->reportWith([])));
+
+        self::assertSame(2, $this->invoke([
+            '--update',
+            '--report=' . $this->workDir . '/report.json',
+            '--baseline=' . $this->workDir . '/baseline.json',
+        ]));
+        self::assertStringContainsString('deleting it drops every "hangs" mark', $this->errors);
     }
 
     public function testAHangsMarkThatIsNotABooleanIsRefused(): void
