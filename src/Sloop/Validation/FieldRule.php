@@ -359,7 +359,7 @@ abstract class FieldRule
      * @param  string|null                                                             $flag    Flag the result raises when this rule fails (see ValidationResult::hasFlag())
      * @return static
      * @throws LogicException                                                          When the field is required
-     * @throws InvalidArgumentException                                                When $value is an empty list or holds a string not in valid UTF-8, or the message template or the flag name is malformed
+     * @throws InvalidArgumentException                                                When $value is an empty list, or the message template or the flag name is malformed
      * @throws TypeError                                                               When $value, or a value in the list, is not a string, int, float, bool or backed enum case
      */
     #[\NoDiscard('FieldRule::requiredIf() returns a new rule. The original is not modified.')]
@@ -465,7 +465,7 @@ abstract class FieldRule
      * @param  string|int|float|bool|BackedEnum|list<string|int|float|bool|BackedEnum> $value Value, or list of values (keys are ignored), that makes the rules apply
      * @param  Closure(static): mixed                                                  $then  Adds the rules to the rule it receives and returns it
      * @return static
-     * @throws InvalidArgumentException                                                When $value is an empty list or holds a string not in valid UTF-8, or the closure adds no rules or does anything other than add rules
+     * @throws InvalidArgumentException                                                When $value is an empty list, or the closure adds no rules or does anything other than add rules
      * @throws TypeError                                                               When $value, or a value in the list, is not a string, int, float, bool or backed enum case
      */
     #[\NoDiscard('FieldRule::when() returns a new rule. The original is not modified.')]
@@ -1260,14 +1260,12 @@ abstract class FieldRule
      *
      * The list's keys are ignored; a value in it of another type is named by
      * its position, not by its key, so nothing from the array itself reaches
-     * the message. A string not in valid UTF-8 is refused too: only a string
-     * field holds strings, and it holds valid UTF-8 only, so the condition
-     * could never hold.
+     * the message.
      *
      * @param  string|int|float|bool|BackedEnum|array<array-key, mixed> $value  Value as the caller gave it; a list is checked here, as its type does not reach the elements
      * @param  string                                                   $method Method name, for the message
      * @return non-empty-list<string|int|float|bool|BackedEnum>
-     * @throws InvalidArgumentException                                 When $value is an empty list, or a string not in valid UTF-8
+     * @throws InvalidArgumentException                                 When $value is an empty list
      * @throws TypeError                                                When a value in the list is not a string, int, float, bool or backed enum case
      */
     private static function conditionValues(string|int|float|bool|BackedEnum|array $value, string $method): array
@@ -1282,9 +1280,6 @@ abstract class FieldRule
                 throw new TypeError(
                     $method . '() compares with a string, int, float, bool or backed enum case, got ' . get_debug_type($one) . ' at position ' . \count($checked) . '.',
                 );
-            }
-            if (\is_string($one) && !mb_check_encoding($one, 'UTF-8')) {
-                throw new InvalidArgumentException($method . '() needs values in valid UTF-8, got invalid UTF-8 at position ' . \count($checked) . '.');
             }
             $checked[] = $one;
         }
