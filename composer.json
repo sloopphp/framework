@@ -32,6 +32,7 @@
     "require-dev": {
         "ext-apcu": "*",
         "ext-bcmath": "*",
+        "ext-dom": "*",
         "ext-pdo_sqlite": "*",
         "ext-tokenizer": "*",
         "colinodell/json5": "^3.0",
@@ -64,6 +65,7 @@
             "Sloop\\Tests\\": "tests/"
         },
         "classmap": [
+            ".claude/coverage-baseline.php",
             ".claude/infection-ignore-check.php",
             ".claude/mutation-baseline.php"
         ]

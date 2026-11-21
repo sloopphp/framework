@@ -17,6 +17,8 @@ jobs:
     env:
       # Read by both Setup PHP steps and by the checks after them.
       PHP_EXTENSIONS: intl, pdo_mysql, pdo_sqlite, bcmath, fileinfo, apcu
+      # Coverage is collected on one OS only, for the coverage baseline below.
+      COVERAGE: ${{ matrix.os == 'ubuntu-latest' && 'pcov' || 'none' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -27,7 +29,7 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: ${{ env.PHP_EXTENSIONS }}
           ini-values: apc.enable_cli=1
-          coverage: none
+          coverage: ${{ env.COVERAGE }}
 
       # setup-php reports an extension it could not install but does not fail
       # the step, so the job would stop later at composer install. On Windows
@@ -50,7 +52,7 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: ${{ env.PHP_EXTENSIONS }}
           ini-values: apc.enable_cli=1
-          coverage: none
+          coverage: ${{ env.COVERAGE }}
 
       - name: Require PHP extensions
         if: steps.extensions.outputs.missing != ''
@@ -79,7 +81,18 @@ jobs:
       # On failure, pass the Random Seed from the output header to --random-order-seed
       # to reproduce. Local runs keep the executionOrder in phpunit.xml (depends).
       - name: Run tests
+        if: env.COVERAGE == 'none'
         run: vendor/bin/phpunit --exclude-testsuite=Integration --order-by=random
+
+      - name: Run tests with coverage
+        if: env.COVERAGE != 'none'
+        run: vendor/bin/phpunit --exclude-testsuite=Integration --order-by=random --coverage-clover=build/coverage/clover.xml
+
+      # Fails when a line of src that no Unit test executes is not on the list
+      # in .claude/coverage-baseline.json.
+      - name: Compare unexecuted lines against the coverage baseline
+        if: env.COVERAGE != 'none'
+        run: php .claude/coverage-baseline.php
 
   code-style:
     name: Code Style

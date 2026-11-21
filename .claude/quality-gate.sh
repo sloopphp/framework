@@ -375,6 +375,10 @@ gate_count() {
             # "2044 mutations were generated:"
             sed -n 's/^\([0-9][0-9]*\) mutations were generated.*/\1/p' "$plain" | tail -n 1
             ;;
+        'Coverage baseline')
+            # "Checked 214 files of src.", the first line .claude/coverage-baseline.php prints.
+            sed -n 's/^Checked \([0-9][0-9]*\) files of src\..*/\1/p' "$plain" | tail -n 1
+            ;;
         'Ignore check')
             # "Checked 65 ignore entries.", the last line .claude/infection-ignore-check.php prints.
             sed -n 's/^Checked \([0-9][0-9]*\) ignore entries\..*/\1/p' "$plain" | tail -n 1
@@ -412,7 +416,26 @@ run_gate() {
 run_gate 'PHP-CS-Fixer' vendor/bin/php-cs-fixer fix --dry-run --diff
 run_gate 'PHPCS'        vendor/bin/phpcs
 run_gate 'PHPStan'      vendor/bin/phpstan analyse --no-progress
-run_gate 'PHPUnit'      vendor/bin/phpunit --exclude-testsuite=Integration
+# The coverage baseline reads the Clover report of this run, so PHPUnit writes
+# one when a coverage driver can collect line coverage. A loaded extension is
+# not enough: pcov.enabled=0, or an xdebug.mode without coverage, makes PHPUnit
+# warn and run nothing. The old report is removed first: a run that writes none
+# would otherwise be checked against the previous one.
+if php -r 'exit((extension_loaded("pcov") && ini_get("pcov.enabled")) || (extension_loaded("xdebug") && in_array("coverage", xdebug_info("mode"), true)) ? 0 : 1);'; then
+    rm -f build/coverage/clover.xml
+    run_gate 'PHPUnit' vendor/bin/phpunit --exclude-testsuite=Integration --coverage-clover=build/coverage/clover.xml
+
+    # Lines a failing run left unexecuted say nothing about missing tests.
+    if [ "${codes[${#codes[@]} - 1]}" -eq 0 ]; then
+        run_gate 'Coverage baseline' php "$script_dir/coverage-baseline.php"
+    else
+        printf '\n  (PHPUnit failed, so the coverage baseline was not checked)\n'
+    fi
+else
+    run_gate 'PHPUnit' vendor/bin/phpunit --exclude-testsuite=Integration
+    printf '\n  (no coverage driver can collect line coverage, so the coverage baseline was skipped. Install or enable pcov)\n'
+fi
+
 run_gate 'Rector'       vendor/bin/rector process --dry-run --no-progress-bar
 run_gate 'composer audit' composer audit
 run_gate 'composer deps'  vendor/bin/composer-dependency-analyser
