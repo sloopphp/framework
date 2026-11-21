@@ -1,0 +1,406 @@
+{
+    "uncovered": [
+        {
+            "file": "src/Sloop/Config/Config.php",
+            "scope": "Config::loadDirectory",
+            "line": "throw new RuntimeException(",
+            "reason": "Runs only when scandir() fails on a directory that exists, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Config/Config.php",
+            "scope": "Config::loadDirectory",
+            "line": "'Failed to scan config directory: ' . $directory",
+            "reason": "Runs only when scandir() fails on a directory that exists, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Config/Config.php",
+            "scope": "Config::loadDirectory",
+            "line": ");",
+            "reason": "Runs only when scandir() fails on a directory that exists, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "scope": "Container::resolveBinding",
+            "line": "return $this->instances[$id];",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "scope": "Container::autowire",
+            "line": "throw new ContainerException(",
+            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "scope": "Container::autowire",
+            "line": "'Failed to instantiate ' . $className . ': ' . $e->getMessage(),",
+            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "scope": "Container::autowire",
+            "line": "0,",
+            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "scope": "Container::autowire",
+            "line": "$e,",
+            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Container/Container.php",
+            "scope": "Container::autowire",
+            "line": ");",
+            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::castRow",
+            "line": ": $value;",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::lastInsertId",
+            "line": "return 0;",
+            "reason": "Runs only when PDO::lastInsertId() returns false, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::begin",
+            "line": "$this->execSimple($setTransaction);",
+            "reason": "Runs only for a non-default isolation level or when PDO fails to begin; the Unit suite provokes neither."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::begin",
+            "line": "} catch (PDOException $e) {",
+            "reason": "Runs only for a non-default isolation level or when PDO fails to begin; the Unit suite provokes neither."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::begin",
+            "line": "throw ExceptionFactory::fromPDOException($e, $this->connectionName, 'BEGIN');",
+            "reason": "Runs only for a non-default isolation level or when PDO fails to begin; the Unit suite provokes neither."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::commit",
+            "line": "} catch (PDOException $e) {",
+            "reason": "Runs only when PDO fails to commit, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::commit",
+            "line": "throw ExceptionFactory::fromPDOException($e, $this->connectionName, 'COMMIT');",
+            "reason": "Runs only when PDO fails to commit, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Database/Connection.php",
+            "scope": "Connection::rollbackAndNormalize",
+            "line": "? ExceptionFactory::fromPDOException($e, $this->connectionName)",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "$options = ConnectionConfigResolver::resolvePdoOptions($config);",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "$options[PDO::ATTR_PERSISTENT] = $persistent;",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "return Connection::open(",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "ConnectionConfigResolver::resolveDsn($config),",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "$config->username,",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "$config->password,",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "$options,",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": "$name,",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Factory/PdoConnectionFactory.php",
+            "scope": "PdoConnectionFactory::make",
+            "line": ");",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/BuilderWhere.php",
+            "scope": "BuilderWhere::enterCallbackScope",
+            "line": "return 0;",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/BuilderWhere.php",
+            "scope": "BuilderWhere::leaveCallbackScope",
+            "line": "}",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Expression.php",
+            "scope": "Expression::toOrders",
+            "line": "throw new InvalidArgumentException(",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Expression.php",
+            "scope": "Expression::toOrders",
+            "line": "'A sort direction is written as a string, got ' . get_debug_type($value)",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Expression.php",
+            "scope": "Expression::toOrders",
+            "line": ". ' for ' . $key . '.',",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Expression.php",
+            "scope": "Expression::toOrders",
+            "line": ");",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Update.php",
+            "scope": "Update::orOnOpen",
+            "line": "return $this->openOnGroup(Conjunction::Or);",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Update.php",
+            "scope": "Update::andOnClose",
+            "line": "return $this->closeOnGroup();",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Database/Query/Update.php",
+            "scope": "Update::orOnClose",
+            "line": "return $this->closeOnGroup();",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Encryption/Encryptor.php",
+            "scope": "Encryptor::sealGcm",
+            "line": "throw new \\RuntimeException('OpenSSL failed to encrypt with ' . Cipher::Aes256Gcm->value . '.');",
+            "reason": "Runs only when openssl_encrypt() fails, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Encryption/Encryptor.php",
+            "scope": "Encryptor::sealCbc",
+            "line": "throw new \\RuntimeException('OpenSSL failed to encrypt with ' . Cipher::Aes256Cbc->value . '.');",
+            "reason": "Runs only when openssl_encrypt() fails, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Encryption/PasswordHasher.php",
+            "scope": "PasswordHasher::__construct",
+            "line": "throw new \\RuntimeException('This PHP build cannot hash with ' . $algorithm->value . '. Choose another hashing.algorithm, or use a PHP built with argon2 support.');",
+            "reason": "Runs only on a PHP build without the chosen hashing algorithm; the test environments have it."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::renderException",
+            "line": "throw new \\LogicException('Failed to resolve ExceptionHandler from container.');",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::send",
+            "line": "http_response_code($response->getStatusCode());",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::send",
+            "line": "foreach ($response->getHeaders() as $name => $values) {",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::send",
+            "line": "foreach ($values as $value) {",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::send",
+            "line": "header($name . ': ' . $value, false);",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::send",
+            "line": "echo $response->getBody();",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::createExceptionHandler",
+            "line": "throw new \\LogicException('Failed to resolve LogManager from container.');",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::readHashingAlgorithm",
+            "line": "throw new EncryptionConfigException('This PHP build cannot hash with ' . $algorithm->value . '. Choose another hashing.algorithm, or use a PHP built with argon2 support.');",
+            "reason": "Runs only on a PHP build without the chosen hashing algorithm; the test environments have it."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::bootLog",
+            "line": "throw new \\LogicException('Failed to resolve LogManager from container.');",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Foundation/Application.php",
+            "scope": "Application::bootLog",
+            "line": "throw new \\LogicException('Failed to resolve TraceContext from container.');",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Helpers/env.php",
+            "scope": "",
+            "line": "if (!function_exists('env')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/html.php",
+            "scope": "",
+            "line": "if (!function_exists('e')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('base_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('src_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('config_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('storage_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('public_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('routes_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Helpers/path.php",
+            "scope": "",
+            "line": "if (!function_exists('tests_path')) {",
+            "reason": "Runs when Composer loads the helper file, before PHPUnit starts collecting coverage."
+        },
+        {
+            "file": "src/Sloop/Routing/Route.php",
+            "scope": "Route::compilePattern",
+            "line": "return;",
+            "reason": "Runs only when preg_split() fails, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Validation/AnyArrayRule.php",
+            "scope": "AnyArrayRule::prepareDefault",
+            "line": "return $value;",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Validation/CombiningRun.php",
+            "scope": "CombiningRun::allows",
+            "line": "return false;",
+            "reason": "Runs only when preg_match_all() fails, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Validation/DecimalRule.php",
+            "scope": "DecimalRule::asNumber",
+            "line": "throw new LogicException('asNumber() needs the bcmath extension.');",
+            "reason": "Runs only without the bcmath extension; the test environments have it."
+        },
+        {
+            "file": "src/Sloop/Validation/FieldRule.php",
+            "scope": "FieldRule::withSizeCheck",
+            "line": "ValidationMessages::assertValidPattern($message);",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Validation/Rule.php",
+            "scope": "Rule::__construct",
+            "line": "}",
+            "reason": "The private constructor keeps the class to its static factories and is never called."
+        },
+        {
+            "file": "src/Sloop/Validation/ShapeRule.php",
+            "scope": "ShapeRule::outputOfDefault",
+            "line": "return $default;",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Validation/ShapeRule.php",
+            "scope": "ShapeRule::comparableOfDefault",
+            "line": "return $default;",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        },
+        {
+            "file": "src/Sloop/Validation/StringRule.php",
+            "scope": "StringRule::clusters",
+            "line": "throw new RuntimeException('Could not split the value into grapheme clusters.');",
+            "reason": "Runs only when grapheme splitting fails, which no Unit test provokes."
+        },
+        {
+            "file": "src/Sloop/Validation/StringRule.php",
+            "scope": "StringRule::assertPattern",
+            "line": "throw new InvalidArgumentException('Invalid regular expression ' . $pattern . ': ' . preg_last_error_msg());",
+            "reason": "No Unit test runs this line yet; a test is to be added."
+        }
+    ]
+}
