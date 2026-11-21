@@ -11,6 +11,11 @@ declare(strict_types=1);
  * A new class, or a new method no test calls, therefore adds no mutant and
  * moves no score. Line coverage of the Unit suite does see them.
  *
+ * The run that collects the coverage excludes only the Integration suite, so
+ * the Feature suite counts too, while Infection runs the Unit suite alone. The
+ * Feature suite holds no tests yet; when it gets some, a line only a Feature
+ * test runs passes here and still gets no mutant.
+ *
  * A line is identified by its file, the method that encloses it and its text,
  * not by its number, so that editing anything above it does not move it. The
  * same text twice in one method is counted twice.

@@ -280,13 +280,13 @@
             "file": "src/Sloop/Foundation/Application.php",
             "scope": "Application::bootLog",
             "line": "throw new \\LogicException('Failed to resolve LogManager from container.');",
-            "reason": "No Unit test runs this line yet; a test is to be added."
+            "reason": "Runs only if the container hands back another type for a binding the constructor registered just before; no test can change the binding in between."
         },
         {
             "file": "src/Sloop/Foundation/Application.php",
             "scope": "Application::bootLog",
             "line": "throw new \\LogicException('Failed to resolve TraceContext from container.');",
-            "reason": "No Unit test runs this line yet; a test is to be added."
+            "reason": "Runs only if the container hands back another type for a binding the constructor registered just before; no test can change the binding in between."
         },
         {
             "file": "src/Sloop/Helpers/env.php",

@@ -228,6 +228,59 @@ final class CoverageBaselineTest extends TestCase
         self::assertStringContainsString('1 entry(ies) have no reason yet', $this->output);
     }
 
+    public function testUpdateWithoutAListWritesOneWithoutReasons(): void
+    {
+        $this->writeSubject(0);
+        $this->writeReport(['src/Sample.php' => [[7, 'stmt', 0]]]);
+
+        self::assertSame(0, $this->invoke(['--update', ...$this->paths()]));
+        self::assertStringContainsString('Wrote 1 unexecuted line(s)', $this->output);
+        self::assertStringContainsString('1 entry(ies) have no reason yet', $this->output);
+        self::assertFileExists($this->workDir . '/list.json');
+    }
+
+    public function testAListEntryWithoutAFileIsRefused(): void
+    {
+        $this->writeSubject(0);
+        file_put_contents($this->workDir . '/list.json', json_encode(['uncovered' => [['line' => 'x', 'reason' => 'A reason.']]]));
+        $this->writeReport(['src/Sample.php' => [[7, 'stmt', 0]]]);
+
+        self::assertSame(2, $this->check());
+        self::assertStringContainsString('an entry of the list names no file', $this->errors);
+    }
+
+    public function testUpdateOnASourceLineThatIsNotUtf8IsAnOperatorError(): void
+    {
+        file_put_contents($this->workDir . '/src/Sample.php', "<?php\n\n\$value = \"\xff\";\n");
+        $this->writeReport(['src/Sample.php' => [[3, 'stmt', 0]]]);
+
+        self::assertSame(2, $this->invoke(['--update', ...$this->paths()]));
+        self::assertStringContainsString('cannot encode the list', $this->errors);
+    }
+
+    public function testUpdateIntoAMissingDirectoryIsAnOperatorError(): void
+    {
+        $this->writeSubject(0);
+        $this->writeReport(['src/Sample.php' => [[7, 'stmt', 0]]]);
+
+        $arguments = [
+            '--update',
+            '--report=' . $this->workDir . '/clover.xml',
+            '--baseline=' . $this->workDir . '/absent/list.json',
+            '--root=' . $this->workDir,
+        ];
+
+        set_error_handler(static fn (): bool => true);
+        try {
+            $code = $this->invoke($arguments);
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertSame(2, $code);
+        self::assertStringContainsString('cannot write', $this->errors);
+    }
+
     public function testFilesOutsideSrcAreIgnored(): void
     {
         $this->writeSubject(0);
