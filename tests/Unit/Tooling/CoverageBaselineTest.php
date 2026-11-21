@@ -126,6 +126,7 @@ final class CoverageBaselineTest extends TestCase
         self::assertSame(1, $this->check());
         self::assertStringContainsString('1 line(s) of src are executed by no Unit test and not listed', $this->output);
         self::assertStringContainsString('src/Sample.php:7  Sample::compute  | return $a && $b;', $this->output);
+        self::assertStringContainsString('If PHPUnit skipped tests in this run', $this->output);
     }
 
     public function testAListedLinePasses(): void

@@ -250,12 +250,12 @@ final class CoverageBaseline
             }
         }
 
-        // A report of another checkout, or of a run that collected nothing,
-        // would otherwise read as a run with every line executed.
+        // A report of another checkout names no file under this src and would
+        // otherwise read as a run with every line executed.
         if ($files === 0) {
             throw new \RuntimeException(
                 'no file of ' . $prefix . ' in ' . $reportPath . '.' . \PHP_EOL
-                . 'The report comes from another checkout or from a run without a coverage driver; rerun it here.',
+                . 'The report comes from another checkout; rerun it here.',
             );
         }
 
@@ -391,7 +391,9 @@ final class CoverageBaseline
             echo '  ', $line->describe(), \PHP_EOL;
         }
 
-        echo \PHP_EOL, 'Add a Unit test that runs them. A line no test can reach, such as a failure ',
+        echo \PHP_EOL, 'If PHPUnit skipped tests in this run (apc.enable_cli off, running as root, an ',
+        'older library), first rerun where they run: a skipped test leaves the lines it covers unexecuted.', \PHP_EOL,
+        'Otherwise add a Unit test that runs them. A line no test can reach, such as a failure ',
         'branch of a PHP function that cannot be made to fail, goes on the list with the reason: ',
         'run php .claude/coverage-baseline.php --update and fill in the reason of each new entry.', \PHP_EOL;
 
