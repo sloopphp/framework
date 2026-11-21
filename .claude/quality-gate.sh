@@ -417,9 +417,11 @@ run_gate 'PHP-CS-Fixer' vendor/bin/php-cs-fixer fix --dry-run --diff
 run_gate 'PHPCS'        vendor/bin/phpcs
 run_gate 'PHPStan'      vendor/bin/phpstan analyse --no-progress
 # The coverage baseline reads the Clover report of this run, so PHPUnit writes
-# one when a coverage driver is loaded. The old report is removed first: a run
-# that writes none would otherwise be checked against the previous one.
-if php -r 'exit(extension_loaded("pcov") || extension_loaded("xdebug") ? 0 : 1);'; then
+# one when a coverage driver can collect line coverage. A loaded extension is
+# not enough: pcov.enabled=0, or an xdebug.mode without coverage, makes PHPUnit
+# warn and run nothing. The old report is removed first: a run that writes none
+# would otherwise be checked against the previous one.
+if php -r 'exit((extension_loaded("pcov") && ini_get("pcov.enabled")) || (extension_loaded("xdebug") && in_array("coverage", xdebug_info("mode"), true)) ? 0 : 1);'; then
     rm -f build/coverage/clover.xml
     run_gate 'PHPUnit' vendor/bin/phpunit --exclude-testsuite=Integration --coverage-clover=build/coverage/clover.xml
 
@@ -431,7 +433,7 @@ if php -r 'exit(extension_loaded("pcov") || extension_loaded("xdebug") ? 0 : 1);
     fi
 else
     run_gate 'PHPUnit' vendor/bin/phpunit --exclude-testsuite=Integration
-    printf '\n  (no coverage driver loaded, so the coverage baseline was skipped. Install pcov)\n'
+    printf '\n  (no coverage driver can collect line coverage, so the coverage baseline was skipped. Install or enable pcov)\n'
 fi
 
 run_gate 'Rector'       vendor/bin/rector process --dry-run --no-progress-bar

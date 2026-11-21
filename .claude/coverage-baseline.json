@@ -4,19 +4,19 @@
             "file": "src/Sloop/Config/Config.php",
             "scope": "Config::loadDirectory",
             "line": "throw new RuntimeException(",
-            "reason": "Runs only when scandir() fails on a directory that exists, which no Unit test provokes."
+            "reason": "Runs only when glob() fails, which no Unit test provokes."
         },
         {
             "file": "src/Sloop/Config/Config.php",
             "scope": "Config::loadDirectory",
             "line": "'Failed to scan config directory: ' . $directory",
-            "reason": "Runs only when scandir() fails on a directory that exists, which no Unit test provokes."
+            "reason": "Runs only when glob() fails, which no Unit test provokes."
         },
         {
             "file": "src/Sloop/Config/Config.php",
             "scope": "Config::loadDirectory",
             "line": ");",
-            "reason": "Runs only when scandir() fails on a directory that exists, which no Unit test provokes."
+            "reason": "Runs only when glob() fails, which no Unit test provokes."
         },
         {
             "file": "src/Sloop/Container/Container.php",
@@ -28,31 +28,31 @@
             "file": "src/Sloop/Container/Container.php",
             "scope": "Container::autowire",
             "line": "throw new ContainerException(",
-            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Container/Container.php",
             "scope": "Container::autowire",
             "line": "'Failed to instantiate ' . $className . ': ' . $e->getMessage(),",
-            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Container/Container.php",
             "scope": "Container::autowire",
             "line": "0,",
-            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Container/Container.php",
             "scope": "Container::autowire",
             "line": "$e,",
-            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Container/Container.php",
             "scope": "Container::autowire",
             "line": ");",
-            "reason": "Runs only when ReflectionClass::newInstanceArgs() throws, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",
@@ -64,37 +64,37 @@
             "file": "src/Sloop/Database/Connection.php",
             "scope": "Connection::lastInsertId",
             "line": "return 0;",
-            "reason": "Runs only when PDO::lastInsertId() returns false, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",
             "scope": "Connection::begin",
             "line": "$this->execSimple($setTransaction);",
-            "reason": "Runs only for a non-default isolation level or when PDO fails to begin; the Unit suite provokes neither."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",
             "scope": "Connection::begin",
             "line": "} catch (PDOException $e) {",
-            "reason": "Runs only for a non-default isolation level or when PDO fails to begin; the Unit suite provokes neither."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",
             "scope": "Connection::begin",
             "line": "throw ExceptionFactory::fromPDOException($e, $this->connectionName, 'BEGIN');",
-            "reason": "Runs only for a non-default isolation level or when PDO fails to begin; the Unit suite provokes neither."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",
             "scope": "Connection::commit",
             "line": "} catch (PDOException $e) {",
-            "reason": "Runs only when PDO fails to commit, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",
             "scope": "Connection::commit",
             "line": "throw ExceptionFactory::fromPDOException($e, $this->connectionName, 'COMMIT');",
-            "reason": "Runs only when PDO fails to commit, which no Unit test provokes."
+            "reason": "No Unit test runs this line yet; a test is to be added."
         },
         {
             "file": "src/Sloop/Database/Connection.php",

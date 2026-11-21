@@ -20,8 +20,8 @@ declare(strict_types=1);
  * someone writing down why.
  *
  * Usage:
- *   .claude/coverage-baseline.php             # check the latest report (exit 1 on a new unexecuted line)
- *   .claude/coverage-baseline.php --update    # rewrite the list from the latest report, keeping reasons
+ *   php .claude/coverage-baseline.php             # check the latest report (exit 1 on a new unexecuted line)
+ *   php .claude/coverage-baseline.php --update    # rewrite the list from the latest report, keeping reasons
  *
  * --report=, --baseline= and --root= override the report, the list and the
  * repository root whose src is checked.
@@ -63,11 +63,12 @@ final readonly class UncoveredLine
     /**
      * Read an entry of the committed list.
      *
-     * @param  array<array-key, mixed> $entry Decoded list entry
+     * @param  array<array-key, mixed> $entry         Decoded list entry
+     * @param  bool                    $requireReason Whether an entry without a reason is refused
      * @return self                    The entry
-     * @throws \RuntimeException       When the entry names no file or gives no reason
+     * @throws \RuntimeException       When the entry names no file, or gives no reason while one is required
      */
-    public static function fromListEntry(array $entry): self
+    public static function fromListEntry(array $entry, bool $requireReason = true): self
     {
         $line = new self(
             Json::asString($entry['file'] ?? null),
@@ -81,7 +82,7 @@ final readonly class UncoveredLine
             throw new \RuntimeException('an entry of the list names no file.');
         }
 
-        if (trim($line->reason) === '') {
+        if ($requireReason && trim($line->reason) === '') {
             throw new \RuntimeException(
                 'the entry for ' . $line->file . ' "' . $line->text . '" gives no reason.' . \PHP_EOL
                 . 'Write why no Unit test runs the line, or add a test that runs it and drop the entry.',
@@ -294,17 +295,18 @@ final class CoverageBaseline
     /**
      * Read the committed list.
      *
-     * @param  string              $path Absolute path to the list
+     * @param  string              $path           Absolute path to the list
+     * @param  bool                $requireReasons Whether an entry without a reason is refused
      * @return list<UncoveredLine> Entries in the order the file lists them
-     * @throws \RuntimeException   When the list is missing or unusable, or an entry gives no reason
+     * @throws \RuntimeException   When the list is missing or unusable, or an entry gives no reason while one is required
      */
-    private static function readBaseline(string $path): array
+    private static function readBaseline(string $path, bool $requireReasons = true): array
     {
-        $list = Json::readFile($path, 'Create it once with: .claude/coverage-baseline.php --update');
+        $list = Json::readFile($path, 'Create it once with: php .claude/coverage-baseline.php --update');
 
         $lines = [];
         foreach (Json::asArray($list['uncovered'] ?? null) as $entry) {
-            $lines[] = UncoveredLine::fromListEntry(Json::asArray($entry));
+            $lines[] = UncoveredLine::fromListEntry(Json::asArray($entry), $requireReasons);
         }
 
         return $lines;
@@ -364,12 +366,13 @@ final class CoverageBaseline
         $resolved = self::without($listed, $lines);
 
         if ($resolved !== []) {
-            echo \count($resolved), ' listed line(s) are now executed by a test:', \PHP_EOL;
+            echo \count($resolved), ' listed line(s) are no longer unexecuted (run by a test, changed or removed):', \PHP_EOL;
             foreach ($resolved as $entry) {
                 echo '  ', $entry->describe(), \PHP_EOL;
             }
 
-            echo 'Drop them with: .claude/coverage-baseline.php --update', \PHP_EOL, \PHP_EOL;
+            echo 'Drop them with: php .claude/coverage-baseline.php --update', \PHP_EOL,
+            'A line that was only changed comes back as a new entry; carry its reason over.', \PHP_EOL, \PHP_EOL;
         }
 
         if ($new === []) {
@@ -385,7 +388,7 @@ final class CoverageBaseline
 
         echo \PHP_EOL, 'Add a Unit test that runs them. A line no test can reach, such as a failure ',
         'branch of a PHP function that cannot be made to fail, goes on the list with the reason: ',
-        'run --update and fill in the reason of each new entry.', \PHP_EOL;
+        'run php .claude/coverage-baseline.php --update and fill in the reason of each new entry.', \PHP_EOL;
 
         return 1;
     }
@@ -396,13 +399,15 @@ final class CoverageBaseline
      * @param  string              $path  Absolute path to the list
      * @param  list<UncoveredLine> $lines Unexecuted lines of the latest report
      * @return int                 Process exit code
-     * @throws \RuntimeException   When an existing list is unusable or an entry gives no reason, or the list cannot be written
+     * @throws \RuntimeException   When an existing list is unusable, a source line is not valid UTF-8, or the list cannot be written
      */
     private static function write(string $path, array $lines): int
     {
+        // Reasons are not required here: an entry --update just wrote without
+        // one must not stop the next --update. The check refuses it instead.
         $reasons = [];
         if (is_file($path)) {
-            foreach (self::readBaseline($path) as $entry) {
+            foreach (self::readBaseline($path, false) as $entry) {
                 $reasons[$entry->key()][] = $entry->reason;
             }
         }
@@ -424,10 +429,14 @@ final class CoverageBaseline
             static fn (UncoveredLine $a, UncoveredLine $b): int => [$a->file, $a->number] <=> [$b->file, $b->number],
         );
 
-        $json = json_encode(
-            ['uncovered' => array_map(static fn (UncoveredLine $line): array => $line->toArray(), $entries)],
-            \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR,
-        );
+        try {
+            $json = json_encode(
+                ['uncovered' => array_map(static fn (UncoveredLine $line): array => $line->toArray(), $entries)],
+                \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR,
+            );
+        } catch (\JsonException $exception) {
+            throw new \RuntimeException('cannot encode the list: ' . $exception->getMessage(), 0, $exception);
+        }
 
         if (file_put_contents($path, $json . "\n") === false) {
             throw new \RuntimeException('cannot write: ' . $path);

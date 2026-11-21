@@ -183,7 +183,7 @@ final class CoverageBaselineTest extends TestCase
         $this->writeReport(['src/Sample.php' => [[7, 'stmt', 2]]]);
 
         self::assertSame(0, $this->check());
-        self::assertStringContainsString('1 listed line(s) are now executed by a test', $this->output);
+        self::assertStringContainsString('1 listed line(s) are no longer unexecuted', $this->output);
         self::assertStringContainsString('src/Sample.php  Sample::compute  | return $a && $b;', $this->output);
     }
 
@@ -216,6 +216,16 @@ final class CoverageBaselineTest extends TestCase
         );
 
         self::assertSame(2, $this->check());
+    }
+
+    public function testUpdateRunsAgainWhileAnEntryStillHasNoReason(): void
+    {
+        $this->writeSubject(0);
+        $this->writeList([['src/Sample.php', 'Sample::compute', 'return $a && $b;', '']]);
+        $this->writeReport(['src/Sample.php' => [[7, 'stmt', 0]]]);
+
+        self::assertSame(0, $this->invoke(['--update', ...$this->paths()]));
+        self::assertStringContainsString('1 entry(ies) have no reason yet', $this->output);
     }
 
     public function testFilesOutsideSrcAreIgnored(): void
