@@ -14,6 +14,7 @@ use Pdo\Sqlite;
 use PHPUnit\Framework\TestCase;
 use Sloop\Database\Connection;
 use Sloop\Database\LoggingOptions;
+use Sloop\Database\Query\Delete;
 use Sloop\Database\Query\Expression;
 use Sloop\Database\Query\Select;
 use Sloop\Database\Result;
@@ -596,5 +597,21 @@ final class SelectGroupTest extends TestCase
             . ' HAVING COUNT(*) > ? ORDER BY `user_id` DESC LIMIT 10',
             $select->toSql(),
         );
+    }
+
+    // A Delete test kept here on purpose: it is the only test that runs
+    // BuilderWhere's own enterCallbackScope() / leaveCallbackScope(), the
+    // ones Select overrides and Delete does not.
+    // Infection runs the files that cover a mutated line, so making those
+    // base methods private is killed by the HAVING floor tests above; moved
+    // to DeleteTest, those two mutants survive.
+    public function testACallbackHandedByWhenToADeleteWritesItsConditionsIntoTheWhereClause(): void
+    {
+        $delete = $this->connection->delete('orders')
+            ->where('status', 'open')
+            ->when(true, static fn (Delete $d): Delete => $d->where('id', '>', 2));
+
+        $this->assertSame('DELETE FROM `orders` WHERE `status` = ? AND `id` > ?', $delete->toSql());
+        $this->assertSame(['open', 2], $delete->toBindings());
     }
 }

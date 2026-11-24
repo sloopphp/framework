@@ -844,4 +844,14 @@ final class WindowExpressionTest extends TestCase
             $compiled->sql,
         );
     }
+
+    public function testADirectionThatIsNotAStringIsRefused(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Expression::over('ROW_NUMBER', orders: ['score' => 1]),
+        );
+
+        $this->assertSame('A sort direction is written as a string, got int for score.', $thrown->getMessage());
+    }
 }

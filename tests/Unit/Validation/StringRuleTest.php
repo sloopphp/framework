@@ -1678,4 +1678,21 @@ final class StringRuleTest extends TestCase
         $this->assertSame([], self::failedRules($rule, '::1'));
         $this->assertSame(['ip'], self::failedRules($rule, '256.0.0.1'));
     }
+
+    public function testAPatternWhoseMatchPcreAbortsAtDeclarationIsRefused(): void
+    {
+        $limit = \ini_get('pcre.backtrack_limit');
+        $jit   = \ini_get('pcre.jit');
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '0');
+        try {
+            $e = $this->assertThrows(InvalidArgumentException::class, static fn () => Rule::string()->regex('/a*/'));
+        } finally {
+            ini_set('pcre.backtrack_limit', (string) $limit);
+            ini_set('pcre.jit', (string) $jit);
+        }
+
+        $this->assertSame('Invalid regular expression /a*/: Backtrack limit exhausted', $e->getMessage());
+        $this->assertSame([], self::failedRules(Rule::string()->regex('/a*/'), 'aaa'));
+    }
 }

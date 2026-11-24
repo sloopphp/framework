@@ -1813,4 +1813,121 @@ final class ConnectionTest extends TestCase
             $error->getMessage(),
         );
     }
+
+    public function testLastInsertIdIsZeroWhenTheDriverAnswersFalse(): void
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('lastInsertId')->willReturn(false);
+
+        $connection = new Connection($pdo, 'test');
+
+        $this->assertSame(0, $connection->lastInsertId());
+    }
+
+    public function testBeginSendsTheIsolationLevelBeforeBegin(): void
+    {
+        /** @var ArrayObject<int, string> $calls */
+        $calls = new ArrayObject();
+        $pdo   = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(false);
+        $pdo->method('exec')->willReturnCallback(static function (string $sql) use ($calls): int {
+            $calls[] = $sql;
+
+            return 0;
+        });
+        $pdo->method('beginTransaction')->willReturnCallback(static function () use ($calls): bool {
+            $calls[] = 'BEGIN';
+
+            return true;
+        });
+
+        new Connection($pdo, 'test')->begin(IsolationLevel::Serializable);
+
+        $this->assertSame(['SET TRANSACTION ISOLATION LEVEL SERIALIZABLE', 'BEGIN'], $calls->getArrayCopy());
+    }
+
+    public function testBeginWrapsAFailedBeginAsAQueryExceptionCarryingBegin(): void
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(false);
+        $failure            = new \PDOException('begin broken');
+        $failure->errorInfo = ['HY000', 9999, 'x'];
+        $pdo->method('beginTransaction')->willThrowException($failure);
+
+        $e = $this->assertThrows(
+            QueryException::class,
+            static fn () => new Connection($pdo, 'begin_test')->begin(),
+        );
+
+        $this->assertSame(QueryException::class, $e::class);
+        $this->assertSame('BEGIN', $e->sql);
+        $this->assertSame('begin_test', $e->connectionName);
+        $this->assertSame($failure, $e->getPrevious());
+    }
+
+    public function testCommitWrapsAFailedCommitAsAQueryExceptionCarryingCommit(): void
+    {
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(true);
+        $failure            = new \PDOException('commit broken');
+        $failure->errorInfo = ['HY000', 9999, 'x'];
+        $pdo->method('commit')->willThrowException($failure);
+
+        $e = $this->assertThrows(
+            QueryException::class,
+            static fn () => new Connection($pdo, 'commit_test')->commit(),
+        );
+
+        $this->assertSame(QueryException::class, $e::class);
+        $this->assertSame('COMMIT', $e->sql);
+        $this->assertSame('commit_test', $e->connectionName);
+        $this->assertSame($failure, $e->getPrevious());
+    }
+
+    public function testTransactionRetriesACommitThatFailsOnADeadlock(): void
+    {
+        $deadlock            = new \PDOException('deadlock');
+        $deadlock->errorInfo = ['40001', 1213, 'Deadlock found'];
+
+        /** @var ArrayObject<int, string> $commits */
+        $commits = new ArrayObject();
+        $pdo     = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(false);
+        $pdo->method('beginTransaction')->willReturn(true);
+        $pdo->method('commit')->willReturnCallback(static function () use ($commits, $deadlock): bool {
+            $commits[] = 'COMMIT';
+            if (\count($commits) === 1) {
+                throw $deadlock;
+            }
+
+            return true;
+        });
+
+        $result = new Connection($pdo, 'retry_test')->transaction(static fn (): string => 'done', maxAttempts: 2);
+
+        $this->assertSame('done', $result);
+        $this->assertCount(2, $commits);
+    }
+
+    public function testTransactionWrapsAPdoExceptionFromTheCallback(): void
+    {
+        $failure            = new \PDOException('raw');
+        $failure->errorInfo = ['HY000', 9999, 'x'];
+
+        $pdo = $this->createStub(PDO::class);
+        $pdo->method('inTransaction')->willReturn(false);
+        $pdo->method('beginTransaction')->willReturn(true);
+
+        $e = $this->assertThrows(
+            QueryException::class,
+            static fn () => new Connection($pdo, 'wrap_test')->transaction(static function () use ($failure): never {
+                throw $failure;
+            }),
+        );
+
+        $this->assertSame(QueryException::class, $e::class);
+        $this->assertSame('', $e->sql);
+        $this->assertSame('wrap_test', $e->connectionName);
+        $this->assertSame($failure, $e->getPrevious());
+    }
 }

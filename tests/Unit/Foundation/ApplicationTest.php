@@ -14,6 +14,8 @@ use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Sloop\Clock\SystemClock;
 use Sloop\Config\Config;
 use Sloop\Config\InvalidConfigException;
@@ -32,6 +34,7 @@ use Sloop\Database\Replica\InMemoryDeadReplicaCache;
 use Sloop\Database\Replica\RandomReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelector;
 use Sloop\Database\Replica\ReplicaSelectorRegistry;
+use Sloop\Error\ExceptionHandler;
 use Sloop\Foundation\Application;
 use Sloop\Foundation\Path;
 use Sloop\Http\Request\FormBody;
@@ -70,15 +73,10 @@ use Sloop\Validation\ValidationMessages;
  *   two reads in `createServerRequestFromGlobals()` is checked only by hand
  *   on the built-in server.
  *
- * - **`send($response)`**: writes HTTP headers via `header()` and outputs
- *   the body via `echo`. Verification requires `@runInSeparateProcess` or
- *   output buffering manipulation. Defer to v0.2 integration tests.
- *
- * - **`resolveFormatter()` / `bootLog()` resolution failure exceptions**: requires the
- *   Container to return a non-instance for the registered binding, which is
- *   not reachable through the normal Application boot path. Would need
- *   reflection or container hijacking. Low ROI for v0.1; the runtime
- *   exception is a defensive guard for future extensibility.
+ * - **`bootLog()` resolution failure exceptions**: they run only if the
+ *   Container hands back another type for a binding the constructor
+ *   registered just before, and no test can change the binding in between.
+ *   The lines are listed with that reason in `.claude/coverage-baseline.json`.
  *
  * - **`loadMiddleware()` with non-array input**: `Config::load()` validates that
  *   all `/config/*.php` files return arrays before `loadMiddleware()` runs,
@@ -1794,5 +1792,42 @@ final class ApplicationTest extends TestCase
             'Database connection [] is not defined.',
             $e->getMessage(),
         );
+    }
+
+    public function testAnExceptionHandlerEntryThatIsNotOneFallsBackToTheStatusOfTheException(): void
+    {
+        $this->writeRoutes('<?php
+            $router->get("/boom", \Sloop\Tests\Unit\Foundation\Stub\ThrowingController::class, "generic");
+        ');
+        $app = new Application($this->tmpDir);
+        $app->container->instance(ExceptionHandler::class, new class () {
+            public function handle(\Throwable $e): int
+            {
+                return 418;
+            }
+        });
+
+        $response = $app->run($this->createRequest('GET', '/boom'));
+
+        $this->assertSame(500, $response->getStatusCode());
+    }
+
+    public function testTheExceptionHandlerSingletonRefusesALogManagerEntryThatIsNotOne(): void
+    {
+        $app = new Application($this->tmpDir);
+        $app->container->instance(LogManager::class, new class () {
+            public function channel(): LoggerInterface
+            {
+                return new NullLogger();
+            }
+        });
+
+        $e = $this->assertThrows(
+            \LogicException::class,
+            static fn (): mixed => $app->container->get(ExceptionHandler::class),
+        );
+
+        $this->assertSame(\LogicException::class, $e::class);
+        $this->assertSame('Failed to resolve LogManager from container.', $e->getMessage());
     }
 }

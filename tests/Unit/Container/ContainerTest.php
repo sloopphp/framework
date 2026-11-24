@@ -447,6 +447,23 @@ final class ContainerTest extends TestCase
 
         $this->assertInstanceOf(ContainerExceptionInterface::class, $exception);
     }
+
+    public function testAReflectionExceptionFromTheConstructorIsWrappedInAContainerException(): void
+    {
+        $e = $this->assertThrows(
+            ContainerException::class,
+            fn () => $this->container->get(ClassWhoseConstructorThrowsReflection::class),
+        );
+
+        $this->assertSame(ContainerException::class, $e::class);
+        $this->assertSame(
+            'Failed to instantiate ' . ClassWhoseConstructorThrowsReflection::class . ': broken by the constructor',
+            $e->getMessage(),
+        );
+        $this->assertSame(0, $e->getCode());
+        $this->assertInstanceOf(\ReflectionException::class, $e->getPrevious());
+        $this->assertSame('broken by the constructor', $e->getPrevious()->getMessage());
+    }
 }
 
 // ---------------------------------------------------------------
@@ -580,5 +597,13 @@ readonly class CircularB
     public function __construct(
         public CircularA $a,
     ) {
+    }
+}
+
+class ClassWhoseConstructorThrowsReflection
+{
+    public function __construct()
+    {
+        throw new \ReflectionException('broken by the constructor');
     }
 }

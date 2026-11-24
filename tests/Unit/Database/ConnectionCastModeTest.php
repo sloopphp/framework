@@ -484,4 +484,19 @@ final class ConnectionCastModeTest extends TestCase
             $e->getMessage(),
         );
     }
+
+    public function testDatetimeConvertsTheDateColumnAndLeavesTheOtherColumnOfTheSameRowAlone(): void
+    {
+        $connection = $this->connectionReturning(
+            [['id' => 7, 'd' => '2026-04-14']],
+            [$this->meta('id', 'LONG'), $this->meta('d', 'DATE')],
+        );
+        $connection->setCastMode(CastMode::Datetime);
+
+        $row = $connection->query('SELECT id, d FROM t')->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame(7, $row['id']);
+        $this->assertEquals(new DateTimeImmutable('2026-04-14'), $row['d']);
+    }
 }

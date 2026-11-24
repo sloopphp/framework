@@ -248,4 +248,26 @@ final class UpdateJoinTest extends TestCase
             $update->toSql(),
         );
     }
+
+    public function testAnOrGroupOfOnConditionsClosedWithEitherSpellingIsParenthesised(): void
+    {
+        $update = $this->update()
+            ->join('posts')
+            ->on('posts.user_id', '=', 'users.id')
+            ->orOnOpen()
+            ->on('posts.status', '=', Expression::of('?', ['live']))
+            ->andOnOpen()
+            ->on('posts.pinned', '=', Expression::of('?', [1]))
+            ->andOnClose()
+            ->orOnClose()
+            ->andOn('posts.views', '=', 'users.views')
+            ->set(['users.status' => 'vip']);
+
+        $this->assertStringContainsString(
+            'ON `posts`.`user_id` = `users`.`id`'
+                . ' OR (`posts`.`status` = ? AND (`posts`.`pinned` = ?))'
+                . ' AND `posts`.`views` = `users`.`views` SET',
+            $update->toSql(),
+        );
+    }
 }
