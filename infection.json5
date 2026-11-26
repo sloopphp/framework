@@ -169,11 +169,19 @@
                 // discards, so shifting it to 1 leaves the string identical.
                 // Pinned to the array_fill line rather than the method so that
                 // a future edit adding a killable literal here is not swallowed.
-                "Sloop\\Database\\Query\\Expression::placeholders::756"
+                "Sloop\\Database\\Query\\Expression::placeholders::756",
+                // BuilderWhere::enterCallbackScope answers the marker its own
+                // leaveCallbackScope takes back, and that one ignores it: the
+                // base keeps no floor, so any integer reads the same. Select
+                // overrides both and keeps the floor there. The method holds no
+                // other literal.
+                "Sloop\\Database\\Query\\BuilderWhere::enterCallbackScope"
             ]
         },
         "DecrementInteger": {
             "ignore": [
+                // BuilderWhere::enterCallbackScope: see IncrementInteger.
+                "Sloop\\Database\\Query\\BuilderWhere::enterCallbackScope",
                 // StringRule::email::464: see IncrementInteger.
                 "Sloop\\Validation\\StringRule::email::464",
                 // Same millisecond-conversion literal as IncrementInteger above,

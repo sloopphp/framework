@@ -1162,4 +1162,21 @@ final class ArrayRuleTest extends TestCase
     {
         $this->assertSame(['array'], self::failedRules(Rule::array(ArraySanitize::RemoveEmpty), 'no'));
     }
+
+    public function testAnArrayFieldInsideTheDefaultOfAShapeKeepsItsArray(): void
+    {
+        $rule = Rule::shape(['tags' => Rule::array()])->default(['tags' => ['a', 'b']]);
+
+        $this->assertSame(['tags' => ['a', 'b']], self::valueOf($rule, null));
+    }
+
+    public function testACountRuleRefusesAMalformedMessage(): void
+    {
+        $e = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn (): mixed => Rule::array()->minCount(1, '{label'),
+        );
+
+        $this->assertSame('Validation message "{label" is not a valid ICU message pattern.', $e->getMessage());
+    }
 }
