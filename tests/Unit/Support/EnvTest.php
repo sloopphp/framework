@@ -130,13 +130,12 @@ final class EnvTest extends TestCase
     #[DataProvider('headerNameProvider')]
     public function testGetRejectsANameStartingWithHttpInAnyCase(string $name): void
     {
-        putenv($name . '=from-process');
-
-        try {
-            $thrown = $this->assertThrows(InvalidArgumentException::class, static fn () => Env::get($name));
-        } finally {
-            putenv($name);
-        }
+        // withEnv() puts the original value back, so a developer's real
+        // HTTP_PROXY survives the test.
+        $thrown = Env::withEnv(
+            [$name => 'from-process'],
+            fn () => $this->assertThrows(InvalidArgumentException::class, static fn () => Env::get($name)),
+        );
 
         $this->assertSame(InvalidArgumentException::class, $thrown::class);
         $this->assertSame(
@@ -163,13 +162,12 @@ final class EnvTest extends TestCase
 
         try {
             Env::enableImmutable();
-
-            $this->expectException(InvalidArgumentException::class);
-
-            Env::get('HTTP_X_SHADOW');
+            $thrown = $this->assertThrows(InvalidArgumentException::class, static fn () => Env::get('HTTP_X_SHADOW'));
         } finally {
             putenv('HTTP_X_SHADOW');
         }
+
+        $this->assertStringStartsWith('Environment variable \'HTTP_X_SHADOW\' cannot be read', $thrown->getMessage());
     }
 
     public function testGetReadsANameThatOnlyContainsHttp(): void
