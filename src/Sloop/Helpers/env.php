@@ -12,7 +12,7 @@ if (!function_exists('env')) {
      * @param  string|null                          $default  Default value if not set
      * @param  bool                                 $required Throw exception if not set
      * @return string|null
-     * @throws InvalidArgumentException             If required and default are both specified
+     * @throws InvalidArgumentException             If the name starts with 'HTTP_' in any case, or required and default are both specified
      * @throws \Sloop\Config\InvalidConfigException If required and the variable is not set
      */
     function env(

@@ -36,11 +36,15 @@ final class Env
     /**
      * Get an environment variable value.
      *
+     * A name starting with 'HTTP_', in any case, is refused on every SAPI: on a
+     * web server getenv() can return a request header's value for it, ahead of
+     * the value the process environment holds.
+     *
      * @param  string                   $key      Environment variable name
      * @param  string|null              $default  Default value if not set (incompatible with required: true)
      * @param  bool                     $required Throw exception if not set (incompatible with default)
      * @return string|null
-     * @throws InvalidArgumentException If required and default are both specified
+     * @throws InvalidArgumentException If the name starts with 'HTTP_' in any case, or required and default are both specified
      * @throws InvalidConfigException   If required and the variable is not set
      */
     public static function get(
@@ -48,6 +52,14 @@ final class Env
         ?string $default = null,
         bool $required = false,
     ): ?string {
+        if (strncasecmp($key, 'HTTP_', 5) === 0) {
+            throw new InvalidArgumentException(
+                'Environment variable \'' . $key . '\' cannot be read with env(): on a web server, a name starting'
+                . ' with \'HTTP_\' (in any case) can carry a request header value. Use a name without that prefix,'
+                . ' or read it with getenv() where no request is involved.'
+            );
+        }
+
         if ($required && $default !== null) {
             throw new InvalidArgumentException(
                 'Cannot specify both \'required: true\' and \'default\' for env var \'' . $key . '\'.'
@@ -139,6 +151,8 @@ final class Env
      * Execute a callback with temporary environment variable overrides.
      *
      * Overrides bypass the immutable cache for the duration of the callback.
+     * A name starting with 'HTTP_' is set for getenv() too, while get() still
+     * refuses it.
      * Original environment and cache state are restored after execution. When
      * the callback enables immutable mode (by booting an Application), an
      * overridden variable not fixed before is read again, at its next get(),
