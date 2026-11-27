@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sloop\Tests\Unit\Support;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sloop\Config\InvalidConfigException;
@@ -105,6 +106,94 @@ final class EnvTest extends TestCase
         );
 
         Env::get('MY_CUSTOM_KEY', default: 'val', required: true);
+    }
+
+    // -------------------------------------------------------
+    // get - names a request header can set
+    // -------------------------------------------------------
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function headerNameProvider(): array
+    {
+        return [
+            'upper case'          => ['HTTP_X_SHADOW'],
+            'lower case'          => ['http_x_shadow'],
+            'mixed case'          => ['Http_X_Shadow'],
+            'prefix only'         => ['HTTP_'],
+            'proxy'               => ['HTTP_PROXY'],
+            'proxy in lower case' => ['http_proxy'],
+        ];
+    }
+
+    #[DataProvider('headerNameProvider')]
+    public function testGetRejectsANameStartingWithHttpInAnyCase(string $name): void
+    {
+        putenv($name . '=from-process');
+
+        try {
+            $thrown = $this->assertThrows(InvalidArgumentException::class, static fn () => Env::get($name));
+        } finally {
+            putenv($name);
+        }
+
+        $this->assertSame(InvalidArgumentException::class, $thrown::class);
+        $this->assertSame(
+            'Environment variable \'' . $name . '\' cannot be read with env(): on a web server, a name starting'
+            . ' with \'HTTP_\' (in any case) can carry a request header value. Use a name without that prefix,'
+            . ' or read it with getenv() where no request is involved.',
+            $thrown->getMessage(),
+        );
+    }
+
+    public function testGetRejectsAHttpNameBeforeCheckingRequiredAndDefault(): void
+    {
+        $thrown = $this->assertThrows(
+            InvalidArgumentException::class,
+            static fn () => Env::get('HTTP_X_SHADOW', default: 'value', required: true),
+        );
+
+        $this->assertStringStartsWith('Environment variable \'HTTP_X_SHADOW\' cannot be read', $thrown->getMessage());
+    }
+
+    public function testGetRejectsAHttpNameInImmutableMode(): void
+    {
+        putenv('HTTP_X_SHADOW=from-process');
+
+        try {
+            Env::enableImmutable();
+
+            $this->expectException(InvalidArgumentException::class);
+
+            Env::get('HTTP_X_SHADOW');
+        } finally {
+            putenv('HTTP_X_SHADOW');
+        }
+    }
+
+    public function testGetReadsANameThatOnlyContainsHttp(): void
+    {
+        putenv('SLOOP_HTTP_X=inner');
+        putenv('HTTPX=no-underscore');
+
+        try {
+            $inner        = Env::get('SLOOP_HTTP_X');
+            $noUnderscore = Env::get('HTTPX');
+        } finally {
+            putenv('SLOOP_HTTP_X');
+            putenv('HTTPX');
+        }
+
+        $this->assertSame('inner', $inner);
+        $this->assertSame('no-underscore', $noUnderscore);
+    }
+
+    public function testEnvHelperRejectsAHttpName(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        env('HTTP_X_SHADOW');
     }
 
     // -------------------------------------------------------
@@ -357,6 +446,18 @@ final class EnvTest extends TestCase
         $this->assertNull($removed);
         $this->assertSame('temporary', $added);
         $this->assertFalse(getenv('9876543210'));
+    }
+
+    public function testWithEnvSetsAHttpNameForGetenvWhileEnvStillRejectsIt(): void
+    {
+        $inside = Env::withEnv(['HTTP_X_SHADOW' => 'temporary'], function (): string|false {
+            $this->assertThrows(InvalidArgumentException::class, static fn () => Env::get('HTTP_X_SHADOW'));
+
+            return getenv('HTTP_X_SHADOW');
+        });
+
+        $this->assertSame('temporary', $inside);
+        $this->assertFalse(getenv('HTTP_X_SHADOW'));
     }
 
     public function testImmutableEnabledInsideWithEnvFixesTheOriginalValues(): void
